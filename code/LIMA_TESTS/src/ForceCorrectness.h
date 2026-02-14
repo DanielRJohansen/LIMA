@@ -141,6 +141,7 @@ namespace ForceCorrectness {
 		// Now we have the bond params, set the actual test position
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 		coordarray_ptr->rel_positions[1].x = coordarray_ptr->rel_positions[0].x + Coord{ Float3{bondlenErrorNM + bondparams.b0, 0.f, 0.f} }.x;
+		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x + bondlenErrorNM + bondparams.b0;
 
 		// Now figure the expected force and potential
 		const double kB = bondparams.kb / 2.;									// [J/mol/nm^2]
@@ -201,7 +202,7 @@ namespace ForceCorrectness {
 
 		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x;
-
+		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x - bond_len_error - bondparams.b0;
 
 
 
@@ -268,6 +269,8 @@ namespace ForceCorrectness {
 			CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 			coordarray_ptr->rel_positions[0] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
 			coordarray_ptr->rel_positions[2] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
+			box_host.persistentClusters[0].pqd[0].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
+			box_host.persistentClusters[0].pqd[2].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
 		}
 
 		// Now set the angle error
@@ -277,6 +280,7 @@ namespace ForceCorrectness {
 			const Float3 p2Pos = box_host.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();
 			const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
 			box_host.compoundCoordsBuffer[0].rel_positions[2] = Coord{ p2Rotated };
+			box_host.persistentClusters[0].pqd[2].position = p2Rotated;
 		}
 		
 
@@ -363,11 +367,16 @@ namespace ForceCorrectness {
 
 
 		// Now calculate expected forces and potential energy
-		const int p0 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[0]].localIdInCompound;
-		const int p1 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[1]].localIdInCompound;
+		const int pidInPcluster0 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[0]].pid;
+		const int pidInPcluster1 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[1]].pid;
+		const int pidGlobal0 = box_host.persistentClustersMetadata[0].particleIdsGlobal[0];
+		const int pidGlobal1 = box_host.persistentClustersMetadata[0].particleIdsGlobal[1];
+		const int pidInCompound0 = box_host.particleToCompoundOrSolventMapping[pidGlobal0].particleId;
+		const int pidInCompound1 = box_host.particleToCompoundOrSolventMapping[pidGlobal1].particleId;
 
-		const Float3 pos0 = box_host.compoundCoordsBuffer[0].rel_positions[p0].ToRelpos();
-		const Float3 pos1 = box_host.compoundCoordsBuffer[0].rel_positions[p1].ToRelpos();
+
+		const Float3 pos0 = box_host.compoundCoordsBuffer[0].rel_positions[pidInCompound0].ToRelpos();
+		const Float3 pos1 = box_host.compoundCoordsBuffer[0].rel_positions[pidInCompound1].ToRelpos();
 		const Float3 diff = pos1 - pos0;
 
 		const PairBond::Parameters bondparams = box_host.bondgroups[0].pairbonds[0].params;
@@ -382,10 +391,9 @@ namespace ForceCorrectness {
 		const auto sim = env.getSim();
 
 		// Fetch the potential energy from the buffer, summing over all three atoms
-		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, p0, 0);
-
+		const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, pidInCompound0, 0);
 		// Fetch the actual force on the middle atom (atom 1)
-		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[p0];
+		const Float3 actualForce = sim->box_host->compoundInterimStates[0].forces_prev[pidInCompound0];
 
 		ASSERT(expectedForce.len() > 1.f, "Force too small for test to be meaningful");
 		ASSERT(expectedPotential > 1.f, "Potential energy too small for test to be meaningful");

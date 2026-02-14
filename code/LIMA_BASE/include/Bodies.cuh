@@ -266,8 +266,13 @@ struct Compound : public CompoundCompact {
 
 struct BondGroup {
 	struct ParticleRef {
-		int compoundId=0; // TODO: make uint16_t?
-		int localIdInCompound=0; // TODO: make uint16_t?
+		// TODO: REmove these 2!!
+		//int compoundId = 0; // TODO: make uint16_t?
+		//int localIdInCompound = 0; // TODO: make uint16_t?
+
+
+		int pcid;
+		int pid; // local to pcluster
 	};
 
 	static const int maxParticles = 64;
@@ -378,12 +383,26 @@ struct PData {
 //	float chargeProducts[3]; // [O-O, O-H, H-H]
 //};
 
+struct BondgroupRefManager {
+	static const int maxBondgroupApperances = 4;
+	int nBondgroupApperances = 0;
+	BondgroupRef bondgroupApperances[maxBondgroupApperances];
+	__host__ void Add(const BondgroupRef& bgRef) {
+		if (nBondgroupApperances >= maxBondgroupApperances)
+			throw std::runtime_error("Too many bondgroup apperances for a particle, increase maxBondgroupApperances or check your clustering");
+		bondgroupApperances[nBondgroupApperances++] = bgRef;
+	}
+};
+
 struct PersistentCluster {
 	static const int nParticles = 4;
 	PData pqd[nParticles];
 };
 struct PersistentClusterMeta {
 	int particleIdsGlobal[PersistentCluster::nParticles];
+
+	// I do not like this setup...
+	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
 };
 
 //struct PersistentCluster {

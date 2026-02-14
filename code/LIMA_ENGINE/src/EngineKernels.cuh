@@ -355,13 +355,13 @@ __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, c
 
 	// Fetch interims from other kernels
 	ForceEnergy forceEnergy = forceEnergies.SumCompound(blockIdx.x, threadIdx.x);
-	{
-		const Compound::BondgroupRefManager* const bgReferences = &sim->boxConfig.compounds[blockIdx.x].bondgroupReferences[threadIdx.x];
-		for (int i = 0; i < bgReferences->nBondgroupApperances; i++) {
-			const BondgroupRef bondgroupRef = bgReferences->bondgroupApperances[i];
-			forceEnergy = forceEnergy + forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
-		}
-	}
+	//{
+	//	const Compound::BondgroupRefManager* const bgReferences = &sim->boxConfig.compounds[blockIdx.x].bondgroupReferences[threadIdx.x];
+	//	for (int i = 0; i < bgReferences->nBondgroupApperances; i++) {
+	//		const BondgroupRef bondgroupRef = bgReferences->bondgroupApperances[i];
+	//		forceEnergy = forceEnergy + forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+	//	}
+	//}
 
 	if (threadIdx.x < nParticles) {
 		//printf("Integrating force %f %f %f\n", forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
@@ -830,9 +830,8 @@ __global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step
 
 static const int THREADS_PER_BONDSGROUPSKERNEL = BondGroup::maxParticles;
 template <typename BoundaryCondition, bool emVariant>
-__global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut) {
+__global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters) {
 	__shared__ Float3 positions[BondGroup::maxParticles];
-
 
 	__shared__ Float3 forcesInterrim[BondGroup::maxParticles];
 	__shared__ float potEInterrim[BondGroup::maxParticles];
@@ -840,28 +839,40 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
 	__shared__ char _bondsBuffer[largestBondBytesize * batchSize];	
-	__shared__ NodeIndex origo;
+	//__shared__ NodeIndex origo;
 
 	const BondGroup* const bondGroup = &bondGroups[blockIdx.x];
-	const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];
+	const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];	
 
 	if (threadIdx.x == 0) {
-		origo = boxState.compoundOrigos[pRef.compoundId];
+		//origo = boxState.compoundOrigos[0];
 	}
 	__syncthreads();
 
+	// Fetch positions, and hyperpos around first particle.
 	if (threadIdx.x < bondGroup->nParticles) {
 		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		const NodeIndex myNodeindex = BoundaryCondition::applyHyperpos_Return(origo, boxState.compoundOrigos[pRef.compoundId]);
+		//const NodeIndex myNodeindex = BoundaryCondition::applyHyperpos_Return(origo, boxState.compoundOrigos[0]);
 		//KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
 
 		// calc Relative LimaPosition Shift from the origo-shift
-		const Float3 relShift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(myNodeindex, origo);
+		//const Float3 relShift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(myNodeindex, origo);
 
-		positions[threadIdx.x] = boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
-		
+		//auto oldPos = boxState.compoundsRelposNm[0 * MAX_COMPOUND_PARTICLES + pRef.pid] + myNodeindex.toFloat3();
+
+		//positions[threadIdx.x] = boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
+		//const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];
+		positions[threadIdx.x] = pclusters[pRef.pcid].pqd[pRef.pid].position;  //boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
+
+		//printf("oldpos %f %f %f newpos %f %f %f\n", oldPos.x, oldPos.y, oldPos.z,
+		//	positions[threadIdx.x].x, positions[threadIdx.x].y, positions[threadIdx.x].z);
 	}
-
+	__syncthreads();
+	if (threadIdx.x < bondGroup->nParticles) {
+		BoundaryCondition::applyHyperposNM(positions[0], positions[threadIdx.x]);
+	}
+	__syncthreads();
+	
 
 	Float3 force{};
 	float potE{};
@@ -1081,10 +1092,6 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 	}
 
 	// push
-	//if (particleId == 4)
-	//	printf("Storing force mag %f\n", myFE.force.len());
-	
-	///printf("particle id %d %d\n", pClusterId, particleId);
 	if (particleId == -1)
 		return;
 	
@@ -1135,11 +1142,32 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 //	__syncthreads();
 //}
 
+// gridDim = (nPclusters, 1, 1)
+// blockDim = (32, 1, 1) // TODO OPTIM: Use y=4, and have 1 particle in pc per y-thread
+__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies) {
+	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (pcId >= nPclusters)
+		return;
+
+	for (int pid = 0; pid < 4; pid++) {
+		int pidGlobal = pclusterMeta[pcId].particleIdsGlobal[pid];		
+		if (pidGlobal == -1)
+			continue;
+		
+		BondgroupRefManager beRefs = pclusterMeta[pcId].bondgroupReferences[pid];
+		ForceEnergy fe{};
+		for (int i = 0; i < beRefs.nBondgroupApperances; i++) {
+			BondgroupRef bondgroupRef = beRefs.bondgroupApperances[i];
+			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+		}
+
+		forceEnergies.bonded[pidGlobal] = fe;
+	}	
+}
 
 
 //This is just temp code untill we switch completely to verletclustering, and no longer need the compounds/solvents discerning
-__global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergy* const forceenergy, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles,
-ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
+__global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergyInterims forceEnergies, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles) {
 
 	int particleId = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -1147,12 +1175,21 @@ ForceEnergy* const feCompounds, ForceEnergy* const feSolvents) {
 		return;
 
 
+	// TODO Also move the bondgroup ref'ed forces here.
+
+	ForceEnergy fe{};
+	fe += forceEnergies.nbNonlocal[particleId];
+	fe += forceEnergies.bonded[particleId];
+
+
 	ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
 	if (mapping.IsSolvent()) {
-		feSolvents[mapping.particleId] = forceenergy[particleId];
+		forceEnergies.solvents.fromSuperclusters[mapping.particleId] = fe;
+		//feSolvents[mapping.particleId] = forceenergy[particleId];
 	}
 	else {
-		feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = forceenergy[particleId];
+		forceEnergies.fromSuperclusters[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = fe;
+		//feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = forceenergy[particleId];
 	}
 }
 

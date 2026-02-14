@@ -161,25 +161,28 @@ struct ForceEnergyInterims {
 		float magErr = magDiff / fOld.len();
 		float threshold = 4000;
 
-		if (vecErr > 0.1 && magDiff > threshold) {
-			printf("\nCompound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",
-				compoundId, particleId, vecErr, fOld.x, fOld.y, fOld.z, nNew.x, nNew.y, nNew.z);
-		}
+		//if (vecErr > 0.1 && magDiff > threshold) {
+		//	printf("\nCompound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",
+		//		compoundId, particleId, vecErr, fOld.x, fOld.y, fOld.z, nNew.x, nNew.y, nNew.z);
+		//}
 		
 
 		return/* forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ */forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ */forceEnergySNF[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ pmeFE;
 	}
 
-	ForceEnergy* nbNonlocal = nullptr;
+	// These are temp, pushed into fromSuperclusters*
+	ForceEnergy* nbNonlocal = nullptr;// Currently 1 per particle, i guess i want them in pclustergroups lateron
+	ForceEnergy* bonded = nullptr; // TODO: Also temp, not sure how i wanna proceed here..
+
 
 	// Compounds
 	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
 	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyBonds = nullptr;
+	ForceEnergy* forceEnergySNF = nullptr;
 	ForceEnergy* forceEnergiesPME = nullptr;
 	ForceEnergy* fromSuperclusters = nullptr;
 

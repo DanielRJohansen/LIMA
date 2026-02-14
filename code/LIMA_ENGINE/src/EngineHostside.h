@@ -35,13 +35,13 @@ ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nTinymols, int nSol
 		const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
 		cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
 		cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
-		cudaMalloc(&forceEnergyBonds, byteSize);
+		cudaMalloc(&forceEnergySNF, byteSize);
 		cudaMalloc(&forceEnergiesPME, byteSize);
 		cudaMalloc(&fromSuperclusters, byteSize);
 
 		cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
 		cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
-		cudaMemset(forceEnergyBonds, 0, byteSize);
+		cudaMemset(forceEnergySNF, 0, byteSize);
 		cudaMemset(forceEnergiesPME, 0, byteSize);		
 		cudaMemset(fromSuperclusters, 0, byteSize);
 	}
@@ -68,7 +68,9 @@ ForceEnergyInterims::ForceEnergyInterims(int nCompounds, int nTinymols, int nSol
 
 	if (nParticles > 0) {
 		cudaMalloc(&nbNonlocal, sizeof(ForceEnergy) * nParticles);
+		cudaMalloc(&bonded, sizeof(ForceEnergy) * nParticles);
 		cudaMemset(nbNonlocal, 0, sizeof(ForceEnergy) * nParticles);
+		cudaMemset(bonded, 0, sizeof(ForceEnergy) * nParticles);
 	}
 }
 
@@ -76,7 +78,7 @@ void ForceEnergyInterims::Free() const {
 	if (forceEnergyFarneighborShortrange != nullptr) {
 		cudaFree(forceEnergyFarneighborShortrange);
 		cudaFree(forceEnergyImmediateneighborShortrange);
-		cudaFree(forceEnergyBonds);
+		cudaFree(forceEnergySNF);
 		cudaFree(forceEnergiesPME);
 		cudaFree(forceEnergiesBondgroups);
 	}
@@ -90,6 +92,7 @@ void ForceEnergyInterims::Free() const {
 
 	if (nbNonlocal != nullptr) {
 		cudaFree(nbNonlocal);
+		cudaFree(bonded);
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");

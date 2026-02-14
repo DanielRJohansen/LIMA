@@ -826,8 +826,6 @@ std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, cons
 	return compounds;
 }
 
-
-
 const std::vector<ParticleToCompoundMapping> MakeParticleToCompoundidMap(const std::vector<CompoundFactory>& compounds, int nParticlesTotal) {
 	std::vector<ParticleToCompoundMapping> particleToCompoundidMap(nParticlesTotal);
 	for (int cid = 0; cid < compounds.size(); cid++) {
@@ -836,6 +834,16 @@ const std::vector<ParticleToCompoundMapping> MakeParticleToCompoundidMap(const s
 		}
 	}
 	return particleToCompoundidMap;
+}
+
+const ParticleToPclusterMap MakeParticleToPclusterMap(const std::vector<CompoundFactory>& compounds, int nParticlesTotal) {
+	ParticleToPclusterMap map(nParticlesTotal);
+	for (int cid = 0; cid < compounds.size(); cid++) {
+		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
+			map[compounds[cid].global_ids[pid]] = ParticleToPclusterMapping{ cid, pid };  // cid;
+		}
+	}
+	return map;
 }
 
 
@@ -880,6 +888,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size, atomGroups, simparams.bc_select);
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
+	const ParticleToPclusterMap particleToPclusterMap = MakeParticleToPclusterMap(compounds, superTopology.particles.size());
 
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), superTopology, particleToCompoundidMap);
@@ -911,23 +920,34 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 
 
-	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToCompoundidMap);
+	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap);
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
 
+	//bondGroups[0].singlebonds[1].params.kb *= .000000001f;
+	////std::swap(bondGroups.front().singlebonds[1], bondGroups.front().singlebonds[0]);
+	//bondGroups.front().nSinglebonds = 2;
+	//bondGroups.front().nAnglebonds = 0;
+	//bondGroups.front().nDihedralbonds = 0;
 
 	for (int i = 0; i < particleToCompoundidMap.size(); i++) {
-		if (particleToCompoundidMap[i].compoundId == -1)
-			break;// We've reached tinymols. This is not good code...
-
+		//if (particleToCompoundidMap[i].compoundId == -1)
+		//	break;// We've reached tinymols. This is not good code...
 		const auto cRef = particleToCompoundidMap[i];
 		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
-
 		for (const BondgroupRef& bgRef : bgRefs) {
 			compounds[cRef.compoundId].AddBondgroupReference(cRef.localIdInCompound, bgRef);
 		}
 	}
 
+	for (int i = 0; i < particleToPclusterMap.size(); i++) {
+		const auto pcRef = particleToPclusterMap[i];
+		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
 
+		for (const BondgroupRef& bgRef : bgRefs) {
+			pClusterMetas[pcRef.pcid].bondgroupReferences[pcRef.pid].Add(bgRef);
+			//compounds[pcRef.compoundId].AddBondgroupReference(pcRef.localIdInCompound, bgRef);
+		}
+	}
 
 	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
@@ -982,7 +1002,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
 
-	auto temp = compounds[78].particle_global_ids[8];
+	//auto temp = compounds[78].particle_global_ids[8];
 
 	return std::make_unique<BoxImage>(
 		std::move(compounds),

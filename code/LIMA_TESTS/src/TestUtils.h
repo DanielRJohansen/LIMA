@@ -107,7 +107,7 @@ namespace TestUtils {
 		auto env = std::make_unique<Environment>(work_folder, envmode);
 
 		const SimParams ip = simparams.value_or(SimParams{ simpar });
-		
+
 
 		env->CreateSimulation(conf, topol, ip);
 

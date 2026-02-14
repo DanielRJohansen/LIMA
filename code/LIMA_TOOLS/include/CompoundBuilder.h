@@ -65,6 +65,12 @@ struct ParticleToBridgeMapping {
 using ParticleToCompoundMap = std::vector<ParticleToCompoundMapping>;
 using ParticleToBridgeMap = std::vector<std::optional<ParticleToBridgeMapping>>;
 
+struct ParticleToPclusterMapping {
+	int pcid;
+	int pid; // pc local
+};
+using ParticleToPclusterMap = std::vector<ParticleToPclusterMapping>;
+
 namespace LIMA_MOLECULEBUILD {
 	class SuperTopology {
 
@@ -174,7 +180,7 @@ struct TinyMolFactory {
 class BondGroupFactory : public BondGroup {
 
 	
-	void AddBondParticles(const ParticleToCompoundMap&, std::span<const int> globalIds);
+	void AddBondParticles(const ParticleToPclusterMap&, std::span<const int> globalIds);
 public:
 	BondGroupFactory() {}
 
@@ -182,17 +188,17 @@ public:
 
 	//void AddParticles(const std::span<const uint32_t>& particleIds);
 
-	void AddBond(const ParticleToCompoundMap&, const SingleBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const PairBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const AngleBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const DihedralBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const ImproperDihedralBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const SingleBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const PairBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const AngleBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const DihedralBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const ImproperDihedralBondFactory&);
 	
 	std::array<int, maxParticles> particleGlobalIds;
 	std::unordered_map<int, uint8_t> particleGlobalToLocalId;
 
 	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-		const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap);
+		const ParticleToPclusterMap&);
 
 	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
 		const std::vector<BondGroupFactory>&, int nParticlesTotal);

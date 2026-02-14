@@ -376,7 +376,7 @@ void Engine::_deviceMaster() {
 	bool newAlg = true;
 
 	//if (newAlg)
-	{
+	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
 		dim3 blockDim(16, 1, 1); // TEMP
 		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
@@ -396,35 +396,30 @@ void Engine::_deviceMaster() {
 
 		/*std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
 		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));*/
-
-		DistributePlcusterForceenergyToCompoundsAndSolvents<<<(boxparams.total_particles +31)/ 32, 32, 0, cudaStreams[0] >> >
-			(forceEnergyInterims->nbNonlocal, particleToCompoundOrSolventMappingDevice, boxparams.total_particles,
-				forceEnergyInterims->fromSuperclusters, forceEnergyInterims->solvents.fromSuperclusters);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
 	}
 	/*else*/ 
-	{
-		cudaDeviceSynchronize();
-		if (boxparams.n_compounds > 0) {
-		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES>>>
-            (simulation->simparams_host.enable_electrostatics,
-                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, 
-				nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, 
-				sim_dev,
-				//nullptr,
-                step
-				);
-		cudaDeviceSynchronize();
-		int a = 0;
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
+	//{
+	//	cudaDeviceSynchronize();
+	//	if (boxparams.n_compounds > 0) {
+	//	compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES>>>
+ //           (simulation->simparams_host.enable_electrostatics,
+ //               forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, 
+	//			nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, 
+	//			sim_dev,
+	//			//nullptr,
+ //               step
+	//			);
+	//	cudaDeviceSynchronize();
+	//	int a = 0;
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
-		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
-			(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
-		}
-	}
+	//	compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
+	//		(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
+	//	}
+	//}
 
 	
 
@@ -468,8 +463,17 @@ void Engine::_deviceMaster() {
 
 	if (!simulation->box_host->bondgroups.empty()) {
 		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
-			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups);
+			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
+
+		// Gather bondgroup ordered forces into particle ordered
+		{
+			const int nPclusters = simulation->box_host->persistentClusters.size();
+			const int nBlocks = (nPclusters + 31) / 32;
+			PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[0] >> >
+				(pClusterMetaDevice, nPclusters, *forceEnergyInterims);
+			LIMA_UTILS::genericErrorCheckNoSync("Error after PclusterBondgroupsGather");
+		}
 	}
 
 	// #### Integration and Transfer kernels
@@ -477,6 +481,20 @@ void Engine::_deviceMaster() {
 	for (int i = 0; i < cudaStreams.size(); i++) {
 		cudaStreamSynchronize(cudaStreams[i]);
 	}
+
+	cudaDeviceSynchronize();
+	DistributePlcusterForceenergyToCompoundsAndSolvents << <(boxparams.total_particles + 31) / 32, 32, 0, cudaStreams[0] >> >
+		(*forceEnergyInterims, particleToCompoundOrSolventMappingDevice, boxparams.total_particles);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
+	cudaDeviceSynchronize();
+	// TODO: Do i need sync before and after this? Yes, right?? Which is why i dont want this kernel at all, the logic should be inside the integration kernel
+
+
+	//auto bondsPresort = GenericCopyToHost(forceEnergyInterims->forceEnergiesBondgroups, boxparams.total_particles);
+	//auto bondForces = GenericCopyToHost(forceEnergyInterims->bonded, boxparams.total_particles);
+	//auto sumForces = GenericCopyToHost(forceEnergyInterims->fromSuperclusters, boxparams.total_particles);
+	//if (step >= 100)
+	//	int a = 0;
 
 	const bool updateNlistsAfterThisStep = (simulation->getStep()+1) % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1;
 	if (boxparams.n_compounds > 0) {
@@ -581,7 +599,7 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 	case HorizontalChargeField:
 		CompoundSnfKernel<BoundaryCondition, emvariant>
 			<< <simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >>>
-			(sim_dev, simulation->box_host->uniformElectricField, forceEnergyInterims->forceEnergyBonds);
+			(sim_dev, simulation->box_host->uniformElectricField, forceEnergyInterims->forceEnergySNF);
 		break;
 	case BoxEdgePotential:
 		if (simulation->box_host->boxparams.n_compounds > 0)

@@ -504,6 +504,19 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
 	}
 
+
+	if (nSuperclusters > 0) {
+		cudaDeviceSynchronize();
+		auto scMeta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
+			<<<nSuperclusters, 16, 0, cudaStreams[0]>>>
+			(*forceEnergyInterims, sim_dev, scResultsDevice, superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, 
+				step, simulation->simparams_host.dt, particleToCompoundOrSolventMappingDevice, boxparams.n_compounds * MAX_COMPOUND_PARTICLES);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
+		cudaDeviceSynchronize();
+	}
+
+
 	if (boxparams.nTinymols > 0) {	
 		TinymolIntegrateAndLogKernel<BoundaryCondition, emvariant>
 			<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >> >
@@ -530,6 +543,7 @@ void Engine::_deviceMaster() {
 		}
 	}
 
+	cudaDeviceSynchronize();
 	UpdatePdataPositions<<<nSuperclusters, 16>>>
 		(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");

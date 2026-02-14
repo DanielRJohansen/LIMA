@@ -397,9 +397,14 @@ struct BondgroupRefManager {
 struct PersistentCluster {
 	static const int nParticles = 4;
 	PData pqd[nParticles];
+
+	// I probably want these in another structure? Since its only used during integration..
+	Float3 forcesPrev[nParticles] = { Float3{}, Float3{}, Float3{}, Float3{} };
+	Float3 velocitiesPrev[nParticles] = { Float3{}, Float3{}, Float3{}, Float3{} };
 };
 struct PersistentClusterMeta {
-	int particleIdsGlobal[PersistentCluster::nParticles];
+	int particleIdsGlobal[PersistentCluster::nParticles]={ -1, -1, -1, -1 };
+	float mass[PersistentCluster::nParticles];		// [kg/mol]
 
 	// I do not like this setup...
 	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
@@ -490,11 +495,10 @@ struct SuperClusterMeta {
 
 
 	// For debugging, find a way to remove in release automatically
-	//int particlesIds[SuperCluster::nParticles];
 	std::array<int, SuperCluster::nParticles> particlesIds;
 
 	// Set by taskbuilder kernel
-	int resultsStartIndex;
+	int resultsStartIndex; // TODO: Is int always safe here??
 	int nResults;
 
 	__host__ bool operator != (const SuperClusterMeta& other) const {

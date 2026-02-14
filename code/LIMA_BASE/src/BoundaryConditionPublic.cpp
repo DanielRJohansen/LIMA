@@ -5,6 +5,7 @@ public:
 	static void constexpr applyBC(NodeIndex& origo) {}
 
 	static void constexpr applyBC(Float3& position, const Float3& boxlen_nm) {}
+	static void constexpr applyBCNM(const Float3&) {}
 
 };
 

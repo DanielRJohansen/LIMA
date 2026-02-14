@@ -432,6 +432,8 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 			else {
 				//scDataOut[blockIdx.x * SuperClusterGridData::maxSuperClustersPerBlock + i].constituentPClusterIds[j] = -1;
 				scMeta.pclusterIds[pcId] = -1;
+				for (int i = 0; i < 4; i++)
+					scMeta.particlesIds[pcId * 4 + i] = -1;
 			}
 		}
 
@@ -510,6 +512,8 @@ void Engine::RunClustering(bool getPclusters) {
 			nPclusters,
 			simulation->box_host->boxparams.boxSize);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");	
+
+		auto nClusters = GenericCopyToHost(pclusterTransfermodule->nPClustersPerBlock, nBlocks);
 
 		SortPClusterIndicesInBlocks <<<nBlocks, 32>>> (*pclusterTransfermodule);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SortPClusterIndicesInBlocks kernel");

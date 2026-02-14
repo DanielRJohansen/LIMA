@@ -7,7 +7,7 @@ public:
 	__device__ __host__ void static applyBC(NodeIndex& origo) {}
 
 	__device__ constexpr static NodeIndex applyBC(const NodeIndex& nodeindex, const Int3& nodesPerDim) { return nodeindex; }
-
+	static void constexpr applyBCNM(const Float3&) {}
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {}

@@ -516,6 +516,8 @@ std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> Ma
 				NBParams nbParams = forcefield.GetLjParameters(atomType);
 				pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
 				pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
+				pClusterMetas[pcId].mass[pidRel] = system.particles[pId].topologyAtom.mass / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
+				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
 			}
 		}
 	}

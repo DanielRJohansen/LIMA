@@ -125,23 +125,24 @@ namespace ForceCorrectness {
 		SimParams params{ work_folder / "sim_params.txt" };
 		params.n_steps = 1;
 		params.data_logging_interval = 1;
+		const float expectedB0 = 0.133499995f;
 		const float bondlenErrorNM = 0.02f; //(r-r0) [nm]
 
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
-		grofile.atoms[1].position = grofile.atoms[0].position + Float3{ bondlenErrorNM, 0.f, 0.f }; // Just so we dont get an 0 dist error as we load the simulation
-
+		grofile.atoms[1].position = grofile.atoms[0].position + Float3{ bondlenErrorNM + expectedB0, 0.f, 0.f }; // Just so we dont get an 0 dist error as we load the simulation
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 
 		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+		assert(bondparams.b0 == expectedB0);
 
 		// Now we have the bond params, set the actual test position
-		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+		/*CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 		coordarray_ptr->rel_positions[1].x = coordarray_ptr->rel_positions[0].x + Coord{ Float3{bondlenErrorNM + bondparams.b0, 0.f, 0.f} }.x;
-		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x + bondlenErrorNM + bondparams.b0;
+		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x + bondlenErrorNM + bondparams.b0;*/
 
 		// Now figure the expected force and potential
 		const double kB = bondparams.kb / 2.;									// [J/mol/nm^2]
@@ -189,20 +190,22 @@ namespace ForceCorrectness {
 		params.data_logging_interval = 1;
 		const float timeElapsed = params.dt * params.n_steps * NANO_TO_FEMTO; // [fs]
 		float bond_len_error = 0.04f ; //(r-r0) [nm]
-			
+		const float expectedB0 = 0.133499995f;
+
 
 		GroFile grofile{ conf };
-		grofile.atoms[0].position.x += 0.1f; // Just so we dont get an 0 dist error
+		grofile.atoms[1].position.x = grofile.atoms[0].position.x + bond_len_error + expectedB0;
 		TopologyFile topfile{ topol };
 		env.CreateSimulation(grofile, topfile, params);
 
 		Box& box_host = *env.getSimPtr()->box_host.get();
 
 		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+		assert(bondparams.b0 == expectedB0);
 
-		CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+		/*CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
 		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x;
-		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x - bond_len_error - bondparams.b0;
+		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x - bond_len_error - bondparams.b0;*/
 
 
 
@@ -255,35 +258,46 @@ namespace ForceCorrectness {
 		grofile.atoms[1].position = Float3{ 0.f, 0.0f, 0.0f };
 		grofile.atoms[2].position = Float3{ 0.13f, 0.0f, 0.0f };
 
-		env.CreateSimulation(grofile, topfile, params);
-
-		Box& box_host = *env.getSimPtr()->box_host.get();
-		
-		//box_host.bondgroups[0].anglebonds[0].params.kTheta = 0.f;
-		//box_host.bondgroups[0].anglebonds[0].params.kUB = 0.f;
-		//box_host.bondgroups[0].nSinglebonds = 0; // Shouldn't be necessary..
-
-		// First equilibrilize the singlebond
+		// Create the sim twice. First to get the params, so we can overwrite the grofile positions, then again with with the new positions
 		{
-			const SingleBond::Parameters bondParams = box_host.bondgroups[0].singlebonds[0].params;
-			CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
-			coordarray_ptr->rel_positions[0] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
-			coordarray_ptr->rel_positions[2] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
-			box_host.persistentClusters[0].pqd[0].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
-			box_host.persistentClusters[0].pqd[2].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
+			env.CreateSimulation(grofile, topfile, params);
+			Box& box_host = *env.getSimPtr()->box_host.get();
+
+			//box_host.bondgroups[0].anglebonds[0].params.kTheta = 0.f;
+			//box_host.bondgroups[0].anglebonds[0].params.kUB = 0.f;
+			//box_host.bondgroups[0].nSinglebonds = 0; // Shouldn't be necessary..
+
+			// First equilibrilize the singlebond
+			{
+				const SingleBond::Parameters bondParams = box_host.bondgroups[0].singlebonds[0].params;
+				grofile.atoms[0].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
+				grofile.atoms[2].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
+
+				//CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+				/*coordarray_ptr->rel_positions[0] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
+				coordarray_ptr->rel_positions[2] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };*/
+				/*box_host.persistentClusters[0].pqd[0].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
+				box_host.persistentClusters[0].pqd[2].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };*/
+			}
+
+			// Now set the angle error
+			const float angleErrorRad = 0.1f;    // [radians]
+			const AngleUreyBradleyBond::Parameters angleparams = box_host.bondgroups[0].anglebonds[0].params;
+			{
+				const Float3 p2Pos = grofile.atoms[2].position;
+				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
+				grofile.atoms[2].position = p2Rotated;
+				/*const Float3 p2Pos = box_host.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();
+				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
+				box_host.compoundCoordsBuffer[0].rel_positions[2] = Coord{ p2Rotated };
+				box_host.persistentClusters[0].pqd[2].position = p2Rotated;*/
+			}
 		}
 
-		// Now set the angle error
+		env.CreateSimulation(grofile, topfile, params);
+		Box& box_host = *env.getSimPtr()->box_host.get();
 		const float angleErrorRad = 0.1f;    // [radians]
 		const AngleUreyBradleyBond::Parameters angleparams = box_host.bondgroups[0].anglebonds[0].params;
-		{
-			const Float3 p2Pos = box_host.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();
-			const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
-			box_host.compoundCoordsBuffer[0].rel_positions[2] = Coord{ p2Rotated };
-			box_host.persistentClusters[0].pqd[2].position = p2Rotated;
-		}
-		
-
 		// Now calculate expected forces and potential energy
 
 		const Float3 p0 = box_host.compoundCoordsBuffer[0].rel_positions[0].ToRelpos();

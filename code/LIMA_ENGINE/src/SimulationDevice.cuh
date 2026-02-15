@@ -26,7 +26,7 @@ struct BoxConfig {
 
 struct BoxState {
 	BoxState() {};
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundInterimState,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, PersistentclusterInterimState*,
 		//TinyMolParticleState* tinyMolParticlesState,
 		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, 
 		ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed,
@@ -36,7 +36,7 @@ struct BoxState {
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers() const;
 
-	CompoundInterimState* const compoundsInterimState = nullptr;
+	PersistentclusterInterimState* const pclusterInterimStates = nullptr;
 	NodeIndex* const compoundOrigos = nullptr;
 	Float3* const compoundsRelposNm = nullptr;
 
@@ -72,10 +72,10 @@ struct alignas(128) CompoundQuickData {
 
 struct DatabuffersDeviceController {
 	DatabuffersDeviceController(const DatabuffersDeviceController&) = delete;
-	DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval);
+	DatabuffersDeviceController(int nPclusters, int loggingInterval);
 	~DatabuffersDeviceController();
 
-	static const int nStepsInBuffer = 5;
+	static const int nStepsInBuffer = 5; // TODO: I want this to be dynamic.
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		return step % (nStepsInBuffer * loggingInterval) == 0;
@@ -85,13 +85,13 @@ struct DatabuffersDeviceController {
 		return stepsSinceTransfer / loggingInterval;
 	}
 
-	__device__ static int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int64_t step,
-		int loggingInterval, int totalParticleUpperbound) {
-		const int64_t steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
+	__device__ static int GetLogIndexOfParticle(int pidInPclusters, int pcId, int step,
+		int loggingInterval, const int totalParticleUpperbound) {
+		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
 
-		const int64_t stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
-		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return stepOffset + compound_offset + particleIdLocal;
+		const int stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
+		const int pclusterOffset = pcId * PersistentCluster::nParticles;
+		return stepOffset + pclusterOffset + pidInPclusters;
 	}
 
 	float* potE_buffer = nullptr;				// For total energy summation
@@ -99,7 +99,7 @@ struct DatabuffersDeviceController {
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 	Float3* forceBuffer = nullptr;				// [J/mol/nm] // For debug only
 
-	const int total_particles_upperbound;
+	const int nParticlesUpperbound;
 };
 
 
@@ -143,7 +143,7 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups, int nParticles);
+	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups, int nParticles, int nPclusters);
 	void Free() const;
 
 	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {

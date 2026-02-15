@@ -14,96 +14,105 @@ using namespace LIMA_Print;
 
 // ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
 
-void InsertCompoundInBox(const CompoundFactory& compound, Box& box, const SimParams& simparams, Float3 offset = Float3{})
+void InsertCompoundInBox(const PersistentCluster& pcluster, Box& box, const SimParams& simparams, Float3 offset = Float3{})
 {
-	if (box.compounds.size() >= MAX_COMPOUNDS) {
-		throw std::runtime_error("Compounds surpass MAX_COMPOUNDS");
-	}
-	std::vector<Float3> positions;
-	positions.reserve(MAX_COMPOUND_PARTICLES);
-	for (int i = 0; i < compound.n_particles; i++) {
-		const Float3& extern_position = compound.positions[i];
-		positions.push_back(extern_position);
-	}
+	//if (box.compounds.size() >= MAX_COMPOUNDS) {
+	//	throw std::runtime_error("Compounds surpass MAX_COMPOUNDS");
+	//}
+	//std::vector<Float3> positions;
+	//positions.reserve(MAX_COMPOUND_PARTICLES);
+	//for (int i = 0; i < compound.n_particles; i++) {
+	//	const Float3& extern_position = compound.positions[i];
+	//	positions.push_back(extern_position);
+	//}
 
-	/*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
-	coords_now = */
-	box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, box.boxparams.boxSize, simparams.bc_select));
-	if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
-		throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
+	///*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
+	//coords_now = */
+	//box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, box.boxparams.boxSize, simparams.bc_select));
+	//if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
+	//	throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
+	//}
+
+	//CompoundInterimState compoundState{};
+	//memset(&compoundState, 0, sizeof(CompoundInterimState));
+	//for (int i = 0; i < compound.n_particles; i++) {		
+	//	compoundState.coords[i] = Coord(box.compoundCoordsBuffer.back().rel_positions[i]);
+	//}
+
+	PersistentclusterInterimState pcState{};
+	memset(&pcState, 0, sizeof(PersistentclusterInterimState));
+	for (int i = 0; i < PersistentCluster::nParticles; i++) {
+		//pcState.
 	}
+	box.pclusterInterimStates.push_back(pcState);
 
-	CompoundInterimState compoundState{};
-	memset(&compoundState, 0, sizeof(CompoundInterimState));
-	for (int i = 0; i < compound.n_particles; i++) {		
-		compoundState.coords[i] = Coord(box.compoundCoordsBuffer.back().rel_positions[i]);
-	}
+	//box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
+	//box.compoundInterimStates.emplace_back(compoundState);
+	//box.boxparams.n_compounds++;
 
-	box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
-	box.compoundInterimStates.emplace_back(compoundState);
-	box.boxparams.n_compounds++;
 
-	if (!simparams.enable_electrostatics)
-		memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
+	//if (!simparams.enable_electrostatics)
+	//	memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
 int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
-	for (const auto& tinyMol : tinyMols) {
-		if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
-			throw std::runtime_error("Solvents surpass MAX_SOLVENT");
-		}
+	//for (const auto& tinyMol : tinyMols) {
+	//	if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
+	//		throw std::runtime_error("Solvents surpass MAX_SOLVENT");
+	//	}
 
-		auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], box.boxparams.boxSize, simparams.bc_select);
-		SolventBlock& solventBlock = SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndexOfTinymol, 0, box.boxparams.boxSize);
-		
-		std::vector<Coord> relPos(tinyMol.nParticles);
-		std::vector<uint32_t> ids(tinyMol.nParticles);
-		std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
-		std::vector<TinyMolParticleState> states(tinyMol.nParticles);
-		for (int i = 0; i < tinyMol.nParticles; i++) {
-			Float3 hyperPos = tinyMol.positions[i];
-			BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, box.boxparams.BoxSizeFloat(), PBC);
-			//auto relposFloat = hyperPos - nodeIndexOfTinymol.toFloat3();
-			relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.BoxSizeFloat(), PBC);
-			//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
-			ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
-			atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
-			states[i] = tinyMol.states[i];
-		}
+	//	auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], box.boxparams.boxSize, simparams.bc_select);
+	//	SolventBlock& solventBlock = SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndexOfTinymol, 0, box.boxparams.boxSize);
+	//	
+	//	std::vector<Coord> relPos(tinyMol.nParticles);
+	//	std::vector<uint32_t> ids(tinyMol.nParticles);
+	//	std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
+	//	std::vector<TinyMolParticleState> states(tinyMol.nParticles);
+	//	for (int i = 0; i < tinyMol.nParticles; i++) {
+	//		Float3 hyperPos = tinyMol.positions[i];
+	//		BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, box.boxparams.BoxSizeFloat(), PBC);
+	//		//auto relposFloat = hyperPos - nodeIndexOfTinymol.toFloat3();
+	//		relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.BoxSizeFloat(), PBC);
+	//		//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
+	//		ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
+	//		atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
+	//		states[i] = tinyMol.states[i];
+	//	}
 
-		solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup, states);
-		box.boxparams.nTinymolParticles += tinyMol.nParticles;
-		box.boxparams.nTinymols++;
-	}
+	//	solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup, states);
+	//	box.boxparams.nTinymolParticles += tinyMol.nParticles;
+	//	box.boxparams.nTinymols++;
+	//}
 
-	std::mt19937 gen(1238971);
-	std::uniform_real_distribution<float> distribution(-1.f, 1.f); // TODO: GROMACS COMPARISON: This is why we dont match gromacs in RMSD
+	//std::mt19937 gen(1238971);
+	//std::uniform_real_distribution<float> distribution(-1.f, 1.f); // TODO: GROMACS COMPARISON: This is why we dont match gromacs in RMSD
 
-	// Setup forces and vel's for VVS
-	box.tinyMolParticlesState.resize(0);
-	box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
-	for (int i = 0; i < box.boxparams.nTinymols; i++) {
-		
-		// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
+	//// Setup forces and vel's for VVS
+	//box.tinyMolParticlesState.resize(0);
+	//box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
+	//for (int i = 0; i < box.boxparams.nTinymols; i++) {
+	//	
+	//	// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
 
-		const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
-			[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
-		);
-		const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-		const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
+	//	const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
+	//		[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
+	//	);
+	//	const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
+	//	const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
 
-		for (int j = 0; j < tinyMols[i].nParticles; j++) {
-			box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
-			box.tinyMolParticlesState.back().vel_prev = direction * velocity;
-		}
+	//	for (int j = 0; j < tinyMols[i].nParticles; j++) {
+	//		box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
+	//		box.tinyMolParticlesState.back().vel_prev = direction * velocity;
+	//	}
 
-		
+	//	
 
-		//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
-	}    
-	box.boxparams.total_particles += box.boxparams.nTinymolParticles;
-	return box.boxparams.nTinymolParticles;
+	//	//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
+	//}    
+	//box.boxparams.total_particles += box.boxparams.nTinymolParticles;
+	//return box.boxparams.nTinymolParticles;
+	return 0;
 }
 
 
@@ -113,17 +122,17 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	auto box = std::make_unique<Box>(boxImage.grofile.box_size);
 
 	box->compounds.reserve(boxImage.compounds.size());
-	box->compoundInterimStates.reserve(boxImage.compounds.size());
-	box->compoundCoordsBuffer.reserve(boxImage.compounds.size());
-	for (const CompoundFactory& compound : boxImage.compounds) {
-		InsertCompoundInBox(compound, *box, simparams);
+	/*box->compoundInterimStates.reserve(boxImage.compounds.size());
+	box->compoundCoordsBuffer.reserve(boxImage.compounds.size());*/
+	for (const PersistentCluster& pc : boxImage.persistentClusters) {
+		InsertCompoundInBox(pc, *box, simparams);
 	}	
 
 	box->boxparams.total_compound_particles = boxImage.total_compound_particles;
 	box->boxparams.total_particles += boxImage.total_compound_particles;
 
 
-	box->bpLutCollection = std::move(boxImage.bpLutCollection);
+	//box->bpLutCollection = std::move(boxImage.bpLutCollection);
 
 	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
 
@@ -203,17 +212,17 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 		const int solventBlocksGridBytesize = sizeof(SolventBlock) * blocksInGrid;
 
 		// Copy only the current step to temporary storage
-		SolventBlock* src_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, boxsrc_current_step);
-		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);
+		/*SolventBlock* src_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, boxsrc_current_step);
+		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);*/
 
 		// Clear all of the data
 		//delete simulation.box_host->solventblockgrid_circularqueue;
-		simulation.box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation.box_host->boxparams.boxSize);
+		//simulation.box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation.box_host->boxparams.boxSize);
 
 
 		// Copy the temporary storage back into the queue
-		SolventBlock* dest_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, 0);
-		memcpy(dest_t0, solvents_t0.data(), solventBlocksGridBytesize);
+		/*SolventBlock* dest_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, 0);
+		memcpy(dest_t0, solvents_t0.data(), solventBlocksGridBytesize);*/
 	}
 }
 

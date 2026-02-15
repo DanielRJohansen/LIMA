@@ -315,27 +315,49 @@ __global__ void compoundImmediateneighborAndSelfShortrangeInteractionsKernel(Sim
 }
 #undef compound_index
 
+//template <typename BoundaryCondition, bool energyMinimize>
+//__global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
+//	__shared__ int nParticles;
+//
+//	if (threadIdx.x == 0) {
+//		nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
+//	}
+//	__syncthreads();
+//
+//	float potE_sum{};
+//	Float3 force{};
+//
+//	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
+//	if (sim->params.snf_select == HorizontalChargeField && nParticles) {
+//		force += uniformElectricField.GetForce(sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x]);
+//		// No potE, as kinE in this field approaches infinity, potE approaches -infinity.
+//	}
+//
+//	// ------------------------------------------------------------ Push Data --------------------------------------------------------------- //	
+//	if (threadIdx.x < nParticles) {
+//		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
+//	}
+//}
+
+
+
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy) {
-	__shared__ int nParticles;
+__global__ void PclusterSnfKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy, int nPclusters) {
 
-	if (threadIdx.x == 0) {
-		nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
-	}
-	__syncthreads();
+	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;	
+	if (pcId >= nPclusters)
+		return;
 
-	float potE_sum{};
-	Float3 force{};
+	
+	for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+		const int pidGlobal = pcMeta[pcId].particleIdsGlobal[pid];
+		if (pidGlobal == -1)
+			continue;
 
-	// ------------------------------------------------------------ Supernatural Forces --------------------------------------------------------------- //	
-	if (sim->params.snf_select == HorizontalChargeField && nParticles) {
-		force += uniformElectricField.GetForce(sim->boxConfig.compounds[blockIdx.x].atom_charges[threadIdx.x]);
-		// No potE, as kinE in this field approaches infinity, potE approaches -infinity.
-	}
+		float charge = pc[pcId].pqd[pid].params.charge;
+		Float3 force = uniformElectricField.GetForce(charge);
 
-	// ------------------------------------------------------------ Push Data --------------------------------------------------------------- //	
-	if (threadIdx.x < nParticles) {
-		forceEnergy[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = ForceEnergy{ force, potE_sum };
+		forceEnergy[pidGlobal] = ForceEnergy{ force, 0.f };
 	}
 }
 
@@ -344,106 +366,106 @@ __global__ void CompoundSnfKernel(SimulationDevice* sim, const UniformElectricFi
 template<typename BoundaryCondition, bool emvariant>
 __global__ void CompoundIntegrationKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies, CompoundQuickData* const compoundQuickData, bool updateOrigo) {
 
-	__shared__ CompoundCoords compound_coords;
-	__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
-	if (threadIdx.x == 0) {
-		compound_coords.origo = sim->boxState.compoundOrigos[blockIdx.x];
-	}
-	compound_coords.rel_positions[threadIdx.x] = sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x];
-	atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
-
-	// Fetch interims from other kernels
-	ForceEnergy forceEnergy = forceEnergies.SumCompound(blockIdx.x, threadIdx.x);
-	//{
-	//	const Compound::BondgroupRefManager* const bgReferences = &sim->boxConfig.compounds[blockIdx.x].bondgroupReferences[threadIdx.x];
-	//	for (int i = 0; i < bgReferences->nBondgroupApperances; i++) {
-	//		const BondgroupRef bondgroupRef = bgReferences->bondgroupApperances[i];
-	//		forceEnergy = forceEnergy + forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
-	//	}
+	//__shared__ CompoundCoords compound_coords;
+	//__shared__ uint8_t atom_types[MAX_COMPOUND_PARTICLES];
+	//const int nParticles = sim->boxConfig.compounds[blockIdx.x].n_particles;
+	//if (threadIdx.x == 0) {
+	//	compound_coords.origo = sim->boxState.compoundOrigos[blockIdx.x];
 	//}
+	//compound_coords.rel_positions[threadIdx.x] = sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x];
+	//atom_types[threadIdx.x] = sim->boxConfig.compounds[blockIdx.x].atom_types[threadIdx.x];
 
-	if (threadIdx.x < nParticles) {
-		//printf("Integrating force %f %f %f\n", forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
-	}
-
-
-	__syncthreads();
-
-	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
-	if constexpr (FORCE_CHECKS) {
-		if (isnan(forceEnergy.force.len()))
-			printf("NAN force during compound integration\n");
-		if (0) {
-			printf("Compound integration: cid %d pid %d - %f %f %f\n", blockIdx.x, threadIdx.x, forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
-		}
-	}
-	float speed = 0.f;
-	if (threadIdx.x < nParticles) {
-		const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
-
-		// Energy minimize
-		if constexpr (emvariant) {
-			const Float3 safeForce = EngineUtils::ForceActivationFunction(forceEnergy.force);
-
-			AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-			const Coord pos_now = EngineUtils::IntegratePositionADAM(compound_coords.rel_positions[threadIdx.x], safeForce, adamState, step);
-
-			compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
-		}
-		else {
-			const Float3 force_prev = sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
-			const Float3 vel_prev = sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, forceEnergy.force, sim->params.dt, mass);
-			//printf("Compound speed %f dt %f force %f mass %f\n", vel_now.len(), sim->params.dt, forceEnergy.force.len(), mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, forceEnergy.force, mass, sim->params.dt);
-			//compound_coords.rel_positions[threadIdx.x].ToRelpos().print('O');
-			//(pos_now - compound_coords.rel_positions[threadIdx.x]).ToRelpos().print('D');
-
-			compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
-
-			Float3 velScaled;
-			velScaled = vel_now * DeviceConstants::thermostatScalar;
-
-			sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = forceEnergy.force;
-			sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
-
-			speed = velScaled.len();
-		}
-	}
-	__syncthreads();
-
-	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
-	if (updateOrigo) {
-		__shared__ Coord shift_lm;	// Use utility coord for this?
-		if (threadIdx.x == 0) {
-			shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords, sim->boxConfig.compounds[blockIdx.x].centerparticle_index);
-		}
-		__syncthreads();
-
-		LIMAPOSITIONSYSTEM_HACK::shiftRelPos(compound_coords, shift_lm);
-		__syncthreads();
-
-		LIMAPOSITIONSYSTEM_HACK::applyBC<BoundaryCondition>(compound_coords);
-		__syncthreads();
-	}
-
-	Float3 force_LJ_sol{};	// temp
-	EngineUtils::LogCompoundData(sim->boxConfig.compounds[blockIdx.x], sim->boxparams.total_particles_upperbound, compound_coords, &forceEnergy.potE, forceEnergy.force,
-		force_LJ_sol, sim->params, *sim->signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed, step);
-
+	//// Fetch interims from other kernels
+	//ForceEnergy forceEnergy = forceEnergies.SumCompound(blockIdx.x, threadIdx.x);
+	////{
+	////	const Compound::BondgroupRefManager* const bgReferences = &sim->boxConfig.compounds[blockIdx.x].bondgroupReferences[threadIdx.x];
+	////	for (int i = 0; i < bgReferences->nBondgroupApperances; i++) {
+	////		const BondgroupRef bondgroupRef = bgReferences->bondgroupApperances[i];
+	////		forceEnergy = forceEnergy + forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+	////	}
+	////}
 
 	//if (threadIdx.x < nParticles) {
-	//	auto pos = compound_coords.rel_positions[threadIdx.x].ToRelpos();
-	//	printf("tid %d Pusing pos %f %f %f\n", threadIdx.x, pos.x, pos.y, pos.z);
+	//	//printf("Integrating force %f %f %f\n", forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
 	//}
 
-	// Push positions for next step
-	if (threadIdx.x == 0)
-		sim->boxState.compoundOrigos[blockIdx.x] = compound_coords.origo;
-	sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
-	sim->boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
-	compoundQuickData[blockIdx.x].relPos[threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
+
+	//__syncthreads();
+
+	//// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
+	//if constexpr (FORCE_CHECKS) {
+	//	if (isnan(forceEnergy.force.len()))
+	//		printf("NAN force during compound integration\n");
+	//	if (0) {
+	//		printf("Compound integration: cid %d pid %d - %f %f %f\n", blockIdx.x, threadIdx.x, forceEnergy.force.x, forceEnergy.force.y, forceEnergy.force.z);
+	//	}
+	//}
+	//float speed = 0.f;
+	//if (threadIdx.x < nParticles) {
+	//	const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
+
+	//	// Energy minimize
+	//	if constexpr (emvariant) {
+	//		const Float3 safeForce = EngineUtils::ForceActivationFunction(forceEnergy.force);
+
+	//		AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
+	//		const Coord pos_now = EngineUtils::IntegratePositionADAM(compound_coords.rel_positions[threadIdx.x], safeForce, adamState, step);
+
+	//		compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+	//	}
+	//	else {
+	//		const Float3 force_prev = sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x];	// OPTIM: make ref?
+	//		const Float3 vel_prev = sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x];
+	//		const Float3 vel_now = EngineUtils::integrateVelocityVVS(vel_prev, force_prev, forceEnergy.force, sim->params.dt, mass);
+	//		//printf("Compound speed %f dt %f force %f mass %f\n", vel_now.len(), sim->params.dt, forceEnergy.force.len(), mass);
+	//		const Coord pos_now = EngineUtils::integratePositionVVS(compound_coords.rel_positions[threadIdx.x], vel_now, forceEnergy.force, mass, sim->params.dt);
+	//		//compound_coords.rel_positions[threadIdx.x].ToRelpos().print('O');
+	//		//(pos_now - compound_coords.rel_positions[threadIdx.x]).ToRelpos().print('D');
+
+	//		compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+
+	//		Float3 velScaled;
+	//		velScaled = vel_now * DeviceConstants::thermostatScalar;
+
+	//		sim->boxState.compoundsInterimState[blockIdx.x].forces_prev[threadIdx.x] = forceEnergy.force;
+	//		sim->boxState.compoundsInterimState[blockIdx.x].vels_prev[threadIdx.x] = velScaled;
+
+	//		speed = velScaled.len();
+	//	}
+	//}
+	//__syncthreads();
+
+	//// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
+	//if (updateOrigo) {
+	//	__shared__ Coord shift_lm;	// Use utility coord for this?
+	//	if (threadIdx.x == 0) {
+	//		shift_lm = LIMAPOSITIONSYSTEM::shiftOrigo(compound_coords, sim->boxConfig.compounds[blockIdx.x].centerparticle_index);
+	//	}
+	//	__syncthreads();
+
+	//	LIMAPOSITIONSYSTEM_HACK::shiftRelPos(compound_coords, shift_lm);
+	//	__syncthreads();
+
+	//	LIMAPOSITIONSYSTEM_HACK::applyBC<BoundaryCondition>(compound_coords);
+	//	__syncthreads();
+	//}
+
+	//Float3 force_LJ_sol{};	// temp
+	//EngineUtils::LogCompoundData(sim->boxConfig.compounds[blockIdx.x], sim->boxparams.total_particles_upperbound, compound_coords, &forceEnergy.potE, forceEnergy.force,
+	//	force_LJ_sol, sim->params, *sim->signals, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, sim->forceBuffer, speed, step);
+
+
+	////if (threadIdx.x < nParticles) {
+	////	auto pos = compound_coords.rel_positions[threadIdx.x].ToRelpos();
+	////	printf("tid %d Pusing pos %f %f %f\n", threadIdx.x, pos.x, pos.y, pos.z);
+	////}
+
+	//// Push positions for next step
+	//if (threadIdx.x == 0)
+	//	sim->boxState.compoundOrigos[blockIdx.x] = compound_coords.origo;
+	//sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
+	//sim->boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
+	//compoundQuickData[blockIdx.x].relPos[threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
 }
 
 
@@ -736,104 +758,104 @@ __global__ void TinymolBondgroupsKernel(const SimulationDevice* const sim, const
 	}
 }
 
-template <typename BoundaryCondition, bool energyMinimize>
-__global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies) {
-	__shared__ SolventBlock solventblock;
-	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
-
-	__shared__ Coord relPositionsNext[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
-
-
-	// Doubles as block_index_3d!
-	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
-
-	const BoxState& boxState = sim->boxState;
-	const SimParams& simparams = sim->params;
-	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
-
-	const ForceEnergy myForceEnergy = 
-		forceEnergies.solvents.compoundsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		+ forceEnergies.solvents.solventsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		+ forceEnergies.solvents.bondgroupsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		+ forceEnergies.solvents.pmeInteraction[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
-		;
-
-
-	if (threadIdx.x == 0) {
-		solventblock.loadMeta(*solventblock_ptr);
-	}
-	__syncthreads();
-	const bool solventActive = threadIdx.x < solventblock.nParticles;
-	solventblock.loadData(*solventblock_ptr);
-	__syncthreads();
-
-
-	TinyMolParticleState state{};
-	if (solventActive) {
-		state = solventblock.states[threadIdx.x];
-
-		const float mass = DeviceConstants::tinymolForcefield.types[state.tinymolTypeIndex].mass;
-
-		if constexpr (energyMinimize) {
-			const Float3 safeForce = EngineUtils::ForceActivationFunction(myForceEnergy.force);
-			AdamState* const adamStatePtr = &sim->adamState[sim->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
-			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
-
-			relPositionsNext[threadIdx.x] = pos_now;
-			EngineUtils::LogSolventData(sim->boxparams, myForceEnergy.potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
-				myForceEnergy.force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
-		}
-		else {
-            if constexpr (FORCE_CHECKS) {
-                if (myForceEnergy.force.isNan() || myForceEnergy.force.lenSquared() >= FLT_MAX)
-					myForceEnergy.force.print('S');
-            }
-
-			Float3 vel_now = EngineUtils::integrateVelocityVVS(state.vel_prev, state.force_prev, myForceEnergy.force, simparams.dt, mass);
-			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, myForceEnergy.force, mass, simparams.dt);
-
-			vel_now = vel_now * DeviceConstants::thermostatScalar;
-
-			state.vel_prev = vel_now;
-			state.force_prev = myForceEnergy.force;
-
-			// Save pos locally, but only push to box as this kernel ends
-			relPositionsNext[threadIdx.x] = pos_now;
-			EngineUtils::LogSolventData(sim->boxparams, myForceEnergy.potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
-				myForceEnergy.force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
-		}
-	}
-
-	// TODO: LONG: stop using a circular queue for solvents, just have the data 1 place now that we sync before integration anyways
-
-	// Push new SolventCoord to global mem
-	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
-	solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
-	solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
-	solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
-	solventblock_next_ptr->particlesBondgroupIds[threadIdx.x] = solventblock.particlesBondgroupIds[threadIdx.x];
-	solventblock_next_ptr->states[threadIdx.x] = state;
-
-	NodeIndex blockId3d = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
-	int blockIdAtRowStart = BoxGrid::Get1dIndex(NodeIndex(0, blockId3d.y, blockId3d.z), DeviceConstants::boxSize.boxSizeNM_i);
-	int startIndexInCompressedPositions = blockIdAtRowStart * SolventBlock::maxParticles + boxState.nParticlesPrefixsumInX[blockIdx.x];
-	
-
-	if (threadIdx.x == 0) {
-		solventblock_next_ptr->nParticles = solventblock.nParticles;
-		solventblock_next_ptr->nBondgroups = solventblock.nBondgroups;
-	}
-	if (threadIdx.x < solventblock.nBondgroups) {
-		solventblock_next_ptr->bondgroups[threadIdx.x] = solventblock.bondgroups[threadIdx.x];
-		solventblock_next_ptr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = solventblock.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
-	}
-	if (threadIdx.x < solventblock.nParticles) {
-		const size_t index = blockIdx.x * SolventBlock::maxParticles + threadIdx.x;
-		//boxState.solventsRelposNm[index] = relPositionsNext[threadIdx.x].ToRelpos();
-		boxState.solventsParticleQuickData[index].relPos = relPositionsNext[threadIdx.x].ToRelpos();
-		boxState.solventsParticleQuickDataCompressed[startIndexInCompressedPositions + threadIdx.x].relPos = relPositionsNext[threadIdx.x].ToRelpos();
-	}
-}
+//template <typename BoundaryCondition, bool energyMinimize>
+//__global__ void TinymolIntegrateAndLogKernel(SimulationDevice* sim, int64_t step, const ForceEnergyInterims forceEnergies) {
+//	__shared__ SolventBlock solventblock;
+//	__shared__ uint8_t utility_buffer_small[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+//
+//	__shared__ Coord relPositionsNext[SolventBlock::MAX_SOLVENTS_IN_BLOCK];
+//
+//
+//	// Doubles as block_index_3d!
+//	const NodeIndex block_origo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
+//
+//	const BoxState& boxState = sim->boxState;
+//	const SimParams& simparams = sim->params;
+//	SolventBlock* solventblock_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step);
+//
+//	const ForceEnergy myForceEnergy = 
+//		forceEnergies.solvents.compoundsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+//		+ forceEnergies.solvents.solventsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+//		+ forceEnergies.solvents.bondgroupsInteractions[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+//		+ forceEnergies.solvents.pmeInteraction[blockIdx.x * SolventBlock::MAX_SOLVENTS_IN_BLOCK + threadIdx.x]
+//		;
+//
+//
+//	if (threadIdx.x == 0) {
+//		solventblock.loadMeta(*solventblock_ptr);
+//	}
+//	__syncthreads();
+//	const bool solventActive = threadIdx.x < solventblock.nParticles;
+//	solventblock.loadData(*solventblock_ptr);
+//	__syncthreads();
+//
+//
+//	TinyMolParticleState state{};
+//	if (solventActive) {
+//		state = solventblock.states[threadIdx.x];
+//
+//		const float mass = DeviceConstants::tinymolForcefield.types[state.tinymolTypeIndex].mass;
+//
+//		if constexpr (energyMinimize) {
+//			const Float3 safeForce = EngineUtils::ForceActivationFunction(myForceEnergy.force);
+//			AdamState* const adamStatePtr = &sim->adamState[sim->boxparams.n_compounds * MAX_COMPOUND_PARTICLES + solventblock.ids[threadIdx.x]];
+//			const Coord pos_now = EngineUtils::IntegratePositionADAM(solventblock.rel_pos[threadIdx.x], safeForce, adamStatePtr, step);
+//
+//			relPositionsNext[threadIdx.x] = pos_now;
+//			EngineUtils::LogSolventData(sim->boxparams, myForceEnergy.potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
+//				myForceEnergy.force, Float3{}, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+//		}
+//		else {
+//            if constexpr (FORCE_CHECKS) {
+//                if (myForceEnergy.force.isNan() || myForceEnergy.force.lenSquared() >= FLT_MAX)
+//					myForceEnergy.force.print('S');
+//            }
+//
+//			Float3 vel_now = EngineUtils::integrateVelocityVVS(state.vel_prev, state.force_prev, myForceEnergy.force, simparams.dt, mass);
+//			const Coord pos_now = EngineUtils::integratePositionVVS(solventblock.rel_pos[threadIdx.x], vel_now, myForceEnergy.force, mass, simparams.dt);
+//
+//			vel_now = vel_now * DeviceConstants::thermostatScalar;
+//
+//			state.vel_prev = vel_now;
+//			state.force_prev = myForceEnergy.force;
+//
+//			// Save pos locally, but only push to box as this kernel ends
+//			relPositionsNext[threadIdx.x] = pos_now;
+//			EngineUtils::LogSolventData(sim->boxparams, myForceEnergy.potE, block_origo, solventblock.ids[threadIdx.x], solventblock.rel_pos[threadIdx.x], solventActive,
+//				myForceEnergy.force, vel_now, step, sim->potE_buffer, sim->traj_buffer, sim->vel_buffer, simparams.data_logging_interval);
+//		}
+//	}
+//
+//	// TODO: LONG: stop using a circular queue for solvents, just have the data 1 place now that we sync before integration anyways
+//
+//	// Push new SolventCoord to global mem
+//	SolventBlock* const solventblock_next_ptr = SolventBlocksCircularQueue::getBlockPtr(boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, blockIdx.x, step + 1);
+//	solventblock_next_ptr->rel_pos[threadIdx.x] = relPositionsNext[threadIdx.x];
+//	solventblock_next_ptr->ids[threadIdx.x] = solventblock.ids[threadIdx.x];
+//	solventblock_next_ptr->atomtypeIds[threadIdx.x] = solventblock.atomtypeIds[threadIdx.x];
+//	solventblock_next_ptr->particlesBondgroupIds[threadIdx.x] = solventblock.particlesBondgroupIds[threadIdx.x];
+//	solventblock_next_ptr->states[threadIdx.x] = state;
+//
+//	NodeIndex blockId3d = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
+//	int blockIdAtRowStart = BoxGrid::Get1dIndex(NodeIndex(0, blockId3d.y, blockId3d.z), DeviceConstants::boxSize.boxSizeNM_i);
+//	int startIndexInCompressedPositions = blockIdAtRowStart * SolventBlock::maxParticles + boxState.nParticlesPrefixsumInX[blockIdx.x];
+//	
+//
+//	if (threadIdx.x == 0) {
+//		solventblock_next_ptr->nParticles = solventblock.nParticles;
+//		solventblock_next_ptr->nBondgroups = solventblock.nBondgroups;
+//	}
+//	if (threadIdx.x < solventblock.nBondgroups) {
+//		solventblock_next_ptr->bondgroups[threadIdx.x] = solventblock.bondgroups[threadIdx.x];
+//		solventblock_next_ptr->bondgroupsFirstAtomindexInSolventblock[threadIdx.x] = solventblock.bondgroupsFirstAtomindexInSolventblock[threadIdx.x];
+//	}
+//	if (threadIdx.x < solventblock.nParticles) {
+//		const size_t index = blockIdx.x * SolventBlock::maxParticles + threadIdx.x;
+//		//boxState.solventsRelposNm[index] = relPositionsNext[threadIdx.x].ToRelpos();
+//		boxState.solventsParticleQuickData[index].relPos = relPositionsNext[threadIdx.x].ToRelpos();
+//		boxState.solventsParticleQuickDataCompressed[startIndexInCompressedPositions + threadIdx.x].relPos = relPositionsNext[threadIdx.x].ToRelpos();
+//	}
+//}
 
 
 static const int THREADS_PER_BONDSGROUPSKERNEL = BondGroup::maxParticles;
@@ -1086,9 +1108,11 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 	__syncthreads();
 
 	ForceEnergy myFE{};
-	int pClusterId = scMetaShared.pclusterIds[threadIdx.x / 4];
-	int particleId = pClusterId == -1 ? -1 : pcMeta[pClusterId].particleIdsGlobal[threadIdx.x % 4];
-
+	int pcId = scMetaShared.pclusterIds[threadIdx.x / 4];
+	int pid = threadIdx.x % 4;
+	int pidGlobal = pcId == -1 ? -1 : pcMeta[pcId].particleIdsGlobal[threadIdx.x % 4];
+	if (pidGlobal == -1)
+		return;
 
 	for (int i = scMetaShared.resultsStartIndex; i < scMetaShared.resultsStartIndex + scMetaShared.nResults; i++) {
 		/*if (particleId == 4)
@@ -1100,10 +1124,10 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 	}
 
 	// push
-	if (particleId == -1)
-		return;
+
 	
-	particleForceEnergies[particleId] = myFE;
+	//particleForceEnergies[particleId] = myFE;
+	particleForceEnergies[pcId * PersistentCluster::nParticles + pid];
 }
 
 
@@ -1175,31 +1199,31 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 //This is just temp code untill we switch completely to verletclustering, and no longer need the compounds/solvents discerning
-__global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergyInterims forceEnergies, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles) {
-
-	int particleId = threadIdx.x + blockIdx.x * blockDim.x;
-
-	if (particleId >= nParticles)
-		return;
-
-
-	// TODO Also move the bondgroup ref'ed forces here.
-
-	ForceEnergy fe{};
-	fe += forceEnergies.nbNonlocal[particleId];
-	fe += forceEnergies.bonded[particleId];
-
-
-	ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
-	if (mapping.IsSolvent()) {
-		forceEnergies.solvents.fromSuperclusters[mapping.particleId] = fe;
-		//feSolvents[mapping.particleId] = forceenergy[particleId];
-	}
-	else {
-		forceEnergies.fromSuperclusters[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = fe;
-		//feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = forceenergy[particleId];
-	}
-}
+//__global__ void DistributePlcusterForceenergyToCompoundsAndSolvents(const ForceEnergyInterims forceEnergies, const ParticleToCompoundOrSolventMapping* const mappings, int nParticles) {
+//
+//	int particleId = threadIdx.x + blockIdx.x * blockDim.x;
+//
+//	if (particleId >= nParticles)
+//		return;
+//
+//
+//	// TODO Also move the bondgroup ref'ed forces here.
+//
+//	ForceEnergy fe{};
+//	fe += forceEnergies.nbNonlocal[particleId];
+//	fe += forceEnergies.bonded[particleId];
+//
+//
+//	ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
+//	if (mapping.IsSolvent()) {
+//		forceEnergies.solvents.fromSuperclusters[mapping.particleId] = fe;
+//		//feSolvents[mapping.particleId] = forceenergy[particleId];
+//	}
+//	else {
+//		forceEnergies.fromSuperclusters[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = fe;
+//		//feCompounds[mapping.compoundId * MAX_COMPOUND_PARTICLES + mapping.particleId] = forceenergy[particleId];
+//	}
+//}
 
 //TODO: This one is not QUITE right, we need to hyperpos all particles to the 0th particle, or maybe a middle particle? otherwise meanPos's get WIERD!
 // For now i deal with this in a downstream function to compute the pcluster meanpos, but eventually we want it to be correct here also!
@@ -1273,8 +1297,9 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		fe += scResults[i].fe[threadIdx.x];	
 	}
 	// Gather from bonds : TODO: maybe dont store it ordered like this?
-	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pidGlobal];
+	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	 //TODO: Gather from PME, SNF, others??
+	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	__syncthreads();
 
 	//if (pidGlobal != -1) {
@@ -1313,8 +1338,11 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 			Float3 velScaled;
 			velScaled = vel_now * DeviceConstants::thermostatScalar;
 
+			// TODO: Get rid of one of these buffers all together
 			pclusters[pcIdGlobal].forcesPrev[pidInPcluster] = fe.force;
 			pclusters[pcIdGlobal].velocitiesPrev[pidInPcluster] = velScaled;
+			simDev->boxState.pclusterInterimStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
+			simDev->boxState.pclusterInterimStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
 
 			speed = velScaled.len();
 		}
@@ -1328,9 +1356,9 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	__syncthreads();
 	BoundaryCondition::applyHyperposNM(positions[0], positions[threadIdx.x]);
 
-	{
-		ParticleToCompoundOrSolventMapping mapping = particleToCompoundOrSolventMapping[pidGlobal];
-		EngineUtils::LogPclusterData(mapping.compoundId, mapping.particleId, step, simDev->params, positions[threadIdx.x], fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
+	if (pcIdGlobal != -1) {
+		//ParticleToCompoundOrSolventMapping mapping = particleToCompoundOrSolventMapping[pidGlobal];		
+		EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, simDev->params, positions[threadIdx.x], fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
 	}
 
 

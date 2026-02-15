@@ -39,12 +39,12 @@ template <typename T>
 class ParticleDataBuffer {
 public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps, 
-		int loggingInterval	) :
-		n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), 
+		int loggingInterval, int nPclusters	) :
+		n_particles_upperbound(nPclusters * PersistentCluster::nParticles), n_compounds(n_compounds), 
 		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
-		buffer(n_particles_upperbound* n_indices, T{}),
+		buffer(nPclusters* PersistentCluster::nParticles* n_indices, T{}),
 		loggingInterval(loggingInterval)
-		//,		nPclusters(nPclusters)
+		,nPclusters(nPclusters)
 	{}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
@@ -73,11 +73,11 @@ public:
 		return buffer[index_offset + compound_offset + particle_id_compound];
 	}
 
-	//T& GetDatapoint(int pcid, int pid, size_t entryindex) {
-	//	const size_t indexOffset = entryindex * nPclusters * PersistentCluster::nParticles;
-	//	const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::nParticles;
-	//	return buffer[indexOffset + pcOffset + pid];
-	//}
+	T& GetDatapoint(int pcid, int pid, size_t entryindex) {
+		const size_t indexOffset = entryindex * nPclusters * PersistentCluster::nParticles;
+		const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::nParticles;
+		return buffer[indexOffset + pcOffset + pid];
+	}
 
 	T& getSolventparticleDatapointAtIndex(int solvent_id, size_t entryindex) {
 		const size_t index_offset = entryindex * n_particles_upperbound;
@@ -103,7 +103,7 @@ private:
 	const size_t loggingInterval;
 	const size_t n_compounds;
 	const size_t n_indices;
-	//const size_t nPclusters;
+	const size_t nPclusters;
 	std::vector<T> buffer;
 };
 
@@ -127,12 +127,11 @@ struct Box {
 
 
 	std::vector<Compound> compounds;
-	std::vector<CompoundInterimState> compoundInterimStates;
+	//std::vector<CompoundInterimState> compoundInterimStates;
+	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 	std::vector<CompoundCoords> compoundCoordsBuffer;
-
 	std::vector<TinyMolParticleState> tinyMolParticlesState;
 	std::vector<SolventBlock> solventblockgrid_circularqueue;
-
 	std::vector<BondedParticlesLUT> bpLutCollection;
 
 	std::vector<BondGroup> bondgroups;

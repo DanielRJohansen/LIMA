@@ -15,11 +15,11 @@
 namespace _Thermostat {
 
 	struct TotalKineticEnergyCompounds {
-		const CompoundInterimState* const states;
+		const PersistentclusterInterimState* const states;
 		const Compound* const compounds;
 
 		__host__ __device__
-			TotalKineticEnergyCompounds(const CompoundInterimState* const _states, const Compound* const compounds)
+			TotalKineticEnergyCompounds(const PersistentclusterInterimState* const _states, const Compound* const compounds)
 			: states(_states), compounds(compounds){}
 
 		__host__ __device__
@@ -81,7 +81,7 @@ public:
 	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step) {
 		// Step 1: Calculate kinetic energy for each compound particle and store in the intermediate buffer
 		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nCompounds * MAX_COMPOUND_PARTICLES),
-			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.compoundsInterimState, simDev->boxConfig.compounds));
+			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.pclusterInterimStates, simDev->boxConfig.compounds));
 
 		LIMA_UTILS::genericErrorCheckNoSync("TotalKineticEnergyCompounds");
 

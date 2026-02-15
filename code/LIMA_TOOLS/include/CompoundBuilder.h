@@ -110,7 +110,8 @@ namespace LIMA_MOLECULEBUILD {
 	);
 }
 
-class CompoundFactory : public Compound, public CompoundInterimState {
+class CompoundFactory : public Compound//, public CompoundInterimState 
+{
 public:
 	CompoundFactory() {
 		memset(this, 0, sizeof(CompoundFactory));

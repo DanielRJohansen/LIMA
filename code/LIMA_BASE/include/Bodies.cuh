@@ -222,13 +222,7 @@ struct alignas(4) CompoundCompact {
 };
 
 
-struct CompoundInterimState {
-	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // [J/mol]
-	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
-	Coord coords[MAX_COMPOUND_PARTICLES];
-};
 
 
 
@@ -409,6 +403,14 @@ struct PersistentClusterMeta {
 	// I do not like this setup...
 	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
 };
+
+struct PersistentclusterInterimState {
+	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
+	Float3 forces_prev[PersistentCluster::nParticles]; // [J/mol]
+	Float3 vels_prev[PersistentCluster::nParticles];
+	//Coord coords[PersistentCluster::nParticles];
+};
+
 
 //struct PersistentCluster {
 //	ParticleQuickData pqd[4];

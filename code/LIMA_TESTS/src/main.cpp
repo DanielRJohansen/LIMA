@@ -36,8 +36,8 @@ int main() {
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
-		//Display::TestDisplay();
-		doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
+		Display::TestDisplay();
+		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
 		//SinglebondForceAndPotentialSanityCheck(envmode);

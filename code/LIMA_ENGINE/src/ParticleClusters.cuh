@@ -21,7 +21,8 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, cons
 		const Float3 pos = compoundsRelposNm[indexInCompoundsRelpos];
 		Float3 gridPos = pos.round();
 		PeriodicBoundaryCondition::applyBCNM(gridPos);
-		NodeIndex blockId = NodeIndex(gridPos.ToInt3	const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
+		NodeIndex blockId = NodeIndex(gridPos.x,gridPos.y, gridPos.z);
+		const int blockIndex = BoxGrid::Get1dIndex(blockId, boxSize);
 
 
 

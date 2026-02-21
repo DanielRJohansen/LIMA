@@ -19,7 +19,8 @@ namespace LAL {
 		return r < l ? r : l;
 	}
 
-	__device__ __host__ static int32_t abs(const int32_t val) {
+	template <typename T>
+	constexpr static T abs(const T val) {
 		return val < 0 ? -val : val;
 	}
 
@@ -39,6 +40,10 @@ namespace LAL {
 		}
 		__syncthreads();
 		data[threadIdx.x] -= 1;
+	}
+
+	constexpr bool Fequal(float a, float b, float eps = 1e-6f) noexcept {
+		return abs(a - b) <= eps;
 	}
 
 	// TODO These functions are NOT what their names elude they are, fix that
@@ -135,6 +140,38 @@ namespace LAL {
 					}
 				}
 				__syncthreads(); // Synchronize to ensure all threads complete this step before moving on
+			}
+		}
+	}
+
+	// Assumes nValues is a power of two and <= blockDim.x
+	template <int nValues>
+	__device__ inline void Sort(int* keys, Float3* attachedData)
+	{
+		static_assert(nValues == 16 || nValues == 32 || nValues == 64 || nValues == 128);
+		for (int k = 2; k <= nValues; k <<= 1) {
+			for (int j = k >> 1; j > 0; j >>= 1) {
+				int i = threadIdx.x;
+				if (i < nValues) {
+					int ixj = i ^ j;
+					if (ixj > i) {
+						bool ascending = ((i & k) == 0);
+						int key_i = keys[i];
+						int key_j = keys[ixj];
+
+						if ((ascending && key_i > key_j) ||
+							(!ascending && key_i < key_j)) {
+
+							keys[i] = key_j;
+							keys[ixj] = key_i;
+
+							Float3 tmp = attachedData[i];
+							attachedData[i] = attachedData[ixj];
+							attachedData[ixj] = tmp;
+						}
+					}
+				}
+				__syncthreads();
 			}
 		}
 	}

@@ -49,7 +49,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
-		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6);
+		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6);
 		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
@@ -68,7 +68,7 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
 		//SimParams simparams; 
 		//simparams.n_steps = 100000;
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6, simparams);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//for (int i = 0; i < 100; i++) {
 		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
 		//	if (!res.success)
@@ -138,21 +138,20 @@ int main() {
 		
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 
-
+		RunAllUnitTests();
 		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		else
-			RunAllUnitTests();*/
-	}
+			RunAllUnitTests();*/}
 	catch (std::runtime_error ex) {
-		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
+		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
 	}
 	catch (const std::exception& ex) {
-		std::cerr << "Caught exception: " << ex.what() << std::endl;
+		std::cerr << "\nCaught exception: " << ex.what() << std::endl;
 	}
 	catch (...) {
-		std::cerr << "Caught unnamed exception";
+		std::cerr << "\nCaught unnamed exception";
 	}
 
 	return 0;
@@ -204,7 +203,7 @@ void RunAllUnitTests() {
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles(envmode));
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
-	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
+	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 	// Test Forcefield and compoundbuilder

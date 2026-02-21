@@ -25,6 +25,7 @@ class TinymolTransferModule;
 struct SuperClustersControl;
 struct PClusterTransfermodule;
 struct PersistentCluster;
+class SuperclusterStagingControl;
 
 namespace NeighborList { class Controller; }
 
@@ -113,10 +114,16 @@ private:
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
 	ScScTask* scscTasksDevice = nullptr;
+	size_t nTasks = 0;
+	int nSuperclusters = 0;
 	BoolMatrix16x16* noInteractionMatricesDevice = nullptr;
 	PersistentCluster* pClusterDevice = nullptr; // TODO: Handle lifetime somethwere
+	PersistentClusterMeta* pClusterMetaDevice = nullptr;
 	SCResult* scResultsDevice = nullptr;
+	size_t nResults = 0;
 	ParticleToCompoundOrSolventMapping* particleToCompoundOrSolventMappingDevice = nullptr;
+	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
+
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;

@@ -55,6 +55,15 @@ namespace KernelHelpersWarnings {
 		}
 #endif		
 	}
+
+	__device__ inline void ForceCheck(Float3 force/*, const std::string message*/) {
+		if constexpr (FORCE_CHECKS) {		
+			if (isnan(force.x) || isnan(force.y) || isnan(force.z) || isinf(force.x) || isinf(force.y) || isinf(force.z)) {
+				//printf("Force check failed: %s\n", message.c_str());
+				printf("Force check failed:\n");
+			}
+		}
+	}
 }
 
 

@@ -16,8 +16,8 @@ constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHE
 const bool ENABLE_LJ = true;
 const bool ENABLE_INTEGRATEPOSITION = true;
 
-const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+const bool ENABLE_ES_SR = false;
+const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 const bool ENABLE_UREYBRADLEY = true;
 
 
@@ -30,7 +30,7 @@ const bool ERFC_USE_CHEBYSHEV_APPROXIMATION = false;
 const bool ALL_PHYSICS_ENABLED = ENABLE_ES_SR && ENABLE_ES_LR && ENABLE_LJ && ENABLE_UREYBRADLEY && ENABLE_INTEGRATEPOSITION;
 //#define GENERATETRAINDATA
 
-//#define LIMAKERNELDEBUGMODE
+#define LIMAKERNELDEBUGMODE 1
 //#define DONTGENDATA
 constexpr bool COULUMB_USE_CHEBYSHEV_APPROXIMATION = true;
 
@@ -73,7 +73,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-#define ENABLE_SOLVENTS				// Enables Explicit Solvents
+#define ENABLE_SOLVENTS 0				// Enables Explicit Solvents
 const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 constexpr bool AllAtom = true;

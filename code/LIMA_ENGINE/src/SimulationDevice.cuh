@@ -26,7 +26,7 @@ struct BoxConfig {
 
 struct BoxState {
 	BoxState() {};
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundInterimState,
+	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, PersistentclusterInterimState*,
 		//TinyMolParticleState* tinyMolParticlesState,
 		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, 
 		ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed,
@@ -36,7 +36,7 @@ struct BoxState {
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers() const;
 
-	CompoundInterimState* const compoundsInterimState = nullptr;
+	PersistentclusterInterimState* const pclusterInterimStates = nullptr;
 	NodeIndex* const compoundOrigos = nullptr;
 	Float3* const compoundsRelposNm = nullptr;
 
@@ -72,10 +72,10 @@ struct alignas(128) CompoundQuickData {
 
 struct DatabuffersDeviceController {
 	DatabuffersDeviceController(const DatabuffersDeviceController&) = delete;
-	DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval);
+	DatabuffersDeviceController(int nPclusters, int loggingInterval);
 	~DatabuffersDeviceController();
 
-	static const int nStepsInBuffer = 5;
+	static const int nStepsInBuffer = 5; // TODO: I want this to be dynamic.
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		return step % (nStepsInBuffer * loggingInterval) == 0;
@@ -85,13 +85,13 @@ struct DatabuffersDeviceController {
 		return stepsSinceTransfer / loggingInterval;
 	}
 
-	__device__ static int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int64_t step,
-		int loggingInterval, int totalParticleUpperbound) {
-		const int64_t steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
+	__device__ static int GetLogIndexOfParticle(int pidInPclusters, int pcId, int step,
+		int loggingInterval, const int totalParticleUpperbound) {
+		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
 
-		const int64_t stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
-		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return stepOffset + compound_offset + particleIdLocal;
+		const int stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
+		const int pclusterOffset = pcId * PersistentCluster::nParticles;
+		return stepOffset + pclusterOffset + pidInPclusters;
 	}
 
 	float* potE_buffer = nullptr;				// For total energy summation
@@ -99,7 +99,7 @@ struct DatabuffersDeviceController {
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 	Float3* forceBuffer = nullptr;				// [J/mol/nm] // For debug only
 
-	const int total_particles_upperbound;
+	const int nParticlesUpperbound;
 };
 
 
@@ -143,7 +143,7 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups);
+	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups, int nParticles, int nPclusters);
 	void Free() const;
 
 	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
@@ -152,17 +152,39 @@ struct ForceEnergyInterims {
 			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
 		}
 
-		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+		Float3 fOld = 
+			forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force +
+			forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
+		Float3 nNew = fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
+		float vecErr = (fOld - nNew).len() / fOld.len();
+		float magDiff = std::abs(fOld.len() - nNew.len());
+		float magErr = magDiff / fOld.len();
+		float threshold = 4000;
+
+		//if (vecErr > 0.1 && magDiff > threshold) {
+		//	printf("\nCompound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",
+		//		compoundId, particleId, vecErr, fOld.x, fOld.y, fOld.z, nNew.x, nNew.y, nNew.z);
+		//}
+		
+
+		return/* forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ */forceEnergySNF[compoundId * MAX_COMPOUND_PARTICLES + particleId]
+			+ fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId]
 			+ pmeFE;
 	}
+
+	// These are temp, pushed into fromSuperclusters*
+	ForceEnergy* nbNonlocal = nullptr;// Currently 1 per particle, i guess i want them in pclustergroups lateron
+	ForceEnergy* bonded = nullptr; // TODO: Also temp, not sure how i wanna proceed here..
+
 
 	// Compounds
 	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
 	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyBonds = nullptr;
+	ForceEnergy* forceEnergySNF = nullptr;
 	ForceEnergy* forceEnergiesPME = nullptr;
+	ForceEnergy* fromSuperclusters = nullptr;
 
 	// Bondgroups
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
@@ -173,5 +195,6 @@ struct ForceEnergyInterims {
 		ForceEnergy* solventsInteractions = nullptr;
 		ForceEnergy* bondgroupsInteractions = nullptr;
 		ForceEnergy* pmeInteraction = nullptr;
+		ForceEnergy* fromSuperclusters = nullptr;
 	} solvents;
 };

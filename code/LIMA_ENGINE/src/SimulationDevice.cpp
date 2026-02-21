@@ -33,21 +33,21 @@ BoxConfig BoxConfig::Create(const Box& boxHost) {
 	);
 }
 void BoxConfig::FreeMembers() const {
-	cudaFree((void*)compounds);
-	cudaFree((void*)compoundsAtomtypes);
-	cudaFree((void*)compoundsAtomCharges);
-	cudaFree((void*)bpLUTs);
-	cudaFree((void*)tinymolNearbyBlockIds);
-	cudaFree((void*)tinymolNearbyBlocksSequences);
+	//cudaFree((void*)compounds);
+	//cudaFree((void*)compoundsAtomtypes);
+	//cudaFree((void*)compoundsAtomCharges);
+	//cudaFree((void*)bpLUTs);
+	//cudaFree((void*)tinymolNearbyBlockIds);
+	//cudaFree((void*)tinymolNearbyBlocksSequences);
 }
 
 
-BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundsInterimState,
+BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, PersistentclusterInterimState* pclusterInterimStates,
 	SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX
 	, ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed
 	,BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
 	) :
-	compoundOrigos(compoundsOrigos), compoundsRelposNm(compoundsRelpos), compoundsInterimState(compoundsInterimState),
+	compoundOrigos(compoundsOrigos), compoundsRelposNm(compoundsRelpos), pclusterInterimStates(pclusterInterimStates),
 	//tinyMolParticlesState(tinyMolParticlesState), 
 	solventblockgrid_circularqueue(solventblockgrid_circularqueue), nParticlesInSolventblock(nParticlesInSolventblock), nParticlesPrefixsumInX(nParticlesPrefixsumInX)
 	, solventsParticleQuickData(solventsParticleQuickdata), solventsParticleQuickDataCompressed(solventsParticleQuickDataCompressed)
@@ -58,31 +58,31 @@ BoxState::BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, Compound
 BoxState BoxState::Create(const Box& boxHost) {
 	std::vector<NodeIndex> compoundsOrigos;	// OPTIM Initiate with correct size!
 	std::vector<Float3> compoundsRelPos;
-	for (const auto& compoundCoords : boxHost.compoundCoordsBuffer) {
-		compoundsOrigos.emplace_back(compoundCoords.origo);
-		for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
-			compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].ToRelpos());
-		}
-	}
+	//for (const auto& compoundCoords : boxHost.compoundCoordsBuffer) {
+	//	compoundsOrigos.emplace_back(compoundCoords.origo);
+	//	for (int i = 0; i < MAX_COMPOUND_PARTICLES; i++) {
+	//		compoundsRelPos.emplace_back(compoundCoords.rel_positions[i].ToRelpos());
+	//	}
+	//}
 
 	const size_t nSolventblocks = BoxGrid::BlocksTotal(boxHost.boxparams.boxSize);
 	std::vector<int> nParticlesInSolventblock(nSolventblocks, 0);
 	/*std::vector<Float3> solventsRelposNm(nSolventblocks * SolventBlock::maxParticles, Float3{});
 	std::vector<uint8_t> solventsAtomtypeIds(nSolventblocks * SolventBlock::maxParticles, 0);*/
 	std::vector<ParticleQuickData> solventsParticleQuickdata(nSolventblocks * SolventBlock::maxParticles, ParticleQuickData{});
-	for (int i = 0; i < nSolventblocks; i++) {
-		nParticlesInSolventblock[i] = boxHost.solventblockgrid_circularqueue[i].nParticles;
-		for (int j = 0; j < boxHost.solventblockgrid_circularqueue[i].nParticles; j++) {
-			Int3 gridId = BoxGrid::Get3dIndex(i, boxHost.boxparams.boxSize);
-			solventsParticleQuickdata[i * SolventBlock::maxParticles + j] = ParticleQuickData{
-				boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos(),
-				{(int8_t)gridId.x, (int8_t)gridId.y, (int8_t)gridId.z},
-				boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j]
-			};
-			/*solventsRelposNm[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos();
-			solventsAtomtypeIds[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j];*/
-		}
-	}
+	//for (int i = 0; i < nSolventblocks; i++) {
+	//	nParticlesInSolventblock[i] = boxHost.solventblockgrid_circularqueue[i].nParticles;
+	//	for (int j = 0; j < boxHost.solventblockgrid_circularqueue[i].nParticles; j++) {
+	//		Int3 gridId = BoxGrid::Get3dIndex(i, boxHost.boxparams.boxSize);
+	//		solventsParticleQuickdata[i * SolventBlock::maxParticles + j] = ParticleQuickData{
+	//			boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos(),
+	//			{(int8_t)gridId.x, (int8_t)gridId.y, (int8_t)gridId.z},
+	//			boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j]
+	//		};
+	//		/*solventsRelposNm[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].rel_pos[j].ToRelpos();
+	//		solventsAtomtypeIds[i * SolventBlock::maxParticles + j] = boxHost.solventblockgrid_circularqueue[i].atomtypeIds[j];*/
+	//	}
+	//}
 
 	std::vector<int> nParticlesPrefixsumInX(nSolventblocks, 0);
 	{
@@ -104,7 +104,7 @@ BoxState BoxState::Create(const Box& boxHost) {
 	return BoxState{
 		GenericCopyToDevice(compoundsOrigos),
 		GenericCopyToDevice(compoundsRelPos),
-		GenericCopyToDevice(boxHost.compoundInterimStates),
+		GenericCopyToDevice(boxHost.pclusterInterimStates),
 		//GenericCopyToDevice(boxHost.tinyMolParticlesState),
 		GenericCopyToDevice(boxHost.solventblockgrid_circularqueue),
 		//nullptr, nullptr,nullptr
@@ -123,10 +123,11 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 
 	//assert(boxHost.compounds.size() == boxtemp.boxparams.n_compounds);
 //	cudaMemcpy(boxHost.compounds.data(), boxtemp.compounds, sizeof(Compound) * boxHost.compounds.size(), cudaMemcpyDeviceToHost); // This should NOT be necessary since the state dont change
-	cudaMemcpy(boxHost.compoundInterimStates.data(), compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
+	//cudaMemcpy(boxHost.compoundInterimStates.data(), compoundsInterimState, sizeof(CompoundInterimState) * boxHost.compoundInterimStates.size(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(boxHost.pclusterInterimStates.data(), pclusterInterimStates, sizeof(PersistentclusterInterimState) * boxHost.pclusterInterimStates.size(), cudaMemcpyDeviceToHost);
 	//cudaMemcpy(boxHost.tinyMolParticlesState.data(), boxtemp.tinyMolParticlesState, sizeof(TinyMolParticleState) * boxHost.tinyMolParticlesState.size(), cudaMemcpyDeviceToHost);
 
-	std::vector<NodeIndex> compoundsOrigos;
+	/*std::vector<NodeIndex> compoundsOrigos;
 	std::vector<CompoundInterimState> compoundStates;
 	GenericCopyToHost(compoundOrigos, compoundsOrigos, boxHost.compounds.size());
 	GenericCopyToHost(compoundsInterimState, compoundStates, boxHost.compounds.size());
@@ -134,17 +135,17 @@ void BoxState::CopyDataToHost(Box& boxHost) const {
 		boxHost.compoundCoordsBuffer[cid].origo = compoundsOrigos[cid];
 		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++)
 			boxHost.compoundCoordsBuffer[cid].rel_positions[pid] = compoundStates[cid].coords[pid];
-	}
+	}*/
 
 
-	boxHost.solventblockgrid_circularqueue = GenericCopyToHost(solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
-	LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
+	//boxHost.solventblockgrid_circularqueue = GenericCopyToHost(solventblockgrid_circularqueue, SolventBlocksCircularQueue::nElementsTotal(boxHost.boxparams.boxSize));	
+	//LIMA_UTILS::genericErrorCheck("Error during CopyDataToHost\n");
 }
 void BoxState::FreeMembers() const {
 	//BoxState boxtemp(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr); // TODO No longer necessary, as this is no longer a device ptr
 	//cudaMemcpy(&boxtemp, this, sizeof(BoxState), cudaMemcpyDeviceToHost);
 
-	cudaFree(compoundsInterimState);
+	cudaFree(pclusterInterimStates);
 	cudaFree(compoundOrigos);
 	cudaFree(compoundsRelposNm);
 	//cudaFree(boxtemp.tinyMolParticlesState);
@@ -165,12 +166,12 @@ void BoxState::FreeMembers() const {
 
 
 
-DatabuffersDeviceController::DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval) :
-	total_particles_upperbound{ total_particles_upperbound }
+DatabuffersDeviceController::DatabuffersDeviceController(int nPclusters, int loggingInterval) :
+	nParticlesUpperbound{ nPclusters * PersistentCluster::nParticles }
 {
 	// Permanent Outputs for energy & trajectory analysis
 	{
-		const size_t n_datapoints = total_particles_upperbound * nStepsInBuffer;
+		const size_t n_datapoints = nParticlesUpperbound * nStepsInBuffer;
 		const size_t bytesize_mb = (2 * sizeof(float) * n_datapoints + 2 * sizeof(Float3) * n_datapoints) / 1'000'000;
 		assert(n_datapoints && "Tried creating traj or potE buffers with 0 datapoints");
 		assert(bytesize_mb < 6'000 && "Tried reserving >6GB data on device");

@@ -1,2 +1,4 @@
 .idea
 ML/workspace
+etc/*
+*.txt

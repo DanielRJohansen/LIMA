@@ -152,6 +152,11 @@ namespace BoxGrid {
 	constexpr int BlocksTotal(Int3 blocksPerDim) { return NodesPerDim(blocksPerDim.x) * NodesPerDim(blocksPerDim.y) * NodesPerDim(blocksPerDim.z); }
 
 	constexpr int Get1dIndex(const NodeIndex& index3d, Int3 boxSizeNM) {
+		if constexpr (INDEXING_CHECKS) {
+			if (index3d.Min() < 0 || index3d.x >= boxSizeNM.x || index3d.y >= boxSizeNM.y || index3d.z >= boxSizeNM.z) {
+				printf("Illegal nodexindex fetch, blockindex: %d %d %d\n", index3d.x, index3d.y, index3d.z);
+			}
+		}
 		return index3d.x + index3d.y * NodesPerDim(boxSizeNM.x) + index3d.z * NodesPerDim(boxSizeNM.x) * NodesPerDim(boxSizeNM.y);
 	}
 

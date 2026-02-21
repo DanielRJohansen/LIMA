@@ -398,6 +398,21 @@ int MarkAllNodes(std::unordered_set<int>& visited, MoleculeGraph::BFSRange<const
 
 }
 
+std::optional<int> MoleculeGraph::DistanceBetweenNodes(int id0, int id1, int maxSearchDepth) const {
+	auto bfs = BFS(id0);
+	for (auto it = bfs.begin(); it != bfs.end(); ++it) {
+		const Node& node = *it;
+		if (node.atomid == id1)
+			return it.Depth();
+
+		if (it.Depth() > maxSearchDepth)
+			return std::nullopt;
+	}
+	int a = 0;
+	return std::nullopt;
+}
+
+
 bool MoleculeGraph::GraphIsDisconnected() const {
 	std::unordered_set<int> visited;
 	

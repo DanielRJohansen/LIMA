@@ -12,6 +12,7 @@
 
 #include "Statistics.h"
 #include "Utilities.h"
+#include "DebugUtils.h"
 
 #include "EngineHostside.h"
 
@@ -26,7 +27,8 @@
 Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc)
 	, m_logger(std::move(logger))
-	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.nTinymols, BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size()))
+	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->boxparams.n_compounds, _sim->box_host->boxparams.nTinymols,
+		BoxGrid::BlocksTotal(_sim->box_host->boxparams.boxSize), _sim->box_host->bondgroups.size(), _sim->box_host->boxparams.total_particles, _sim->box_host->persistentClusters.size()))
 {
 	simulation = std::move(_sim);
 
@@ -34,21 +36,17 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	const BoxParams boxparams = simulation->box_host->boxparams;
 
-	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(boxparams.total_particles_upperbound, 
-		boxparams.n_compounds, simulation->simparams_host.data_logging_interval);
+	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simulation->box_host->persistentClusters.size(), simulation->simparams_host.data_logging_interval);
 
 	superClustersControl = std::make_unique<SuperClustersControl>(SuperClustersControl::Create(boxparams.boxSize, simulation->box_host->persistentClusters.size()));
 	pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(boxparams.boxSize));
 	//cudaMalloc(&pClusterDevice, sizeof(PersistentCluster) * simulation->box_host->persistentClusters.size());// We will never have more sc than pc
 	pClusterDevice = GenericCopyToDevice(simulation->box_host->persistentClusters);
+	pClusterMetaDevice = GenericCopyToDevice(simulation->box_host->persistentClustersMetadata);
 	particleToCompoundOrSolventMappingDevice = GenericCopyToDevice(simulation->box_host->particleToCompoundOrSolventMapping);
 
 
-	BootstrapClustering();
-	cudaMalloc(&scscTasksDevice, 1); // Bootstrap these, will be reallocated in the next function. TODO: CHange that system so we dont need realloc
-	cudaMalloc(&noInteractionMatricesDevice, 1);
-	cudaMalloc(&scResultsDevice, 1);
-	MakeSuperClusterTasksCPU();
+
 
 
 	// Create the Sim_dev {
@@ -63,6 +61,12 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	cudaMemcpy(boxStateCopy.get(), &sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);	
 	nParticlesInCompoundsBufferPtr = sim_dev->nParticlesInCompoundsBuffer;
+
+	BootstrapClustering();
+	cudaMalloc(&scscTasksDevice, 1); // Bootstrap these, will be reallocated in the next function. TODO: CHange that system so we dont need realloc
+	cudaMalloc(&noInteractionMatricesDevice, 1);
+	cudaMalloc(&scResultsDevice, 1);
+	MakeSuperClusterTasksCPU();
 
     std::vector<ForceField_NB::ParticleParameters> compoundParticleParams(boxparams.n_compounds * MAX_COMPOUND_PARTICLES, ForceField_NB::ParticleParameters{0,0});
     for (int cid = 0; cid < simulation->box_host->compounds.size(); cid++) {
@@ -97,7 +101,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
 
-	BootstrapSolventblockDistributeFromDensity();
+	//BootstrapSolventblockDistributeFromDensity();
 
 	nlistController->UpdateNlist(sim_dev, boxparams, simulation->simparams_host.bc_select, cudaStreams);
 	m_logger->finishSection("Engine Ready");
@@ -115,6 +119,9 @@ Engine::~Engine() {
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamDestroy(stream);
 	}
+
+	if (superClustersControl)
+		superClustersControl->Free();
 
 	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
 	//assert(simulation == nullptr);
@@ -178,9 +185,10 @@ void Engine::step() {
 	simulation->step++;
 
 	hostMaster();
-
+	
 
 	if (true) {
+		superClustersControl->Reset();
 		RunClustering();
 		MakeSuperClusterTasksCPU();
 	}
@@ -242,30 +250,31 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 	const int64_t startstep = simulation->getStep() - steps_to_transfer * simulation->simparams_host.data_logging_interval;
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
-	const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
+	//const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
+	const int nParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
 	
 	cudaMemcpyAsync(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->potE_buffer,
-		sizeof(float) * particlesUpperbound * indices_to_transfer,
+		sizeof(float) * nParticlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 	
 	cudaMemcpyAsync(
 		simulation->vel_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->vel_buffer,
-		sizeof(float) * particlesUpperbound * indices_to_transfer,
+		sizeof(float) * nParticlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpyAsync(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->forceBuffer,
-		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
+		sizeof(Float3) * nParticlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	cudaMemcpyAsync(
 		simulation->traj_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->traj_buffer,
-		sizeof(Float3) * particlesUpperbound * indices_to_transfer,
+		sizeof(Float3) * nParticlesUpperbound * indices_to_transfer,
 		cudaMemcpyDeviceToHost);
 
 	step_at_last_traj_transfer = simulation->getStep();
@@ -292,40 +301,46 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 
 	// We need to bootstrap step-0 which is used for traj-buffer
-	for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
-		for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
-			const Float3 particle_abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(simulation->box_host->compoundCoordsBuffer[compound_id].origo, simulation->box_host->compoundCoordsBuffer[compound_id].rel_positions[particle_id]);
-			simulation->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, 0) = particle_abspos;
+	//for (int compound_id = 0; compound_id < simulation->box_host->boxparams.n_compounds; compound_id++) {
+	//	for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
+	//		const Float3 particle_abspos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(simulation->box_host->compoundCoordsBuffer[compound_id].origo, simulation->box_host->compoundCoordsBuffer[compound_id].rel_positions[particle_id]);
+	//		simulation->traj_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, 0) = particle_abspos;
+	//	}
+	//}
+	for (int pcid = 0; pcid < simulation->box_host->persistentClusters.size(); pcid++) {
+		const PersistentCluster& pc = simulation->box_host->persistentClusters[pcid];
+		for (int pid = 0; pid < 4; pid++) {
+			simulation->traj_buffer->GetDatapoint(pcid, pid, 0) = pc.pqd[pid].position;
 		}
 	}
 
-	for (int blockId = 0; blockId < BoxGrid::BlocksTotal(simulation->box_host->boxparams.boxSize); blockId++) {
-		const SolventBlock& solventBlock = *SolventBlocksCircularQueue::getBlockPtr(simulation->box_host->solventblockgrid_circularqueue.data(), BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize), blockId, 0);
-		const NodeIndex origo = BoxGrid::Get3dIndexWithNNodes(blockId, BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
+	//for (int blockId = 0; blockId < BoxGrid::BlocksTotal(simulation->box_host->boxparams.boxSize); blockId++) {
+	//	const SolventBlock& solventBlock = *SolventBlocksCircularQueue::getBlockPtr(simulation->box_host->solventblockgrid_circularqueue.data(), BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize), blockId, 0);
+	//	const NodeIndex origo = BoxGrid::Get3dIndexWithNNodes(blockId, BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize));
 
-		for (int pid = 0; pid < solventBlock.nParticles; pid++) {
-			const int solventId = solventBlock.ids[pid];
-			const Float3 pos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, solventBlock.rel_pos[pid].ToRelpos());
-			simulation->traj_buffer->getSolventparticleDatapointAtIndex(solventId, 0) = pos;
-		}		
-	}
+	//	for (int pid = 0; pid < solventBlock.nParticles; pid++) {
+	//		const int solventId = solventBlock.ids[pid];
+	//		const Float3 pos = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, solventBlock.rel_pos[pid].ToRelpos());
+	//		simulation->traj_buffer->getSolventparticleDatapointAtIndex(solventId, 0) = pos;
+	//	}		
+	//}
 	step_at_last_traj_transfer = 0.f;
 	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(0);
 
 	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
 }
 
-void Engine::BootstrapSolventblockDistributeFromDensity() {
-	Int3 boxSize = simulation->box_host->boxparams.boxSize;
-
-	// Bootstrap compressed positions
-	int nGridblocks = BoxGrid::NodesPerDim(boxSize.y) * BoxGrid::NodesPerDim(boxSize.z);
-	SolventPositionsBufferCompress << <nGridblocks, 32, 0, cudaStreams[1] >> >
-		(*boxStateCopy, *boxConfigCopy, simulation->box_host->boxparams);
-
-	SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize)), 64, 0, cudaStreams[1] >> >
-		(*boxStateCopy, *boxConfigCopy, simulation->box_host->boxparams);
-}
+//void Engine::BootstrapSolventblockDistributeFromDensity() {
+//	Int3 boxSize = simulation->box_host->boxparams.boxSize;
+//
+//	// Bootstrap compressed positions
+//	int nGridblocks = BoxGrid::NodesPerDim(boxSize.y) * BoxGrid::NodesPerDim(boxSize.z);
+//	SolventPositionsBufferCompress << <nGridblocks, 32, 0, cudaStreams[1] >> >
+//		(*boxStateCopy, *boxConfigCopy, simulation->box_host->boxparams);
+//
+//	SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize)), 64, 0, cudaStreams[1] >> >
+//		(*boxStateCopy, *boxConfigCopy, simulation->box_host->boxparams);
+//}
 
 
 
@@ -365,59 +380,82 @@ void Engine::_deviceMaster() {
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	{
-		bool useNointeractionMatrix = false;
-		dim3 blockDim(16, 2, 1);
-		int nBlocks = 1;
-		//SCResult
-		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, false>
-			<< <nBlocks, blockDim, 0, cudaStreams[0] >> >
-			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice);
+	bool newAlg = true;
+
+	//if (newAlg)
+	if (nTasks > 0) {
+		const bool useNointeractionMatrix = true;
+		dim3 blockDim(16, 1, 1); // TEMP
+		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
+			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
+			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice, superClustersControl->scMeta, step);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
+
+		/*std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
+		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));*/
+
+
+		//std::vector<PersistentClusterMeta> pcMetaTemp = GenericCopyToHost(pClusterMetaDevice, simulation->box_host->persistentClusters.size());
+
+		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
+			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");		
+
+		/*std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
+		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));*/
 	}
+	/*else*/ 
+	//{
+	//	cudaDeviceSynchronize();
+	//	if (boxparams.n_compounds > 0) {
+	//	compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES>>>
+ //           (simulation->simparams_host.enable_electrostatics,
+ //               forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, 
+	//			nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, 
+	//			sim_dev,
+	//			//nullptr,
+ //               step
+	//			);
+	//	cudaDeviceSynchronize();
+	//	int a = 0;
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
 
-	if (boxparams.n_compounds > 0) {
-		compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0]>>>
-            (simulation->simparams_host.enable_electrostatics,
-                forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
+	//	compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
+	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
+	//		(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
+	//	}
+	//}
 
-		compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
-			(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
-		LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
-	}
+	
 
-	if (boxparams.nTinymols > 0) {
-		const int nSolventblocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize));
-		// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
-		TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
-			<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
-			(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->solvents.compoundsInteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
-	 
-
-		constexpr auto occRanges = SolventBlockOccupancy::ranges;
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[0].batchsize, occRanges[0].min, occRanges[0].max>
-			<<<nSolventblocks, occRanges[0].max, 0, cudaStreams[3] >> >
-			(*boxStateCopy, forceEnergyInterims->solvents.solventsInteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");		
-
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[1].batchsize, occRanges[1].min, occRanges[1].max>
-			<<<nSolventblocks, occRanges[1].max, 0, cudaStreams[3] >> >
-			(*boxStateCopy, forceEnergyInterims->solvents.solventsInteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
-
-		solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[2].batchsize, occRanges[2].min, occRanges[2].max>
-			<<<nSolventblocks, occRanges[2].max, 0, cudaStreams[3] >> >
-			(*boxStateCopy, forceEnergyInterims->solvents.solventsInteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
-
-		TinymolBondgroupsKernel<emvariant>
-			<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >
-			(sim_dev, step, forceEnergyInterims->solvents.bondgroupsInteractions);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolBondgroupsKernel");
-	}
+	//if (boxparams.nTinymols > 0) {
+	//	const int nSolventblocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize));
+	//	// Should only use max_compound_particles threads here. and let 1 thread handle multiple solvents
+	//	TinymolCompoundinteractionsKernel<BoundaryCondition, emvariant>
+	//		<<<nSolventblocks, SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[2]>>>
+	//		(*boxStateCopy, *boxConfigCopy, nlistController->GetBuffers(), step, forceEnergyInterims->solvents.compoundsInteractions);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolCompoundinteractionsKernel");
+	// 
+	//	constexpr auto occRanges = SolventBlockOccupancy::ranges;
+	//	solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[0].batchsize, occRanges[0].min, occRanges[0].max>
+	//		<<<nSolventblocks, occRanges[0].max, 0, cudaStreams[3] >> >
+	//		(*boxStateCopy, forceEnergyInterims->solvents.solventsInteractions);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");		
+	//	solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[1].batchsize, occRanges[1].min, occRanges[1].max>
+	//		<<<nSolventblocks, occRanges[1].max, 0, cudaStreams[3] >> >
+	//		(*boxStateCopy, forceEnergyInterims->solvents.solventsInteractions);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
+	//	solventForceKernel<BoundaryCondition, emvariant, computePotE, occRanges[2].batchsize, occRanges[2].min, occRanges[2].max>
+	//		<<<nSolventblocks, occRanges[2].max, 0, cudaStreams[3] >> >
+	//		(*boxStateCopy, forceEnergyInterims->solvents.solventsInteractions);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after solventForceKernel");
+	//	TinymolBondgroupsKernel<emvariant>
+	//		<< <nSolventblocks, dim3(SolventBlock::maxBondgroups, 1, 1), 0, cudaStreams[2] >> >
+	//		(sim_dev, step, forceEnergyInterims->solvents.bondgroupsInteractions);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolBondgroupsKernel");
+	//}
 	
 
 
@@ -428,8 +466,17 @@ void Engine::_deviceMaster() {
 
 	if (!simulation->box_host->bondgroups.empty()) {
 		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
-			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups);
+			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
+
+		// Gather bondgroup ordered forces into particle ordered
+		{
+			const int nPclusters = simulation->box_host->persistentClusters.size();
+			const int nBlocks = (nPclusters + 31) / 32;
+			PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[0] >> >
+				(pClusterMetaDevice, nPclusters, *forceEnergyInterims);
+			LIMA_UTILS::genericErrorCheckNoSync("Error after PclusterBondgroupsGather");
+		}
 	}
 
 	// #### Integration and Transfer kernels
@@ -438,39 +485,72 @@ void Engine::_deviceMaster() {
 		cudaStreamSynchronize(cudaStreams[i]);
 	}
 
+	/*cudaDeviceSynchronize();
+	DistributePlcusterForceenergyToCompoundsAndSolvents << <(boxparams.total_particles + 31) / 32, 32, 0, cudaStreams[0] >> >
+		(*forceEnergyInterims, particleToCompoundOrSolventMappingDevice, boxparams.total_particles);
+	LIMA_UTILS::genericErrorCheckNoSync("Error after DistributePlcusterForceenergyToCompoundsAndSolvents");
+	cudaDeviceSynchronize();*/
+	// TODO: Do i need sync before and after this? Yes, right?? Which is why i dont want this kernel at all, the logic should be inside the integration kernel
+
+
+	//auto bondsPresort = GenericCopyToHost(forceEnergyInterims->forceEnergiesBondgroups, boxparams.total_particles);
+	//auto bondForces = GenericCopyToHost(forceEnergyInterims->bonded, boxparams.total_particles);
+	//auto sumForces = GenericCopyToHost(forceEnergyInterims->fromSuperclusters, boxparams.total_particles);
+	//if (step >= 100)
+	//	int a = 0;
+
 	const bool updateNlistsAfterThisStep = (simulation->getStep()+1) % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1;
-	if (boxparams.n_compounds > 0) {
-		CompoundIntegrationKernel<BoundaryCondition, emvariant> 
-			<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
-			(sim_dev, step, *forceEnergyInterims, compoundQuickData, updateNlistsAfterThisStep);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
+	//if (boxparams.n_compounds > 0) {
+	//	CompoundIntegrationKernel<BoundaryCondition, emvariant> 
+	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[0] >> >
+	//		(sim_dev, step, *forceEnergyInterims, compoundQuickData, updateNlistsAfterThisStep);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after CompoundIntegrationKernel");
+	//}
+
+
+	if (nSuperclusters > 0) {
+		cudaDeviceSynchronize();
+		auto scMeta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
+		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
+			<<<nSuperclusters, 16, 0, cudaStreams[0]>>>
+			(*forceEnergyInterims, sim_dev, scResultsDevice, superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
+				step, simulation->simparams_host.dt, particleToCompoundOrSolventMappingDevice, totalParticlesUpperbound);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
+		cudaDeviceSynchronize();
 	}
 
-	if (boxparams.nTinymols > 0) {	
-		TinymolIntegrateAndLogKernel<BoundaryCondition, emvariant>
-			<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >> >
-			(sim_dev, step, *forceEnergyInterims);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrateAndLogKernel");
 
-		if (SolventBlocksCircularQueue::isTransferStep(step)) {
-			SolventPretransferKernel<BoundaryCondition> 
-				<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1]>>> 
-				(sim_dev, step, *tinymolTransferModule);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
+	//if (boxparams.nTinymols > 0) {	
+	//	TinymolIntegrateAndLogKernel<BoundaryCondition, emvariant>
+	//		<< <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >> >
+	//		(sim_dev, step, *forceEnergyInterims);
+	//	LIMA_UTILS::genericErrorCheckNoSync("Error after TinymolIntegrateAndLogKernel");
 
-			SolventTransferKernel<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>> (sim_dev, step, *tinymolTransferModule);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventTransferKernel");
+	//	if (SolventBlocksCircularQueue::isTransferStep(step)) {
+	//		SolventPretransferKernel<BoundaryCondition> 
+	//			<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1]>>> 
+	//			(sim_dev, step, *tinymolTransferModule);
+	//		LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPretransferKernel");
 
-			int nGridblocks = BoxGrid::NodesPerDim(boxparams.boxSize.y) * BoxGrid::NodesPerDim(boxparams.boxSize.z);
-			SolventPositionsBufferCompress << <nGridblocks, 32, 0, cudaStreams[1] >> >
-				(*boxStateCopy, *boxConfigCopy, boxparams);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPositionsBufferCompress");
+	//		SolventTransferKernel<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, cudaStreams[1] >>> (sim_dev, step, *tinymolTransferModule);
+	//		LIMA_UTILS::genericErrorCheckNoSync("Error after SolventTransferKernel");
 
-			SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), 32, 0, cudaStreams[1] >> >
-				(*boxStateCopy, *boxConfigCopy, boxparams);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");
-		}
-	}
+	//		int nGridblocks = BoxGrid::NodesPerDim(boxparams.boxSize.y) * BoxGrid::NodesPerDim(boxparams.boxSize.z);
+	//		SolventPositionsBufferCompress << <nGridblocks, 32, 0, cudaStreams[1] >> >
+	//			(*boxStateCopy, *boxConfigCopy, boxparams);
+	//		LIMA_UTILS::genericErrorCheckNoSync("Error after SolventPositionsBufferCompress");
+
+	//		SolventBlockAdjacencySequenceUpdate << <BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxparams.boxSize)), 32, 0, cudaStreams[1] >> >
+	//			(*boxStateCopy, *boxConfigCopy, boxparams);
+	//		LIMA_UTILS::genericErrorCheckNoSync("Error after SolventBlockAdjacencySequenceUpdate");
+	//	}
+	//}
+
+	//cudaDeviceSynchronize();
+	//UpdatePdataPositions<<<nSuperclusters, 16>>>
+	//	(*boxStateCopy, particleToCompoundOrSolventMappingDevice, superClustersControl->scMeta, pClusterMetaDevice, superClustersControl->scData, pClusterDevice);
+	//LIMA_UTILS::genericErrorCheckNoSync("Error after UpdatePdataPositions");
 }
 
 
@@ -535,9 +615,14 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 		SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
 		break;
 	case HorizontalChargeField:
-		CompoundSnfKernel<BoundaryCondition, emvariant>
-			<< <simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >>>
-			(sim_dev, simulation->box_host->uniformElectricField, forceEnergyInterims->forceEnergyBonds);
+	{
+		const int nPclusters = simulation->box_host->persistentClusters.size();
+		const int nCudablocks = (nPclusters + 31) / 32;
+		PclusterSnfKernel<BoundaryCondition, emvariant>
+			<<<nCudablocks, 32, 0, stream >> >
+			(pClusterDevice, pClusterMetaDevice, simulation->box_host->uniformElectricField, forceEnergyInterims->forceEnergySNF, nPclusters);
+	}
+		
 		break;
 	case BoxEdgePotential:
 		if (simulation->box_host->boxparams.n_compounds > 0)
@@ -599,65 +684,181 @@ std::array<int, 16> GetParticleIdsOfSuperCluster(const std::vector<PersistentClu
 
 struct ReservedTask {
 	int queryScId;
-	bool areBonded;
+	//bool areBonded;
 	int resultIndexRelativeSelf = -1;
 	int resultIndexRelativeQuery = -1;
 	int nointeractionMatrixIndexRelative = -1;
 };
 
-bool Engine::MakeSuperClusterTasksCPU() {
+template <typename T>
+std::vector<size_t> ExlusivePrefixsum(const std::vector<T>& counts) {
+	static_assert(std::is_integral<T>::value, "ExlusivePrefixsum only supports integral types");
+	std::vector<size_t> prefixsum(counts.size());
+	//std::exclusive_scan(std::execution::par, counts.begin(), counts.end(), prefixsum.begin(), 0);
+	std::exclusive_scan(counts.begin(), counts.end(), prefixsum.begin(), size_t{ 0 });
+    return prefixsum;
+}
+template <typename T>
+std::vector<size_t> ExlusivePrefixsum(const std::vector<std::vector<T>>& sizes) {
+	std::vector<size_t> prefixsum(sizes.size());
+	std::transform_exclusive_scan(std::execution::par, sizes.begin(), sizes.end(), prefixsum.begin(), size_t{ 0 }, std::plus<>{},
+		[](const std::vector<T>& v) { return v.size(); }
+	);
+	return prefixsum;
+}
 
+std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperClusterMeta>& superClusterMetas, const std::vector<int>& nBondedmatricesReserved, const std::vector<size_t>& nBondedMatricesPrefixsum, 
+	const std::vector<PersistentClusterMeta>& pClustersMeta, const std::vector<std::vector<ReservedTask>>& workPerSc, const std::vector<std::set<int>>& particleBondedToParticle) {
+	const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
+	std::vector<BoolMatrix16x16> nointeractionMatrices(numNointeractionMatricesTotal);
 
-	const Box& box = *simulation->box_host;
+	// Build all the nointeractionMatrices
+	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
+		std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
+		for (int i = 0; i < workPerSc[scId].size(); i++) {
+			if (workPerSc[scId][i].nointeractionMatrixIndexRelative == -1)
+				continue;
 
-	//simulation->box_host->persistentClusters;
-	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
-	const int nSuperClusters = GenericCopyToHost(superClustersControl->nSuperclustersAtomic);
-	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperClusters);
-	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperClusters);
-	std::vector<ScScTask> tasks;
-	std::vector<BoolMatrix16x16> nointeractionMatrices;
+			const int queryScId = workPerSc[scId][i].queryScId;
+			BoolMatrix16x16 nointeractionMatrix{};
 
+			std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[queryScId]);
+			const bool isSelfInteractionTask = scId == queryScId;
 
+			for (int col = 0; col < 16; ++col) {
+				for (int row = 0; row < 16; ++row) {
+					if (particleIdsSelf[row] == -1)
+						continue;
+					int pidSelf = particleIdsSelf[row];
+					int pidQuery = particleIdsQuery[col];
+					if (pidSelf == pidQuery && pidSelf == 0)
+						int a = 0;
 
-	std::vector<Float3> scMeanPos(superClusters.size());
-	std::transform(
-		std::execution::par,
-		superClusters.begin(),
-		superClusters.end(),
-		scMeanPos.begin(),
-		[](const SuperCluster& sc) {
+					bool noInteraction = particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
+					if (isSelfInteractionTask && row == col) {
+						noInteraction = true;
+					}
+			//		noInteraction = true;
+					nointeractionMatrix.Set(row, col, noInteraction);
+				}
+			}
+			
+
+			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
+			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
+		}
+	}
+
+	return nointeractionMatrices;
+}
+
+//float MinDistanceBetweenPclustersInSupercluster(const SuperCluster& sc0, const SuperCluster& sc1, const Float3& boxSize) {
+//	float minDist = FLT_MAX;
+//	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
+//		if (!sc0.pData->Valid())
+//			continue;
+//		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
+//			if (!sc1.pData->Valid())
+//				continue;
+//			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(sc0.pData[pcid0].position, sc1.pData[pcid1].position, boxSize, BoundaryConditionSelect::PBC);
+//			if (dist < minDist) {
+//				minDist = dist;
+//			}
+//		}
+//	}
+//	return minDist;
+//}
+
+std::vector<std::array<float4, 4>> ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(const std::vector<SuperCluster>& superclusters) {
+	std::vector<std::array<float4, 4>> out(superclusters.size());
+
+	// Debugging
+	float maxRadius = 0;
+	float maxIntraScDistance = 0;
+
+	for (int scId = 0; scId < superclusters.size(); scId++) {
+		for (int pcid = 0; pcid < 4; pcid++) {
 			Float3 sum{};
 			int cnt = 0;
-
-			for (const PData& p : sc.pData) {
-				if (p.Valid()) {
-					sum += p.position;
-					++cnt;
+			for (int pid = 0; pid < 4; pid++){
+				const PData& pData = superclusters[scId].pData[pcid * 4 +pid];
+				if (pData.Valid()) {
+					sum += pData.position;
+					cnt++;
 				}
 			}
 
-			return sum * (1.0f / static_cast<float>(cnt));
+			const Float3 meanPos = sum * (1.0f / static_cast<float>(cnt));
+			float radius = 0;
+			for (int pid = 0; pid < cnt; pid++) {
+				const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
+				radius = std::max(radius, (pData.position - meanPos).len());
+			}
+			out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };	
+
+			// Debug
+			maxRadius = std::max(maxRadius, radius);
+			if (pcid != 0)
+				maxIntraScDistance = std::max(maxIntraScDistance, (meanPos - Float3{ out[scId][pcid - 1] }).len());
+			if (radius > .8f || maxIntraScDistance > 1.2f)
+				int a = 0;
+			//
 		}
-	);
-	//for (int i = 0; i < superClusters.size(); i++) {
-	//	const auto& sc = superClusters[i];
-	//	Float3 meanPos{};
-	//	int cnt = 0;
-	//	for (const PData& pData : sc.pData) {
-	//		if (pData.Valid()) {
-	//			meanPos += pData.position;
-	//			cnt++;
-	//		}
-	//	}
-	//	meanPos *= 1.f/static_cast<float>(cnt);
-	//	scMeanPos[i] = meanPos;
+	}
+
+	return out;
+}
+
+bool DoesSuperclustersInteract(const std::vector<std::array<float4, 4>>& superclusterPositionSpheres, int scId0, int scId1, float cutoffDistance, Float3 boxSize) {
+	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
+		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
+			float4 p0 = superclusterPositionSpheres[scId0][pcid0];
+			float4 p1 = superclusterPositionSpheres[scId1][pcid1];
+
+			float distance = LIMAPOSITIONSYSTEM::calcHyperDistNM(Float3{ p0 }, Float3{ p1 }, boxSize, BoundaryConditionSelect::PBC);
+			float radiusSum = p0.w + p1.w;
+
+			if (distance + radiusSum <= cutoffDistance) {	// optim use LenSq
+				return true;
+			}
+		}
+	}
+	//return true;
+	return false;
+}
+
+bool Engine::MakeSuperClusterTasksCPU() {
+	if (nSuperclusters == 0)
+		return true;
+
+	const Box& box = *simulation->box_host;
+	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
+
+	//simulation->box_host->persistentClusters;
+	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
+	//const int nSuperClusters = GenericCopyToHost(superClustersControl->nSuperclustersAtomic);
+	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperclusters);
+	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+	
+	//// Debug
+	//std::vector<int> pclustersMissing(pClustersMeta.size(), 1);
+	//std::vector<int> particlesMissing(box.boxparams.total_particles, 1);
+	//for (const auto& scm : superClusterMetas) {
+	//	for (int pid : scm.particlesIds)
+	//		if (pid != -1)
+	//			particlesMissing[pid] = 0;
+	//	for (int pcid : scm.pclusterIds)
+	//		if (pcid != -1)
+	//			pclustersMissing[pcid] = 0;
+	//}
+	//const int nMissingPclusters = std::accumulate(pclustersMissing.begin(), pclustersMissing.end(), 0);
+	//const int nMissingParticles = std::accumulate(particlesMissing.begin(), particlesMissing.end(), 0);
+	//if (nMissingPclusters > 0 || nMissingParticles > 0) {
+	//	int a = 0;
 	//}
 
 
-
-
-	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
+	const std::vector<std::array<float4, 4>> superclusterPositionSpheres = ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(superClusters);
 
 
 	std::vector<std::vector<ReservedTask>> workPerSc(superClusters.size());
@@ -667,22 +868,20 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
 		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
 
-			const float hyperDist = LIMAPOSITIONSYSTEM::calcHyperDistNM(scMeanPos[scId], scMeanPos[queryScId], boxSizeF, BoundaryConditionSelect::PBC);
-			if (hyperDist < simulation->simparams_host.cutoff_nm) {
-				const bool bonded = ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
+			if (DoesSuperclustersInteract(superclusterPositionSpheres, scId, queryScId, simulation->simparams_host.cutoff_nm, boxSizeF)){
+				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclusterBondedToPcluster);
+
 				workPerSc[scId].emplace_back(ReservedTask{
 					queryScId,
-					bonded,
 					nResultsReserved[scId],
-					scId != queryScId ? nResultsReserved[queryScId] : -1,
-					bonded ? nBondedmatricesReserved[scId] : -1
+					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId],
+					useNointeractionMatrix ? nBondedmatricesReserved[scId] : -1
 					});
 
 				nResultsReserved[scId]++;
-				if (scId != queryScId) {
-					nResultsReserved[queryScId]++;
-				}
-				if (bonded) {
+				if (scId != queryScId)
+					nResultsReserved[queryScId]++;				
+				if (useNointeractionMatrix) {
 					nBondedmatricesReserved[scId]++;
 				}
 			}
@@ -690,33 +889,24 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	}
 
 	// Make prefixsums
-	std::vector<size_t> nResultsPrefixsum(superClusters.size());
-	std::vector<size_t> nBondedMatricesPrefixsum(superClusters.size());
-	std::vector<size_t> nTasksPrefixsum(superClusters.size());
-	std::exclusive_scan(std::execution::par, nResultsReserved.begin(), nResultsReserved.end(), nResultsPrefixsum.begin(), 0);
-	std::exclusive_scan(std::execution::par, nBondedmatricesReserved.begin(), nBondedmatricesReserved.end(), nBondedMatricesPrefixsum.begin(), 0);
-	//std::exclusive_scan(std::execution::par, workPerSc.begin(), workPerSc.end(), nTasksPrefixsum.begin(), 0);
-	std::transform_exclusive_scan(std::execution::par, workPerSc.begin(), workPerSc.end(), nTasksPrefixsum.begin(), size_t{ 0 }, std::plus<>{},
-		[](const std::vector<ReservedTask>& v) { return v.size(); }
-	);
-
-	/*std::exclusive_scan(std::execution::par, workPerSc.begin(), workPerSc.end(), nTasksPrefixsum.begin(), size_t{ 0 },
-		[](size_t a, const std::vector<ReservedTask>& b) { return a + b.size(); });*/
+	const std::vector<size_t> nResultsPrefixsum = ExlusivePrefixsum(nResultsReserved);
+	const std::vector<size_t> nBondedMatricesPrefixsum = ExlusivePrefixsum(nBondedmatricesReserved);
+	const std::vector<size_t> nTasksPrefixsum = ExlusivePrefixsum(workPerSc);
 
 	const size_t numTasksTotal = nTasksPrefixsum.back() + workPerSc.back().size();
-	tasks.resize(numTasksTotal);
-	std::vector<ScScTask> scScTasks(numTasksTotal);
+	std::vector<ScScTask> tasks(numTasksTotal);	
 
 	// Build all the tasks and update the scMeta
 	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
 		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			const bool bondedTask = workPerSc[scId][i].areBonded;
+			//const bool bondedTask = workPerSc[scId][i].areBonded;
 			ScScTask task;
-			task.nointeractionMatrixIndex = bondedTask ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
+			task.nointeractionMatrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative != -1 ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
 			task.scIds[0] = scId;
 			task.scIds[1] = workPerSc[scId][i].queryScId;
 			task.resultIndices[0] = workPerSc[scId][i].resultIndexRelativeSelf + nResultsPrefixsum[scId];
 			task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
+			//task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
 			tasks[nTasksPrefixsum[scId] + i] = task;
 		}
 
@@ -724,37 +914,41 @@ bool Engine::MakeSuperClusterTasksCPU() {
 		superClusterMetas[scId].nResults = nResultsReserved[scId];
 	}
 
-	const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
-	nointeractionMatrices.resize(numNointeractionMatricesTotal);
+	//const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
+	//nointeractionMatrices.resize(numNointeractionMatricesTotal);
 
 
 
 	// Build all the nointeractionMatrices
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
-		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			if (!workPerSc[scId][i].areBonded)
-				continue;
+	const std::vector<BoolMatrix16x16> nointeractionMatrices = BuildNointeractionMatrices(superClusterMetas, nBondedmatricesReserved, nBondedMatricesPrefixsum, pClustersMeta, workPerSc, box.particleBondedToParticle);
+	//for (const auto& mat : nointeractionMatrices) {
+	//	mat.Print();
+	//}
+	//{
+	//	std::vector<std::set<int>> expectedLjInteractions(16);
+	//	for (int row = 0; row < 16; row++) {
+	//		for (int col = 0; col < 16; col++) {
+	//			if (col == 8 && row == 8)
+	//				int aa = 0;
+	//			auto _row = nointeractionMatrices[0].GetRow(row);
+	//			if (!nointeractionMatrices[0].Get(_row, col)) {
+	//				int pid0 = superClusterMetas[0].particlesIds[row];
+	//				int pid1 = superClusterMetas[0].particlesIds[col];
+	//				expectedLjInteractions[pid0].insert(pid1);
+	//			}
+	//		}
+	//	}
+	//	for (int pid = 0; pid < 16; pid++) {
+	//		for (auto& interactPid : expectedLjInteractions[pid]) {
+	//			printf("%d ", interactPid);
+	//		}
+	//		printf("\n");
+	//	}
+	//}
 
-			const int queryScId = workPerSc[scId][i].queryScId;
-			BoolMatrix16x16 nointeractionMatrix{};
 
-			std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[queryScId]);
-
-
-			for (int col = 0; col < 16; ++col) {
-				for (int row = 0; row < 16; ++row) {
-					const bool noInteraction = box.particleBondedToParticle[particleIdsSelf[row]].contains(particleIdsQuery[col]);
-					nointeractionMatrix.Set(row, col, noInteraction);
-				}
-			}
-
-
-			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
-			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
-		}
-	}
-
+	//DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
+	//DebugUtils::VerifyIdentical
 
 
 	// Push back to device
@@ -764,12 +958,32 @@ bool Engine::MakeSuperClusterTasksCPU() {
 	scscTasksDevice = GenericCopyToDevice(tasks);
 	noInteractionMatricesDevice = GenericCopyToDevice(nointeractionMatrices);
 
+	nResults = nResultsPrefixsum.back() + nResultsReserved.back();
 	cudaFree(scResultsDevice);
-	cudaMalloc(&scResultsDevice, sizeof(SCResult)* tasks.size());
-	cudaMemset(scResultsDevice, 0, sizeof(SCResult)* tasks.size());
+	cudaMalloc(&scResultsDevice, sizeof(SCResult)* nResults);
+	cudaMemset(scResultsDevice, 0, sizeof(SCResult)* nResults);
 
+	nTasks = numTasksTotal;
+	if (simulation->getStep() == 787) {
+		int a = 0;
+	}
 	return true;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

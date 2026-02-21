@@ -35,6 +35,7 @@ struct Int3 {
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 	constexpr int InnerProduct() const { return x * y * z; }
+	constexpr int Min() const { return std::min(x, std::min(y, z)); }
 
 	__device__ __host__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
@@ -47,7 +48,6 @@ struct Int3 {
 
 	int x = 0, y = 0, z = 0;
 };
-
 
 
 struct Float3 {
@@ -70,6 +70,7 @@ struct Float3 {
 	constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
 	constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
 	constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
+	constexpr bool operator != (const Float3& a) const { return !(*this == a); }
 	constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
 	constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
 	constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
@@ -277,6 +278,9 @@ struct ForceEnergy {
 		potE += a.potE;
 	}
 	
+	__host__ bool operator != (const ForceEnergy& a) const {
+		return (force != a.force) || (potE != a.potE);
+	}
 };
 
 struct ParticleQuickData {

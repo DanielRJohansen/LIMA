@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
-const int STEPS_PER_UPDATE = 100;
+const int STEPS_PER_UPDATE = 1;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
@@ -121,16 +121,16 @@ void Environment::verifyBox() {
 
 
 
-#ifdef LIMAKERNELDEBUGMODE
-	if (print_compound_positions) {
-		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
-			Compound* comp = &simulation->compounds_host[c];
-			for (int p = 0; p < comp->n_particles; p++) {
-				printf("%d   ", comp->particle_global_ids[p]);
-			}
-		}
-	}
-#endif
+//#ifdef LIMAKERNELDEBUGMODE
+//	if (print_compound_positions) {
+//		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
+//			Compound* comp = &simulation->compounds_host[c];
+//			for (int p = 0; p < comp->n_particles; p++) {
+//				printf("%d   ", comp->particle_global_ids[p]);
+//			}
+//		}
+//	}
+//#endif
 }
 
 bool Environment::prepareForRun() {
@@ -157,6 +157,8 @@ bool Environment::prepareForRun() {
 
 	// TEMP, this is a bad solution ?? TODO NOW
 	this->compounds = simulation->box_host->compounds;
+	this->pClusters = simulation->box_host->persistentClusters;
+	this->pClusterMeta = simulation->box_host->persistentClustersMetadata;
 
 	boxparams = simulation->box_host->boxparams;
 	coloringMethod = simulation->simparams_host.coloring_method;
@@ -368,20 +370,20 @@ void Environment::handleStatus(const int64_t step, bool emVariant) {
 		return;
 	}
 
-	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {
-		const std::chrono::milliseconds duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - time0);
-		const double duration_ms = duration.count();
-
+	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {		
+		auto duration = std::chrono::steady_clock::now() - time0;
+		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
+		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
 		//// First clear the current line
 		//printf("\r\033[K");
 		// Move cursor to the beginning of the line and clear it
 		printf("\033[1000D\033[K");
 
 		printf("Step #%06llu", step);
-		printf("\tAvg. time: %.2fms", duration_ms / STEPS_PER_UPDATE);
+		printf("\tAvg. time: %.2fms", avgSteptime);
 
 		time0 = std::chrono::steady_clock::now();
-		avgStepTimes.emplace_back(duration_ms / STEPS_PER_UPDATE);
+		avgStepTimes.emplace_back(avgSteptime);
 
 
 
@@ -392,7 +394,7 @@ void Environment::handleStatus(const int64_t step, bool emVariant) {
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
 		const double totalNsSimulated = nStepsSinceLast * simparamsCopy->dt; // [ns]
-		const double wall_time_sec = duration.count() * 1e-3;
+		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		newStatus.simulationPerformance = ns_per_day;
 		simStatus = newStatus;
@@ -417,8 +419,11 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
-		display->Render(std::make_unique<Rendering::SimulationTask>(
+		/*display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
+		), stepwise);*/
+		display->Render(std::make_unique<Rendering::SimulationTask1>(
+			engine->runstatus.most_recent_positions, pClusters, pClusterMeta, boxparams, info, coloringMethod, simStatus
 		), stepwise);
 		step_at_last_render = engine->runstatus.current_step;
 		engine->runstatus.most_recent_positions = nullptr;

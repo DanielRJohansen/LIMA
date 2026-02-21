@@ -36,6 +36,14 @@ namespace EngineUtils {
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
 		return pos_tadd1;
 	}
+	constexpr static Float3 IntegratePositionVVS(const Float3& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
+		if constexpr (!ENABLE_INTEGRATEPOSITION) {
+			return pos;
+		}
+
+		const Float3 pos_tadd1 = pos + (vel * dt + force * (0.5f / mass * dt * dt));				// precise version
+		return pos_tadd1;
+	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
 		return vel;
@@ -158,22 +166,37 @@ namespace EngineUtils {
 		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
 
-	__device__ inline void LogSolventData(const BoxParams& boxparams, const float& potE, const NodeIndex& origo, int id, const Coord& relPos, bool solvent_active, 
-		const Float3& force, const Float3& velocity, uint32_t step, float* poteBuffer, Float3* trajBuffer, float* velBuffer, int loggingInterval)
-	{
-		if (step % loggingInterval != 0) { return; }
+	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, SimParams simparams, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
+		//if (threadIdx.x >= compound.n_particles) { return; }
 
-		if (solvent_active) {
-			const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
-				loggingInterval, boxparams.total_particles_upperbound);
+		if (step % simparams.data_logging_interval != 0) { return; }
 
-			//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
+		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, simparams.data_logging_interval, totalParticlesUpperbound);
+		simDev->traj_buffer[index] = position;
+		simDev->potE_buffer[index] = potential;
+		simDev->vel_buffer[index] = speed;
+		simDev->forceBuffer[index] = force;
 
-			trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
-			poteBuffer[index] = potE;
-			velBuffer[index] = velocity.len();
-		}
+
+		//EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
+
+	//__device__ inline void LogSolventData(const BoxParams& boxparams, const float& potE, const NodeIndex& origo, int id, const Coord& relPos, bool solvent_active, 
+	//	const Float3& force, const Float3& velocity, uint32_t step, float* poteBuffer, Float3* trajBuffer, float* velBuffer, int loggingInterval)
+	//{
+	//	if (step % loggingInterval != 0) { return; }
+
+	//	if (solvent_active) {
+	//		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
+	//			loggingInterval, boxparams.total_particles_upperbound);
+
+	//		//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
+
+	//		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
+	//		poteBuffer[index] = potE;
+	//		velBuffer[index] = velocity.len();
+	//	}
+	//}
 
 	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
 		if constexpr (HARD_CUTOFF) {

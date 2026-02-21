@@ -196,7 +196,7 @@ struct alignas(4) CompoundCompact {
 	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
 	int n_particles = 0;
 
-#ifdef LIMAKERNELDEBUGMODE
+#if LIMAKERNELDEBUGMODE == 1
 	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
 #endif
 
@@ -214,7 +214,7 @@ struct alignas(4) CompoundCompact {
 		if (threadIdx.x < n_particles) {
 			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
 
-			#ifdef LIMAKERNELDEBUGMODE
+			#if LIMAKERNELDEBUGMODE == 1
 			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
 			#endif
 		}
@@ -222,13 +222,7 @@ struct alignas(4) CompoundCompact {
 };
 
 
-struct CompoundInterimState {
-	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // [J/mol]
-	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
 
-	Coord coords[MAX_COMPOUND_PARTICLES];
-};
 
 
 
@@ -266,8 +260,13 @@ struct Compound : public CompoundCompact {
 
 struct BondGroup {
 	struct ParticleRef {
-		int compoundId=0; // TODO: make uint16_t?
-		int localIdInCompound=0; // TODO: make uint16_t?
+		// TODO: REmove these 2!!
+		//int compoundId = 0; // TODO: make uint16_t?
+		//int localIdInCompound = 0; // TODO: make uint16_t?
+
+
+		int pcid;
+		int pid; // local to pcluster
 	};
 
 	static const int maxParticles = 64;
@@ -329,7 +328,7 @@ struct ParticleReference {
 struct NBParams {
 	float sigmaHalf = -1;		// [nm]
 	float epsilonSqrt = -1;		// [J/mol/nm]
-	float charge = -1;		// [kC/mol]
+	float charge = NAN;		// [kC/mol]
 };
 
 // Precomputed values for pairs of atomtypes
@@ -359,7 +358,7 @@ struct ForcefieldTinymol {
 	// Can make mass and epsilon half
 	struct TinyMolType {
 		float sigmaHalf = -1;		// [nm]
-		float epsilonSqrt = -1;		// [J/mol/nm]
+		float epsilonSqrt = -1;		// [J/mol/nm] // TODO: OPTIM: Should be 0 so the same logic handles missing data aswell as particles that doesnt interact with LJ
 		float mass = -1;		// [kg/mol]
 		float charge = -1;		// [kC/mol]
 	};
@@ -378,13 +377,37 @@ struct PData {
 //	float chargeProducts[3]; // [O-O, O-H, H-H]
 //};
 
+struct BondgroupRefManager {
+	static const int maxBondgroupApperances = 4;
+	int nBondgroupApperances = 0;
+	BondgroupRef bondgroupApperances[maxBondgroupApperances];
+	__host__ void Add(const BondgroupRef& bgRef) {
+		if (nBondgroupApperances >= maxBondgroupApperances)
+			throw std::runtime_error("Too many bondgroup apperances for a particle, increase maxBondgroupApperances or check your clustering");
+		bondgroupApperances[nBondgroupApperances++] = bgRef;
+	}
+};
+
 struct PersistentCluster {
 	static const int nParticles = 4;
 	PData pqd[nParticles];
 };
 struct PersistentClusterMeta {
-	int particleIdsGlobal[PersistentCluster::nParticles];
+	int particleIdsGlobal[PersistentCluster::nParticles]={ -1, -1, -1, -1 };
+	float mass[PersistentCluster::nParticles];		// [kg/mol]
+
+	char atomLetter[PersistentCluster::nParticles]; // For rendering
+	// I do not like this setup...
+	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
 };
+
+struct PersistentclusterInterimState {
+	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
+	Float3 forces_prev[PersistentCluster::nParticles]; // [J/mol]
+	Float3 vels_prev[PersistentCluster::nParticles];
+	//Coord coords[PersistentCluster::nParticles];
+};
+
 
 //struct PersistentCluster {
 //	ParticleQuickData pqd[4];
@@ -398,6 +421,9 @@ struct SuperCluster {
 	//Float3 positions[nParticles];
 	PData pData[nParticles];
 
+#if LIMAKERNELDEBUGMODE == 1
+	Float3 center;
+#endif
 
 	/*float x[nParticles];
 	float y[nParticles];
@@ -407,6 +433,15 @@ struct SuperCluster {
 
 struct SCResult {
 	ForceEnergy fe[SuperCluster::nParticles];
+
+	__host__ bool operator!=(const SCResult& other) const {
+		for (int i = 0; i < SuperCluster::nParticles; i++) {
+			if (fe[i].force != other.fe[i].force ||
+				fe[i].potE != other.fe[i].potE)
+				return true;
+		}
+		return false;
+	}
 };
 
 
@@ -414,10 +449,14 @@ class BoolMatrix16x16 {
 	uint16_t data[16]; // rowmajor
 
 public:
-
+	BoolMatrix16x16(){
+		memset(data, 0, sizeof(data));
+	}
 	constexpr static bool Get(const uint16_t& row, int col) {
 		return (row >> col) & 1;
 	}
+	template <typename T> constexpr static bool Get(const T& row, int col) = delete;
+
 	constexpr uint16_t GetRow(int row) const {
 		return data[row];
 	}
@@ -433,6 +472,16 @@ public:
 		else
 			data[row] &= ~(1 << col);		*/
 	}
+
+	__host__ void Print() const {
+		for (int r = 0; r < 16; r++) {
+			for (int c = 0; c < 16; c++) {
+				printf("%d ", Get(data[r], c) ? 1 : 0);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
 };
 class NoMat {};// Needed as a nonlocal variant of the one above.
 
@@ -440,17 +489,43 @@ class NoMat {};// Needed as a nonlocal variant of the one above.
 struct SuperClusterMeta {
 	// Set by clustering kernel
 	int pclusterIds[SuperCluster::nPclusters];
-	Float3 meanPos;
+	
+	//Float3 meanPos;
+
+
+	// For debugging, find a way to remove in release automatically
+	std::array<int, SuperCluster::nParticles> particlesIds;
 
 	// Set by taskbuilder kernel
-	int resultsStartIndex;
+	int resultsStartIndex; // TODO: Is int always safe here??
 	int nResults;
+
+	__host__ bool operator != (const SuperClusterMeta& other) const {
+		if (resultsStartIndex != other.resultsStartIndex ||
+			nResults != other.nResults)
+			return true;
+		for (int i = 0; i < SuperCluster::nPclusters; i++) {
+			if (pclusterIds[i] != other.pclusterIds[i])
+				return true;
+		}
+		return false;
+	}
 };
 
 struct ScScTask {
 	int scIds[2];
 	int resultIndices[2];
 	int nointeractionMatrixIndex = -1;
+
+	__host__ constexpr bool operator!=(const ScScTask& other) const {
+		for (int i = 0; i < 2; i++) {
+			if (scIds[i] != other.scIds[i])
+				return true;
+			if (resultIndices[i] != other.resultIndices[i])
+				return true;
+		}
+		return false;
+	}
 };
 
 

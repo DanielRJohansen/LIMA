@@ -158,6 +158,31 @@ namespace LIMAPOSITIONSYSTEM {
 		return getOnehotDirection(relpos, Coord::nanoToLima_i / 2);
 	}
 
+	// Returns a one-hot vector of the largest magnitude axis, IF the abs of that axis is above threshold
+	__device__ static NodeIndex GetTransferDirection(const Float3& pos, float threshold = 0.5f) { // optim consider making the threshold a template param
+		const float ax = fabsf(pos.x);
+		const float ay = fabsf(pos.y);
+		const float az = fabsf(pos.z);
+
+		// masks for which axis wins (ties resolved deterministically)
+		const int mx = (ax >= ay) & (ax >= az) & (ax >= threshold);
+		const int my = (ay > ax) & (ay >= az) & (ay >= threshold);
+		const int mz = (az > ax) & (az > ay) & (az >= threshold);
+
+		// sign without branching
+		const int sx = (pos.x > 0.f) - (pos.x < 0.f);
+		const int sy = (pos.y > 0.f) - (pos.y < 0.f);
+		const int sz = (pos.z > 0.f) - (pos.z < 0.f);
+
+		return {
+			mx * sx,
+			my * sy,
+			mz * sz
+		};
+	}
+
+
+
 	template <typename BoundaryCondition>
 	__host__ static float calcHyperDist(const NodeIndex& left, const NodeIndex& right) {
 		const NodeIndex right_hyper = getHyperNodeIndex<BoundaryCondition>(left, right);

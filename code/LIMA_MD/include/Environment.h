@@ -130,6 +130,8 @@ private:
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
 	std::vector<Compound> compounds;
 	BoxParams boxparams;
+	std::vector<PersistentCluster> pClusters;
+	std::vector<PersistentClusterMeta> pClusterMeta;
 
 	std::unique_ptr<BoxImage> boximage;
 

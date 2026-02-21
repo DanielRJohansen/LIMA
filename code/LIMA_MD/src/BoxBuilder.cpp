@@ -130,7 +130,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	box->boxparams.total_compound_particles = boxImage.total_compound_particles;
 	box->boxparams.total_particles += boxImage.total_compound_particles;
-
+	box->boxparams.totalParticles = boxImage.totalParticles;
 
 	//box->bpLutCollection = std::move(boxImage.bpLutCollection);
 

@@ -45,8 +45,6 @@ void __global__ MonitorPclusterEnergy(const PersistentClusterMeta* const pcMeta,
 	const float speed = vel_buffer[bufferIndex];
 	const float kinE = PhysicsUtils::calcKineticEnergy(speed, mass);	// remove direction from vel
 
-	printf("Speed %f mass %f\n", speed, mass);
-
 	const float totalE = potE + kinE;
 
 	/*energy[particle_index] = Float3(potE, kinE, totalE);
@@ -54,8 +52,6 @@ void __global__ MonitorPclusterEnergy(const PersistentClusterMeta* const pcMeta,
 
 	LAL::distributedSummation(energy, MAX_COMPOUND_PARTICLES);
 	__syncthreads();*/
-
-	printf("Step %lld bi %lld  kinE %f\n", step, bufferIndex, kinE);
 
 	data_out[bufferIndex] = double3{ potE, kinE, totalE };
 }

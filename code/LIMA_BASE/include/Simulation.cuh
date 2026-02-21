@@ -27,6 +27,7 @@ struct BoxParams {
 	int total_particles_upperbound = 0;
 	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
 	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
+	int totalParticles = 0;
 	int64_t degreesOfFreedom=0;
 
 	__host__ Float3 BoxSizeFloat() const {

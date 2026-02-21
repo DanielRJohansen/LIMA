@@ -1275,7 +1275,8 @@ __global__ void UpdatePdataPositions(const BoxState boxState, const ParticleToCo
 // blockDim=(16, 1, 1) - 1 warp per supercluster. Todo: use ydimension of 2, so we use 32 threads total
 template<typename BoundaryCondition, bool emvariant>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
-	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* pcMeta, int64_t step, float dt, ParticleToCompoundOrSolventMapping* particleToCompoundOrSolventMapping, int totalParticlesUpperbound) {
+	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* pcMeta, PersistentclusterInterimState* const pcStates, int64_t step, float dt,
+	ParticleToCompoundOrSolventMapping* particleToCompoundOrSolventMapping, int totalParticlesUpperbound) {
 	__shared__ Float3 positions[SuperCluster::nParticles];
 	__shared__ SuperClusterMeta scMetaShared;
 
@@ -1325,8 +1326,8 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		}
 		else {			
 
-			const Float3 forcePrev = pclusters[pcIdGlobal].forcesPrev[pidInPcluster];
-			const Float3 velPrev = pclusters[pcIdGlobal].velocitiesPrev[pidInPcluster];
+			const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
+			const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
 			const Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
 			//printf("PC speed %f dt %f force %f mass %f\n", vel_now.len(), dt, fe.force.len(), mass);
 			const Float3 pos_now = EngineUtils::IntegratePositionVVS(positions[threadIdx.x], vel_now, fe.force, mass, dt);
@@ -1338,9 +1339,6 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 			Float3 velScaled;
 			velScaled = vel_now * DeviceConstants::thermostatScalar;
 
-			// TODO: Get rid of one of these buffers all together
-			pclusters[pcIdGlobal].forcesPrev[pidInPcluster] = fe.force;
-			pclusters[pcIdGlobal].velocitiesPrev[pidInPcluster] = velScaled;
 			simDev->boxState.pclusterInterimStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
 			simDev->boxState.pclusterInterimStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
 

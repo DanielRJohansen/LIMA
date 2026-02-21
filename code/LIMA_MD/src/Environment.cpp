@@ -157,6 +157,8 @@ bool Environment::prepareForRun() {
 
 	// TEMP, this is a bad solution ?? TODO NOW
 	this->compounds = simulation->box_host->compounds;
+	this->pClusters = simulation->box_host->persistentClusters;
+	this->pClusterMeta = simulation->box_host->persistentClustersMetadata;
 
 	boxparams = simulation->box_host->boxparams;
 	coloringMethod = simulation->simparams_host.coloring_method;
@@ -417,8 +419,11 @@ bool Environment::handleDisplay(const std::vector<Compound>& compounds_host, con
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
 
-		display->Render(std::make_unique<Rendering::SimulationTask>(
+		/*display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
+		), stepwise);*/
+		display->Render(std::make_unique<Rendering::SimulationTask1>(
+			engine->runstatus.most_recent_positions, pClusters, pClusterMeta, boxparams, info, coloringMethod, simStatus
 		), stepwise);
 		step_at_last_render = engine->runstatus.current_step;
 		engine->runstatus.most_recent_positions = nullptr;

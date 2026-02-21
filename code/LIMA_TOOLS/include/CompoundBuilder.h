@@ -236,5 +236,6 @@ struct BoxImage {
 	std::vector<std::set<int>> particleBondedToParticle;
 	std::vector<std::set<int>> pclusterBondedToPcluster;
 	std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
+	int totalParticles = 0;
 };
  

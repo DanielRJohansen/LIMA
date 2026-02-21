@@ -54,6 +54,7 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
         drawBoxOutlineShader->Draw(VP, Float3{ boxSize });
 	}
 
+    // TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
     const glm::mat4 view = camera.View();
     const glm::mat4 projection = camera.Projection();
     
@@ -111,6 +112,76 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
             renderAtomsTemp[index].color = RenderUtilities::getColor(RenderUtilities::ATOM_TYPE::SOL);
             index++;
+        }
+    }
+
+    // Move the renderAtoms to device
+    {
+        // Map buffer object for writing from CUDA
+        RenderAtom* renderAtomsBuffer;
+        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+        size_t num_bytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+
+        if (num_bytes != task.boxparams.total_particles * sizeof(RenderAtom)) {
+            throw std::runtime_error("RenderAtom buffer size mismatch");
+        }
+
+        assert(num_bytes == task.boxparams.total_particles * sizeof(RenderAtom));
+
+        cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
+
+        // Release buffer object from CUDA
+        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    }
+}
+
+
+void Display::PrepareNewRenderTask(const Rendering::SimulationTask1& task)
+{
+    camera.Update(task.boxparams.BoxSizeFloat());
+
+    if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
+        throw std::runtime_error("Invalid number of compounds");
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    if (!drawBoxOutlineShader)
+        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+
+    if (!drawAtomsFromCudaShader)
+        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
+
+
+    //std::string windowText = window_title + "\n" + task.siminfo;
+    //glfwSetWindowTitle(window, windowText.c_str());
+
+    // Preprocess the renderAtoms
+    {
+        renderAtomsTemp.resize(task.boxparams.total_particles);
+
+        int index = 0;
+        for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
+            for (int pid = 0; pid < 4; pid++) {
+				const PersistentClusterMeta& pcMeta = task.pcMeta[pcid];
+
+                if (pcMeta.particleIdsGlobal[pid] == -1)
+					continue;
+
+                auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid]);
+				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
+                renderAtomsTemp[index].position = task.positions[pcid * PersistentCluster::nParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+
+                if (task.coloringMethod == ColoringMethod::Atomname)
+                    renderAtomsTemp[index].color = RenderUtilities::getColor(atomType);
+                else if (task.coloringMethod == ColoringMethod::Charge) {
+                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+                }
+                else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
+                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.boxparams.n_compounds);
+                }
+                index++;
+            }
         }
     }
 

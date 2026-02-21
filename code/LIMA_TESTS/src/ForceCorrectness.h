@@ -585,7 +585,6 @@ namespace ForceCorrectness {
 			env.CreateSimulation(grofile, topfile, params);
 
 			Box* box_host = env.getSimPtr()->box_host.get();
-			CompoundCoords* coordarray_ptr = &box_host->compoundCoordsBuffer[0];
 
 			env.run();
 

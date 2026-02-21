@@ -514,7 +514,7 @@ void Engine::_deviceMaster() {
 		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
 			<<<nSuperclusters, 16, 0, cudaStreams[0]>>>
-			(*forceEnergyInterims, sim_dev, scResultsDevice, superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, 
+			(*forceEnergyInterims, sim_dev, scResultsDevice, superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
 				step, simulation->simparams_host.dt, particleToCompoundOrSolventMappingDevice, totalParticlesUpperbound);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();

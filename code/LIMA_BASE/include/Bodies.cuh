@@ -391,15 +391,12 @@ struct BondgroupRefManager {
 struct PersistentCluster {
 	static const int nParticles = 4;
 	PData pqd[nParticles];
-
-	// I probably want these in another structure? Since its only used during integration..
-	Float3 forcesPrev[nParticles] = { Float3{}, Float3{}, Float3{}, Float3{} };
-	Float3 velocitiesPrev[nParticles] = { Float3{}, Float3{}, Float3{}, Float3{} };
 };
 struct PersistentClusterMeta {
 	int particleIdsGlobal[PersistentCluster::nParticles]={ -1, -1, -1, -1 };
 	float mass[PersistentCluster::nParticles];		// [kg/mol]
 
+	char atomLetter[PersistentCluster::nParticles]; // For rendering
 	// I do not like this setup...
 	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
 };

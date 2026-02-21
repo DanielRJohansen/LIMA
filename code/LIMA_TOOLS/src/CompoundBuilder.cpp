@@ -517,6 +517,7 @@ std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> Ma
 				pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
 				pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
 				pClusterMetas[pcId].mass[pidRel] = system.particles[pId].topologyAtom.mass / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
+				pClusterMetas[pcId].atomLetter[pidRel] = !system.particles[pId].topologyAtom.atomname.empty() ? system.particles[pId].topologyAtom.atomname[0] : ' ';
 				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
 			}
 		}
@@ -1000,6 +1001,15 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//	}
 	//}
 
+	int nParticles = 0;
+	//int nSolvents = 0;
+	for (const auto& pc : pClusterMetas) {
+		for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+			if (pc.particleIdsGlobal[pid] == -1)
+				continue;
+			nParticles++;
+		}
+	}
 
 
 	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
@@ -1021,7 +1031,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		pClusterMetas,
 		particleBondedToParticle,
 		pclusterBondedToPcluster,
-		particleToCompoundOrSolventMapping
+		particleToCompoundOrSolventMapping,
+		nParticles
 	);
 
 }

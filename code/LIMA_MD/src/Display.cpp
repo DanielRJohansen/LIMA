@@ -191,7 +191,7 @@ void Display::WaitForDisplayReady() {
 void Display::PrepareTask(Task& task) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
-        if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
+        if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>> || std::is_same_v<T, std::unique_ptr<SimulationTask1>>) {
             PrepareNewRenderTask(*taskPtr);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
@@ -246,6 +246,11 @@ void Display::Mainloop() {
 					const int nParticles = rendersettings.showSolvents ? taskPtr->boxparams.total_particles : taskPtr->boxparams.total_compound_particles;
                     overlay.Draw(rendersettings, taskPtr->simStatus);
                     _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
+                }
+                else if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask1>>) {
+					const int nParticles = taskPtr->boxparams.totalParticles;
+                    overlay.Draw(rendersettings, taskPtr->simStatus);
+					_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);

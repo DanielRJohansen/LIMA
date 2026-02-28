@@ -149,8 +149,8 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask1& task)
     if (!drawBoxOutlineShader)
         drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
-    if (!drawAtomsFromCudaShader)
-        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
+    if (!drawAtomsFromCpuShader)
+        drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr);
 
 
     //std::string windowText = window_title + "\n" + task.siminfo;
@@ -158,7 +158,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask1& task)
 
     // Preprocess the renderAtoms
     {
-        renderAtomsTemp.resize(task.boxparams.total_particles);
+        renderAtomsTemp.resize(task.boxparams.totalParticles);
 
         int index = 0;
         for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
@@ -178,7 +178,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask1& task)
                     renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
                 }
                 else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
-                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.boxparams.n_compounds);
+                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
                 }
                 index++;
             }
@@ -186,24 +186,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask1& task)
     }
 
     // Move the renderAtoms to device
-    {
-        // Map buffer object for writing from CUDA
-        RenderAtom* renderAtomsBuffer;
-        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
-        size_t num_bytes = 0;
-        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
-
-        if (num_bytes != task.boxparams.total_particles * sizeof(RenderAtom)) {
-            throw std::runtime_error("RenderAtom buffer size mismatch");
-        }
-
-        assert(num_bytes == task.boxparams.total_particles * sizeof(RenderAtom));
-
-        cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
-
-        // Release buffer object from CUDA
-        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
-    }
+    drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
 }
 
 

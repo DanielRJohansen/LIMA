@@ -250,7 +250,7 @@ void Display::Mainloop() {
                 else if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask1>>) {
 					const int nParticles = taskPtr->boxparams.totalParticles;
                     overlay.Draw(rendersettings, taskPtr->simStatus);
-					_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
+					_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
                 }
                 else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
                     _Render(taskPtr->molCollection, taskPtr->boxSize);
@@ -337,6 +337,7 @@ bool Display::initGLFW() {
         return 0;
     }
 #ifndef __linux__
+   
     glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
 #endif
 
@@ -393,15 +394,14 @@ void Display::TestDisplay() {
 	Display display{};
 	
 	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
-	Compound compound;
-	compound.n_particles = 1;
-	compound.atomLetters[0] = '_';
 	BoxParams params;
     params.boxSize = { 3, 2, 1 };
-	params.total_compound_particles = 1;
-	params.total_particles = 1;
-	params.total_particles_upperbound = 1;
-	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, "", Atomname), true);
+	params.totalParticles = 1;
+    std::vector<PersistentCluster> pclusters(1);
+    std::vector<PersistentClusterMeta> pcMetas(1);
+    pcMetas.front().particleIdsGlobal[0] = 0;
+    pcMetas.front().atomLetter[0] = 'l';
+	display.Render(std::make_unique<Rendering::SimulationTask1>(position.get(), pclusters, pcMetas, params, "", Atomname), true);
 }
 
 //void Display::RenderGrofile(const GroFile& grofile) {

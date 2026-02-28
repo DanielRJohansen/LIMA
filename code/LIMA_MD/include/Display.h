@@ -170,11 +170,6 @@ private:
 
 	const float PI = 3.1415f;
 
-	const int screenHeight = 1400;
-	const int screenWidth = 1400;
-
-	const int screensize[2] = {3840, 2160};
-
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
 };

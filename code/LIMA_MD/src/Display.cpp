@@ -322,17 +322,29 @@ bool Display::initGLFW() {
         throw std::runtime_error("\nGLFW failed to initialize");
     }
 
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    if (!primaryMonitor) {
+        glfwTerminate();
+        return -1;
+    }
+
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+    int displayWidth = mode->width;
+    int displayHeight = mode->height;
+
+    int2 windowSize = { (float)displayHeight * 0.8f, (float)displayHeight * 0.8f };
+
+
     // Create a windowed mode window and its OpenGL context
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE); // Do not focus the window on creation
-    window = glfwCreateWindow(screenWidth, screenHeight, window_title.c_str(), NULL, NULL);
+    window = glfwCreateWindow(windowSize.x, windowSize.y, window_title.c_str(), NULL, NULL);
     if (!window)
     {
         glfwTerminate();
         return 0;
     }
 #ifndef __linux__
-   
-    glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
+    glfwSetWindowPos(window, 50, 50);
 #endif
 
     // Make the window's context current

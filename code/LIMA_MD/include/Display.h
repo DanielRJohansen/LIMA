@@ -52,18 +52,6 @@ public:
 namespace Rendering {
 	struct SimulationTask {
 		const Float3* positions;
-		const std::vector<Compound> compounds;
-		const BoxParams boxparams;
-
-		std::string siminfo; // Will be output in the window header
-		/*int64_t step;
-		float temperature;*/
-		ColoringMethod coloringMethod;
-		SimStatus simStatus;
-	};
-
-	struct SimulationTask1 {
-		const Float3* positions;
 		std::vector<PersistentCluster> pclusters;
 		std::vector<PersistentClusterMeta> pcMeta; // TODO: This could just be a ref, since it remains constant?
 		const BoxParams boxparams;
@@ -86,14 +74,7 @@ namespace Rendering {
 		std::set<int> highlightedAtoms;
 	};
 
-	struct CompoundsTask {
-		std::vector<Compound> compounds;
-		std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
-		Float3 boxSize;
-		int nAtoms;
-	};
-
-	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<SimulationTask1>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>, std::unique_ptr<CompoundsTask>>;
+	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
 }
 
 
@@ -140,10 +121,8 @@ private:
 	void PrepareTask(Rendering::Task& task);
 
 	void PrepareNewRenderTask(const Rendering::SimulationTask&);
-	void PrepareNewRenderTask(const Rendering::SimulationTask1&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
 	void PrepareNewRenderTask(Rendering::GrofileTask&);
-	void PrepareNewRenderTask(Rendering::CompoundsTask&);
 
 
 	// Interfacing

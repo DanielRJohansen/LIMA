@@ -191,16 +191,13 @@ void Display::WaitForDisplayReady() {
 void Display::PrepareTask(Task& task) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
-        if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>> || std::is_same_v<T, std::unique_ptr<SimulationTask1>>) {
+        if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
             PrepareNewRenderTask(*taskPtr);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
             PrepareNewRenderTask(*taskPtr);
         }
         else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-			PrepareNewRenderTask(*taskPtr);
-		}
-		else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
 			PrepareNewRenderTask(*taskPtr);
 		}
 		else {
@@ -247,7 +244,7 @@ void Display::Mainloop() {
                     overlay.Draw(rendersettings, taskPtr->simStatus);
                     _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
                 }*/
-                if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask1>>) {
+                if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
 					const int nParticles = taskPtr->boxparams.totalParticles;
                     overlay.Draw(rendersettings, taskPtr->simStatus);
 					_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
@@ -258,9 +255,6 @@ void Display::Mainloop() {
                 else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
                     _RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
 				}
-                else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
-                    _RenderAtoms(taskPtr->boxSize, taskPtr->nAtoms, true);
-                }
                 }, currentRenderTask);
         }
 
@@ -401,7 +395,7 @@ void Display::TestDisplay() {
     std::vector<PersistentClusterMeta> pcMetas(1);
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
-	display.Render(std::make_unique<Rendering::SimulationTask1>(position.get(), pclusters, pcMetas, params, "", Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), pclusters, pcMetas, params, "", Atomname), true);
 }
 
 //void Display::RenderGrofile(const GroFile& grofile) {

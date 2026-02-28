@@ -409,7 +409,7 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 		/*display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
 		), stepwise);*/
-		display->Render(std::make_unique<Rendering::SimulationTask1>(
+		display->Render(std::make_unique<Rendering::SimulationTask>(
 			engine->runstatus.most_recent_positions, pClusters, pClusterMeta, boxparams, info, coloringMethod, simStatus
 		), stepwise);
 		step_at_last_render = engine->runstatus.current_step;

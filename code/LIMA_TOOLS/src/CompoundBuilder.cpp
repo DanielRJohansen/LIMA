@@ -192,7 +192,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 }
 
 void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const {
-	const float allowedScalar = energyMinimizationMode ? 7.f : 3.f;//1.9999f;
+	const float allowedScalar = 1.9f;
 
 	for (const auto& bond : singlebonds)
 	{
@@ -496,14 +496,15 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 
 	return persistentClusters;
 }
-std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> MakePersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system, LIMAForcefield& forcefield) {
+std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, ParticleToPclusterMap> MakePersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system, LIMAForcefield& forcefield) {
 
 	std::vector<PersistentCluster> pClusters(clustersParticleIds.size());
 	std::vector<PersistentClusterMeta> pClusterMetas(clustersParticleIds.size());
+	ParticleToPclusterMap particleToPclusterMap(system.particles.size());
 
 	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
 		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
-			const int pId = clustersParticleIds[pcId][pidRel];
+			const int pId = clustersParticleIds[pcId][pidRel];			
 
 			if (pId == -1) {
 				pClusters[pcId].pqd[pidRel] = PData{};
@@ -519,11 +520,14 @@ std::pair<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>> Ma
 				pClusterMetas[pcId].mass[pidRel] = system.particles[pId].topologyAtom.mass / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
 				pClusterMetas[pcId].atomLetter[pidRel] = !system.particles[pId].topologyAtom.atomname.empty() ? system.particles[pId].topologyAtom.atomname[0] : ' ';
 				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
+
+				// Also set mapping
+				particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };
 			}
 		}
 	}
 
-	return { pClusters, pClusterMetas };
+	return { pClusters, pClusterMetas, particleToPclusterMap };
 }
 
 // returns bondedParticles, bondedPclusters
@@ -839,15 +843,15 @@ const std::vector<ParticleToCompoundMapping> MakeParticleToCompoundidMap(const s
 	return particleToCompoundidMap;
 }
 
-const ParticleToPclusterMap MakeParticleToPclusterMap(const std::vector<CompoundFactory>& compounds, int nParticlesTotal) {
-	ParticleToPclusterMap map(nParticlesTotal);
-	for (int cid = 0; cid < compounds.size(); cid++) {
-		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
-			map[compounds[cid].global_ids[pid]] = ParticleToPclusterMapping{ cid, pid };  // cid;
-		}
-	}
-	return map;
-}
+//const ParticleToPclusterMap MakeParticleToPclusterMap(const std::vector<CompoundFactory>& compounds, int nParticlesTotal) {
+//	ParticleToPclusterMap map(nParticlesTotal);
+//	for (int cid = 0; cid < compounds.size(); cid++) {
+//		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
+//			map[compounds[cid].global_ids[pid]] = ParticleToPclusterMapping{ cid, pid };  // cid;
+//		}
+//	}
+//	return map;
+//}
 
 
 
@@ -887,11 +891,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	const std::vector<AtomGroup> atomGroups = GroupAtoms(molecules, superTopology);
 
-
 	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size, atomGroups, simparams.bc_select);
 
 	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
-	const ParticleToPclusterMap particleToPclusterMap = MakeParticleToPclusterMap(compounds, superTopology.particles.size());
+	//const ParticleToPclusterMap particleToPclusterMap = MakeParticleToPclusterMap(compounds, superTopology.particles.size());
 
 
 	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), superTopology, particleToCompoundidMap);
@@ -908,7 +911,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 				int a = 0;
 			compounds[cid].addIdOfBondedCompound(id);
 		}
-
 	}
 
 	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
@@ -916,21 +918,40 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	// Make PersistenClusters
 	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, particleBondedToParticlesLookup, grofile.box_size);
 
-	auto [pClusters, pClusterMetas] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
+	auto [pClusters, pClusterMetas, particleToPclusterMap] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
 
 	auto [particleBondedToParticle, pclusterBondedToPcluster] = GetBondedPersistentClusters(pClustersParticleids, superTopology);
 
 
 
-
-	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap);
+	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap, pClusters.data());
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
 
-	//bondGroups[0].singlebonds[1].params.kb *= .000000001f;
-	////std::swap(bondGroups.front().singlebonds[1], bondGroups.front().singlebonds[0]);
-	//bondGroups.front().nSinglebonds = 2;
-	//bondGroups.front().nAnglebonds = 0;
-	//bondGroups.front().nDihedralbonds = 0;
+	//{
+	//	std::vector<Float3> bgPositions;
+	//	for (int pid = 0; pid < bondGroups.front().nParticles; pid++) {
+	//		auto pref = bondGroups.front().particles[pid];
+	//		bgPositions.push_back(pClusters[pref.pcid].pqd[pref.pid].position);
+	//	}
+
+	//	for (int i = 0; i < bondGroups.front().nSinglebonds; i++) {
+	//		int id0 = bondGroups.front().singlebonds[i].atom_indexes[0];
+	//		int id1 = bondGroups.front().singlebonds[i].atom_indexes[1];
+	//		Float3 p0 = bgPositions[id0];
+	//		Float3 p1 = bgPositions[id1];
+	//		float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(p0, p1, grofile.box_size, simparams.bc_select);
+	//		//printf("p0 %d %f %f %f p1 %d %f %f %f dist %f\n", id0, p0.x, p0.y, p0.z, id1, p1.x, p1.y, p1.z, dist);
+	//		int a = 0;
+
+	//		int id0Global = pClusterMetas[bondGroups.front().particles[id0].pcid].particleIdsGlobal[bondGroups.front().particles[id0].pid];
+	//		int id1Global = pClusterMetas[bondGroups.front().particles[id1].pcid].particleIdsGlobal[bondGroups.front().particles[id1].pid];
+	//		int id0Groid = grofile.atoms[superTopology.particles[id0Global].indexInGrofile].gro_id;
+	//		int id1Groid = grofile.atoms[superTopology.particles[id1Global].indexInGrofile].gro_id;
+
+	//		printf("id0Global %d id1Global %d id0Groid %d id1Groid %d dist %f\n", id0Global, id1Global, id0Groid, id1Groid, dist);
+	//	}
+	//}
+
 
 	for (int i = 0; i < particleToCompoundidMap.size(); i++) {
 		//if (particleToCompoundidMap[i].compoundId == -1)

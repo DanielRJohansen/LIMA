@@ -39,7 +39,7 @@ namespace Bondtypes {
 		SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
 
 		Parameters params;
-		uint8_t atom_indexes[2] = { 0,0 };	// Relative to the compund
+		uint8_t atom_indexes[2] = { 0,0 };	// Relative to the bondgroup
 		const static int nAtoms = 2;
 	};
 

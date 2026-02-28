@@ -15,10 +15,10 @@ namespace LimaForcecalc
 
 
 template <bool energyMinimize>
-__device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond::Parameters& bondParams, Float3* results, float& potE, bool bridgekernel) {
+__device__ inline void calcSinglebondForces(const Float3& p0, const Float3& p1, const SingleBond::Parameters& bondParams, Float3* results, float& potE, bool bridgekernel, int id0=-1, int id1=-1) {
 	// Calculates bond force on both particles					
 	// Calculates forces as J/mol*M								
-	const Float3 difference = pos_a - pos_b;						// [nm]
+	const Float3 difference = p0 - p1;						// [nm]
 	const float error = difference.len() - bondParams.b0;				// [nm]
 
 	if constexpr (ENABLE_POTE) {
@@ -39,6 +39,7 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	results[1] = -dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
 
 	if constexpr (FORCE_CHECKS) {
+		//printf("p0 %d %f %f %f p1 %d %f %f %f dist %f\n", id0, p0.x, p0.y, p0.z, id1, p1.x, p1.y, p1.z, difference.len());
 		if (results[0].isNan()) {
 			printf("Singlebond produces NAN force: kb %f b0 %f dist %f\n", bondParams.kb, bondParams.b0, difference.len());
 		}
@@ -324,7 +325,9 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 				pb->params,
 				forces,
 				potential,
-				bridgekernel
+				bridgekernel,
+				(int)pb->atom_indexes[0],
+				(int)pb->atom_indexes[1]
 			);
 		}
 

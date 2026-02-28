@@ -189,17 +189,17 @@ public:
 
 	//void AddParticles(const std::span<const uint32_t>& particleIds);
 
-	void AddBond(const ParticleToPclusterMap&, const SingleBondFactory&);
-	void AddBond(const ParticleToPclusterMap&, const PairBondFactory&);
-	void AddBond(const ParticleToPclusterMap&, const AngleBondFactory&);
-	void AddBond(const ParticleToPclusterMap&, const DihedralBondFactory&);
-	void AddBond(const ParticleToPclusterMap&, const ImproperDihedralBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const SingleBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const PairBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const AngleBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const DihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const ImproperDihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
 	
 	std::array<int, maxParticles> particleGlobalIds;
 	std::unordered_map<int, uint8_t> particleGlobalToLocalId;
 
 	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-		const ParticleToPclusterMap&);
+		const ParticleToPclusterMap&, const PersistentCluster* pClusters);
 
 	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
 		const std::vector<BondGroupFactory>&, int nParticlesTotal);

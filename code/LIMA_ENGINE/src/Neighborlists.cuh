@@ -24,18 +24,9 @@ namespace NeighborList {
 
 	static const int compoundsMaxNearbyGridnodes = 128; // OPTIM too high
 
-	struct CompoundInfo {
-		Float3 keyPositions[CompoundInteractionBoundary::k];	// [nm] absolute pos
-		float radii[CompoundInteractionBoundary::k];			// [nm]
-        uint16_t compoundId = -1;
-	};
 
-    struct alignas(32) Gridnode {
-        static const int maxCompoundsInNode = 16;
 
-		CompoundInfo compoundInfos[maxCompoundsInNode];
-		int nCompoundsInNode;
-	};
+
 
 	struct Buffers {
 		int* compoundsNearbyGridnodes = nullptr;
@@ -75,7 +66,7 @@ namespace NeighborList {
 	};
 
 	class Controller {
-		Gridnode* grid = nullptr;
+		//Gridnode* grid = nullptr;
 		Buffers buffers;
 
 		template <typename BoundaryCondition>
@@ -86,8 +77,8 @@ namespace NeighborList {
 
 		Controller(const BoxParams& boxParams)/* : buffers(boxParams.n_compounds, BoxGrid::BlocksTotal(boxParams.boxSize))*/
 		{
-			cudaMalloc(&grid, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxParams.boxSize)) * sizeof(Gridnode));
-			cudaMemset(grid, 0, sizeof(Gridnode) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxParams.boxSize)));
+			//cudaMalloc(&grid, BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxParams.boxSize)) * sizeof(Gridnode));
+			//cudaMemset(grid, 0, sizeof(Gridnode) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxParams.boxSize)));
 
 			cudaDeviceSynchronize();
 		}

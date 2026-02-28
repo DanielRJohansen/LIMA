@@ -84,19 +84,19 @@ namespace LIMAPOSITIONSYSTEM {
 	/// </summary>
 	/// <param name="state">Absolute positions of particles as float [nm]</param>
 	/// <param name="key_particle_index">Index of centermost particle of compound</param>
-	static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, Int3 boxlen_nm, BoundaryConditionSelect bc) {
-		CompoundCoords compoundcoords{};
+	//static CompoundCoords positionCompound(const std::vector<Float3>& positions,  int key_particle_index, Int3 boxlen_nm, BoundaryConditionSelect bc) {
+	//	CompoundCoords compoundcoords{};
 
-		compoundcoords.origo = PositionToNodeIndexNM(positions[key_particle_index]);
-		BoundaryConditionPublic::applyBC(compoundcoords.origo, boxlen_nm, bc);
+	//	compoundcoords.origo = PositionToNodeIndexNM(positions[key_particle_index]);
+	//	BoundaryConditionPublic::applyBC(compoundcoords.origo, boxlen_nm, bc);
 
-		for (int i = 0; i < positions.size(); i++) {
-			// Allow some leeway, as different particles in compound may fit different gridnodes
-			compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, Float3::FromInt3(boxlen_nm), bc);
+	//	for (int i = 0; i < positions.size(); i++) {
+	//		// Allow some leeway, as different particles in compound may fit different gridnodes
+	//		compoundcoords.rel_positions[i] = getRelativeCoord(positions[i], compoundcoords.origo, 3, Float3::FromInt3(boxlen_nm), bc);
 
-		}
-		return compoundcoords;
-	}
+	//	}
+	//	return compoundcoords;
+	//}
 
 
 
@@ -115,20 +115,7 @@ namespace LIMAPOSITIONSYSTEM {
 	//}
 
 
-	// The following two functions MUST ALWAYS be used together
-	// Shift refers to the wanted difference in the relative positions, thus origo must move -shift.
-	// ONLY CALL FROM THREAD 0
-	__device__ static Coord shiftOrigo(CompoundCoords& coords, const int keyparticle_index) {
 
-		const NodeIndex shift = NodeIndex{
-			coords.rel_positions[keyparticle_index].x / (Coord::nanoToLima_i / 2),	// /2 so we switch to new index once we are halfway there
-			coords.rel_positions[keyparticle_index].y / (Coord::nanoToLima_i / 2),
-			coords.rel_positions[keyparticle_index].z / (Coord::nanoToLima_i / 2)
-		};
-		EngineUtilsWarnings::verifyCompoundOrigoshiftDuringIntegrationIsValid(shift, coords.rel_positions[keyparticle_index]);
-		coords.origo += shift;
-		return -Coord{ shift };		
-	}
 
 	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
 		const int32_t magnitude_x = std::abs(relpos.x);
@@ -217,16 +204,6 @@ namespace LIMAPOSITIONSYSTEM {
 // This workaround is to have these functions as static class fucntinos instead of namespace, which avoid the issue somehow. fuck its annoying tho
 class LIMAPOSITIONSYSTEM_HACK{
 public:
-
-	__device__ static void shiftRelPos(CompoundCoords& coords, const Coord& shift_lm) {
-		coords.rel_positions[threadIdx.x] += shift_lm;
-	}
-
-	template <typename BoundaryCondition>
-	__device__ static void applyBC(CompoundCoords& coords) {
-		if (threadIdx.x != 0) { return; }
-		BoundaryCondition::applyBC(coords.origo);
-	}
 
 
 	/*__device__ static Coord GetRelShiftFromOrigoShift_Coord(const NodeIndex& from, const NodeIndex& to) {

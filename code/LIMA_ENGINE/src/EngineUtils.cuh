@@ -148,24 +148,6 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	// TODO: Clean this up, used args
-	__device__ inline void LogCompoundData(const CompoundCompact& compound, int totalParticlesUpperbound, CompoundCoords& compound_coords, 
-		const float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
-		float* poteBuffer, Float3* trajBuffer, float* velBuffer, Float3* forceBuffer, const float speed, int64_t step)
-	{
-		if (threadIdx.x >= compound.n_particles) { return; }
-
-		if (step % simparams.data_logging_interval != 0) { return; }
-
-		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(threadIdx.x, blockIdx.x, step, simparams.data_logging_interval, totalParticlesUpperbound);
-		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
-		poteBuffer[index] = *potE_sum;
-		velBuffer[index] = speed;
-		forceBuffer[index] = force;
-
-		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
-	}
-
 	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, SimParams simparams, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
 		//if (threadIdx.x >= compound.n_particles) { return; }
 

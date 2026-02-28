@@ -143,34 +143,6 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
 
 
-template <int n>
-std::array<uint8_t, n> ConvertGlobalAtomidsToCompoundlocalIds(const std::vector<ParticleToCompoundMapping>& p2cMap, const std::array<uint32_t, n>& global_atom_ids) {
-	std::array<uint8_t, n> localIds;
-	for (int i = 0; i < n; i++) {
-		localIds[i] = static_cast<uint8_t>(p2cMap[global_atom_ids[i]].localIdInCompound);
-	}
-	return localIds;
-}
-
-void CompoundFactory::addIdOfBondedCompound(int id) {
-	if (n_bonded_compounds == max_bonded_compounds) { throw std::runtime_error("Failed to add bonded compound id to compound"); }
-
-	for (int i = 0; i < n_bonded_compounds; i++) {
-		// If the other compound is already saved, move do nothing
-		if (bonded_compound_ids[i] == id)
-			return;
-	}
-	bonded_compound_ids[n_bonded_compounds++] = id;
-}
-
-void CompoundFactory::AddBondgroupReference(int particleId, const BondgroupRef& bgRef) {
-	if (bondgroupReferences[particleId].nBondgroupApperances >= bondgroupReferences[particleId].maxBondgroupApperances)
-		throw std::runtime_error("Failed to add bondgroup reference to compound");
-
-	bondgroupReferences[particleId].bondgroupApperances[bondgroupReferences[particleId].nBondgroupApperances++] = bgRef;
-}
-
-
 
 std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int>>> SeparateMolecules(const SuperTopology& system) {
 	std::vector<std::vector<int>> molecules;
@@ -673,74 +645,6 @@ const std::vector<AtomGroup> GroupAtoms(const std::vector<std::vector<int>>& par
 	return atomGroups;
 }
 
-
-std::vector<CompoundFactory> CreateCompounds(const SuperTopology& topology, const Float3& boxlen_nm,
-	const std::vector<AtomGroup>& atomGroups, BoundaryConditionSelect bc_select)
-{
-	std::vector<CompoundFactory> compounds;
-	std::vector<int> atomGroupToCompoundIdMap(atomGroups.size());
-
-	for (int atomgroupIndex = 0; atomgroupIndex < atomGroups.size(); atomgroupIndex++) {
-		const AtomGroup& atomGroup = atomGroups[atomgroupIndex];
-
-		const bool is_bonded_with_previous_residue = atomgroupIndex > 0 && atomGroup.idsOfBondedAtomgroups.contains(atomgroupIndex - 1);
-		const bool compound_has_room_for_residue = atomgroupIndex > 0 && compounds.back().hasRoomForRes(atomGroup.atomIds.size());
-
-		// If we are either a new molecule, or same molecule but the current compound has no more room, make new compound
-		if (atomgroupIndex == 0 || !is_bonded_with_previous_residue || !compound_has_room_for_residue) {
-			if (compounds.size() >= MAX_COMPOUNDS) {
-				throw std::runtime_error(std::format("Cannot handle more than {} compounds", MAX_COMPOUNDS).c_str());
-			}
-
-			compounds.emplace_back(CompoundFactory{});
-		}
-
-		atomGroupToCompoundIdMap[atomgroupIndex] = compounds.size() - 1;
-
-		// Add all atoms of residue to current compound
-		for (int i = 0; i < atomGroup.atomIds.size(); i++) {
-			const int atom_gid = atomGroup.atomIds[i];
-			compounds.back().addParticle(topology.particles[atom_gid], atom_gid, boxlen_nm, bc_select);
-		}
-	}
-
-	// Now find all compounds that are bonded to each other
-	for (int atomGroupId = 0; atomGroupId < atomGroups.size(); atomGroupId++) {
-		for (const int& bondedAtomGroupId : atomGroups[atomGroupId].idsOfBondedAtomgroups) {
-
-			const int cidLeft = atomGroupToCompoundIdMap[atomGroupId];
-			const int cidRight = atomGroupToCompoundIdMap[bondedAtomGroupId];
-
-			// If two bonded atomGroups map to 2 different compounds, those compounds must also be bonded
-			if (cidLeft != cidRight) {
-				compounds[cidLeft].addIdOfBondedCompound(cidRight);
-				compounds[cidRight].addIdOfBondedCompound(cidLeft);
-			}
-		}
-	}
-
-	return compounds;
-}
-
-const std::vector<ParticleToCompoundMapping> MakeParticleToCompoundidMap(const std::vector<CompoundFactory>& compounds, int nParticlesTotal) {
-	std::vector<ParticleToCompoundMapping> particleToCompoundidMap(nParticlesTotal);
-	for (int cid = 0; cid < compounds.size(); cid++) {
-		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
-			particleToCompoundidMap[compounds[cid].global_ids[pid]] = ParticleToCompoundMapping{ cid, pid };  // cid;
-		}
-	}
-	return particleToCompoundidMap;
-}
-
-//const ParticleToPclusterMap MakeParticleToPclusterMap(const std::vector<CompoundFactory>& compounds, int nParticlesTotal) {
-//	ParticleToPclusterMap map(nParticlesTotal);
-//	for (int cid = 0; cid < compounds.size(); cid++) {
-//		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
-//			map[compounds[cid].global_ids[pid]] = ParticleToPclusterMapping{ cid, pid };  // cid;
-//		}
-//	}
-//	return map;
-//}
 
 
 

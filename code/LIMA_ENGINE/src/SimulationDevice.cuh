@@ -97,7 +97,6 @@ struct SimulationDevice {
 	const BoxParams boxparams;
 
 	uint8_t* nParticlesInCompoundsBuffer = nullptr;
-	CompoundInteractionBoundary* compoundsInteractionBoundaryBuffer = nullptr;
 
 	// Databuffers, NOT owned by this class, so dont free them
 	float* potE_buffer = nullptr;

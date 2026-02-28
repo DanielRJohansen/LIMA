@@ -110,31 +110,7 @@ namespace LIMA_MOLECULEBUILD {
 	);
 }
 
-class CompoundFactory : public Compound//, public CompoundInterimState 
-{
-public:
-	CompoundFactory() {
-		memset(this, 0, sizeof(CompoundFactory));
-	}
 
-	void addParticle(const ParticleFactory&,int global_id, const Float3& boxlen_nm, BoundaryConditionSelect bc);
-
-	bool hasRoomForRes(int n_particles_in_res) const {
-		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
-	}
-
-	void addIdOfBondedCompound(int id);
-
-	void AddBondgroupReference(int particleId, const BondgroupRef& bgRef);
-
-	static void CalcCompoundMetaInfo(const Float3& boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
-
-
-	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
-	int global_ids[MAX_COMPOUND_PARTICLES]{};		// For debug ddont like this TODO TODO DELETE
-
-	int indicesInGrofile[MAX_COMPOUND_PARTICLES];	// Temp prolly, used to map compounds atoms back to their index in grofile
-};
 
 
 class BondGroupFactory : public BondGroup {

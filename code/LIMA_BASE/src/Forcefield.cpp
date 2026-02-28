@@ -300,10 +300,6 @@ std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionP
 }
 
 
-int LIMAForcefield::GetActiveTinymoltypeIndex(const std::string& query) {
-	return tinymolTypes->GetActiveIndex(query);
-}
-
 void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file) 
 {
 	for (const auto& line : file.GetSection(TopologySection::includes)) {	
@@ -327,7 +323,6 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		atomtype.parameters.sigmaHalf = sigma * 0.5f;
 
 		ljParameters->insert(atomtype);
-		tinymolTypes->insert(atomtype);
 	}
 	for (const auto& line : file.GetSection(TopologySection::bondtypes)) {
 		std::istringstream iss(line);

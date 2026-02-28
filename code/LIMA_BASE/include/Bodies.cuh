@@ -143,15 +143,6 @@ using namespace Bondtypes;
 
 
 
-struct CompoundCoords {
-	__device__ void loadData(const CompoundCoords& coords) {
-		if (threadIdx.x == 0) { origo = coords.origo; };
-		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
-	}
-	
-	NodeIndex origo{};								// [nm]
-	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [nm]
-};
 
 
 
@@ -163,23 +154,6 @@ struct CompoundCoords {
 
 
 
-
-
-
-
-
-
-
-
-
-
-// Instead of having a single key_particle and an single radius, we now have multiple
-struct CompoundInteractionBoundary {
-    static const int k = 2;
-
-	float radii[k];	// [nm]
-	int key_particle_indices[k];
-};
 
 struct alignas(4) CompoundCompact {
 	constexpr CompoundCompact() {}
@@ -230,7 +204,6 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 
 // Rather large unique structures in global memory, that can be partly loaded when needed
 struct Compound : public CompoundCompact {
-	CompoundInteractionBoundary interaction_boundary;
 	int centerparticle_index = -1;			// Index of particle initially closest to CoM
 
 	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides

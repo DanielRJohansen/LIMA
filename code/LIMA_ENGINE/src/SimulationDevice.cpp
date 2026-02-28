@@ -93,18 +93,6 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 		genericCopyToDevice(temp, &signals, 1);
 	}
 
-	/*std::vector<uint8_t> nParticlesInCompoundsVec(boxparams.n_compounds);
-	for (int i = 0; i < boxparams.n_compounds; i++) {
-		nParticlesInCompoundsVec[i] = box_host->compounds[i].n_particles;
-	}
-	nParticlesInCompoundsBuffer = GenericCopyToDevice(nParticlesInCompoundsVec);
-
-	std::vector<CompoundInteractionBoundary> compoundInteractionBoundariesVec(boxparams.n_compounds);
-	for (int i = 0; i < boxparams.n_compounds; i++) {
-		compoundInteractionBoundariesVec[i] = box_host->compounds[i].interaction_boundary;
-	}
-	compoundsInteractionBoundaryBuffer = GenericCopyToDevice(compoundInteractionBoundariesVec);*/
-
 	potE_buffer = databuffers.potE_buffer;
 	traj_buffer = databuffers.traj_buffer;
 	vel_buffer = databuffers.vel_buffer;
@@ -124,7 +112,6 @@ void SimulationDevice::FreeMembers() {
 
 
 	cudaFree(nParticlesInCompoundsBuffer);
-	cudaFree(compoundsInteractionBoundaryBuffer);
 
 	//cudaFree(transfermodule_array);
 	cudaFree(signals);

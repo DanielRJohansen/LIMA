@@ -68,81 +68,78 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
-    camera.Update(task.boxparams.BoxSizeFloat());
+    //camera.Update(task.boxparams.BoxSizeFloat());
 
-    if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
-        throw std::runtime_error("Invalid number of compounds");
+    //if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
+    //    throw std::runtime_error("Invalid number of compounds");
 
-    auto start = std::chrono::high_resolution_clock::now();
+    //auto start = std::chrono::high_resolution_clock::now();
 
-    if (!drawBoxOutlineShader)
-        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+    //if (!drawBoxOutlineShader)
+    //    drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
-    if (!drawAtomsFromCudaShader)
-        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
+    //if (!drawAtomsFromCudaShader)
+    //    drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.boxparams.total_particles, &renderAtomsBufferCudaResource);
 
 
-    //std::string windowText = window_title + "\n" + task.siminfo;
-    //glfwSetWindowTitle(window, windowText.c_str());
+    ////std::string windowText = window_title + "\n" + task.siminfo;
+    ////glfwSetWindowTitle(window, windowText.c_str());
 
-    // Preprocess the renderAtoms
-    {
-        renderAtomsTemp.resize(task.boxparams.total_particles);
+    //// Preprocess the renderAtoms
+    //{
+    //    renderAtomsTemp.resize(task.boxparams.total_particles);
 
-        int index = 0;
-        for (int cid = 0; cid < task.compounds.size(); cid++) {
-            for (int pid = 0; pid < task.compounds[cid].n_particles; pid++) {
-                auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(task.compounds[cid].atomLetters[pid]);
-                renderAtomsTemp[index].position = task.positions[cid * MAX_COMPOUND_PARTICLES + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+    //    int index = 0;
+    //    for (int cid = 0; cid < task.compounds.size(); cid++) {
+    //        for (int pid = 0; pid < task.compounds[cid].n_particles; pid++) {
+    //            auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(task.compounds[cid].atomLetters[pid]);
+    //            renderAtomsTemp[index].position = task.positions[cid * MAX_COMPOUND_PARTICLES + pid].Tofloat4(RenderUtilities::getRadius(atomType));
 
-                if (task.coloringMethod == ColoringMethod::Atomname)
-                    renderAtomsTemp[index].color = RenderUtilities::getColor(atomType);
-                else if (task.coloringMethod == ColoringMethod::Charge) {
-                    const float chargeNormalized = (static_cast<float>(task.compounds[cid].atom_charges[pid]) + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
-                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
-                }
-                else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
-                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(cid) / task.boxparams.n_compounds);
-                }
-                index++;
-            }
-        }
-        for (int sid = 0; sid < task.boxparams.nTinymolParticles; sid++) {
-            renderAtomsTemp[index].position = task.positions[MAX_COMPOUND_PARTICLES * task.compounds.size() + sid].Tofloat4(RenderUtilities::getRadius(RenderUtilities::ATOM_TYPE::SOL));
+    //            if (task.coloringMethod == ColoringMethod::Atomname)
+    //                renderAtomsTemp[index].color = RenderUtilities::getColor(atomType);
+    //            else if (task.coloringMethod == ColoringMethod::Charge) {
+    //                const float chargeNormalized = (static_cast<float>(task.compounds[cid].atom_charges[pid]) + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
+    //                renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+    //            }
+    //            else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
+    //                renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(cid) / task.boxparams.n_compounds);
+    //            }
+    //            index++;
+    //        }
+    //    }
+    //    for (int sid = 0; sid < task.boxparams.nTinymolParticles; sid++) {
+    //        renderAtomsTemp[index].position = task.positions[MAX_COMPOUND_PARTICLES * task.compounds.size() + sid].Tofloat4(RenderUtilities::getRadius(RenderUtilities::ATOM_TYPE::SOL));
 
-            renderAtomsTemp[index].color = RenderUtilities::getColor(RenderUtilities::ATOM_TYPE::SOL);
-            index++;
-        }
-    }
+    //        renderAtomsTemp[index].color = RenderUtilities::getColor(RenderUtilities::ATOM_TYPE::SOL);
+    //        index++;
+    //    }
+    //}
 
-    // Move the renderAtoms to device
-    {
-        // Map buffer object for writing from CUDA
-        RenderAtom* renderAtomsBuffer;
-        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
-        size_t num_bytes = 0;
-        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+    //// Move the renderAtoms to device
+    //{
+    //    // Map buffer object for writing from CUDA
+    //    RenderAtom* renderAtomsBuffer;
+    //    cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+    //    size_t num_bytes = 0;
+    //    cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
 
-        if (num_bytes != task.boxparams.total_particles * sizeof(RenderAtom)) {
-            throw std::runtime_error("RenderAtom buffer size mismatch");
-        }
+    //    if (num_bytes != task.boxparams.total_particles * sizeof(RenderAtom)) {
+    //        throw std::runtime_error("RenderAtom buffer size mismatch");
+    //    }
 
-        assert(num_bytes == task.boxparams.total_particles * sizeof(RenderAtom));
+    //    assert(num_bytes == task.boxparams.total_particles * sizeof(RenderAtom));
 
-        cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
+    //    cudaMemcpy(renderAtomsBuffer, renderAtomsTemp.data(), sizeof(RenderAtom) * renderAtomsTemp.size(), cudaMemcpyHostToDevice);
 
-        // Release buffer object from CUDA
-        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
-    }
+    //    // Release buffer object from CUDA
+    //    cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+    //}
 }
 
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask1& task)
 {
     camera.Update(task.boxparams.BoxSizeFloat());
-
-    if (task.boxparams.n_compounds < 0 || task.boxparams.n_compounds > 1000000)
-        throw std::runtime_error("Invalid number of compounds");
 
     auto start = std::chrono::high_resolution_clock::now();
 

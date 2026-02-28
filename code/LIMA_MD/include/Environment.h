@@ -104,7 +104,7 @@ private:
 	void handleStatus(int64_t step, bool emVariant);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const std::vector<Compound>& compounds_host, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
+	bool handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
 
 	void sayHello();
 
@@ -128,7 +128,7 @@ private:
 	ColoringMethod coloringMethod;	// Not ideal to have here..
 
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
-	std::vector<Compound> compounds;
+	//std::vector<Compound> compounds;
 	BoxParams boxparams;
 	std::vector<PersistentCluster> pClusters;
 	std::vector<PersistentClusterMeta> pClusterMeta;

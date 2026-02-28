@@ -394,7 +394,7 @@ struct PersistentCluster {
 };
 struct PersistentClusterMeta {
 	int particleIdsGlobal[PersistentCluster::nParticles]={ -1, -1, -1, -1 };
-	float mass[PersistentCluster::nParticles];		// [kg/mol]
+	float mass[PersistentCluster::nParticles] = { 0,0,0,0 };		// [kg/mol]
 
 	char atomLetter[PersistentCluster::nParticles]; // For rendering
 	// I do not like this setup...

@@ -7,51 +7,18 @@
 
 struct BoxConfig {
 	BoxConfig() {};
-	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences);
-	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
+	static BoxConfig Create(const Box& boxHost);
 	void FreeMembers() const;
-
-	// CompoundData used ALOT, kept here for memory locality
-	const uint8_t* const compoundsAtomtypes = nullptr;
-	const float* const compoundsAtomCharges = nullptr;	// [kC/mol]
-	const Compound* const compounds = nullptr;
-
-	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
-	const BondedParticlesLUT* const bpLUTs = nullptr;
-
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds = nullptr;
-	const BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
 };
 
 struct BoxState {
 	BoxState() {};
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, PersistentclusterInterimState*,
-		//TinyMolParticleState* tinyMolParticlesState,
-		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, 
-		ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed,
-		BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
-		);
+	BoxState(PersistentclusterInterimState*);
 	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers() const;
 
-	PersistentclusterInterimState* const pclusterInterimStates = nullptr;
-	NodeIndex* const compoundOrigos = nullptr;
-	Float3* const compoundsRelposNm = nullptr;
-
-	//TinyMolParticleState* const tinyMolParticlesState;
-	SolventBlock* const solventblockgrid_circularqueue = nullptr;
-
-	// TODO: OPTIM: IMPORTANT: For now these are duplicates of whats in SolventBlock. We need a SolventBlockHost and SolventBlockDevice for optimal performance anyway
-	int* const nParticlesInSolventblock = nullptr; // Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality
-	int* const nParticlesPrefixsumInX = nullptr; // Exclusive. Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality 
-	ParticleQuickData* const solventsParticleQuickData = nullptr;
-	ParticleQuickData* const solventsParticleQuickDataCompressed = nullptr; // TEMP, we should just overwrite the other one above..
-	BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences = nullptr;
-
-	//Float3* const solventsRelposNm=nullptr;
-	//uint8_t* const solventsAtomtypeIds = nullptr; // Not necessary now that we only have h2o, and its always OHH. But futureproofing maybe..
+	PersistentclusterInterimState* const pclusterInterimStates = nullptr;	
 };
 
 struct AdamState {
@@ -60,14 +27,14 @@ struct AdamState {
 };
 
 
-struct alignas(128) CompoundQuickData {
-	Float3 relPos[MAX_COMPOUND_PARTICLES];
-	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
-	float charges[MAX_COMPOUND_PARTICLES];
-
-	// Returns ptr to device buffer
-	__host__ static CompoundQuickData* CreateBuffer(const Simulation& sim);
-};
+//struct alignas(128) CompoundQuickData {
+//	Float3 relPos[MAX_COMPOUND_PARTICLES];
+//	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
+//	float charges[MAX_COMPOUND_PARTICLES];
+//
+//	// Returns ptr to device buffer
+//	__host__ static CompoundQuickData* CreateBuffer(const Simulation& sim);
+//};
 
 
 struct DatabuffersDeviceController {
@@ -143,7 +110,7 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups, int nParticles, int nPclusters);
+	ForceEnergyInterims(int nBondgroups, int nParticles, int nPclusters);
 	void Free() const;
 
 	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {

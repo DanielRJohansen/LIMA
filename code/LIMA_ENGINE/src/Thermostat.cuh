@@ -16,34 +16,22 @@ namespace _Thermostat {
 
 	struct TotalKineticEnergyCompounds {
 		const PersistentclusterInterimState* const states;
-		const Compound* const compounds;
+		const PersistentClusterMeta* const pcMeta;
 
 		__host__ __device__
-			TotalKineticEnergyCompounds(const PersistentclusterInterimState* const _states, const Compound* const compounds)
-			: states(_states), compounds(compounds){}
-
+			TotalKineticEnergyCompounds(const PersistentclusterInterimState* const _states, const PersistentClusterMeta* const _pcMeta)
+			: states(_states), pcMeta(_pcMeta){}
 		__host__ __device__
 			float operator()(int idx) const {
-			int compoundIdx = idx / MAX_COMPOUND_PARTICLES;
-			int particleIdx = idx % MAX_COMPOUND_PARTICLES;
-			const float mass = compounds[compoundIdx].atomMasses[particleIdx];
+			int pcId = idx / PersistentCluster::nParticles;
+			int pId = idx % PersistentCluster::nParticles;
+			const float mass = pcMeta[pcId].mass[pId];
 
-			const Float3& velocity = states[compoundIdx].vels_prev[particleIdx];
+			const Float3& velocity = states[pcId].vels_prev[pId];
 			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO OPTIM: calcKineticEnergy can use lenSquared instead, save a sqrtf!!		
 		}
 	};
 
-	__global__ void CalcKineticEnergySolvents(const SolventBlock* const blocks, float* outbufferRelativeToSolventId) {
-		if (threadIdx.x >= blocks[blockIdx.x].nParticles)
-			return;
-
-		const float mass = DeviceConstants::tinymolForcefield.types[blocks[blockIdx.x].states[threadIdx.x].tinymolTypeIndex].mass;
-		const Float3& velocity = blocks[blockIdx.x].states[threadIdx.x].vel_prev;		
-		const float kinE = PhysicsUtils::calcKineticEnergy(velocity.len(), mass);
-
-		const uint32_t solventId = blocks[blockIdx.x].ids[threadIdx.x];
-		outbufferRelativeToSolventId[solventId] = kinE;
-	}
 
 	float ComputeThermostatScalar(float temperature, const SimParams& simparams) {
 		const float target_temp = 310.f;  // Target temperature in [K]
@@ -63,41 +51,26 @@ namespace _Thermostat {
 
 class Thermostat {
 	float* intermediate = nullptr;
-	int totalParticlesUpperbound;
-	int nCompounds;
-	int nSolvents;
+	int nPclusters = 0;
 
 public:
-	Thermostat(int nCompounds, int nSolvents, int totalParticlesUpperbound) : 
-		totalParticlesUpperbound(totalParticlesUpperbound),
-		nCompounds(nCompounds),
-		nSolvents(nSolvents)
+	Thermostat(int nPclusters)
+		: nPclusters(nPclusters)
 	{
-		cudaMalloc(&intermediate, sizeof(float) * totalParticlesUpperbound); // totalParticlesUpperbound = MAX_COMPOUND_PARTICLES * nCompounds + nSolvents
-		cudaMemset(intermediate, 0, sizeof(float) * totalParticlesUpperbound);
+		cudaMalloc(&intermediate, sizeof(float) * nPclusters * PersistentCluster::nParticles);
+		cudaMemset(intermediate, 0, sizeof(float) * nPclusters * PersistentCluster::nParticles);
 	}
 
 	// {temp,thermostatScalar}
-	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step) {
-		// Step 1: Calculate kinetic energy for each compound particle and store in the intermediate buffer
-		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nCompounds * MAX_COMPOUND_PARTICLES),
-			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.pclusterInterimStates, simDev->boxConfig.compounds));
-
+	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step, const PersistentClusterMeta* const pcMetaDevice) {
+		// Step 1: Calculate kinetic energy for each Pcluster and store in the intermediate buffer
+		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::nParticles),
+			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.pclusterInterimStates, pcMetaDevice));
 		LIMA_UTILS::genericErrorCheckNoSync("TotalKineticEnergyCompounds");
-
-		// Step 2: Calculate kinetic energy for each solvent particle and store in the next segment of the intermediate buffer
-		//const int nThreads = BoxGrid::BlocksTotal(boxparams.boxSize) * SolventBlock::MAX_SOLVENTS_IN_BLOCK;
-		SolventBlock* solventblockBufferAtStep = SolventBlocksCircularQueue::getBlockPtr(simDev->boxState.solventblockgrid_circularqueue, boxparams.boxSize, 0,step);
-		/*std::vector<SolventBlock> blocksHost = GenericCopyToHost(solventblockBufferAtStep, BoxGrid::BlocksTotal(boxparams.boxSize));*/
-
 		cudaDeviceSynchronize();
-		const size_t indexForFirstParticle = nCompounds * MAX_COMPOUND_PARTICLES;
-		_Thermostat::CalcKineticEnergySolvents << <BoxGrid::BlocksTotal(boxparams.boxSize), SolventBlock::MAX_SOLVENTS_IN_BLOCK >> > (solventblockBufferAtStep, &intermediate[indexForFirstParticle]);
-		cudaDeviceSynchronize();
-		LIMA_UTILS::genericErrorCheckNoSync("CalcKineticEnergySolvents");
 
 		// Step 3: Sum up all kinetic energy values (compounds + solvents)
-		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + totalParticlesUpperbound, 0.0);
+		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + nPclusters * PersistentCluster::nParticles, 0.0);
 
 		//printf("Total kinetic energy: %f\n", totalKineticEnergy); 
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
@@ -106,7 +79,7 @@ public:
 	}
 
 	~Thermostat() {
-		cudaFree(intermediate);
+		//cudaFree(intermediate);
 	}
 };
 

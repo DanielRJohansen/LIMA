@@ -210,19 +210,12 @@ public:
 
 
 // A translation unit between Gro file representation, and LIMA Box representation
-struct BoxImage {
-	const std::vector<CompoundFactory> compounds;
-	const int32_t total_compound_particles;
-
-	std::vector<BondedParticlesLUT> bpLutCollection;
-	
-	const std::vector<TinyMolFactory> solvent_positions;
+struct BoxImage {	
 
 	GroFile grofile;
 
 	const ForceField_NB forcefield;
 
-	const ForcefieldTinymol tinymolTypes;
 
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 
@@ -235,7 +228,7 @@ struct BoxImage {
 	std::vector<PersistentClusterMeta> persistentClustersMetadata;
 	std::vector<std::set<int>> particleBondedToParticle;
 	std::vector<std::set<int>> pclusterBondedToPcluster;
-	std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
+	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
 	int totalParticles = 0;
 };
  

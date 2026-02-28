@@ -108,7 +108,6 @@ private:
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
 	BondGroup* bondgroups = nullptr;
-	CompoundQuickData* compoundQuickData = nullptr;
 
 	//SuperClusterControl// TODO: Handle lifetimes!
 	std::unique_ptr<SuperClustersControl> superClustersControl;
@@ -121,7 +120,6 @@ private:
 	PersistentClusterMeta* pClusterMetaDevice = nullptr;
 	SCResult* scResultsDevice = nullptr;
 	size_t nResults = 0;
-	ParticleToCompoundOrSolventMapping* particleToCompoundOrSolventMappingDevice = nullptr;
 	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
 
 

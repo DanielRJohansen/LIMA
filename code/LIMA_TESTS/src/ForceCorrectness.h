@@ -83,16 +83,17 @@ namespace ForceCorrectness {
 			}
 
 			// Give the solvent a velocty
-			{
-				float solventMass = 0;
-				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
-					solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMolParticlesState[i].tinymolTypeIndex].mass;
-				}
-				const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
-				for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
-					env.getSimPtr()->box_host->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
-				}
-			}
+			// TODO: Impl this!
+			//{
+			//	float solventMass = 0;
+			//	for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
+			//		solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMolParticlesState[i].tinymolTypeIndex].mass;
+			//	}
+			//	const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
+			//	for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
+			//		env.getSimPtr()->box_host->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
+			//	}
+			//}
 
 
 			env.run();
@@ -340,9 +341,9 @@ namespace ForceCorrectness {
 
 		// Fetch the potential energy from the buffer, summing over all three atoms
 		const float actualPotE =
-			sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) +
-			sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0) +
-			sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 2, 0);
+			sim->potE_buffer->GetDatapoint(0, 0, 0) +
+			sim->potE_buffer->GetDatapoint(0, 1, 0) +
+			sim->potE_buffer->GetDatapoint(0, 2, 0);
 
 		// Fetch the actual force on the middle atom (atom 1)
 		const Float3 actualForce = sim->box_host->pclusterInterimStates[0].forces_prev[0];

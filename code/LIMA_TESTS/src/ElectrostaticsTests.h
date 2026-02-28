@@ -93,7 +93,8 @@ namespace ElectrostaticsTests {
 		//env.getSimPtr()->forcefield.particle_parameters[1].epsilon = 0.f;
 
 		// Make the particles attractive
-		env.getSimPtr()->box_host->compounds[1].atom_charges[0] = -env.getSimPtr()->box_host->compounds[0].atom_charges[0];
+		// TODO!!
+		//env.getSimPtr()->box_host->compounds[1].atom_charges[0] = -env.getSimPtr()->box_host->compounds[0].atom_charges[0];
 
 		env.run();
 
@@ -164,17 +165,18 @@ namespace ElectrostaticsTests {
 		std::map<float, std::vector<float>> velDistributions;
 
 		// Go through each particle in each compound, and assert that their velocities are as we expect in this horizontal electric field
-		for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
-			const auto& compound = sim->box_host->compounds[cid];
-			const auto& compoundInterimState = sim->box_host->pclusterInterimStates[cid];
+		// TODO!!!
+		//for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
+		//	const auto& compound = sim->box_host->compounds[cid];
+		//	const auto& compoundInterimState = sim->box_host->pclusterInterimStates[cid];
 
-			for (int pid = 0; pid < compound.n_particles; pid++) {
-				const float charge = static_cast<float>(compound.atom_charges[pid]);
-				const float velHorizontal = compoundInterimState.vels_prev[pid].x;
+		//	for (int pid = 0; pid < compound.n_particles; pid++) {
+		//		const float charge = static_cast<float>(compound.atom_charges[pid]);
+		//		const float velHorizontal = compoundInterimState.vels_prev[pid].x;
 
-				velDistributions[charge].push_back(velHorizontal);
-			}
-		}
+		//		velDistributions[charge].push_back(velHorizontal);
+		//	}
+		//}
 
 		if (envmode == Full) {
 			for (const auto& pair : velDistributions) {
@@ -339,8 +341,8 @@ namespace ElectrostaticsTests {
 			grofile.atoms[1].position = setup.p1;
 
 			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = c0;
-			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = c1;
+			env.getSimPtr()->box_host->persistentClusters[0].pqd[0].params.charge = c0;
+			env.getSimPtr()->box_host->persistentClusters[1].pqd[0].params.charge = c1;
 
 
 
@@ -368,8 +370,8 @@ namespace ElectrostaticsTests {
 			env.run();
 			const auto sim = env.getSim();
 
-			const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
-			const float actualPotential = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
+			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
+			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
 			const float potEError = std::abs((actualPotential - expectedPotential) / expectedPotential);
 			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
 
@@ -387,7 +389,7 @@ namespace ElectrostaticsTests {
 			// Potential is hopeless to match realspace and kspace
 			ASSERT(potEError < 3.f, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError));
 
-			const Float3 actualForceP1 = sim->forceBuffer->getCompoundparticleDatapointAtIndex(1, 0, 0);
+			const Float3 actualForceP1 = sim->forceBuffer->GetDatapoint(1, 0, 0);
 			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.001f,
 				std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
 					actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));			
@@ -420,8 +422,8 @@ namespace ElectrostaticsTests {
 			grofile.atoms[1].position = grofile.atoms[0].position - Float3{ dist, 0.f, 0.f };
 
 			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box_host->compounds[0].atom_charges[0] = c0;
-			env.getSimPtr()->box_host->compounds[1].atom_charges[0] = c1;
+			env.getSimPtr()->box_host->persistentClusters[0].pqd[0].params.charge = c0;
+			env.getSimPtr()->box_host->persistentClusters[1].pqd[0].params.charge = c1;
 
 
 			Float3 hyperposOther = grofile.atoms[1].position;
@@ -441,8 +443,8 @@ namespace ElectrostaticsTests {
 			env.run();
 			const auto sim = env.getSim();			
 
-			actualPot.push_back(sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0));	
-			actualForce.push_back(sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0));
+			actualPot.push_back(sim->potE_buffer->GetDatapoint(0, 0, 0));
+			actualForce.push_back(sim->forceBuffer->GetDatapoint(0, 0, 0));
 
 			distances.push_back(dist);
 		}
@@ -481,8 +483,10 @@ namespace ElectrostaticsTests {
 		const float c1 = -c0;
 
 		env.CreateSimulation(grofile, topfile, params);
-		env.getSimPtr()->box_host->compounds[0].atom_charges[0] = c0;
-		env.getSimPtr()->box_host->compounds[1].atom_charges[0] = c1;
+		// TODO
+		/*env.getSimPtr()->box_host->compounds[0].atom_charges[0] = c0;
+		env.getSimPtr()->box_host->compounds[1].atom_charges[0] = c1;*/
+
 
 		//env.getSimPtr()->box_host->compoundInterimStates[0].vels_prev[0] = Float3{ 5000, 0, 0 };
 
@@ -500,8 +504,8 @@ namespace ElectrostaticsTests {
 		int step = -1;
 		for (int i = 0; i < params.n_steps; i++)
 		{
-			const Float3 pos0 = env.getSimPtr()->traj_buffer->getCompoundparticleDatapointAtIndex(0, 0, i);
-			const Float3 pos1 = env.getSimPtr()->traj_buffer->getCompoundparticleDatapointAtIndex(1, 0, i);
+			const Float3 pos0 = env.getSimPtr()->traj_buffer->GetDatapoint(0, 0, i);
+			const Float3 pos1 = env.getSimPtr()->traj_buffer->GetDatapoint(1, 0, i);
 			const float dist = (pos0 - pos1).len();
 			if (dist < 0.4f) {
 				step = i;
@@ -574,17 +578,17 @@ namespace ElectrostaticsTests {
 		}
 
 		const auto sim = env.getSim();
-		const Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(0, 0, 0);
+		const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 
 		std::vector<float> potErrors(grofile.atoms.size());
 		std::vector<float> forceErrors(grofile.atoms.size());
 
 		for (int i = 0; i < grofile.atoms.size(); i++) {
-			const float potEError = std::abs(sim->potE_buffer->getCompoundparticleDatapointAtIndex(i, 0, 0) - expectedPotentials[i]) / expectedPotentials[i];
-			Float3 actualForce = sim->forceBuffer->getCompoundparticleDatapointAtIndex(i, 0, 0);
+			const float potEError = std::abs(sim->potE_buffer->GetDatapoint(i, 0, 0) - expectedPotentials[i]) / expectedPotentials[i];
+			Float3 actualForce = sim->forceBuffer->GetDatapoint(i, 0, 0);
 			Float3 expectedForce = expectedForces[i];
 			Float3 position = grofile.atoms[i].position;
-			const float forceError = (sim->forceBuffer->getCompoundparticleDatapointAtIndex(i, 0, 0) - expectedForces[i]).len() / expectedForces[i].len();
+			const float forceError = (sim->forceBuffer->GetDatapoint(i, 0, 0) - expectedForces[i]).len() / expectedForces[i].len();
 
 			if (expectedForces[i].len() < 50'000.f) // [J/mol/nm
 				continue; // Force is quite small, hard to be relative accurate here

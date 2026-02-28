@@ -1038,13 +1038,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//auto temp = compounds[78].particle_global_ids[8];
 
 	return std::make_unique<BoxImage>(
-		std::move(compounds),
-		static_cast<int>(totalCompoundParticles),
-		bpLutManager->Finish(),
-		std::move(tinyMols),
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
-		forcefield.GetTinymolTypes(),
 		superTopology,
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
@@ -1052,7 +1047,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		pClusterMetas,
 		particleBondedToParticle,
 		pclusterBondedToPcluster,
-		particleToCompoundOrSolventMapping,
 		nParticles
 	);
 

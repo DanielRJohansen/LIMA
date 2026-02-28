@@ -16,43 +16,13 @@ using namespace LIMA_Print;
 
 void InsertCompoundInBox(const PersistentCluster& pcluster, Box& box, const SimParams& simparams, Float3 offset = Float3{})
 {
-	//if (box.compounds.size() >= MAX_COMPOUNDS) {
-	//	throw std::runtime_error("Compounds surpass MAX_COMPOUNDS");
-	//}
-	//std::vector<Float3> positions;
-	//positions.reserve(MAX_COMPOUND_PARTICLES);
-	//for (int i = 0; i < compound.n_particles; i++) {
-	//	const Float3& extern_position = compound.positions[i];
-	//	positions.push_back(extern_position);
-	//}
-
-	///*CompoundCoords& coords_now = *box.compoundcoordsCircularQueue->getCoordarrayRef(0, box.boxparams.n_compounds);
-	//coords_now = */
-	//box.compoundCoordsBuffer.emplace_back(LIMAPOSITIONSYSTEM::positionCompound(positions, compound.centerparticle_index, box.boxparams.boxSize, simparams.bc_select));
-	//if (simparams.bc_select == PBC && !box.compoundCoordsBuffer.back().origo.isInBox(BoxGrid::NodesPerDim(box.boxparams.boxSize))) {
-	//	throw std::runtime_error(std::format("Invalid compound origo {}", box.compoundCoordsBuffer.back().origo.toString()));
-	//}
-
-	//CompoundInterimState compoundState{};
-	//memset(&compoundState, 0, sizeof(CompoundInterimState));
-	//for (int i = 0; i < compound.n_particles; i++) {		
-	//	compoundState.coords[i] = Coord(box.compoundCoordsBuffer.back().rel_positions[i]);
-	//}
-
 	PersistentclusterInterimState pcState{};
 	memset(&pcState, 0, sizeof(PersistentclusterInterimState));
 	for (int i = 0; i < PersistentCluster::nParticles; i++) {
-		//pcState.
+		//pcState.// TODO!!!
 	}
 	box.pclusterInterimStates.push_back(pcState);
 
-	//box.compounds.emplace_back(Compound{compound});	// Cast and copy only the base of the factory
-	//box.compoundInterimStates.emplace_back(compoundState);
-	//box.boxparams.n_compounds++;
-
-
-	//if (!simparams.enable_electrostatics)
-	//	memset(box.compounds.back().atom_charges, 0, sizeof(half) * MAX_COMPOUND_PARTICLES);
 }
 
 int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
@@ -121,15 +91,14 @@ int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& s
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
 	auto box = std::make_unique<Box>(boxImage.grofile.box_size);
 
-	box->compounds.reserve(boxImage.compounds.size());
 	/*box->compoundInterimStates.reserve(boxImage.compounds.size());
 	box->compoundCoordsBuffer.reserve(boxImage.compounds.size());*/
 	for (const PersistentCluster& pc : boxImage.persistentClusters) {
 		InsertCompoundInBox(pc, *box, simparams);
 	}	
 
-	box->boxparams.total_compound_particles = boxImage.total_compound_particles;
-	box->boxparams.total_particles += boxImage.total_compound_particles;
+	/*box->boxparams.total_compound_particles = boxImage.total_compound_particles;
+	box->boxparams.total_particles += boxImage.total_compound_particles;*/
 	box->boxparams.totalParticles = boxImage.totalParticles;
 
 	//box->bpLutCollection = std::move(boxImage.bpLutCollection);
@@ -140,11 +109,10 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);
 #endif
 
-	const int compoundparticles_upperbound = box->boxparams.n_compounds * MAX_COMPOUND_PARTICLES;
-	box->boxparams.total_particles_upperbound = compoundparticles_upperbound + box->boxparams.nTinymolParticles; // Compounds often read/write uncompressed, while tinymols always read/write compressed
+	
 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
-	box->boxparams.degreesOfFreedom = box->boxparams.total_particles * 3 - 0 - 3;
+	box->boxparams.degreesOfFreedom = box->boxparams.totalParticles * 3 - 0 - 3;
 
 	// I dont like doing this here..
 	if (!simparams.enable_electrostatics) {
@@ -159,7 +127,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->persistentClustersMetadata = boxImage.persistentClustersMetadata;
 	box->particleBondedToParticle = boxImage.particleBondedToParticle;
 	box->pclusterBondedToPcluster = boxImage.pclusterBondedToPcluster;
-	box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
+	//box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
 
 	return box;
 }
@@ -227,23 +195,23 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 }
 
 bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, bool verbose) {
-	
-	for (int cid = 0; cid < sim.box_host->boxparams.n_compounds; cid++) {
-		for (int pid = 0; pid < sim.box_host->compounds[cid].n_particles; pid++) 
-		{
-			const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
+//TODO!	
+	//for (int cid = 0; cid < sim.box_host->boxparams.n_compounds; cid++) {
+	//	for (int pid = 0; pid < sim.box_host->compounds[cid].n_particles; pid++) 
+	//	{
+	//		const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
 
-			Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-			BoundaryConditionPublic::applyBCNM(pos, sim.box_host->boxparams.BoxSizeFloat(), sim.simparams_host.bc_select);
+	//		Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
+	//		BoundaryConditionPublic::applyBCNM(pos, sim.box_host->boxparams.BoxSizeFloat(), sim.simparams_host.bc_select);
 
-			for (int i = 0; i < 3; i++) {
-				if (pos[i] < padding || pos[i] > (sim.box_host->boxparams.BoxSizeFloat()[i] - padding)) {
-					//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
-					return false;
-				}
-			}
-		}
-	}
+	//		for (int i = 0; i < 3; i++) {
+	//			if (pos[i] < padding || pos[i] > (sim.box_host->boxparams.BoxSizeFloat()[i] - padding)) {
+	//				//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
+	//				return false;
+	//			}
+	//		}
+	//	}
+	//}
 
 	// Handle solvents somehow
 

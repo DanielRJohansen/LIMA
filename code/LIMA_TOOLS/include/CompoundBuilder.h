@@ -136,47 +136,6 @@ public:
 	int indicesInGrofile[MAX_COMPOUND_PARTICLES];	// Temp prolly, used to map compounds atoms back to their index in grofile
 };
 
-//
-//struct BondgroupTinymolFactory {
-//	std::vector<SingleBondFactory> singlebonds;
-//	std::vector<AngleBondFactory> anglebonds;
-//	
-//	int nParticles = 0;
-//	int nSinglebonds = 0;
-//	int nAnglebonds = 0;
-//
-//	static std::vector<BondgroupTinymolFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-//		const std::vector<std::vector<int>>& tinymolParticlesIds);
-//};
-
-struct TinyMolFactory {
-	TinyMolFactory() {}
-	TinyMolFactory(std::span<const Float3> pos, std::span<const int> tinymolTypeIndices,
-		std::span<const std::string> _atomTypes, int nParticles, int firstParticleIdInGrofile,
-		std::span<const Float3> velocities, const BondgroupTinymol& bondgroup
-	) : 
-		nParticles(AllAtom ? nParticles : 1), firstParticleIdInGrofile(firstParticleIdInGrofile), bondgroup(AllAtom ? bondgroup : BondgroupTinymol{})
-	{
-		assert(pos.size() == nParticles);
-		for (int i = 0; i < nParticles; i++) {
-			positions[i] = pos[i];
-			states[i] = TinyMolParticleState{ velocities[i], Float3{}, tinymolTypeIndices[i] };
-			atomTypes[i] = _atomTypes[i]; // Debug only
-		}
-	}
-	std::array<Float3, BondgroupTinymol::maxParticles> positions;
-	std::array<TinyMolParticleState,BondgroupTinymol::maxParticles> states;
-    std::array<std::string,BondgroupTinymol::maxParticles> atomTypes; // Debug only
-
-	BondgroupTinymol bondgroup;
-
-	int nParticles = -1;
-	int firstParticleIdInGrofile = -1;
-
-	static std::vector<BondgroupTinymol> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-		const std::vector<std::vector<int>>& tinymolParticlesIds);
-};
-
 
 class BondGroupFactory : public BondGroup {
 

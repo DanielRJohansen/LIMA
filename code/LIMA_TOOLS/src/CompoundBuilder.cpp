@@ -14,87 +14,6 @@ using namespace LimaMoleculeGraph;
 
 
 
-class BondedParticlesLUTManagerFactory {
-	std::vector<BondedParticlesLUT> luts;
-	const int nCompounds;
-
-	void DistributeLJIgnores(BondedParticlesLUTManagerFactory* bplut_man, const std::vector<ParticleToCompoundMapping>& particleToCompoundMap, std::span<const int> global_ids) {
-		for (auto gid_self : global_ids) {
-			for (auto gid_other : global_ids) {
-				if (gid_self == gid_other) { continue; }
-
-				const ParticleToCompoundMapping& mappingSelf = particleToCompoundMap[gid_self];
-				const ParticleToCompoundMapping& mappingOther = particleToCompoundMap[gid_other];
-
-				if (mappingOther.compoundId == -1 && mappingSelf.compoundId == -1)
-					return; // This bond is in an tinymol, and LJignore is not relevant
-
-				if (mappingOther.compoundId == -1 || mappingSelf.compoundId == -1)
-					throw std::runtime_error("compoundId is -1");
-
-
-				BondedParticlesLUT& lut = bplut_man->get(mappingSelf.compoundId, mappingOther.compoundId);
-				lut.set(mappingSelf.localIdInCompound, mappingOther.localIdInCompound, true);
-			}
-		}
-	}
-
-public:
-	BondedParticlesLUTManagerFactory(int nCompounds, const SuperTopology& topology, const std::vector<ParticleToCompoundMapping>& p2cMap) :
-		nCompounds(nCompounds) ,
-		luts(nCompounds * BondedParticlesLUTHelpers::max_bonded_compounds, BondedParticlesLUT(false))
-	{
-		for (const auto& bond : topology.singlebonds)
-			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
-		for (const auto& bond : topology.anglebonds)
-			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
-		for (const auto& bond : topology.dihedralbonds)
-			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
-		for (const auto& bond : topology.improperdihedralbonds)
-			DistributeLJIgnores(this, p2cMap, bond.global_atom_indexes);
-
-		// Set LUT so no particle ever interacts with itself
-		for (int com_id = 0; com_id < nCompounds; com_id++) {
-			auto& lut = get(com_id, com_id);
-			for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
-				lut.set(pid, pid, true);
-			}
-		}
-	}
-
-
-	BondedParticlesLUT& get(int id_self, int id_other) {
-		if (std::abs(id_self - id_other > BondedParticlesLUTHelpers::maxDiff)) {
-			throw std::runtime_error(std::format("Cannot get BPLUT for compounds with distances > 2 in id-space {} {}", id_self, id_other));
-		}
-		if (id_self >= nCompounds || id_other >= nCompounds) {
-			throw std::runtime_error("Cannot get BPLUT for compounds with id >= nCompounds");
-		}
-
-		const int local_index = BondedParticlesLUTHelpers::getLocalIndex(id_self, id_other);
-		return luts[BondedParticlesLUTHelpers::getGlobalIndex(local_index, id_self)];
-	}
-
-	// Returns device ptr to the bpLUTS
-	std::vector<BondedParticlesLUT> Finish() {
-		return std::move(luts);
-	}
-
-	// So actually returns ID's of compounds with which queryCompound has bonded interactions
-	std::vector<int> GetIdsOfCompoundsWithEntriesInLut(int queryCompoundId) {
-		std::vector<int> ids;
-		for (int relIndex = -BondedParticlesLUTHelpers::maxDiff; relIndex <= BondedParticlesLUTHelpers::maxDiff; relIndex++) {
-			const int otherIndex = queryCompoundId + relIndex;
-			if (otherIndex < 0 || otherIndex >= nCompounds || otherIndex == queryCompoundId) { continue; }
-
-			if (get(queryCompoundId, otherIndex).HasEntries()) {
-				ids.push_back(otherIndex);
-			}
-		}
-		return ids;
-	}
-};
-
 
 
 template <int n>
@@ -581,36 +500,6 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 }
 
 
-std::vector<TinyMolFactory> LoadTinyMols(const std::vector<std::vector<int>>& particleidsInTinymols, const SuperTopology& topology, LIMAForcefield& forcefield) {
-	std::vector<TinyMolFactory> tinyMols;
-	tinyMols.reserve(topology.particles.size()); // not accurate
-
-
-	std::vector<BondgroupTinymol> bondgroups = TinyMolFactory::MakeBondgroups(topology, particleidsInTinymols);
-
-	for (int tinymolIndex = 0; tinymolIndex < particleidsInTinymols.size(); tinymolIndex++) {
-		const std::vector<int>& particleIds = particleidsInTinymols[tinymolIndex];
-		const int nParticlesToTake = particleIds.size();
-
-
-		std::vector<Float3> positions(nParticlesToTake);
-		std::vector<int> tinymolTypeIndices(nParticlesToTake);
-		std::vector<std::string> atomTypes(nParticlesToTake);
-		std::vector<Float3> velocities(nParticlesToTake);
-		for (int i = 0; i < nParticlesToTake; i++) {
-			positions[i] = topology.particles[particleIds[i]].position;
-			tinymolTypeIndices[i] = forcefield.GetActiveTinymoltypeIndex(topology.particles[particleIds[i]].topologyAtom.type);
-			atomTypes[i] = topology.particles[particleIds[i]].topologyAtom.type;
-			velocities[i] = Float3{};
-		}
-
-
-		tinyMols.emplace_back(positions, tinymolTypeIndices, atomTypes, nParticlesToTake, topology.particles[particleIds[0]].indexInGrofile, velocities, bondgroups[tinymolIndex]);
-	}
-
-	return tinyMols;
-}
-
 
 template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
 void LoadBondIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile,	int atomIdOffset, LIMAForcefield& forcefield,
@@ -887,31 +776,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
-	auto [molecules, tinyMolecules] = SeparateMolecules(superTopology);
-
-	const std::vector<AtomGroup> atomGroups = GroupAtoms(molecules, superTopology);
-
-	std::vector<CompoundFactory> compounds = CreateCompounds(superTopology, grofile.box_size, atomGroups, simparams.bc_select);
-
-	const std::vector<ParticleToCompoundMapping> particleToCompoundidMap = MakeParticleToCompoundidMap(compounds, superTopology.particles.size());
-	//const ParticleToPclusterMap particleToPclusterMap = MakeParticleToPclusterMap(compounds, superTopology.particles.size());
 
 
-	auto bpLutManager = std::make_unique<BondedParticlesLUTManagerFactory>(compounds.size(), superTopology, particleToCompoundidMap);
-
-	for (int cid = 0; cid < compounds.size(); cid++) {
-		std::vector<int> compoundIdsWithBondedInteractions = bpLutManager->GetIdsOfCompoundsWithEntriesInLut(cid);
-		for (int id : compoundIdsWithBondedInteractions) {
-
-			bool found = false;
-			for (int i = 0; i < compounds[cid].n_bonded_compounds; i++)
-				if (compounds[cid].bonded_compound_ids[i] == id)
-					found = true;
-			if (!found)
-				int a = 0;
-			compounds[cid].addIdOfBondedCompound(id);
-		}
-	}
 
 	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
 
@@ -953,16 +819,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//}
 
 
-	for (int i = 0; i < particleToCompoundidMap.size(); i++) {
-		//if (particleToCompoundidMap[i].compoundId == -1)
-		//	break;// We've reached tinymols. This is not good code...
-		const auto cRef = particleToCompoundidMap[i];
-		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
-		for (const BondgroupRef& bgRef : bgRefs) {
-			compounds[cRef.compoundId].AddBondgroupReference(cRef.localIdInCompound, bgRef);
-		}
-	}
-
 	for (int i = 0; i < particleToPclusterMap.size(); i++) {
 		const auto pcRef = particleToPclusterMap[i];
 		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
@@ -973,54 +829,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		}
 	}
 
-	//bpLutManager->get(0, 0)->printMatrix(compounds.begin()->n_particles);
 
-	CompoundFactory::CalcCompoundMetaInfo(grofile.box_size, compounds, simparams.bc_select);
-
-	std::vector<TinyMolFactory> tinyMols = LoadTinyMols(tinyMolecules, superTopology, forcefield);
-
-	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
-	// Temp
-	int cParticles = 0;
-	std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping(superTopology.particles.size());
-	for (int cid = 0; cid < compounds.size(); cid++) {
-		for (int pid = 0; pid < compounds[cid].n_particles; pid++) {
-			const int global_pid = compounds[cid].global_ids[pid];
-			particleToCompoundOrSolventMapping[global_pid] = ParticleToCompoundOrSolventMapping{ cid, pid };
-			cParticles++;
-		}
-	}
-	int sCount = 0;
-	for (int tmId = 0; tmId < tinyMols.size(); tmId++) {
-		for (int pid = 0; pid < tinyMols[tmId].nParticles; pid++) {
-			const int global_pid = tinyMols[tmId].firstParticleIdInGrofile + pid;
-			particleToCompoundOrSolventMapping[global_pid] = ParticleToCompoundOrSolventMapping(cParticles + sCount);
-			sCount++;
-		}
-	}
-
-
-	// Debug, todo remove
-	//{
-	//	BondedParticlesLUT lut = bpLutManager->get(0, 0);
-	//	std::vector<std::set<int>> expectedLjInteractions(16);
-	//	for (int row = 0; row < 16; row++) {
-	//		for (int col = 0; col < 16; col++) {
-	//			if (lut.get(row, col) == false) {
-	//				int pid0 = compounds[0].global_ids[row];
-	//				int pid1 = compounds[0].global_ids[col];
-	//				expectedLjInteractions[pid0].insert(pid1);
-	//			}
-	//		}
-	//	}
-
-	//	for (int pid = 0; pid < 16; pid++) {
-	//		for (auto& interactPid : expectedLjInteractions[pid]) {
-	//			printf("%d ", interactPid);
-	//		}
-	//		printf("\n");
-	//	}
-	//}
 
 	int nParticles = 0;
 	//int nSolvents = 0;
@@ -1031,11 +840,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 			nParticles++;
 		}
 	}
-
-
-	const int totalCompoundParticles = std::accumulate(compounds.begin(), compounds.end(), 0, [](int sum, const auto& compound) { return sum + compound.n_particles; });
-
-	//auto temp = compounds[78].particle_global_ids[8];
 
 	return std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?

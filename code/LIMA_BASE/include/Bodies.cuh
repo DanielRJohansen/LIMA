@@ -156,15 +156,6 @@ struct CompoundCoords {
 
 
 
-// struct with data that only the solvent itself needs
-struct TinyMolParticleState {
-	Float3 vel_prev{};
-	Float3 force_prev{};
-	int tinymolTypeIndex = -1; // wrong place to have this
-};
-
-
-
 
 
 
@@ -291,24 +282,6 @@ struct BondGroup {
 	int nImproperdihedralbonds = 0;
 };
 
-// TODO: OPTIM: THese should actually be cached in constant memory and accessed with a single id,
-// because most tinymols are identical, just with different positions
-struct BondgroupTinymol {
-	
-	static const int maxParticles = 4;
-	static const int maxSinglebonds = 4;
-	static const int maxAnglebonds = 4;
-
-	
-	//uint8_t particleIndicesRelativeToTinymol[maxParticles];
-	// All indices are relative to the tinymol, so add the tinymols indexOfFirstInSolventlblock when accessing particle pos
-	SingleBond singlebonds[maxSinglebonds];
-	AngleUreyBradleyBond anglebonds[maxAnglebonds];
-	int nParticles = 0;
-	int nSinglebonds = 0;
-	int nAnglebonds = 0;
-};
-
 
 
 struct ParticleReference {
@@ -352,19 +325,6 @@ struct ForceField_NB {
 	ParticleParameters particle_parameters[MAX_TYPES];
 };
 
-struct ForcefieldTinymol {
-    static const int MAX_TYPES = 16; // TODO OPTIM change to 4
-
-	// Can make mass and epsilon half
-	struct TinyMolType {
-		float sigmaHalf = -1;		// [nm]
-		float epsilonSqrt = -1;		// [J/mol/nm] // TODO: OPTIM: Should be 0 so the same logic handles missing data aswell as particles that doesnt interact with LJ
-		float mass = -1;		// [kg/mol]
-		float charge = -1;		// [kC/mol]
-	};
-
-	TinyMolType types[MAX_TYPES];
-};
 
 struct PData {
 	Float3 position;
@@ -526,22 +486,6 @@ struct ScScTask {
 		}
 		return false;
 	}
-};
-
-
-struct ParticleToCompoundOrSolventMapping {
-	int compoundId = -1;
-	int particleId = -1; // Relative to compound if in compound, otherwise solventid
-	ParticleToCompoundOrSolventMapping() {}
-	ParticleToCompoundOrSolventMapping(int solventId) {
-		particleId = solventId;
-	}
-	ParticleToCompoundOrSolventMapping(int cid, int pid) {
-		compoundId = cid;
-		particleId = pid;
-	}
-
-	constexpr bool IsSolvent() const { return compoundId == -1; }
 };
 
 

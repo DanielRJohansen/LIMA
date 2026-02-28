@@ -75,9 +75,8 @@ public:
 	ForceField_NB GetActiveLjParameters();
 	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
-	int GetActiveTinymoltypeIndex(const std::string& query);
 	NBParams GetLjParameters(const std::string& query) const;// Experimental, breaks the ActiveLjParamsSystem
-	ForcefieldTinymol GetTinymolTypes();
+//	ForcefieldTinymol GetTinymolTypes();
 	
 
 	template<typename GenericBond>
@@ -85,7 +84,6 @@ public:
 
 private:
 	std::unique_ptr<AtomtypeDatabase> ljParameters;
-	std::unique_ptr<AtomtypeDatabase> tinymolTypes;
 
 	std::unique_ptr<ParameterDatabase<SinglebondType>> singlebondParameters;
 	std::unique_ptr<ParameterDatabase<PairbondType>> pairbondParameters;

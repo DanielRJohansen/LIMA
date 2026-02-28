@@ -248,7 +248,6 @@ LIMAForcefield::LIMAForcefield() {};
 LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 
 	ljParameters = std::make_unique<AtomtypeDatabase>();
-	tinymolTypes = std::make_unique<AtomtypeDatabase>();
 
 	singlebondParameters = std::make_unique<ParameterDatabase<SinglebondType>>();
 	pairbondParameters = std::make_unique<ParameterDatabase<PairbondType>>();
@@ -257,12 +256,6 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
 
 	LoadFileIntoForcefield(file);
-
-	// TEMP while we force solvents to be singleparticle
-	if constexpr (!AllAtom) {
-		if (tinymolTypes->_getAll().contains("OW"))
-			tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
-	}
 }
 
 LIMAForcefield::~LIMAForcefield() {}
@@ -309,20 +302,6 @@ std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionP
 
 int LIMAForcefield::GetActiveTinymoltypeIndex(const std::string& query) {
 	return tinymolTypes->GetActiveIndex(query);
-}
-
-ForcefieldTinymol LIMAForcefield::GetTinymolTypes() {
-	ForcefieldTinymol forcefieldTinymol{};
-	const std::vector<AtomType>& activeParameters = tinymolTypes->GetActiveParameters();
-	if (activeParameters.size() > ForcefieldTinymol::MAX_TYPES)
-		throw std::runtime_error("Too many atom types");
-	for (int i = 0; i < activeParameters.size(); i++) {
-		const AtomType& at = activeParameters[i];
-		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigmaHalf, at.parameters.epsilonSqrt, at.mass, at.charge };
-		if (!AllAtom)
-			forcefieldTinymol.types[i].charge = 0;
-	}
-	return forcefieldTinymol;
 }
 
 void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file) 

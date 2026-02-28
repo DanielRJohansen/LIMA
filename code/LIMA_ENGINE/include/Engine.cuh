@@ -134,7 +134,6 @@ private:
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
 	std::unique_ptr<NeighborList::Controller> nlistController;
-	std::unique_ptr<TinymolTransferModule> tinymolTransferModule;
 
 	const BoundaryConditionSelect bc_select;
 

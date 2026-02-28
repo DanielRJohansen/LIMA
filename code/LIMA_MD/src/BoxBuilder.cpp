@@ -25,7 +25,7 @@ void InsertCompoundInBox(const PersistentCluster& pcluster, Box& box, const SimP
 
 }
 
-int SolvateBox(Box& box, const ForcefieldTinymol& forcefield, const SimParams& simparams, const std::vector<TinyMolFactory>& tinyMols)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
+int SolvateBox(Box& box)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
 {
 	//for (const auto& tinyMol : tinyMols) {
 	//	if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
@@ -169,29 +169,6 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 		// TODO ERROR: we dont copy CompoundInterimState, so it is not a true state copy
 	}
 
-	// Do the same for solvents
-	{
-		// Create temporary storage
-		const int blocksInGrid = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation.box_host->boxparams.boxSize));
-		std::vector<SolventBlock> solvents_t0(blocksInGrid);
-
-
-		//TODO: This is jsut temp:
-		const int solventBlocksGridBytesize = sizeof(SolventBlock) * blocksInGrid;
-
-		// Copy only the current step to temporary storage
-		/*SolventBlock* src_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, boxsrc_current_step);
-		memcpy(solvents_t0.data(), src_t0, solventBlocksGridBytesize);*/
-
-		// Clear all of the data
-		//delete simulation.box_host->solventblockgrid_circularqueue;
-		//simulation.box_host->solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(simulation.box_host->boxparams.boxSize);
-
-
-		// Copy the temporary storage back into the queue
-		/*SolventBlock* dest_t0 = SolventBlocksCircularQueue::getBlockPtr(simulation.box_host->solventblockgrid_circularqueue.data(), simulation.box_host->boxparams.boxSize, 0, 0);
-		memcpy(dest_t0, solvents_t0.data(), solventBlocksGridBytesize);*/
-	}
 }
 
 bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, bool verbose) {

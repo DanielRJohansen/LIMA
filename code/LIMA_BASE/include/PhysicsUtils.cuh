@@ -69,13 +69,6 @@ namespace LJ {
         return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
     }
 
-    constexpr float CalcSigmaTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-        return forcefield.types[tinymolType1].sigmaHalf + forcefield.types[tinymolType2].sigmaHalf;
-    }
-    constexpr float CalcEpsilonTinymol(uint8_t tinymolType1, uint8_t tinymolType2, const ForcefieldTinymol& forcefield) {
-        return forcefield.types[tinymolType1].epsilonSqrt * forcefield.types[tinymolType2].epsilonSqrt;
-    }
-
     constexpr float CalcSigma(float sigma1Half, float sigma2Half) {
         return sigma1Half + sigma2Half;
     }

@@ -81,9 +81,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 	thermostat = std::make_unique<Thermostat>(simulation->box_host->persistentClusters.size());
 
 	nlistController = std::make_unique<NeighborList::Controller>(boxparams);
-	
-	tinymolTransferModule = std::make_unique<TinymolTransferModule>(TinymolTransferModule::Create(BoxGrid::BlocksTotal(boxparams.boxSize)));
-		
+			
 
 
 

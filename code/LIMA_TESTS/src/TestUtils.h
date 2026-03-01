@@ -16,6 +16,7 @@
 namespace TestUtils {
 #ifndef __linux__
 	const fs::path simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
+	fs::path SimulationDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
 #else
 	const fs::path simulations_dir = "/home/lima/Downloads/LIMA_data/";
 #endif
@@ -99,7 +100,7 @@ namespace TestUtils {
 	// yet been moved to device. I should find a way to enforce this...
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, std::optional<SimParams> simparams, EnvMode envmode) {
 		
-		const fs::path work_folder = simulations_dir / foldername;
+		const fs::path work_folder = SimulationDir() / foldername;
 		const GroFile conf{getMostSuitableGroFile(work_folder)};
 		const TopologyFile topol {work_folder / "molecule/topol.top"};
 		const fs::path simpar = work_folder / "sim_params.txt";

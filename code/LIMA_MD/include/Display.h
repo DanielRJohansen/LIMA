@@ -24,7 +24,7 @@ class Camera;
 class GLFWwindow;
 
 class FPS {
-	std::array<std::chrono::high_resolution_clock::time_point, 20> prevTimepoints;
+	std::array<std::chrono::high_resolution_clock::time_point, 32> prevTimepoints;
 	int head = 0;
 public:
 	FPS();
@@ -184,6 +184,6 @@ public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&, const SimStatus&);
+	void Draw(RenderSettings&, const SimStatus&, int fps);
 	void Render();
 };

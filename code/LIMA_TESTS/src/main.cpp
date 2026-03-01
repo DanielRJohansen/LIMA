@@ -25,6 +25,24 @@ using namespace VerletintegrationTesting;
 
 void RunAllUnitTests();
 
+void TestDisplayT4() {
+	auto env = TestUtils::basicSetup("T4Lysozyme", std::nullopt, EnvMode::Full);
+	Display display{};
+
+	auto& box = env->getSimPtr()->box_host;
+
+	std::vector<Float3> positions;
+
+	for (auto pc : box->persistentClusters) {
+		for (auto pqd : pc.pqd)
+			if (pqd.Valid())
+				positions.push_back(pqd.position);
+	}
+
+
+	display.Render(std::make_unique<Rendering::SimulationTask>(positions.data(), box->persistentClusters, box->persistentClustersMetadata, box->boxparams, "", Atomname), true);
+}
+
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
@@ -36,7 +54,8 @@ int main() {
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
-		Display::TestDisplay();
+		//Display::TestDisplay();
+		TestDisplayT4();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent

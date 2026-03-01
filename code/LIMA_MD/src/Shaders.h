@@ -364,6 +364,7 @@ class DrawAtomsShader : public Shader {
 struct RenderAtom {
     vec4 position; // {posX, posY, posZ, radius}
     vec4 color;    // {r, g, b, a}
+    uvec4 flags;   // {x=highlight}
 };
 
 layout(std430, binding = 0) buffer RenderAtoms {
@@ -415,6 +416,9 @@ void main() {
 
         float ny = clamp(offset3.y / radius, -1.0f, 1.0f);
         light = clamp(ny * 0.5f + 0.6f, 0.0f, 1.0f);
+        
+        if (atoms[gl_InstanceID].flags.x == 1)
+            light = 1.f;
     }
 
     gl_Position = Proj * posVS;

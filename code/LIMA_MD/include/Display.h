@@ -130,6 +130,7 @@ private:
 	glm::dvec2 mousePosAtBtnDown{};
 	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
 	glm::dvec2 mousePos{};
+	int lastSelectedAtomId = -1;
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);

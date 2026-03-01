@@ -303,6 +303,19 @@ void Display::OnMouseMove(double xpos, double ypos) {
     mousePos.y = ypos;
 }
 
+void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
+    if (atomId == prevAtomId)
+        return;
+
+    auto renderAtomsHost = renderAtoms.GetData<RenderAtom>();
+    if (prevAtomId != -1)
+        renderAtomsHost[prevAtomId].HighLight(false);
+    if (atomId != -1)
+        renderAtomsHost[atomId].HighLight(true);
+    prevAtomId = atomId;
+    renderAtoms.SetData(renderAtomsHost);
+}
+
 void Display::OnMouseButton(int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
@@ -321,6 +334,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
 
             if (isClick && drawAtomsFromCpuShader) {
                 int atomId = drawAtomsFromCpuShader->GetAtomIdAtPixel(int2{ (int)mousePos.x, (int)mousePos.y });
+                HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
                 printf("Atomid %d\n", atomId);
             }
         }

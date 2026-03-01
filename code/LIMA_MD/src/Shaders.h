@@ -10,6 +10,13 @@
 
 #include <cuda_gl_interop.h>
 
+#include <mutex>
+#include <condition_variable>
+#include <optional>
+#include <atomic>
+#include <future>
+
+
 
 class DrawBoxOutlineShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
@@ -342,53 +349,60 @@ public:
     }
 };
 
+
+
+
+
+
+
+
 template <bool isCUDA>
 class DrawAtomsShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
-#version 430 core 
-struct RenderAtom { 
-    vec4 position; // {posX, posY, posZ, radius} 
-    vec4 color;    // {r, g, b, a} 
-}; 
- 
-layout(std430, binding = 0) buffer RenderAtoms { 
-    RenderAtom atoms[]; 
-}; 
+#version 430 core
 
-uniform mat4 View;   // View matrix
-uniform mat4 Proj;   // Projection matrix
-uniform int numAtoms; 
-uniform int numVerticesPerAtom; 
-uniform float pi = 3.14159265359f; 
+struct RenderAtom {
+    vec4 position; // {posX, posY, posZ, radius}
+    vec4 color;    // {r, g, b, a}
+};
 
-out vec4 vertexColor; 
+layout(std430, binding = 0) buffer RenderAtoms {
+    RenderAtom atoms[];
+};
 
-void main() { 
-    int numTrianglesPerAtom = numVerticesPerAtom - 2; 
-    float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom); 
-    vec4 atomPos = atoms[gl_InstanceID].position; 
+uniform mat4 View;
+uniform mat4 Proj;
+uniform int  numVerticesPerAtom;
+uniform float pi = 3.14159265359f;
 
-    // Atom center in view space
-    vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0); 
+out vec4 vertexColor;
+flat out int atomId;
+
+void main() {
+    // Triangle fan: vertex 0 is center, vertices 1..(N-1) are rim.
+    const int numTrianglesPerAtom = numVerticesPerAtom - 2;
+
+    // Note: gl_VertexID in [0..numVerticesPerAtom-1]
+    float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom);
+
+    vec4 atomPos = atoms[gl_InstanceID].position;
+    atomId = gl_InstanceID;
+
+    vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0);
     float radius = atomPos.w;
 
-    // Build a basis so the cone axis points toward the camera (view-space)
     vec3 viewDir = normalize(-viewSpacePos.xyz);
-    vec3 up = (abs(viewDir.z) < 0.999f)
-        ? vec3(0.0, 0.0, 1.0)
-        : vec3(0.0, 1.0, 0.0);
+    vec3 up = (abs(viewDir.z) < 0.999f) ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
     vec3 right = normalize(cross(up, viewDir));
     vec3 up2   = cross(viewDir, right);
 
-    vec4 objectSpacePos;
+    vec4 posVS;
     float light;
 
     if (gl_VertexID == 0) {
-        // Center vertex at atom center
-        objectSpacePos = viewSpacePos;
-        light = .7f;
+        posVS = viewSpacePos;
+        light = 0.7f;
     } else {
-        // Cone geometry in view space
         float coneSlope = 0.15f;
         float coneDepth = radius * coneSlope;
 
@@ -397,147 +411,220 @@ void main() {
             up2   * (sin(angle) * radius) -
             viewDir * coneDepth;
 
-        objectSpacePos = viewSpacePos + vec4(offset3, 0.0);
-        
+        posVS = viewSpacePos + vec4(offset3, 0.0);
 
-        // Use vertical (view-space Y) offset on the circle.
-        float ny = clamp(offset3.y / radius, -1.0f, 1.0f); // -1 bottom, +1 top
-        // Map ny from [-1,1] -> [0,1], then add some ambient floor
-        //light = 0.3f + 0.7f * (0.5f + 0.5f * ny);
-        float light1 = ((ny * 0.5f) * (ny * 0.5f) + 0.5f);
-        light = clamp(ny * 0.5f + 0.6, 0.0f, 1.0f);
+        float ny = clamp(offset3.y / radius, -1.0f, 1.0f);
+        light = clamp(ny * 0.5f + 0.6f, 0.0f, 1.0f);
     }
 
-    gl_Position = Proj * objectSpacePos;
-
+    gl_Position = Proj * posVS;
     vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light,
-                       atoms[gl_InstanceID].color.w); 
-}  
-    )";
-
+                       atoms[gl_InstanceID].color.w);
+}
+)";
 
     static constexpr const char* fragmentShaderSource = R"(
-#version 430 core 
-in vec4 vertexColor; 
-out vec4 FragColor; 
-  
-void main() { 
-    FragColor = vertexColor; 
-} 
+#version 430 core
+
+in vec4 vertexColor;
+flat in int atomId;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out int  FragAtomId;
+
+void main() {
+    FragColor  = vertexColor;
+    FragAtomId = atomId;
+}
+)";
 
 
-//in vec4 vertexColor;
-//in vec2 localUV;
-//
-//out vec4 FragColor;
-//
-//void main() {
-//    float r2 = dot(localUV, localUV);
-//    if (r2 > 1.0)
-//        discard;
-//
-//    // simple radial attenuation (edge darker)
-//    float radial = 1.0 - r2;
-//
-//    FragColor = vec4(vertexColor.rgb * radial, vertexColor.a);
-//}
+    static constexpr int numVerticesPerAtom = 24;
 
+    GLuint vao = 0;
 
+    GLuint framebuffer = 0;
+    GLuint colorTexture = 0;
+    GLuint atomIdTexture = 0;
+    GLuint depthBuffer = 0;
+    int2 framebufferSize{ 0, 0 };
 
-//    #version 430 core 
-//    in vec4 vertexColor; 
-//    out vec4 FragColor; 
-//    in vec2 localUV;
-//
-//    void main() { 
-////        FragColor = vertexColor; 
-//        float r2 = dot(localUV, localUV);
-//        if (r2 > 1.0) discard;           // HARD sphere silhouette
-//
-//        float z = sqrt(1.0 - r2);        // sphere depth
-//        vec3 normal = normalize(vec3(localUV, z));
-//
-//        float light = max(normal.z, 0.0);
-//        FragColor = vec4(vertexColor.rgb * light, vertexColor.a);
-//
-//        /*
-//        vec3 lightDir = normalize(vec3(0.3, 0.5, 0.8)); // view-space
-//        float NdotL = max(dot(normal, lightDir), 0.0);
-//
-//        float ambient = 0.2;
-//        vec3 color = vertexColor.rgb * (ambient + 0.8 * NdotL);
-//
-//        FragColor = vec4(color, vertexColor.a);*/        
-//    } 
-    )";
+    glm::mat4 prevView;
+    glm::mat4 prevProjection;
+    int prevNAtoms;
 
-    GLuint VBO;
+    void DestroyFramebuffer() {
+        if (depthBuffer) { glDeleteRenderbuffers(1, &depthBuffer); depthBuffer = 0; }
+        if (atomIdTexture) { glDeleteTextures(1, &atomIdTexture); atomIdTexture = 0; }
+        if (colorTexture) { glDeleteTextures(1, &colorTexture); colorTexture = 0; }
+        if (framebuffer) { glDeleteFramebuffers(1, &framebuffer); framebuffer = 0; }
+    }
+
 public:
     SSBO renderAtomsBuffer{};
-
     const int numAtomsReservedInRenderatomsBuffer;
 
-    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferSource) : 
-        Shader(vertexShaderSource, fragmentShaderSource),
+    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCudaResource, int2 windowSize)
+        : Shader(vertexShaderSource, fragmentShaderSource),
         numAtomsReservedInRenderatomsBuffer(numAtoms)
     {
+        // Minimal VAO: required in core profile even when using only gl_VertexID.
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        glBindVertexArray(0);
 
-    // Generate and bind VBO
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-
-    if constexpr (isCUDA) {
-        // Allocate the renderAtomsbuffer, and register it with CUDA
+        // Allocate SSBO storage always (CUDA or not)
         renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
-        cudaGraphicsGLRegisterBuffer(renderAtomsBufferSource, renderAtomsBuffer.GetID(), cudaGraphicsMapFlagsWriteDiscard);
-    }
-    //Otherwise, whoever preps will write directly to our renderAtomsBuffer. That is bad tho, they should maybe just call another constructor of my class with the SSBO ready?
-    // Allocate space for the VBO. We assume `sizeof(RenderAtom)` is the size of the data.
-    glBufferData(GL_ARRAY_BUFFER, numAtoms * sizeof(RenderAtom), nullptr, GL_DYNAMIC_DRAW);
 
-    // Enable and set up position attribute
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(RenderAtom), (void*)offsetof(RenderAtom, position));
+        if constexpr (isCUDA) {
+            cudaGraphicsGLRegisterBuffer(renderAtomsBufferCudaResource,
+                renderAtomsBuffer.GetID(),
+                cudaGraphicsMapFlagsWriteDiscard);
+        }
 
-    // Enable and set up color attribute
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(RenderAtom), (void*)offsetof(RenderAtom, color));
-
-    // Unbind VAO and VBO to prevent unintended modifications
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+        ResizeFramebuffer(windowSize);
     }
 
     ~DrawAtomsShader() {
-		glDeleteBuffers(1, &VBO);
-	}
-    // This functions needs no renderAtoms input, as the class is initialized with a reference to the buffer where
-    // CUDA will place the input data
-    void Draw(const glm::mat4& view, const glm::mat4& projection, int nAtoms) {
+        if (vao) glDeleteVertexArrays(1, &vao);
+        DestroyFramebuffer();
+    }
 
-        // If we call this shader multiple times it doesnt matter if the following times has less atoms, but we currently have
-        // not implemented to ability to increase the buffer size
+    void ResizeFramebuffer(int2 windowSize) {
+        framebufferSize = windowSize;
+        DestroyFramebuffer();
+
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+        // Color output (for debugging/optional, not required for picking)
+        glGenTextures(1, &colorTexture);
+        glBindTexture(GL_TEXTURE_2D, colorTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferSize.x, framebufferSize.y, 0,
+            GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+        // AtomId output
+        glGenTextures(1, &atomIdTexture);
+        glBindTexture(GL_TEXTURE_2D, atomIdTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, framebufferSize.x, framebufferSize.y, 0,
+            GL_RED_INTEGER, GL_INT, nullptr);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, atomIdTexture, 0);
+
+        // Depth buffer
+        glGenRenderbuffers(1, &depthBuffer);
+        glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, framebufferSize.x, framebufferSize.y);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBuffer);
+
+        GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+        glDrawBuffers(2, drawBuffers);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            throw std::runtime_error("Picking framebuffer incomplete.");
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    // Normal render pass: does NOT touch your picking FBO.
+    void Draw(const glm::mat4& view, const glm::mat4& projection, int nAtoms) {
         if (nAtoms > numAtomsReservedInRenderatomsBuffer) {
-			throw std::runtime_error("Number of atoms in DrawAtomsShader::Draw does not match the number of atoms in the constructor. \n\
-                This is likely due to the Renderer being tasked with both rendering compounds and moleculeHulls in the same instance");
-		}
+            throw std::runtime_error("DrawToScreen: nAtoms exceeds reserved SSBO capacity.");
+        }
 
         use();
-
         renderAtomsBuffer.Bind(0);
+        glBindVertexArray(vao);
 
-        //SetUniformMat4("MVP", MVP);
         SetUniformMat4("View", view);
         SetUniformMat4("Proj", projection);
-        SetUniformI("numAtoms", nAtoms);
+        SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
 
-        const int numVerticesPerAtom = 24;
-		SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
-        
         glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, nAtoms);
 
         glBindVertexArray(0);
         glUseProgram(0);
+
+        prevView = view;
+        prevProjection = projection;
+        prevNAtoms = nAtoms;
     }
 
+    // Picking pass: renders to internal FBO, restores viewport/FBO so other shaders are unaffected.
+    void DrawPicking() {
+        if (!framebuffer || !atomIdTexture) {
+            throw std::runtime_error("DrawPicking: framebuffer not initialized.");
+        }
+        if (prevNAtoms > numAtomsReservedInRenderatomsBuffer) {
+            throw std::runtime_error("DrawPicking: nAtoms exceeds reserved SSBO capacity.");
+        }
+
+        GLint prevDrawFbo = 0;
+        GLint prevReadFbo = 0;
+        GLint prevViewport[4]{};
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFbo);
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
+        glGetIntegerv(GL_VIEWPORT, prevViewport);
+
+        use();
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+        glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+
+        // Clear ID attachment to -1 so "no hit" is obvious.
+        const GLfloat clearColor[4] = { 0.f, 0.f, 0.f, 0.f };
+        glClearBufferfv(GL_COLOR, 0, clearColor);
+
+        const GLint clearId[1] = { -1 };
+        glClearBufferiv(GL_COLOR, 1, clearId);
+
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        renderAtomsBuffer.Bind(0);
+        glBindVertexArray(vao);
+
+        SetUniformMat4("View", prevView);
+        SetUniformMat4("Proj", prevProjection);
+        SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
+
+        glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, prevNAtoms);
+
+        glBindVertexArray(0);
+        glUseProgram(0);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevDrawFbo);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
+        glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    }
+
+    int GetAtomIdAtPixel(int2 pixel) {
+        if (!atomIdTexture || !framebuffer) {
+            throw std::runtime_error("GetAtomIdAtPixel: framebuffer not initialized.");
+        }
+
+        DrawPicking();
+
+        GLint prevReadFbo = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+        glReadBuffer(GL_COLOR_ATTACHMENT1);
+
+        int pixelValue = -1;
+        glReadPixels(pixel.x,
+            framebufferSize.y - 1 - pixel.y,
+            1, 1,
+            GL_RED_INTEGER,
+            GL_INT,
+            &pixelValue);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
+        return pixelValue;
+    }
 };

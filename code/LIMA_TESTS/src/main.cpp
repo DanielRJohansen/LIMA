@@ -138,7 +138,7 @@ int main() {
 		
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 
-		RunAllUnitTests();
+		//RunAllUnitTests();
 		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");

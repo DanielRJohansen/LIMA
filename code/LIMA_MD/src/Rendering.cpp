@@ -74,7 +74,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
         drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
     if (!drawAtomsFromCpuShader)
-        drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr);
+        drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr, windowSize);
 
 
     //std::string windowText = window_title + "\n" + task.siminfo;
@@ -123,7 +123,7 @@ void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
         drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 
     if (!drawAtomsFromCudaShader || drawAtomsFromCudaShader->numAtomsReservedInRenderatomsBuffer < task.molCollection.nParticles)
-        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource);
+        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource, windowSize);
 
     if (!drawNormalsShader)
         drawNormalsShader = std::make_unique<DrawNormalsShader>();
@@ -190,7 +190,7 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nAtoms, &renderAtomsBufferCudaResource);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nAtoms, &renderAtomsBufferCudaResource, windowSize);
 
 
 

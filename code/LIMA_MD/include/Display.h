@@ -127,11 +127,14 @@ private:
 
 	// Interfacing
 	bool isDragging = false;
-	double lastX = 0.0, lastY = 0.0;
+	glm::dvec2 mousePosAtBtnDown{};
+	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
+	glm::dvec2 mousePos{};
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
-	
+	void OnMouseLeft();
+
 	bool pause = false;
 	bool renderAtoms = true;
 	bool renderFacets = true;
@@ -167,6 +170,7 @@ private:
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 
 	GLFWwindow* window = nullptr;
+	int2 windowSize{};
 
 	const float PI = 3.1415f;
 

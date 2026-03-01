@@ -239,11 +239,6 @@ void Display::Mainloop() {
         if (!std::holds_alternative<void*>(currentRenderTask)) {            
             std::visit([&](auto& taskPtr) {
                 using T = std::decay_t<decltype(taskPtr)>;
-                /*if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-					const int nParticles = rendersettings.showSolvents ? taskPtr->boxparams.total_particles : taskPtr->boxparams.total_compound_particles;
-                    overlay.Draw(rendersettings, taskPtr->simStatus);
-                    _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
-                }*/
                 if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
 					const int nParticles = taskPtr->boxparams.totalParticles;
                     overlay.Draw(rendersettings, taskPtr->simStatus);
@@ -290,24 +285,36 @@ void Display::Render(Rendering::Task task, bool blocking) {
 void Display::OnMouseMove(double xpos, double ypos) {
     if (isDragging) {
         const float sensitivity = 0.001f; // Adjust sensitivity as needed
-        const float xOffset = static_cast<float>(xpos - lastX) * sensitivity;
-        const float yOffset = static_cast<float>(lastY - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
+        const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
+        const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
 
         camera.Update(xOffset, -yOffset, 0);
     }
 
-    lastX = xpos;
-    lastY = ypos;
+    mousePos.x = xpos;
+    mousePos.y = ypos;
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             isDragging = true;
-            glfwGetCursorPos(window, &lastX, &lastY);
+            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
+            mousePosAtBtnDown = mousePos;
+            timeAtBtnDown = std::chrono::steady_clock::now();
         }
         else if (action == GLFW_RELEASE) {
             isDragging = false;
+
+            glm::dvec2 mousePos{};
+            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
+            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - timeAtBtnDown).count();
+            bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
+
+            if (isClick && drawAtomsFromCpuShader) {
+                int atomId = drawAtomsFromCpuShader->GetAtomIdAtPixel(int2{ (int)mousePos.x, (int)mousePos.y });
+                printf("Atomid %d\n", atomId);
+            }
         }
     }
 }
@@ -332,7 +339,7 @@ bool Display::initGLFW() {
     int displayWidth = mode->width;
     int displayHeight = mode->height;
 
-    int2 windowSize = { (float)displayHeight * 0.8f, (float)displayHeight * 0.8f };
+    windowSize = int2{ (int)((float)displayHeight * 0.8f), (int)((float)displayHeight * 0.8f) };
 
 
     // Create a windowed mode window and its OpenGL context

@@ -378,6 +378,7 @@ uniform float pi = 3.14159265359f;
 
 out vec4 vertexColor;
 flat out int atomId;
+flat out uint highlight;
 
 void main() {
     // Triangle fan: vertex 0 is center, vertices 1..(N-1) are rim.
@@ -387,7 +388,8 @@ void main() {
     float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom);
 
     vec4 atomPos = atoms[gl_InstanceID].position;
-    atomId = gl_InstanceID;
+    uint atomIndex = gl_InstanceID;
+    atomId = atoms[gl_InstanceID].flags.y;
 
     vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0);
     float radius = atomPos.w;
@@ -417,13 +419,20 @@ void main() {
         float ny = clamp(offset3.y / radius, -1.0f, 1.0f);
         light = clamp(ny * 0.5f + 0.6f, 0.0f, 1.0f);
         
-        if (atoms[gl_InstanceID].flags.x == 1)
-            light = 1.f;
+   
     }
 
+
+    highlight = atoms[gl_InstanceID].flags.x;
+    if (highlight == 1)
+        light *= 4.f;
+
+    vec4 finalcolor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w);
+    finalcolor.x = min(finalcolor.x, 1.); 
+    finalcolor.y = min(finalcolor.y, 1.); 
+    finalcolor.z = min(finalcolor.z, 1.); 
     gl_Position = Proj * posVS;
-    vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light,
-                       atoms[gl_InstanceID].color.w);
+    vertexColor = finalcolor;
 }
 )";
 
@@ -432,6 +441,7 @@ void main() {
 
 in vec4 vertexColor;
 flat in int atomId;
+flat in uint highlight;
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out int  FragAtomId;
@@ -439,6 +449,27 @@ layout(location = 1) out int  FragAtomId;
 void main() {
     FragColor  = vertexColor;
     FragAtomId = atomId;
+
+    //if (highlight==1) {
+    //       vec3 baseColor = vertexColor.rgb * 2.0; // Double brightness
+
+    //    // Calculate distance from the center of the atom
+    //    float distFromCenter = length(gl_PointCoord - vec2(0.5, 0.5));
+
+    //    // Create a strong glow (brighter at the center, fading outward)
+    //    float glowIntensity = 1.0 - smoothstep(0.2, 0.8, distFromCenter);
+    //    vec3 glowColor = baseColor * glowIntensity * 2.0; // Amplify glow
+
+    //    // Add a vibrant halo (e.g., cyan/blue/purple)
+    //    float haloIntensity = 1.0 - smoothstep(0.3, 0.9, distFromCenter);
+    //    vec3 haloColor = vec3(0.3, 0.8, 1.0) * haloIntensity * 1.5; // Cyan/blue halo
+
+    //    // Combine base, glow, and halo
+    //    vec3 finalColor = baseColor + glowColor + haloColor;
+
+    //    // Output the final color (clamped to avoid overbrightening)
+    //    FragColor = vec4(min(finalColor, vec3(1.0)), vertexColor.a);
+    //}
 }
 )";
 

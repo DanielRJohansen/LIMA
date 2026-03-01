@@ -82,7 +82,8 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
     // Preprocess the renderAtoms
     {
-        renderAtomsTemp.resize(task.boxparams.totalParticles);
+        renderAtomsTemp.resize(task.boxparams.totalParticles, RenderAtom{});
+
 
         int index = 0;
         for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
@@ -95,6 +96,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
                 auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid]);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
                 renderAtomsTemp[index].position = task.positions[pcid * PersistentCluster::nParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+                renderAtomsTemp[index].flags.y = pcMeta.particleIdsGlobal[pid];
 
                 if (task.coloringMethod == ColoringMethod::Atomname)
                     renderAtomsTemp[index].color = RenderUtilities::getColor(atomType);

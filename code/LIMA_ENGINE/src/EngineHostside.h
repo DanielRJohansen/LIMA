@@ -31,51 +31,21 @@ void Engine::verifyEngine() {
 
 
 ForceEnergyInterims::ForceEnergyInterims(int nBondgroups, int nParticles, int nPclusters) {
-	//if (nCompounds > 0) {
-	//	const size_t byteSize = sizeof(ForceEnergy) * nCompounds * MAX_COMPOUND_PARTICLES;
-	//	cudaMalloc(&forceEnergyFarneighborShortrange, byteSize);
-	//	cudaMalloc(&forceEnergyImmediateneighborShortrange, byteSize);
-	//	cudaMalloc(&forceEnergiesPME, byteSize);
-	//	cudaMalloc(&fromSuperclusters, byteSize);
-
-	//	cudaMemset(forceEnergyFarneighborShortrange, 0, byteSize);
-	//	cudaMemset(forceEnergyImmediateneighborShortrange, 0, byteSize);
-	//	cudaMemset(forceEnergiesPME, 0, byteSize);		
-	//	cudaMemset(fromSuperclusters, 0, byteSize);
-	//}
-
 	if (nPclusters > 0) {
 		const size_t byteSize = sizeof(ForceEnergy) * nPclusters * PersistentCluster::nParticles;
 		cudaMalloc(&nbNonlocal, byteSize);
 		cudaMalloc(&bonded, byteSize);
-		cudaMalloc(&forceEnergySNF, byteSize);
+		//cudaMalloc(&forceEnergySNF, byteSize);
 
 		cudaMemset(nbNonlocal, 0, byteSize);
 		cudaMemset(bonded, 0, byteSize);
-		cudaMemset(forceEnergySNF, 0, byteSize);
+		//cudaMemset(forceEnergySNF, 0, byteSize);
 	}
 
 	if (nBondgroups > 0) {
 		cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * BondGroup::maxParticles * nBondgroups);
 		cudaMemset(forceEnergiesBondgroups, 0, sizeof(ForceEnergy) * BondGroup::maxParticles * nBondgroups);
 	}
-
-	//if (nTinymols > 0) {
-	//	const size_t byteSize = sizeof(ForceEnergy) * SolventBlock::MAX_SOLVENTS_IN_BLOCK * nSolventblocks;
-	//	cudaMalloc(&solvents.compoundsInteractions, byteSize);
-	//	cudaMalloc(&solvents.solventsInteractions, byteSize);
-	//	cudaMalloc(&solvents.bondgroupsInteractions, byteSize);
-	//	cudaMalloc(&solvents.pmeInteraction, byteSize);
-	//	cudaMalloc(&solvents.fromSuperclusters, byteSize);
-
-	//	cudaMemset(solvents.compoundsInteractions, 0, byteSize);
-	//	cudaMemset(solvents.solventsInteractions, 0, byteSize);
-	//	cudaMemset(solvents.bondgroupsInteractions, 0, byteSize);
-	//	cudaMemset(solvents.pmeInteraction, 0, byteSize);
-	//	cudaMemset(solvents.fromSuperclusters, 0, byteSize);
-	//}
-
-
 
 	if (nParticles > 0) {
 		//cudaMalloc(&nbNonlocal, sizeof(ForceEnergy) * nParticles);
@@ -89,25 +59,14 @@ ForceEnergyInterims::ForceEnergyInterims(int nBondgroups, int nParticles, int nP
 }
 
 void ForceEnergyInterims::Free() const {
-	if (forceEnergyFarneighborShortrange != nullptr) {
-		cudaFree(forceEnergyFarneighborShortrange);
-		cudaFree(forceEnergyImmediateneighborShortrange);
-		cudaFree(forceEnergySNF);
-		cudaFree(forceEnergiesPME);
+	if (forceEnergiesBondgroups != nullptr) {
 		cudaFree(forceEnergiesBondgroups);
-	}
-
-	if (solvents.compoundsInteractions != nullptr) { // The buffers are never allocated in some sims
-		cudaFree(solvents.compoundsInteractions);
-		cudaFree(solvents.solventsInteractions);
-		cudaFree(solvents.bondgroupsInteractions);
-		cudaFree(solvents.pmeInteraction);
 	}
 
 	if (nbNonlocal != nullptr) {
 		cudaFree(nbNonlocal);
 		cudaFree(bonded);
-		cudaFree(forceEnergySNF);
+		//cudaFree(forceEnergySNF);
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");

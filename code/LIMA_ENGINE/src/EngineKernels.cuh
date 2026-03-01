@@ -408,7 +408,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	// Gather from bonds : TODO: maybe dont store it ordered like this?
 	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	 //TODO: Gather from PME, SNF, others??
-	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+	//fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	__syncthreads();
 
 	//if (pidGlobal != -1) {
@@ -419,7 +419,6 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 	float speed = 0.f;
 	if (pidGlobal != -1) {
-		//const float mass = sim->boxConfig.compounds[blockIdx.x].atomMasses[threadIdx.x];
 		const float mass = pcMeta[pcIdGlobal].mass[pidInPcluster];
 
 		// Energy minimize

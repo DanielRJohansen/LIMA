@@ -528,7 +528,7 @@ __device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBon
 			}
 		}
 
-		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) {
+		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) { /// whaaat the fuckkk is this, nooo fix! DANGER TODO
 			for (int i = 0; i < blockDim.x; i++) {
 				if (threadIdx.x == i && db != nullptr) {
 					for (int i = 0; i < db->nAtoms; i++) {

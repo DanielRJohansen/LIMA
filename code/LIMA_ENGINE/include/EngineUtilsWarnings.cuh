@@ -16,13 +16,7 @@
 // TODO HARD: make this a namespace
 class EngineUtilsWarnings {
 public:
-	__device__ static void verifyNodeIndexShiftIsSafe(const NodeIndex& nodeshift_right_to_left) {
-#if defined LIMASAFEMODE
-		if (nodeshift_right_to_left.manhattanLen() > MAX_SAFE_SHIFT) {
-			printf("Shifting compound further than what is safe! Block %d Thread %d Shift %d\n", blockIdx.x, threadIdx.x, nodeshift_right_to_left.manhattanLen());
-		}
-#endif	
-	}
+
 
 
 

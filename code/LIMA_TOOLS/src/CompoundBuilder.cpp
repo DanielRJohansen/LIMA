@@ -15,16 +15,6 @@ using namespace LimaMoleculeGraph;
 
 
 
-
-template <int n>
-std::array<int, n> TransformBondIds(const std::array<int, n>& ids, int offset) {
-	std::array<int, n> out;
-	for (int i = 0; i < n; i++) {
-		out[i] = ids[i] + offset;
-	}
-	return out;
-}
-
 template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
 void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield,
 	std::vector<BondtypeFactory>& topology)
@@ -554,96 +544,96 @@ std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unorde
 
 
 
-const std::vector<AtomGroup> GroupAtoms(const std::vector<std::vector<int>>& particleidsInMolecules, const SuperTopology& topology) {
-	std::vector<AtomGroup> atomGroups;
-
-
-	std::vector<std::unordered_set<int>> pidToSinglebondidMap(topology.particles.size());
-	for (int bid = 0; bid < topology.singlebonds.size(); bid++) {
-		pidToSinglebondidMap[topology.singlebonds[bid].global_atom_indexes[0]].insert(bid);
-		pidToSinglebondidMap[topology.singlebonds[bid].global_atom_indexes[1]].insert(bid);
-	}
-
-
-	for (const auto& particleIdsInMolecule : particleidsInMolecules) {
-
-		std::vector<std::pair<int, std::string>> atoms;
-		atoms.reserve(particleIdsInMolecule.size());
-		for (int pid : particleIdsInMolecule) {
-			atoms.emplace_back( pid, topology.particles[pid].topologyAtom.type );
-		}
-
-		std::unordered_set<int> bondIdsInMolecule;
-		for (int pid : particleIdsInMolecule) {
-			for (int bid : pidToSinglebondidMap[pid]) {
-				bondIdsInMolecule.insert(bid);
-			}
-		}
-
-		std::vector<std::array<int, 2>> edges;
-		edges.reserve(bondIdsInMolecule.size());
-		for (int bid : bondIdsInMolecule) {
-			edges.emplace_back(topology.singlebonds[bid].global_atom_indexes);
-		}
-
-
-
-
-		const MoleculeGraph molGraph(atoms, edges);
-		const MoleculeTree moleculeTree = molGraph.ConstructMoleculeTree();
-		const std::unordered_map<int, int> nodeIdNumDownstreamNodes = molGraph.ComputeNumDownstreamNodes(moleculeTree);
-
-		std::stack<const MoleculeGraph::Node*> nodeStack;
-		nodeStack.push(molGraph.root);
-
-		atomGroups.emplace_back();
-
-		while (!nodeStack.empty()) {
-			const MoleculeGraph::Node* node = nodeStack.top();
-			nodeStack.pop();
-
-			if (MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size() == 0)
-				atomGroups.emplace_back();
-			atomGroups.back().atomIds.emplace_back(node->atomid);
-
-			std::vector<int> nodeChildren = moleculeTree.GetChildIds(node->atomid);
-
-			if (nodeChildren.empty()) {
-				// finished
-			}
-			else {
-				// Add the longest childchain to our stack, and remove it from the current children
-				const int indexOfLongestChain = std::max_element(nodeChildren.begin(), nodeChildren.end(),
-					[&nodeIdNumDownstreamNodes](const int& a, const int& b) { return nodeIdNumDownstreamNodes.at(a) < nodeIdNumDownstreamNodes.at(b); }
-				) - nodeChildren.begin();
-				nodeStack.push(&molGraph.nodes.at(nodeChildren[indexOfLongestChain]));
-				nodeChildren[indexOfLongestChain] = nodeChildren.back();
-				nodeChildren.pop_back();
-
-				const std::vector<int> nodeChildrenIdsIdealOrder = ReorderSubchains(nodeChildren, nodeIdNumDownstreamNodes, MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size());
-
-				for (int id : nodeChildrenIdsIdealOrder) {
-					if (nodeIdNumDownstreamNodes.at(id) > MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size())
-						atomGroups.emplace_back();
-
-					moleculeTree.ForSelfAndAllChildrenIds(id,
-						[&atomGroups](int _id) { atomGroups.back().atomIds.emplace_back(_id); }
-					);
-				}
-			}
-		}
-	}
-
-	// Now figure out which groups are bonded to others
-	for (int i = 1; i < atomGroups.size(); i++) {
-		if (AreBonded(atomGroups[i - 1], atomGroups[i], pidToSinglebondidMap)) {
-			atomGroups[i].idsOfBondedAtomgroups.insert(i - 1);
-			atomGroups[i - 1].idsOfBondedAtomgroups.insert(i);
-		}
-	}
-
-	return atomGroups;
-}
+//const std::vector<AtomGroup> GroupAtoms(const std::vector<std::vector<int>>& particleidsInMolecules, const SuperTopology& topology) {
+//	std::vector<AtomGroup> atomGroups;
+//
+//
+//	std::vector<std::unordered_set<int>> pidToSinglebondidMap(topology.particles.size());
+//	for (int bid = 0; bid < topology.singlebonds.size(); bid++) {
+//		pidToSinglebondidMap[topology.singlebonds[bid].global_atom_indexes[0]].insert(bid);
+//		pidToSinglebondidMap[topology.singlebonds[bid].global_atom_indexes[1]].insert(bid);
+//	}
+//
+//
+//	for (const auto& particleIdsInMolecule : particleidsInMolecules) {
+//
+//		std::vector<std::pair<int, std::string>> atoms;
+//		atoms.reserve(particleIdsInMolecule.size());
+//		for (int pid : particleIdsInMolecule) {
+//			atoms.emplace_back( pid, topology.particles[pid].topologyAtom.type );
+//		}
+//
+//		std::unordered_set<int> bondIdsInMolecule;
+//		for (int pid : particleIdsInMolecule) {
+//			for (int bid : pidToSinglebondidMap[pid]) {
+//				bondIdsInMolecule.insert(bid);
+//			}
+//		}
+//
+//		std::vector<std::array<int, 2>> edges;
+//		edges.reserve(bondIdsInMolecule.size());
+//		for (int bid : bondIdsInMolecule) {
+//			edges.emplace_back(topology.singlebonds[bid].global_atom_indexes);
+//		}
+//
+//
+//
+//
+//		const MoleculeGraph molGraph(atoms, edges);
+//		const MoleculeTree moleculeTree = molGraph.ConstructMoleculeTree();
+//		const std::unordered_map<int, int> nodeIdNumDownstreamNodes = molGraph.ComputeNumDownstreamNodes(moleculeTree);
+//
+//		std::stack<const MoleculeGraph::Node*> nodeStack;
+//		nodeStack.push(molGraph.root);
+//
+//		atomGroups.emplace_back();
+//
+//		while (!nodeStack.empty()) {
+//			const MoleculeGraph::Node* node = nodeStack.top();
+//			nodeStack.pop();
+//
+//			if (MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size() == 0)
+//				atomGroups.emplace_back();
+//			atomGroups.back().atomIds.emplace_back(node->atomid);
+//
+//			std::vector<int> nodeChildren = moleculeTree.GetChildIds(node->atomid);
+//
+//			if (nodeChildren.empty()) {
+//				// finished
+//			}
+//			else {
+//				// Add the longest childchain to our stack, and remove it from the current children
+//				const int indexOfLongestChain = std::max_element(nodeChildren.begin(), nodeChildren.end(),
+//					[&nodeIdNumDownstreamNodes](const int& a, const int& b) { return nodeIdNumDownstreamNodes.at(a) < nodeIdNumDownstreamNodes.at(b); }
+//				) - nodeChildren.begin();
+//				nodeStack.push(&molGraph.nodes.at(nodeChildren[indexOfLongestChain]));
+//				nodeChildren[indexOfLongestChain] = nodeChildren.back();
+//				nodeChildren.pop_back();
+//
+//				const std::vector<int> nodeChildrenIdsIdealOrder = ReorderSubchains(nodeChildren, nodeIdNumDownstreamNodes, MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size());
+//
+//				for (int id : nodeChildrenIdsIdealOrder) {
+//					if (nodeIdNumDownstreamNodes.at(id) > MAX_COMPOUND_PARTICLES - atomGroups.back().atomIds.size())
+//						atomGroups.emplace_back();
+//
+//					moleculeTree.ForSelfAndAllChildrenIds(id,
+//						[&atomGroups](int _id) { atomGroups.back().atomIds.emplace_back(_id); }
+//					);
+//				}
+//			}
+//		}
+//	}
+//
+//	// Now figure out which groups are bonded to others
+//	for (int i = 1; i < atomGroups.size(); i++) {
+//		if (AreBonded(atomGroups[i - 1], atomGroups[i], pidToSinglebondidMap)) {
+//			atomGroups[i].idsOfBondedAtomgroups.insert(i - 1);
+//			atomGroups[i - 1].idsOfBondedAtomgroups.insert(i);
+//		}
+//	}
+//
+//	return atomGroups;
+//}
 
 
 
@@ -696,6 +686,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap, pClusters.data());
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
+
+
+	bondGroups.front().nAnglebonds = 0;
+	bondGroups.front().nDihedralbonds = 0;
 
 	//{
 	//	std::vector<Float3> bgPositions;

@@ -112,55 +112,11 @@ struct ForceEnergyInterims {
 	ForceEnergyInterims(int nBondgroups, int nParticles, int nPclusters);
 	void Free() const;
 
-	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
-		ForceEnergy pmeFE = {};
-		if constexpr (ENABLE_ES_LR) {
-			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
-		}
-
-		Float3 fOld = 
-			forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force +
-			forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
-		Float3 nNew = fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId].force;
-		float vecErr = (fOld - nNew).len() / fOld.len();
-		float magDiff = std::abs(fOld.len() - nNew.len());
-		float magErr = magDiff / fOld.len();
-		float threshold = 4000;
-
-		//if (vecErr > 0.1 && magDiff > threshold) {
-		//	printf("\nCompound %5d Particle %2d: relative error %.6f Old force %10.1f %10.1f %10.1f, New force %10.1f %10.1f %10.1f\n",
-		//		compoundId, particleId, vecErr, fOld.x, fOld.y, fOld.z, nNew.x, nNew.y, nNew.z);
-		//}
-		
-
-		return/* forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ */forceEnergySNF[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ fromSuperclusters[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ pmeFE;
-	}
-
 	// These are temp, pushed into fromSuperclusters*
 	ForceEnergy* nbNonlocal = nullptr;// Currently 1 per particle, i guess i want them in pclustergroups lateron
 	ForceEnergy* bonded = nullptr; // TODO: Also temp, not sure how i wanna proceed here..
 
 
-	// Compounds
-	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
-	ForceEnergy* forceEnergySNF = nullptr;
-	ForceEnergy* forceEnergiesPME = nullptr;
-	ForceEnergy* fromSuperclusters = nullptr;
-
 	// Bondgroups
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
-
-	// Tinymol
-	struct {
-		ForceEnergy* compoundsInteractions = nullptr;
-		ForceEnergy* solventsInteractions = nullptr;
-		ForceEnergy* bondgroupsInteractions = nullptr;
-		ForceEnergy* pmeInteraction = nullptr;
-		ForceEnergy* fromSuperclusters = nullptr;
-	} solvents;
 };

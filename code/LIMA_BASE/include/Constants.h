@@ -74,7 +74,6 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
 #define ENABLE_SOLVENTS 0				// Enables Explicit Solvents
-const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 constexpr bool AllAtom = true;
 // -------------------------------------------------------------------------------------------------------------- //
@@ -90,10 +89,4 @@ const bool ENABLE_POTE = true;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
 
-// If we go larger, a single compound can stretch over 2 nm!
-constexpr int MAX_COMPOUND_PARTICLES = 32;
-const int MAX_COMPOUNDS = UINT16_MAX-1;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
-
 const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
-
-const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift

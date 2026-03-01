@@ -10,8 +10,6 @@
 
 namespace NeighborList {
 
-	static_assert(::MAX_COMPOUNDS <= UINT16_MAX, "Neighborlist cannot handle such large compound ids");
-
 	// This value is only high because the electrostaticmanyparticles has the particles as compounds, when they should be tinymol. But pme doesnt yet support tinymol...
 	static const int compoundsMaxNearbyCompounds = 256;	// TODO: We need to work on getting this number down!
 	static const int gridnodesMaxNearbyCompounds = 128;

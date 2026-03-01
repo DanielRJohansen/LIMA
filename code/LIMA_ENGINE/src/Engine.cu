@@ -517,11 +517,11 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 		break;
 	case HorizontalChargeField:
 	{
-		const int nPclusters = simulation->box_host->persistentClusters.size();
-		const int nCudablocks = (nPclusters + 31) / 32;
-		PclusterSnfKernel<BoundaryCondition, emvariant>
-			<<<nCudablocks, 32, 0, stream >> >
-			(pClusterDevice, pClusterMetaDevice, simulation->box_host->uniformElectricField, forceEnergyInterims->forceEnergySNF, nPclusters);
+		//const int nPclusters = simulation->box_host->persistentClusters.size();
+		//const int nCudablocks = (nPclusters + 31) / 32;
+		//PclusterSnfKernel<BoundaryCondition, emvariant>
+		//	<<<nCudablocks, 32, 0, stream >> >
+		//	(pClusterDevice, pClusterMetaDevice, simulation->box_host->uniformElectricField, forceEnergyInterims->forceEnergySNF, nPclusters);
 	}
 		
 		break;

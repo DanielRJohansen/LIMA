@@ -135,7 +135,6 @@ namespace Bondtypes {
 	};
 }
 using namespace Bondtypes;
-// ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
 
 
 
@@ -147,47 +146,7 @@ using namespace Bondtypes;
 
 
 
-
-
-
-
-
-
-
-
-struct alignas(4) CompoundCompact {
-	constexpr CompoundCompact() {}
-
-	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	int n_particles = 0;
-
-#if LIMAKERNELDEBUGMODE == 1
-	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
-#endif
-
-
-	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
-	static const int max_bonded_compounds = 4 * 2 - 2;
-	int n_bonded_compounds = 0;
-
-	__device__ void loadMeta(const CompoundCompact* const compound) {
-		n_particles = compound->n_particles;
-		n_bonded_compounds = compound->n_bonded_compounds;
-	}
-
-	__device__ void loadData(const CompoundCompact* const compound) {
-		if (threadIdx.x < n_particles) {
-			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
-
-			#if LIMAKERNELDEBUGMODE == 1
-			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
-			#endif
-		}
-	}
-};
-
-
-
+// ------------------------------------------------- Etc ------------------------------------------------- //
 
 
 
@@ -200,26 +159,6 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 			return bondgroupId < other.bondgroupId;
 		return localIndexInBondgroup < other.localIndexInBondgroup;
 	}
-};
-
-// Rather large unique structures in global memory, that can be partly loaded when needed
-struct Compound : public CompoundCompact {
-	int centerparticle_index = -1;			// Index of particle initially closest to CoM
-
-	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-    float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
-	// For drawing pretty spheres :)
-	char atomLetters[MAX_COMPOUND_PARTICLES];
-
-	float atomMasses[MAX_COMPOUND_PARTICLES];	// [kg/mol]
-
-	int absoluteIndexOfFirstParticle = 0;
-
-	struct BondgroupRefManager {
-		static const int maxBondgroupApperances = 4;
-		int nBondgroupApperances = 0;
-		BondgroupRef bondgroupApperances[maxBondgroupApperances];
-	} bondgroupReferences[MAX_COMPOUND_PARTICLES];
 };
 
 struct BondGroup {
@@ -255,22 +194,6 @@ struct BondGroup {
 	int nImproperdihedralbonds = 0;
 };
 
-
-
-struct ParticleReference {
-	// Used by moleculebuilder only
-	constexpr ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
-		compound_id(compound_id), local_id_compound(local_id_compound),
-		compoundid_local_to_bridge(compoundid_local_to_bridge) 
-	{}
-
-	int compound_id;	// global
-	int local_id_compound;	// id of particle
-	uint8_t compoundid_local_to_bridge = 255;
-
-	//int global_id = -1; // For debug
-};
-
 struct NBParams {
 	float sigmaHalf = -1;		// [nm]
 	float epsilonSqrt = -1;		// [J/mol/nm]
@@ -299,16 +222,16 @@ struct ForceField_NB {
 };
 
 
+
+
+// ------------------------------------------------- CLUSTERS ------------------------------------------------- //
+
+
 struct PData {
 	Float3 position;
 	NBParams params;
 	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
 };
-
-//struct PrecomputedSolventForcefield {
-//	NonbondedInteractionParams ljParams[3]; // [O-O, O-H, H-H]
-//	float chargeProducts[3]; // [O-O, O-H, H-H]
-//};
 
 struct BondgroupRefManager {
 	static const int maxBondgroupApperances = 4;

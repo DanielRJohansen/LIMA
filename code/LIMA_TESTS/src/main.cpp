@@ -55,7 +55,7 @@ int main() {
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
-		TestDisplayT4();
+		//TestDisplayT4();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
@@ -64,7 +64,7 @@ int main() {
 		//SinglebondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
-		//doDihedralbondBenchmark(envmode);
+		doDihedralbondBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);

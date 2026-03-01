@@ -85,28 +85,28 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
         renderAtomsTemp.resize(task.boxparams.totalParticles, RenderAtom{});
 
 
-        int index = 0;
+        //int index = 0;
         for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
             for (int pid = 0; pid < 4; pid++) {
 				const PersistentClusterMeta& pcMeta = task.pcMeta[pcid];
+                const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 
-                if (pcMeta.particleIdsGlobal[pid] == -1)
+                if (pidGlobal == -1)
 					continue;
 
                 auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid]);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-                renderAtomsTemp[index].position = task.positions[pcid * PersistentCluster::nParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
-                renderAtomsTemp[index].flags.y = pcMeta.particleIdsGlobal[pid];
+                renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::nParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+                renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
                 if (task.coloringMethod == ColoringMethod::Atomname)
-                    renderAtomsTemp[index].color = RenderUtilities::getColor(atomType);
+                    renderAtomsTemp[pidGlobal].color = RenderUtilities::getColor(atomType);
                 else if (task.coloringMethod == ColoringMethod::Charge) {
-                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+                    renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
                 }
                 else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
-                    renderAtomsTemp[index].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
+                    renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
                 }
-                index++;
             }
         }
     }

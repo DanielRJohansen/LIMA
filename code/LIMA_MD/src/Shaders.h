@@ -389,7 +389,7 @@ void main() {
 
     vec4 atomPos = atoms[gl_InstanceID].position;
     uint atomIndex = gl_InstanceID;
-    atomId = atoms[gl_InstanceID].flags.y;
+    atomId = int(atoms[gl_InstanceID].flags.y);
 
     vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0);
     float radius = atomPos.w;

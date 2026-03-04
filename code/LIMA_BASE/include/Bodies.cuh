@@ -253,6 +253,8 @@ struct PersistentClusterMeta {
 	float mass[PersistentCluster::nParticles] = { 0,0,0,0 };		// [kg/mol]
 
 	char atomLetter[PersistentCluster::nParticles]; // For rendering
+	bool isSolvent = false;
+
 	// I do not like this setup...
 	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
 };

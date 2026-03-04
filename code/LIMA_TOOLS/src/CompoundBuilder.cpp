@@ -383,6 +383,8 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 	std::vector<PersistentClusterMeta> pClusterMetas(clustersParticleIds.size());
 	ParticleToPclusterMap particleToPclusterMap(system.particles.size());
 
+	std::vector<std::string> solventResNames{ "SOL", "SPC", "SPCE", "TIP3", "TIP3P" };
+
 	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
 		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
 			const int pId = clustersParticleIds[pcId][pidRel];			
@@ -404,6 +406,8 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 					pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
 				pClusterMetas[pcId].atomLetter[pidRel] = !system.particles[pId].topologyAtom.atomname.empty() ? system.particles[pId].topologyAtom.atomname[0] : ' ';
 				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
+
+				pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), system.particles[pId].topologyAtom.residue) != solventResNames.end();
 
 				// Also set mapping
 				particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };

@@ -140,7 +140,6 @@ private:
 	bool renderAtoms = true;
 	bool renderFacets = true;
 	bool renderFacetsNormals = false;
-	//bool renderSolvents = true;
 	RenderSettings rendersettings;
 	FPS fps{};
 

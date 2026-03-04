@@ -7,7 +7,11 @@
 namespace RenderUtilities {
 	enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, M, LIMA_CUSTOM };
 
-    __device__ __host__ inline ATOM_TYPE RAS_getTypeFromAtomletter(char atom) {
+    __device__ __host__ inline ATOM_TYPE RAS_getTypeFromAtomletter(char atom, std::optional<bool> isSolvent = std::nullopt) {
+        if (isSolvent.has_value() && isSolvent.value()) {
+            return ATOM_TYPE::SOL;
+        }
+
         switch (atom)
         {
         case 'C':

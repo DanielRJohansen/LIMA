@@ -94,7 +94,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
                 if (pidGlobal == -1)
 					continue;
 
-                auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid]);
+                auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
                 renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::nParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
                 renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
@@ -107,6 +107,9 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
                 else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
                     renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
                 }
+
+                if (!rendersettings.showSolvents && pcMeta.isSolvent)
+					renderAtomsTemp[pidGlobal].color.w = 0.f;
             }
         }
     }

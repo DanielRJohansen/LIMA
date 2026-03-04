@@ -74,7 +74,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
+		loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);

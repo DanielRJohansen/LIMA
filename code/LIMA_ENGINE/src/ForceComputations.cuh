@@ -320,22 +320,22 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 			pb = &singlebonds[bond_index];
 
 			LimaForcecalc::calcSinglebondForces<energyMinimization>(
-				positions[pb->atom_indexes[0]],
-				positions[pb->atom_indexes[1]],
+				positions[pb->idInBondgroup[0]],
+				positions[pb->idInBondgroup[1]],
 				pb->params,
 				forces,
 				potential,
 				bridgekernel,
-				(int)pb->atom_indexes[0],
-				(int)pb->atom_indexes[1]
+				(int)pb->idInBondgroup[0],
+				(int)pb->idInBondgroup[1]
 			);
 		}
 
 		for (int i = 0; i < blockDim.x; i++) {
 			if (threadIdx.x == i && pb != nullptr) {
 				for (int i = 0; i < 2; i++) {
-					forces_interim[pb->atom_indexes[i]] += forces[i];
-					potentials_interim[pb->atom_indexes[i]] += potential * 0.5f;
+					forces_interim[pb->idInBondgroup[i]] += forces[i];
+					potentials_interim[pb->idInBondgroup[i]] += potential * 0.5f;
 				}
 			}
 			__syncthreads();

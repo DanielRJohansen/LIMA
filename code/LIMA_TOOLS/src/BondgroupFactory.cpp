@@ -388,7 +388,7 @@ void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclusterma
 		auto pcRef1 = particleToPclustermap[bond.global_atom_indexes[1]];
 		Float3 pos0 = pClusters[pcRef0.pcid].pqd[pcRef0.pid].position;
 		Float3 pos1 = pClusters[pcRef1.pcid].pqd[pcRef1.pid].position;
-		if ((pos0 - pos1).len() > 0.3f) {
+		if ((pos0 - pos1).len() > 0.2f) {
 			int a = 0;
 		}
 	}

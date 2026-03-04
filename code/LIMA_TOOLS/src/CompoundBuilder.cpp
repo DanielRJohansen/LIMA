@@ -687,9 +687,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap, pClusters.data());
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
 
-
-	bondGroups.front().nAnglebonds = 0;
-	bondGroups.front().nDihedralbonds = 0;
+	//std::swap(bondGroups.front().singlebonds[0], bondGroups.front().singlebonds[2]);
+	//bondGroups.front().nSinglebonds = 2;
+	/*bondGroups.front().nAnglebonds = 0;
+	bondGroups.front().nDihedralbonds = 0;*/
 
 	//{
 	//	std::vector<Float3> bgPositions;
@@ -699,8 +700,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//	}
 
 	//	for (int i = 0; i < bondGroups.front().nSinglebonds; i++) {
-	//		int id0 = bondGroups.front().singlebonds[i].atom_indexes[0];
-	//		int id1 = bondGroups.front().singlebonds[i].atom_indexes[1];
+	//		int id0 = bondGroups.front().singlebonds[i].idInBondgroup[0];
+	//		int id1 = bondGroups.front().singlebonds[i].idInBondgroup[1];
 	//		Float3 p0 = bgPositions[id0];
 	//		Float3 p1 = bgPositions[id1];
 	//		float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(p0, p1, grofile.box_size, simparams.bc_select);

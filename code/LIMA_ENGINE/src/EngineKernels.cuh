@@ -78,36 +78,14 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
 	__shared__ char _bondsBuffer[largestBondBytesize * batchSize];	
-	//__shared__ NodeIndex origo;
 
 	const BondGroup* const bondGroup = &bondGroups[blockIdx.x];
 	const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];	
-
-	if (threadIdx.x == 0) {
-		//origo = boxState.compoundOrigos[0];
-
-
-
-	}
 	__syncthreads();
 
 	// Fetch positions, and hyperpos around first particle.
 	if (threadIdx.x < bondGroup->nParticles) {
-		// Calculate necessary shift in relative positions for right, so right share the origo with left.
-		//const NodeIndex myNodeindex = BoundaryCondition::applyHyperpos_Return(origo, boxState.compoundOrigos[0]);
-		//KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, compoundOrigo);
-
-		// calc Relative LimaPosition Shift from the origo-shift
-		//const Float3 relShift = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(myNodeindex, origo);
-
-		//auto oldPos = boxState.compoundsRelposNm[0 * MAX_COMPOUND_PARTICLES + pRef.pid] + myNodeindex.toFloat3();
-
-		//positions[threadIdx.x] = boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
-		//const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];
 		positions[threadIdx.x] = pclusters[pRef.pcid].pqd[pRef.pid].position;  //boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
-
-		//printf("oldpos %f %f %f newpos %f %f %f\n", oldPos.x, oldPos.y, oldPos.z,
-		//	positions[threadIdx.x].x, positions[threadIdx.x].y, positions[threadIdx.x].z);
 	}
 	__syncthreads();
 	if (threadIdx.x < bondGroup->nParticles) {
@@ -130,15 +108,6 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 			__syncthreads();
 
 
-			//for (int i = 0; i < bondGroup->nSinglebonds; i++) {
-			//	int id0 = bondsBuffer[i].atom_indexes[0];
-			//	int id1 = bondsBuffer[i].atom_indexes[1];
-			//	Float3 p0 = pclusters[0].pqd[id0].position;
-			//	Float3 p1 = pclusters[0].pqd[id1].position;
-			//	float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(p0, p1, grofile.box_size, simparams.bc_select);
-			//	printf("KERNELSTART: p0 %d %f %f %f p1 %d %f %f %f dist %f\n", id0, p0.x, p0.y, p0.z, id1, p1.x, p1.y, p1.z, dist);
-			//	int a = 0;
-			//}
 
 			force += LimaForcecalc::computeSinglebondForces<emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, forcesInterrim, potEInterrim, &potE, 0);
 		}
@@ -201,7 +170,29 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 	forceEnergiesOut[blockIdx.x * BondGroup::maxParticles + threadIdx.x] = ForceEnergy{ force, potE };
 }
 
+// gridDim = (nPclusters, 1, 1)
+// blockDim = (32, 1, 1) // TODO OPTIM: Use y=4, and have 1 particle in pc per y-thread
+__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies) {
+	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (pcId >= nPclusters)
+		return;
 
+	for (int pid = 0; pid < 4; pid++) {
+		int pidGlobal = pclusterMeta[pcId].particleIdsGlobal[pid];
+		if (pidGlobal == -1)
+			continue;
+
+		BondgroupRefManager beRefs = pclusterMeta[pcId].bondgroupReferences[pid];
+		ForceEnergy fe{};
+		for (int i = 0; i < beRefs.nBondgroupApperances; i++) {
+			BondgroupRef bondgroupRef = beRefs.bondgroupApperances[i];
+			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+		}
+
+		forceEnergies.bonded[pcId * PersistentCluster::nParticles + pid] = fe;
+		//printf("Gatherout pid %d fx %f\n", pidGlobal, fe.force.x);
+	}
+}
 
 // 
 /// <summary>
@@ -355,28 +346,7 @@ __global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMe
 
 
 
-// gridDim = (nPclusters, 1, 1)
-// blockDim = (32, 1, 1) // TODO OPTIM: Use y=4, and have 1 particle in pc per y-thread
-__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies) {
-	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (pcId >= nPclusters)
-		return;
 
-	for (int pid = 0; pid < 4; pid++) {
-		int pidGlobal = pclusterMeta[pcId].particleIdsGlobal[pid];		
-		if (pidGlobal == -1)
-			continue;
-		
-		BondgroupRefManager beRefs = pclusterMeta[pcId].bondgroupReferences[pid];
-		ForceEnergy fe{};
-		for (int i = 0; i < beRefs.nBondgroupApperances; i++) {
-			BondgroupRef bondgroupRef = beRefs.bondgroupApperances[i];
-			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
-		}
-
-		forceEnergies.bonded[pidGlobal] = fe;
-	}	
-}
 
 
  
@@ -394,8 +364,9 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	__syncthreads();
 
 	const int pidInPcluster = threadIdx.x % 4;									// Always safe
-	const int pidGlobal = scMeta[blockIdx.x].particlesIds[threadIdx.x];			// May be -1
+	//const int pidGlobal = scMeta[blockIdx.x].particlesIds[threadIdx.x];			// May be -1
 	const int pcIdGlobal = scMeta[blockIdx.x].pclusterIds[threadIdx.x / 4];		// May be -1
+	const int pidGlobal = pcIdGlobal == -1 ? -1 : pcMeta[pcIdGlobal].particleIdsGlobal[pidInPcluster];
 	positions[threadIdx.x] = superClusters[blockIdx.x].pData[threadIdx.x].position;
 
 	// Collect ForceEnergy from all sources
@@ -411,10 +382,11 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	//fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	__syncthreads();
 
-	//if (pidGlobal != -1) {
-	//	fe.force.print('F');
-	//	positions[threadIdx.x].print('P');
-	//}
+	if (pidGlobal != -1) {
+		//printf("gid %d fx %f\n", pidGlobal, fe.force.x);
+		/*fe.force.print('F');
+		positions[threadIdx.x].print('P');*/
+	}
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 	float speed = 0.f;

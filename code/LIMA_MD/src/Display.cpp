@@ -373,7 +373,7 @@ bool Display::initGLFW() {
         return 0;
     }
 #ifndef __linux__
-    glfwSetWindowPos(window, 50, 50);
+    glfwSetWindowPos(window, displayWidth - windowSize.x - 50, 50);
 #endif
 
     // Make the window's context current

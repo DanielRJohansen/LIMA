@@ -64,7 +64,8 @@ int main() {
 		//SinglebondOscillationTest(envmode);
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
-		doDihedralbondBenchmark(envmode);
+		//doDihedralbondBenchmark(envmode);
+		//loadAndRunBasicSimulation("SinglebondDaisychained", envmode, 0.0002);
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
@@ -157,7 +158,7 @@ int main() {
 		
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");

@@ -27,9 +27,9 @@ public:
 		return *activeAtomTypes;
 	}
 
-	AtomType& GetAtomType(const std::string& query) {
+	std::optional<AtomType> GetAtomType(const std::string& query) {
 		if (!atomTypes.contains(query))
-			throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
+			return std::nullopt;			
 		return atomTypes.at(query);
 	}
 
@@ -266,11 +266,18 @@ int LIMAForcefield::GetActiveLjParameterIndex(const std::string& query) {
 NBParams LIMAForcefield::GetLjParameters(const std::string& query) const {
 	auto params = ljParameters->GetAtomType(query);
 
+	if (!params.has_value())
+		throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
+
 	NBParams nbparams{};
-	nbparams.sigmaHalf = params.parameters.sigmaHalf;
-	nbparams.epsilonSqrt = params.parameters.epsilonSqrt;
-	nbparams.charge = params.charge;
+	nbparams.sigmaHalf = params->parameters.sigmaHalf;
+	nbparams.epsilonSqrt = params->parameters.epsilonSqrt;
+	nbparams.charge = params->charge;
 	return nbparams;
+}
+
+std::optional<AtomType> LIMAForcefield::GetAtomtype(const std::string& query) const {
+	return ljParameters->GetAtomType(query);
 }
 
 ForceField_NB LIMAForcefield::GetActiveLjParameters() {
@@ -407,8 +414,8 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 		// Pairbonds are special, as they are only defined for special interactions. In other cases we simply combine the LJ params for the types
 		if (pairbondParameters->get(query).empty()) {
 			
-			const AtomType& left = ljParameters->GetAtomType(query[0]);
-			const AtomType& right = ljParameters->GetAtomType(query[1]);
+			const AtomType left = *ljParameters->GetAtomType(query[0]);
+			const AtomType right = *ljParameters->GetAtomType(query[1]);
 
 			// TODO: Would prefer to have this computation in a file specialized for it..
 			const float sigma = left.parameters.sigmaHalf + right.parameters.sigmaHalf;

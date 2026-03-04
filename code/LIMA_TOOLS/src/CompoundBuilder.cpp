@@ -398,7 +398,10 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 				NBParams nbParams = forcefield.GetLjParameters(atomType);
 				pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
 				pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
-				pClusterMetas[pcId].mass[pidRel] = system.particles[pId].topologyAtom.mass / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
+				if (system.particles[pId].topologyAtom.mass.has_value())
+					pClusterMetas[pcId].mass[pidRel] = system.particles[pId].topologyAtom.mass.value() / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
+				else if (forcefield.GetAtomtype(atomType).has_value())
+					pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
 				pClusterMetas[pcId].atomLetter[pidRel] = !system.particles[pId].topologyAtom.atomname.empty() ? system.particles[pId].topologyAtom.atomname[0] : ' ';
 				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
 

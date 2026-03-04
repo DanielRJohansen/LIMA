@@ -16,7 +16,7 @@ constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHE
 const bool ENABLE_LJ = true;
 const bool ENABLE_INTEGRATEPOSITION = true;
 
-const bool ENABLE_ES_SR = false;
+const bool ENABLE_ES_SR = true;
 const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 const bool ENABLE_UREYBRADLEY = true;
 
@@ -60,7 +60,7 @@ const float DEG_TO_RAD = PI / 180.f;
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
-constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
+constexpr double BOLTZMANNCONSTANT = 1.38066e-23;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
 constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [n*m^2/C^2] == [ J*m / C^2]
 constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
@@ -73,7 +73,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-#define ENABLE_SOLVENTS 0				// Enables Explicit Solvents
+#define ENABLE_SOLVENTS 1				// Enables Explicit Solvents
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 constexpr bool AllAtom = true;
 // -------------------------------------------------------------------------------------------------------------- //

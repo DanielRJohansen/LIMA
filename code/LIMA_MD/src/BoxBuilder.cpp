@@ -104,11 +104,6 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	//box->bpLutCollection = std::move(boxImage.bpLutCollection);
 
 	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
-
-#if ENABLE_SOLVENTS == 1
-	SolvateBox(*box, boxImage.tinymolTypes, simparams, boxImage.solvent_positions);
-#endif
-
 	
 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24

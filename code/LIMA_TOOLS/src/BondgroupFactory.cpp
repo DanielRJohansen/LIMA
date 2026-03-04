@@ -382,16 +382,6 @@ void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclusterma
 		throw std::runtime_error("Too many bonds in bondgroup");
 	}
     singlebonds[nSinglebonds++] = SingleBond{ GetLocalIds<SingleBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
-
-	if (pClusters != nullptr) {
-		auto pcRef0 = particleToPclustermap[bond.global_atom_indexes[0]];
-		auto pcRef1 = particleToPclustermap[bond.global_atom_indexes[1]];
-		Float3 pos0 = pClusters[pcRef0.pcid].pqd[pcRef0.pid].position;
-		Float3 pos1 = pClusters[pcRef1.pcid].pqd[pcRef1.pid].position;
-		if ((pos0 - pos1).len() > 0.2f) {
-			int a = 0;
-		}
-	}
 }
 
 void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclustermap, const PairBondFactory& bond, const PersistentCluster* pClusters) {

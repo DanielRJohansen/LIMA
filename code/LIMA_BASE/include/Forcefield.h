@@ -76,6 +76,7 @@ public:
 	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
 	NBParams GetLjParameters(const std::string& query) const;// Experimental, breaks the ActiveLjParamsSystem
+	std::optional<AtomType> GetAtomtype(const std::string& query) const;
 //	ForcefieldTinymol GetTinymolTypes();
 	
 

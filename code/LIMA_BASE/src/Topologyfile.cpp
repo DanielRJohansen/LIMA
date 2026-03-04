@@ -152,15 +152,27 @@ inline void SkipLeadingWhitespace(std::string_view& sv) noexcept {
 // for float, int, returns false if err
 template<typename T>
 inline bool ParseValue(std::string_view& sv, T& out) noexcept {
+	if (sv.empty()) 
+		return false;
+
 	const char* begin = sv.data();
 	const char* end = begin + sv.size();
 	auto res = std::from_chars(begin, end, out);
 	if (res.ec != std::errc{}) 
 		return false;
+
 	sv.remove_prefix(res.ptr - begin);
 	// skip spaces
 	auto pos = sv.find_first_not_of(" \t");
 	sv.remove_prefix(pos == std::string_view::npos ? sv.size() : pos);
+	return true;
+}
+
+inline bool ParseValue(std::string_view& sv, std::optional<float>& out) noexcept {
+	float tmp{};	
+	if (!ParseValue(sv, tmp))
+		return false;
+	out = tmp;
 	return true;
 }
 
@@ -198,9 +210,9 @@ void TopologyFile::ParseAtomsEntry(std::string_view sv, TopologyFile::AtomsEntry
 		ParseValue<int>(sv, atom.resnr);
 		ParseValue(sv, atom.residue);
 		ParseValue(sv, atom.atomname);
-		ParseValue<int>(sv, atom.cgnr);
-		ParseValue<float>(sv, atom.charge);
-		ParseValue<float>(sv, atom.mass);	// This might not be present
+		ParseValue(sv, atom.cgnr);
+		ParseValue(sv, atom.charge);
+		ParseValue(sv, atom.mass);	// This might not be present
 
 		/*if (groIdToLimaId.size() < groId + 1)
 			throw std::runtime_error(std::format("Atom with groId {} found, but only {} atoms have been defined so far. This is most likely due to the numbering not starting at 1, or not being sequential", groId, groIdToLimaId.size()));*/
@@ -1153,7 +1165,8 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 		<< std::setw(10) << residue
 		<< std::setw(10) << atomname
 		<< std::setw(10) << cgnr
-		<< std::setw(10) << std::fixed << std::setprecision(2) << charge
-		<< std::setw(10) << std::fixed << std::setprecision(3) << mass
-		<< '\n';
+		<< std::setw(10) << std::fixed << std::setprecision(2) << charge;
+	if (mass.has_value())
+		oss << std::setw(10) << std::fixed << std::setprecision(3) << mass.value();
+	oss << '\n';
 }

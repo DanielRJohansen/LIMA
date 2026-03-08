@@ -302,13 +302,10 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, SuperClusterMe
 
 //// gridDim = (nSuperclusters, 1, 1)
 //// blockDim = (16, 1, 1)
-
 __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const superClusterMetas, const PersistentClusterMeta* const pClustersMeta, 
 	TaskBuilderControlContents tbContents, BoolMatrix16x16* const nointeractionMatrices, int nSuperclusters) {
 
-	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (scId >= nSuperclusters)
-		return;
+	const int scId = blockIdx.x;
 
 	std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
 	int matrixCount = 0;
@@ -322,33 +319,30 @@ __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const s
 
 		const int scIdQuery = token.GetQueryId();
 
-		BoolMatrix16x16 nointeractionMatrix{};
-		nointeractionMatrix.Clear();
-
 		std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scIdQuery]);
 		const bool isSelfInteractionTask = scId == scIdQuery;
 
+		const int row = threadIdx.x;
+		uint16_t rowData = 0;
 		for (int col = 0; col < 16; ++col) {
-			for (int row = 0; row < 16; ++row) {
-				if (particleIdsSelf[row] == -1)
-					continue;
-				int pidSelf = particleIdsSelf[row];
-				int pidQuery = particleIdsQuery[col];
-				if (pidSelf == pidQuery && pidSelf == 0)
-					int a = 0;
+			int pidSelf = particleIdsSelf[row];
+			int pidQuery = particleIdsQuery[col];
+			if (pidSelf == -1 || pidQuery == -1)
+				continue;
 
-				bool noInteraction = tbContents.particlesBondedToParticle[particleIdsSelf[row]].Contains(particleIdsQuery[col]);
-				if (isSelfInteractionTask && row == col) {
-					noInteraction = true;
-				}
-				//		noInteraction = true;
-				nointeractionMatrix.Set(row, col, noInteraction);
+			bool noInteraction = tbContents.particlesBondedToParticle[particleIdsSelf[row]].Contains(particleIdsQuery[col]);
+			if (isSelfInteractionTask && row == col) {
+				noInteraction = true;
 			}
+			if (noInteraction)
+				BoolMatrix16x16::SetValueInRow(col, rowData);
 		}
 
 
+
+
 		const int matrixIndex = tbContents.nNointeractionmatricesPrefixsum[scId] + matrixCount;
-		nointeractionMatrices[matrixIndex] = nointeractionMatrix;
+		nointeractionMatrices[matrixIndex].SetRow(row, rowData);
 		matrixCount++;
 	}
 }
@@ -410,7 +404,7 @@ bool Engine::MakeSuperClusterTasksGPU() {
 
 
 	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scMeta, nSuperclusters, scscTasksDevice);
-	BuildNointeractionMatricesKernel << <(nSuperclusters + 31) / 32, 32 >> >(superClustersControl->scMeta, pClusterMetaDevice, taskbuilderControl->contents, noInteractionMatricesDevice, nSuperclusters);
+	BuildNointeractionMatricesKernel << <nSuperclusters , 16 >> >(superClustersControl->scMeta, pClusterMetaDevice, taskbuilderControl->contents, noInteractionMatricesDevice, nSuperclusters);
 
 
 	//auto resCounts = GenericCopyToHost(taskbuilderControl->contents.nResults, nSuperclustersUpperbound);

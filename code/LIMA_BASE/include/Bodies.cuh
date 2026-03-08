@@ -355,6 +355,11 @@ public:
 	constexpr uint16_t GetRow(int row) const {
 		return data[row];
 	}
+
+	constexpr uint16_t SetRow(int row, uint16_t val) {
+		return data[row] = val;
+	}
+
 	// TODO: Optim this with a SetRow
 	constexpr void Set(int row, int col, bool val) {
 		unsigned bit = 1u << col;
@@ -366,6 +371,10 @@ public:
 			data[row] |= (1 << col);
 		else
 			data[row] &= ~(1 << col);		*/
+	}
+
+	constexpr static void SetValueInRow(int col, uint16_t& rowData) {
+		rowData |= (1 << col);
 	}
 
 	__host__ void Print() const {

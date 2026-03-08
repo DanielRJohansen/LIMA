@@ -98,10 +98,10 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	vel_buffer = databuffers.vel_buffer;
 	forceBuffer = databuffers.forceBuffer;
 
-	/*if (params_host.em_variant) {
-		cudaMalloc(&adamState, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
-		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->boxparams.total_particles_upperbound);
-	}*/
+	if (params_host.em_variant) {
+		cudaMalloc(&adamState, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::nParticles);
+		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::nParticles);
+	}
 
 	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");
 }

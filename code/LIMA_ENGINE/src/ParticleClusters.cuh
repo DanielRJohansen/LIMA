@@ -98,7 +98,7 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 
 	if constexpr (INDEXING_CHECKS){
 		if (indexInBlock >= PClusterTransfermodule::maxClustersPerBlock) {
-			printf("Too many pclusters in block %d %d %d. Count %d\n", blockId.x, blockId.y, blockId.z, indexInBlock);
+			printf("Too many pclusters in block %d %d %d. Count %d temppos %f %f %f\n", blockId.x, blockId.y, blockId.z, indexInBlock, temp.x, temp.y, temp.z);
 		}
 	}
 

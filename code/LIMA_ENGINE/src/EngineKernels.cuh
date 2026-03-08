@@ -397,12 +397,13 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		// Energy minimize
 		if constexpr (emvariant) {
 			// TODO: Handle emvariants/ADAM states
-			//const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
+			const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
-			//AdamState* const adamState = &sim->adamState[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-			//const Coord pos_now = EngineUtils::IntegratePositionADAM(compound_coords.rel_positions[threadIdx.x], safeForce, adamState, step);
+			AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+			const Float3 pos_now = EngineUtils::IntegratePositionADAM(positions[threadIdx.x], safeForce, adamState, step);
+			//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
 
-			//compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+			positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 		}
 		else {			
 

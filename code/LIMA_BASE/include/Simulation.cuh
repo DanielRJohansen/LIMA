@@ -68,6 +68,11 @@ public:
 		return buffer[indexOffset + pcOffset + pid];
 	}
 
+	T& GetDatapointAtStep(int pcid, int pid, size_t step) {
+		const size_t entryIndex = step / loggingInterval;
+		return GetDatapoint(pcid, pid, entryIndex);
+	}
+
 	size_t GetLoggingInterval() const { return loggingInterval; }
 	size_t EntriesPerStep() const { return n_particles_upperbound; }
 	const size_t n_particles_upperbound;

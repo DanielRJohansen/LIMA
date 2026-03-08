@@ -231,33 +231,17 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 
 	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
 
-	//for (int cid = 0; cid < boximage->compounds.size(); cid++) {
-	//	for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
-	//		const Float3 newPos = simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, stepToLoadFrom);
-	//		grofile.atoms[boximage->compounds[cid].indicesInGrofile[pid]].position = newPos;
-	//		particlesUpdated++;
-	//	}
-	//}
 
-	//for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
-
-	//	const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
-	//	const int nAtomsInTinymol = tinymol.nParticles;
-
-	//	if (nAtomsInTinymol != 3)
-	//		throw std::runtime_error("Only support 3-atom tinymols in WriteBoxCoordinatesToFile for now");
-
-	//	const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId*3, stepToLoadFrom);	
-	//	const Float3 deltaPos = new_position - grofile.atoms[tinymol.firstParticleIdInGrofile].position;
-
-	//	assert(grofile.atoms[tinymol.firstParticleIdInGrofile].atomName[0] == tinymol.atomTypes[0][0]);
-
-	//	for (int i = 0; i < nAtomsInTinymol; i++) {
-	//		//grofile.atoms[tinymol.firstParticleIdInGrofile + i].position += deltaPos;
-	//		grofile.atoms[tinymol.firstParticleIdInGrofile + i].position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId * 3 + i, stepToLoadFrom);
-	//		particlesUpdated++;
-	//	}		
-	//}
+	for (int pcId = 0; pcId < simulation->box_host->persistentClusters.size(); pcId++) {
+		const PersistentClusterMeta& pcMeta = simulation->box_host->persistentClustersMetadata[pcId];
+		for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+			const int pidGlobal = pcMeta.particleIdsGlobal[pid];
+			if (pidGlobal != -1) {
+				grofile.atoms[pidGlobal].position = simulation->traj_buffer->GetDatapointAtStep(pcId, pid, stepToLoadFrom);
+				particlesUpdated++;
+			}
+		}
+	}
 
 	if (AllAtom && particlesUpdated != grofile.atoms.size()) {
 		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));

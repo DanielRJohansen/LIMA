@@ -122,131 +122,6 @@ constexpr std::array<int, 16> GetParticleIdsOfSuperCluster(const PersistentClust
 	return particleIds;
 }
 
-struct ReservedTask {
-	int queryScId;
-	int resultIndexRelativeSelf = -1;
-	int resultIndexRelativeQuery = -1;
-	int nointeractionMatrixIndexRelative = -1;
-};
-
-template <typename T>
-std::vector<size_t> ExlusivePrefixsum(const std::vector<T>& counts) {
-	static_assert(std::is_integral<T>::value, "ExlusivePrefixsum only supports integral types");
-	std::vector<size_t> prefixsum(counts.size());
-	//std::exclusive_scan(std::execution::par, counts.begin(), counts.end(), prefixsum.begin(), 0);
-	std::exclusive_scan(counts.begin(), counts.end(), prefixsum.begin(), size_t{ 0 });
-	return prefixsum;
-}
-template <typename T>
-std::vector<size_t> ExlusivePrefixsum(const std::vector<std::vector<T>>& sizes) {
-	std::vector<size_t> prefixsum(sizes.size());
-	std::transform_exclusive_scan(std::execution::par, sizes.begin(), sizes.end(), prefixsum.begin(), size_t{ 0 }, std::plus<>{},
-		[](const std::vector<T>& v) { return v.size(); }
-	);
-	return prefixsum;
-}
-
-std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperClusterMeta>& superClusterMetas, const std::vector<int>& nBondedmatricesReserved, const std::vector<size_t>& nBondedMatricesPrefixsum,
-	const std::vector<PersistentClusterMeta>& pClustersMeta, const std::vector<std::vector<ReservedTask>>& workPerSc, const std::vector<ParticlesBondedToParticle>& particlesBondedToParticle) {
-	const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
-	std::vector<BoolMatrix16x16> nointeractionMatrices(numNointeractionMatricesTotal);
-
-	// Build all the nointeractionMatrices
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta.data(), superClusterMetas[scId]);
-		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			if (workPerSc[scId][i].nointeractionMatrixIndexRelative == -1)
-				continue;
-
-			const int queryScId = workPerSc[scId][i].queryScId;
-			BoolMatrix16x16 nointeractionMatrix{};
-
-			std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta.data(), superClusterMetas[queryScId]);
-			const bool isSelfInteractionTask = scId == queryScId;
-
-			for (int col = 0; col < 16; ++col) {
-				for (int row = 0; row < 16; ++row) {
-					if (particleIdsSelf[row] == -1)
-						continue;
-					int pidSelf = particleIdsSelf[row];
-					int pidQuery = particleIdsQuery[col];
-					if (pidSelf == pidQuery && pidSelf == 0)
-						int a = 0;
-
-					bool noInteraction = particlesBondedToParticle[particleIdsSelf[row]].Contains(particleIdsQuery[col]);
-					if (isSelfInteractionTask && row == col) {
-						noInteraction = true;
-					}
-					//		noInteraction = true;
-					nointeractionMatrix.Set(row, col, noInteraction);
-				}
-			}
-
-
-			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
-			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
-		}
-	}
-
-	return nointeractionMatrices;
-}
-
-//float MinDistanceBetweenPclustersInSupercluster(const SuperCluster& sc0, const SuperCluster& sc1, const Float3& boxSize) {
-//	float minDist = FLT_MAX;
-//	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
-//		if (!sc0.pData->Valid())
-//			continue;
-//		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
-//			if (!sc1.pData->Valid())
-//				continue;
-//			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(sc0.pData[pcid0].position, sc1.pData[pcid1].position, boxSize, BoundaryConditionSelect::PBC);
-//			if (dist < minDist) {
-//				minDist = dist;
-//			}
-//		}
-//	}
-//	return minDist;
-//}
-
-std::vector<std::array<float4, 4>> ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(const std::vector<SuperCluster>& superclusters) {
-	std::vector<std::array<float4, 4>> out(superclusters.size());
-
-	// Debugging
-	float maxRadius = 0;
-	float maxIntraScDistance = 0;
-
-	for (int scId = 0; scId < superclusters.size(); scId++) {
-		for (int pcid = 0; pcid < 4; pcid++) {
-			Float3 sum{};
-			int cnt = 0;
-			for (int pid = 0; pid < 4; pid++) {
-				const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
-				if (pData.Valid()) {
-					sum += pData.position;
-					cnt++;
-				}
-			}
-
-			const Float3 meanPos = sum * (1.0f / static_cast<float>(cnt));
-			float radius = 0;
-			for (int pid = 0; pid < cnt; pid++) {
-				const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
-				radius = std::max(radius, (pData.position - meanPos).len());
-			}
-			out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
-
-			// Debug
-			maxRadius = std::max(maxRadius, radius);
-			if (pcid != 0)
-				maxIntraScDistance = std::max(maxIntraScDistance, (meanPos - Float3{ out[scId][pcid - 1] }).len());
-			if (radius > .8f || maxIntraScDistance > 1.2f)
-				int a = 0;
-			//
-		}
-	}
-
-	return out;
-}
 __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(const SuperCluster* const superclusters, std::array<float4, 4>* const out, int nSuperclusters) {
 	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -547,256 +422,258 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	//auto 
 
 	return true;
-
-
-
-
-
-
-
-
-
-
-	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
-	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperclusters);
-	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
-
-	const std::vector<std::array<float4, 4>> superclusterPositionSpheres = ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(superClusters);
-
-	std::vector<std::vector<ReservedTask>> workPerSc(superClusters.size());
-	std::vector<int> nResultsReserved(superClusters.size(), 0);
-	std::vector<int> nBondedmatricesReserved(superClusters.size(), 0);
-
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
-
-			if (DoesSuperclustersInteract(superclusterPositionSpheres.data(), scId, queryScId, simulation->simparams_host.cutoff_nm, boxSizeF)) {
-				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclustersBondedToPcluster.data());
-
-				workPerSc[scId].emplace_back(ReservedTask{
-					queryScId,
-					nResultsReserved[scId],
-					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId],
-					useNointeractionMatrix ? nBondedmatricesReserved[scId] : -1
-					});
-
-				nResultsReserved[scId]++;
-				if (scId != queryScId)
-					nResultsReserved[queryScId]++;
-				if (useNointeractionMatrix) {
-					nBondedmatricesReserved[scId]++;
-				}
-			}
-		}
-	}
-
-	// Make prefixsums
-	const std::vector<size_t> nResultsPrefixsum = ExlusivePrefixsum(nResultsReserved);
-	const std::vector<size_t> nBondedMatricesPrefixsum = ExlusivePrefixsum(nBondedmatricesReserved);
-	const std::vector<size_t> nTasksPrefixsum = ExlusivePrefixsum(workPerSc);
-
-	const size_t numTasksTotal = nTasksPrefixsum.back() + workPerSc.back().size();
-	std::vector<ScScTask> tasks(numTasksTotal);
-
-	// Build all the tasks and update the scMeta
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			//const bool bondedTask = workPerSc[scId][i].areBonded;
-			ScScTask task;
-			task.nointeractionMatrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative != -1 ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
-			task.scIds[0] = scId;
-			task.scIds[1] = workPerSc[scId][i].queryScId;
-			task.resultIndices[0] = workPerSc[scId][i].resultIndexRelativeSelf + nResultsPrefixsum[scId];
-			task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
-			//task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
-			tasks[nTasksPrefixsum[scId] + i] = task;
-		}
-
-		superClusterMetas[scId].resultsStartIndex = nResultsPrefixsum[scId];
-		superClusterMetas[scId].nResults = nResultsReserved[scId];
-	}
-
-	//const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
-	//nointeractionMatrices.resize(numNointeractionMatricesTotal);
-
-
-
-	// Build all the nointeractionMatrices
-	const std::vector<BoolMatrix16x16> nointeractionMatrices = BuildNointeractionMatrices(superClusterMetas, nBondedmatricesReserved, nBondedMatricesPrefixsum, pClustersMeta, workPerSc, box.particlesBondedToParticle);
-	//for (const auto& mat : nointeractionMatrices) {
-	//	mat.Print();
-	//}
-	//{
-	//	std::vector<std::set<int>> expectedLjInteractions(16);
-	//	for (int row = 0; row < 16; row++) {
-	//		for (int col = 0; col < 16; col++) {
-	//			if (col == 8 && row == 8)
-	//				int aa = 0;
-	//			auto _row = nointeractionMatrices[0].GetRow(row);
-	//			if (!nointeractionMatrices[0].Get(_row, col)) {
-	//				int pid0 = superClusterMetas[0].particlesIds[row];
-	//				int pid1 = superClusterMetas[0].particlesIds[col];
-	//				expectedLjInteractions[pid0].insert(pid1);
-	//			}
-	//		}
-	//	}
-	//	for (int pid = 0; pid < 16; pid++) {
-	//		for (auto& interactPid : expectedLjInteractions[pid]) {
-	//			printf("%d ", interactPid);
-	//		}
-	//		printf("\n");
-	//	}
-	//}
-
-
-	//DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
-	//DebugUtils::VerifyIdentical
-
-
-	// Push back to device
-	cudaMemcpy(superClustersControl->scMeta, superClusterMetas.data(), superClusterMetas.size() * sizeof(SuperClusterMeta), cudaMemcpyHostToDevice);
-	cudaFree(scscTasksDevice);
-	cudaFree(noInteractionMatricesDevice);
-	scscTasksDevice = GenericCopyToDevice(tasks);
-	noInteractionMatricesDevice = GenericCopyToDevice(nointeractionMatrices);
-
-	nResults = nResultsPrefixsum.back() + nResultsReserved.back();
-	cudaFree(scResultsDevice);
-	cudaMalloc(&scResultsDevice, sizeof(SCResult) * nResults);
-	cudaMemset(scResultsDevice, 0, sizeof(SCResult) * nResults);
-
-	nTasks = numTasksTotal;
-	if (simulation->getStep() == 787) {
-		int a = 0;
-	}
-	return true;
 }
 
 
 
 
-
-bool Engine::MakeSuperClusterTasksCPU() {
-	if (nSuperclusters == 0)
-		return true;
-
-	const Box& box = *simulation->box_host;
-	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
-
-	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
-	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperclusters);
-	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
-
-	const std::vector<std::array<float4, 4>> superclusterPositionSpheres = ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(superClusters);
-
-	std::vector<std::vector<ReservedTask>> workPerSc(superClusters.size());
-	std::vector<int> nResultsReserved(superClusters.size(), 0);
-	std::vector<int> nBondedmatricesReserved(superClusters.size(), 0);
-
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
-
-			if (DoesSuperclustersInteract(superclusterPositionSpheres.data(), scId, queryScId, simulation->simparams_host.cutoff_nm, boxSizeF)) {
-				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclustersBondedToPcluster.data());
-
-				workPerSc[scId].emplace_back(ReservedTask{
-					queryScId,
-					nResultsReserved[scId],
-					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId],
-					useNointeractionMatrix ? nBondedmatricesReserved[scId] : -1
-					});
-
-				nResultsReserved[scId]++;
-				if (scId != queryScId)
-					nResultsReserved[queryScId]++;
-				if (useNointeractionMatrix) {
-					nBondedmatricesReserved[scId]++;
-				}
-			}
-		}
-	}
-
-	// Make prefixsums
-	const std::vector<size_t> nResultsPrefixsum = ExlusivePrefixsum(nResultsReserved);
-	const std::vector<size_t> nBondedMatricesPrefixsum = ExlusivePrefixsum(nBondedmatricesReserved);
-	const std::vector<size_t> nTasksPrefixsum = ExlusivePrefixsum(workPerSc);
-
-	const size_t numTasksTotal = nTasksPrefixsum.back() + workPerSc.back().size();
-	std::vector<ScScTask> tasks(numTasksTotal);
-
-	// Build all the tasks and update the scMeta
-	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
-		for (int i = 0; i < workPerSc[scId].size(); i++) {
-			//const bool bondedTask = workPerSc[scId][i].areBonded;
-			ScScTask task;
-			task.nointeractionMatrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative != -1 ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
-			task.scIds[0] = scId;
-			task.scIds[1] = workPerSc[scId][i].queryScId;
-			task.resultIndices[0] = workPerSc[scId][i].resultIndexRelativeSelf + nResultsPrefixsum[scId];
-			task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
-			//task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
-			tasks[nTasksPrefixsum[scId] + i] = task;
-		}
-
-		superClusterMetas[scId].resultsStartIndex = nResultsPrefixsum[scId];
-		superClusterMetas[scId].nResults = nResultsReserved[scId];
-	}
-
-	//const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
-	//nointeractionMatrices.resize(numNointeractionMatricesTotal);
-
-
-
-	// Build all the nointeractionMatrices
-	const std::vector<BoolMatrix16x16> nointeractionMatrices = BuildNointeractionMatrices(superClusterMetas, nBondedmatricesReserved, nBondedMatricesPrefixsum, pClustersMeta, workPerSc, box.particlesBondedToParticle);
-	//for (const auto& mat : nointeractionMatrices) {
-	//	mat.Print();
-	//}
-	//{
-	//	std::vector<std::set<int>> expectedLjInteractions(16);
-	//	for (int row = 0; row < 16; row++) {
-	//		for (int col = 0; col < 16; col++) {
-	//			if (col == 8 && row == 8)
-	//				int aa = 0;
-	//			auto _row = nointeractionMatrices[0].GetRow(row);
-	//			if (!nointeractionMatrices[0].Get(_row, col)) {
-	//				int pid0 = superClusterMetas[0].particlesIds[row];
-	//				int pid1 = superClusterMetas[0].particlesIds[col];
-	//				expectedLjInteractions[pid0].insert(pid1);
-	//			}
-	//		}
-	//	}
-	//	for (int pid = 0; pid < 16; pid++) {
-	//		for (auto& interactPid : expectedLjInteractions[pid]) {
-	//			printf("%d ", interactPid);
-	//		}
-	//		printf("\n");
-	//	}
-	//}
-
-
-	//DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
-	//DebugUtils::VerifyIdentical
-
-
-	// Push back to device
-	cudaMemcpy(superClustersControl->scMeta, superClusterMetas.data(), superClusterMetas.size() * sizeof(SuperClusterMeta), cudaMemcpyHostToDevice);
-	cudaFree(scscTasksDevice);
-	cudaFree(noInteractionMatricesDevice);
-	scscTasksDevice = GenericCopyToDevice(tasks);
-	noInteractionMatricesDevice = GenericCopyToDevice(nointeractionMatrices);
-
-	nResults = nResultsPrefixsum.back() + nResultsReserved.back();
-	cudaFree(scResultsDevice);
-	cudaMalloc(&scResultsDevice, sizeof(SCResult) * nResults);
-	cudaMemset(scResultsDevice, 0, sizeof(SCResult) * nResults);
-
-	nTasks = numTasksTotal;
-	if (simulation->getStep() == 787) {
-		int a = 0;
-	}
-	return true;
-}
+//
+//struct ReservedTask {
+//	int queryScId;
+//	int resultIndexRelativeSelf = -1;
+//	int resultIndexRelativeQuery = -1;
+//	int nointeractionMatrixIndexRelative = -1;
+//};
+//
+//template <typename T>
+//std::vector<size_t> ExlusivePrefixsum(const std::vector<T>& counts) {
+//	static_assert(std::is_integral<T>::value, "ExlusivePrefixsum only supports integral types");
+//	std::vector<size_t> prefixsum(counts.size());
+//	//std::exclusive_scan(std::execution::par, counts.begin(), counts.end(), prefixsum.begin(), 0);
+//	std::exclusive_scan(counts.begin(), counts.end(), prefixsum.begin(), size_t{ 0 });
+//	return prefixsum;
+//}
+//template <typename T>
+//std::vector<size_t> ExlusivePrefixsum(const std::vector<std::vector<T>>& sizes) {
+//	std::vector<size_t> prefixsum(sizes.size());
+//	std::transform_exclusive_scan(std::execution::par, sizes.begin(), sizes.end(), prefixsum.begin(), size_t{ 0 }, std::plus<>{},
+//		[](const std::vector<T>& v) { return v.size(); }
+//	);
+//	return prefixsum;
+//}
+//
+//std::vector<BoolMatrix16x16> BuildNointeractionMatrices(const std::vector<SuperClusterMeta>& superClusterMetas, const std::vector<int>& nBondedmatricesReserved, const std::vector<size_t>& nBondedMatricesPrefixsum,
+//	const std::vector<PersistentClusterMeta>& pClustersMeta, const std::vector<std::vector<ReservedTask>>& workPerSc, const std::vector<ParticlesBondedToParticle>& particlesBondedToParticle) {
+//	const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
+//	std::vector<BoolMatrix16x16> nointeractionMatrices(numNointeractionMatricesTotal);
+//
+//	// Build all the nointeractionMatrices
+//	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
+//		std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta.data(), superClusterMetas[scId]);
+//		for (int i = 0; i < workPerSc[scId].size(); i++) {
+//			if (workPerSc[scId][i].nointeractionMatrixIndexRelative == -1)
+//				continue;
+//
+//			const int queryScId = workPerSc[scId][i].queryScId;
+//			BoolMatrix16x16 nointeractionMatrix{};
+//
+//			std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta.data(), superClusterMetas[queryScId]);
+//			const bool isSelfInteractionTask = scId == queryScId;
+//
+//			for (int col = 0; col < 16; ++col) {
+//				for (int row = 0; row < 16; ++row) {
+//					if (particleIdsSelf[row] == -1)
+//						continue;
+//					int pidSelf = particleIdsSelf[row];
+//					int pidQuery = particleIdsQuery[col];
+//					if (pidSelf == pidQuery && pidSelf == 0)
+//						int a = 0;
+//
+//					bool noInteraction = particlesBondedToParticle[particleIdsSelf[row]].Contains(particleIdsQuery[col]);
+//					if (isSelfInteractionTask && row == col) {
+//						noInteraction = true;
+//					}
+//					//		noInteraction = true;
+//					nointeractionMatrix.Set(row, col, noInteraction);
+//				}
+//			}
+//
+//
+//			const int matrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId];
+//			nointeractionMatrices[matrixIndex] = nointeractionMatrix;
+//		}
+//	}
+//
+//	return nointeractionMatrices;
+//}
+//
+////float MinDistanceBetweenPclustersInSupercluster(const SuperCluster& sc0, const SuperCluster& sc1, const Float3& boxSize) {
+////	float minDist = FLT_MAX;
+////	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
+////		if (!sc0.pData->Valid())
+////			continue;
+////		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
+////			if (!sc1.pData->Valid())
+////				continue;
+////			const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(sc0.pData[pcid0].position, sc1.pData[pcid1].position, boxSize, BoundaryConditionSelect::PBC);
+////			if (dist < minDist) {
+////				minDist = dist;
+////			}
+////		}
+////	}
+////	return minDist;
+////}
+//
+//std::vector<std::array<float4, 4>> ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(const std::vector<SuperCluster>& superclusters) {
+//	std::vector<std::array<float4, 4>> out(superclusters.size());
+//
+//	// Debugging
+//	float maxRadius = 0;
+//	float maxIntraScDistance = 0;
+//
+//	for (int scId = 0; scId < superclusters.size(); scId++) {
+//		for (int pcid = 0; pcid < 4; pcid++) {
+//			Float3 sum{};
+//			int cnt = 0;
+//			for (int pid = 0; pid < 4; pid++) {
+//				const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
+//				if (pData.Valid()) {
+//					sum += pData.position;
+//					cnt++;
+//				}
+//			}
+//
+//			const Float3 meanPos = sum * (1.0f / static_cast<float>(cnt));
+//			float radius = 0;
+//			for (int pid = 0; pid < cnt; pid++) {
+//				const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
+//				radius = std::max(radius, (pData.position - meanPos).len());
+//			}
+//			out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
+//
+//			// Debug
+//			maxRadius = std::max(maxRadius, radius);
+//			if (pcid != 0)
+//				maxIntraScDistance = std::max(maxIntraScDistance, (meanPos - Float3{ out[scId][pcid - 1] }).len());
+//			if (radius > .8f || maxIntraScDistance > 1.2f)
+//				int a = 0;
+//			//
+//		}
+//	}
+//
+//	return out;
+//}
+//bool Engine::MakeSuperClusterTasksCPU() {
+//	if (nSuperclusters == 0)
+//		return true;
+//
+//	const Box& box = *simulation->box_host;
+//	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
+//
+//	const std::vector<PersistentClusterMeta>& pClustersMeta = simulation->box_host->persistentClustersMetadata;
+//	const std::vector<SuperCluster> superClusters = GenericCopyToHost(superClustersControl->scData, nSuperclusters);
+//	std::vector<SuperClusterMeta> superClusterMetas = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
+//
+//	const std::vector<std::array<float4, 4>> superclusterPositionSpheres = ComputeMeanposAndRadiiForEachPclusterInEachSupercluster(superClusters);
+//
+//	std::vector<std::vector<ReservedTask>> workPerSc(superClusters.size());
+//	std::vector<int> nResultsReserved(superClusters.size(), 0);
+//	std::vector<int> nBondedmatricesReserved(superClusters.size(), 0);
+//
+//	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
+//		for (int queryScId = scId; queryScId < superClusterMetas.size(); ++queryScId) {
+//
+//			if (DoesSuperclustersInteract(superclusterPositionSpheres.data(), scId, queryScId, simulation->simparams_host.cutoff_nm, boxSizeF)) {
+//				const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(superClusterMetas[scId], superClusterMetas[queryScId], box.pclustersBondedToPcluster.data());
+//
+//				workPerSc[scId].emplace_back(ReservedTask{
+//					queryScId,
+//					nResultsReserved[scId],
+//					scId != queryScId ? nResultsReserved[queryScId] : nResultsReserved[queryScId],
+//					useNointeractionMatrix ? nBondedmatricesReserved[scId] : -1
+//					});
+//
+//				nResultsReserved[scId]++;
+//				if (scId != queryScId)
+//					nResultsReserved[queryScId]++;
+//				if (useNointeractionMatrix) {
+//					nBondedmatricesReserved[scId]++;
+//				}
+//			}
+//		}
+//	}
+//
+//	// Make prefixsums
+//	const std::vector<size_t> nResultsPrefixsum = ExlusivePrefixsum(nResultsReserved);
+//	const std::vector<size_t> nBondedMatricesPrefixsum = ExlusivePrefixsum(nBondedmatricesReserved);
+//	const std::vector<size_t> nTasksPrefixsum = ExlusivePrefixsum(workPerSc);
+//
+//	const size_t numTasksTotal = nTasksPrefixsum.back() + workPerSc.back().size();
+//	std::vector<ScScTask> tasks(numTasksTotal);
+//
+//	// Build all the tasks and update the scMeta
+//	for (int scId = 0; scId < superClusterMetas.size(); ++scId) {
+//		for (int i = 0; i < workPerSc[scId].size(); i++) {
+//			//const bool bondedTask = workPerSc[scId][i].areBonded;
+//			ScScTask task;
+//			task.nointeractionMatrixIndex = workPerSc[scId][i].nointeractionMatrixIndexRelative != -1 ? workPerSc[scId][i].nointeractionMatrixIndexRelative + nBondedMatricesPrefixsum[scId] : -1;
+//			task.scIds[0] = scId;
+//			task.scIds[1] = workPerSc[scId][i].queryScId;
+//			task.resultIndices[0] = workPerSc[scId][i].resultIndexRelativeSelf + nResultsPrefixsum[scId];
+//			task.resultIndices[1] = scId != workPerSc[scId][i].queryScId ? (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]) : -1;
+//			//task.resultIndices[1] = (workPerSc[scId][i].resultIndexRelativeQuery + nResultsPrefixsum[workPerSc[scId][i].queryScId]);
+//			tasks[nTasksPrefixsum[scId] + i] = task;
+//		}
+//
+//		superClusterMetas[scId].resultsStartIndex = nResultsPrefixsum[scId];
+//		superClusterMetas[scId].nResults = nResultsReserved[scId];
+//	}
+//
+//	//const size_t numNointeractionMatricesTotal = nBondedMatricesPrefixsum.back() + nBondedmatricesReserved.back();
+//	//nointeractionMatrices.resize(numNointeractionMatricesTotal);
+//
+//
+//
+//	// Build all the nointeractionMatrices
+//	const std::vector<BoolMatrix16x16> nointeractionMatrices = BuildNointeractionMatrices(superClusterMetas, nBondedmatricesReserved, nBondedMatricesPrefixsum, pClustersMeta, workPerSc, box.particlesBondedToParticle);
+//	//for (const auto& mat : nointeractionMatrices) {
+//	//	mat.Print();
+//	//}
+//	//{
+//	//	std::vector<std::set<int>> expectedLjInteractions(16);
+//	//	for (int row = 0; row < 16; row++) {
+//	//		for (int col = 0; col < 16; col++) {
+//	//			if (col == 8 && row == 8)
+//	//				int aa = 0;
+//	//			auto _row = nointeractionMatrices[0].GetRow(row);
+//	//			if (!nointeractionMatrices[0].Get(_row, col)) {
+//	//				int pid0 = superClusterMetas[0].particlesIds[row];
+//	//				int pid1 = superClusterMetas[0].particlesIds[col];
+//	//				expectedLjInteractions[pid0].insert(pid1);
+//	//			}
+//	//		}
+//	//	}
+//	//	for (int pid = 0; pid < 16; pid++) {
+//	//		for (auto& interactPid : expectedLjInteractions[pid]) {
+//	//			printf("%d ", interactPid);
+//	//		}
+//	//		printf("\n");
+//	//	}
+//	//}
+//
+//
+//	//DebugUtils::VerifyIdentical(tasks, "ScScTasks" + std::to_string(simulation->getStep()));
+//	//DebugUtils::VerifyIdentical
+//
+//
+//	// Push back to device
+//	cudaMemcpy(superClustersControl->scMeta, superClusterMetas.data(), superClusterMetas.size() * sizeof(SuperClusterMeta), cudaMemcpyHostToDevice);
+//	cudaFree(scscTasksDevice);
+//	cudaFree(noInteractionMatricesDevice);
+//	scscTasksDevice = GenericCopyToDevice(tasks);
+//	noInteractionMatricesDevice = GenericCopyToDevice(nointeractionMatrices);
+//
+//	nResults = nResultsPrefixsum.back() + nResultsReserved.back();
+//	cudaFree(scResultsDevice);
+//	cudaMalloc(&scResultsDevice, sizeof(SCResult) * nResults);
+//	cudaMemset(scResultsDevice, 0, sizeof(SCResult) * nResults);
+//
+//	nTasks = numTasksTotal;
+//	if (simulation->getStep() == 787) {
+//		int a = 0;
+//	}
+//	return true;
+//}
 
 
 

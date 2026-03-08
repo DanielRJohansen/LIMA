@@ -114,9 +114,9 @@ struct Box {
 	// Clusters
 	std::vector<PersistentCluster> persistentClusters;
 	std::vector<PersistentClusterMeta> persistentClustersMetadata;
-	std::vector<std::set<int>> particleBondedToParticle;
-	std::vector<std::set<int>> pclusterBondedToPcluster;
 
+	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
+	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
 };
 
 

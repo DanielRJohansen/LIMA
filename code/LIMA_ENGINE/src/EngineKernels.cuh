@@ -59,7 +59,7 @@ __global__ void PclusterSnfKernel(const PersistentCluster* const pc, const Persi
 		float charge = pc[pcId].pqd[pid].params.charge;
 		Float3 force = uniformElectricField.GetForce(charge);
 
-		forceEnergy[pidGlobal] = ForceEnergy{ force, 0.f };
+		forceEnergy[pcId * PersistentCluster::nParticles + pid] = ForceEnergy{ force, 0.f };
 	}
 }
 
@@ -379,6 +379,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	// Gather from bonds : TODO: maybe dont store it ordered like this?
 	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	 //TODO: Gather from PME, SNF, others??
+	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.snf[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	//fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	__syncthreads();
 

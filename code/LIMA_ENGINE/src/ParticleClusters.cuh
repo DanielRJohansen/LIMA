@@ -403,8 +403,9 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		SuperCluster sc{};
 #if LIMAKERNELDEBUGMODE == 1
 		sc.center = blockCenter;
+		
 #endif
-
+		scMeta.blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, boxSize);
 
 		std::array<Float3, 16> posDebug;
 		int cnt = 0;
@@ -475,18 +476,30 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 // 1 cudablock per block, blockdim = 32,1,1
 __global__ void CompressSuperclusters(SuperClustersControl scControl, const SuperclusterStagingControl scStagingControl) {
-	const int nClusters = scStagingControl.nClustersPerBlock[blockIdx.x];
+	const int srcBlockId = blockIdx.x;
+	const int nClusters = scStagingControl.nClustersPerBlock[srcBlockId];
 	if (nClusters == 0)
 		return;
 
-	const int srcStartIndex = blockIdx.x * SuperClustersControl::maxClustersPerBlock;
-	const int dstStartIndex = scStagingControl.nClustersPrefixSum[blockIdx.x];
+	const int srcStartIndex = srcBlockId * SuperClustersControl::maxClustersPerBlock;
+	const int dstStartIndex = scStagingControl.nClustersPrefixSum[srcBlockId];
 
 
 	auto tb = cooperative_groups::this_thread_block();
 	cooperative_groups::memcpy_async(tb, &scControl.scData[dstStartIndex], &scStagingControl.scData[srcStartIndex], sizeof(SuperCluster) * nClusters);
 	cooperative_groups::memcpy_async(tb, &scControl.scMeta[dstStartIndex], &scStagingControl.scMeta[srcStartIndex], sizeof(SuperClusterMeta) * nClusters);
 	cooperative_groups::wait(tb);
+
+	// The dstIndex is implicitly the SC id. Now assign that to the blocks for taskbuilding
+	for (int indexInBlock = threadIdx.x; indexInBlock < nClusters; indexInBlock += blockDim.x) {
+		const int scIdGlobal = dstStartIndex + indexInBlock;
+		const int targetIndex = srcBlockId * SuperClustersControl::maxClustersPerBlock + indexInBlock;
+		scControl.scIdsInBlocks[targetIndex] = scIdGlobal;
+	}
+	
+	if (threadIdx.x == 0) {
+		scControl.nSuperclustersInBlocks[srcBlockId] = nClusters;		
+	}
 }
 
 

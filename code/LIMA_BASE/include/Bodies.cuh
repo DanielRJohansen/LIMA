@@ -2,7 +2,7 @@
 
 #include "Constants.h"
 #include "LimaTypes.cuh"
-
+#include <set>
 #include <memory>
 #include <vector>
 #include <array>
@@ -266,6 +266,39 @@ struct PersistentclusterInterimState {
 	//Coord coords[PersistentCluster::nParticles];
 };
 
+template <int size>
+class StaticSet {	
+	int data[size]; // is sorted
+	static const int noVal = INT_MIN;
+public:
+	constexpr bool Contains(int value) const {
+		for (int i = 0; i < size; i++) {
+			if (data[i] == value)
+				return true;
+			if (data[i] > value || data[i] == noVal)
+				return false;
+		}
+		return false;
+	}
+
+	static std::vector<StaticSet> Create(const std::vector<std::set<int>>& sets) {
+		std::vector<StaticSet> result(sets.size());
+		for (int i= 0; i < sets.size(); i++) {
+			int j = 0;
+			for (int val : sets[i]) {
+				if (j >= size)
+					throw std::runtime_error("Too many values in set, increase size or check your clustering");
+				result[i].data[j++] = val;
+			}
+			for (; j < size; j++)
+				result[i].data[j] = noVal;
+		}
+		return result;
+	}
+};
+
+using ParticlesBondedToParticle = StaticSet<32>;
+using PclustersBondedToPcluster = StaticSet<32>;
 
 //struct PersistentCluster {
 //	ParticleQuickData pqd[4];
@@ -307,9 +340,13 @@ class BoolMatrix16x16 {
 	uint16_t data[16]; // rowmajor
 
 public:
-	BoolMatrix16x16(){
-		memset(data, 0, sizeof(data));
+	constexpr BoolMatrix16x16() {}
+		//memset(data, 0, sizeof(data));
+	constexpr void Clear() {
+		for (int i = 0; i < 16; i++)
+			data[i] = 0;
 	}
+
 	constexpr static bool Get(const uint16_t& row, int col) {
 		return (row >> col) & 1;
 	}
@@ -348,7 +385,7 @@ struct SuperClusterMeta {
 	// Set by clustering kernel
 	int pclusterIds[SuperCluster::nPclusters];
 	
-	//Float3 meanPos;
+	NodeIndex blockIndex3D;
 
 
 	// For debugging, find a way to remove in release automatically

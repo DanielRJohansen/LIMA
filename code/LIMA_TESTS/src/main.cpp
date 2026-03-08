@@ -74,7 +74,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-		loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
+//		loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -85,10 +85,10 @@ int main() {
 		//TestIntegration(envmode);
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
+		loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
 		//SimParams simparams; 
 		//simparams.n_steps = 100000;
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//for (int i = 0; i < 100; i++) {
 		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
 		//	if (!res.success)

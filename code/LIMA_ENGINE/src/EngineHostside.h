@@ -35,11 +35,12 @@ ForceEnergyInterims::ForceEnergyInterims(int nBondgroups, int nParticles, int nP
 		const size_t byteSize = sizeof(ForceEnergy) * nPclusters * PersistentCluster::nParticles;
 		cudaMalloc(&nbNonlocal, byteSize);
 		cudaMalloc(&bonded, byteSize);
-		//cudaMalloc(&forceEnergySNF, byteSize);
+		cudaMalloc(&snf, byteSize);
+
 
 		cudaMemset(nbNonlocal, 0, byteSize);
 		cudaMemset(bonded, 0, byteSize);
-		//cudaMemset(forceEnergySNF, 0, byteSize);
+		cudaMemset(snf, 0, byteSize);
 	}
 
 	if (nBondgroups > 0) {
@@ -66,7 +67,7 @@ void ForceEnergyInterims::Free() const {
 	if (nbNonlocal != nullptr) {
 		cudaFree(nbNonlocal);
 		cudaFree(bonded);
-		//cudaFree(forceEnergySNF);
+		cudaFree(snf);
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");

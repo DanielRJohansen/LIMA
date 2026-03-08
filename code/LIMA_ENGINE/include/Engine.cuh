@@ -26,6 +26,7 @@ struct SuperClustersControl;
 struct PClusterTransfermodule;
 struct PersistentCluster;
 class SuperclusterStagingControl;
+class TaskBuilderControl;
 
 namespace NeighborList { class Controller; }
 
@@ -121,7 +122,10 @@ private:
 	SCResult* scResultsDevice = nullptr;
 	size_t nResults = 0;
 	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
+	std::unique_ptr<TaskBuilderControl> taskbuilderControl;
 
+	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
+	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
@@ -141,6 +145,7 @@ private:
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();
+	bool MakeSuperClusterTasksGPU();
 	void RunClustering(bool runPclustering = true);
 	void BootstrapClustering();
 };

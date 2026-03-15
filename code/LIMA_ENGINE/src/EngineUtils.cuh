@@ -239,5 +239,27 @@ namespace EngineUtils {
 		return bonds;
 	}
 
+	//template<int maxElements>
+	//__device__ void PrintfInts(int* data, int n) {
+	//	constexpr int maxCharsPerInt = 11;
+	//	constexpr int BufSize = maxElements * maxCharsPerInt;
+
+	//	char buf[BufSize];
+	//	int pos = 0;
+
+	//	pos += snprintf(buf + pos, BufSize - pos, "\n");
+
+	//	const int limit = min(n, maxElements);
+	//	for (int i = 0; i < limit && pos < BufSize; ++i) {
+	//		pos += snprintf(buf + pos, BufSize - pos, "%d ", data[i]);
+	//	}
+
+	//	snprintf(buf + pos, BufSize - pos, "\n");
+	//	
+	//	printf("%s", buf);
+	//}
+
+
+
 };
 

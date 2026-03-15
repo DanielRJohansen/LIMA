@@ -5,10 +5,10 @@
 
 
 // -------------------------------------------- Debug Parameters -------------------------------------------- //
-constexpr bool INDEXING_CHECKS = true;
-constexpr bool SYNC_ALL_KERNELS = true;	// Disallow async/concurrent kernels
-constexpr bool FORCE_CHECKS = true;		// Check force is not NaN or Inf
-constexpr bool POSITION_CHECKS = true;		// Check if near overflow when switching to int representation
+constexpr bool INDEXING_CHECKS = false;
+constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
+constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
+constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
 constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS);
 
 //#define FORCE_NAN_CHECK // TODO: make this a const instead

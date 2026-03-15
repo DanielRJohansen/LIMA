@@ -165,7 +165,7 @@ void Engine::step() {
 	hostMaster();
 	
 
-	if (true) {
+	if (simulation->step % simulation->simparams_host.stepsPerNlistupdate == 0) {
 		superClustersControl->Reset(simulation->box_host->boxparams.boxSize);
 		RunClustering();
 		MakeSuperClusterTasksGPU();

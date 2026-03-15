@@ -2,6 +2,7 @@
 #include "TestUtils.h"
 #include "TimeIt.h"
 #include "MoleculeUtils.h"
+#include "Statistics.h"
 
 namespace Benchmarks {
 
@@ -160,7 +161,7 @@ namespace Benchmarks {
 	}
 
 	// Returns {avg ms/step, stdDev}
-	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt) {
+	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt, std::optional<int> nSteps = std::nullopt) {
 		
 		if (!IS_FAST_MODE) {
 			TestUtils::setConsoleTextColorYellow();
@@ -199,6 +200,8 @@ namespace Benchmarks {
 		GroFile grofile(groPath);
 
 		SimParams params{ workDir / "../sim_params.txt" };
+		if (nSteps) 
+			params.n_steps = *nSteps;
 		//params.dt = 1.f * FEMTO_TO_NANO; 		
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };

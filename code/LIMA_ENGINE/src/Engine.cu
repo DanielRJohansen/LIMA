@@ -416,7 +416,7 @@ void Engine::_deviceMaster() {
 	}
 
 	if (!simulation->box_host->bondgroups.empty()) {
-		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>> 
+		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box_host->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>
 			(bondgroups, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
 
@@ -424,7 +424,7 @@ void Engine::_deviceMaster() {
 		{
 			const int nPclusters = simulation->box_host->persistentClusters.size();
 			const int nBlocks = (nPclusters + 31) / 32;
-			PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[0] >> >
+			PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[4] >> >
 				(pClusterMetaDevice, nPclusters, *forceEnergyInterims);
 			LIMA_UTILS::genericErrorCheckNoSync("Error after PclusterBondgroupsGather");
 		}

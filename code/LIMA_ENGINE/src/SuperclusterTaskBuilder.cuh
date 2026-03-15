@@ -413,20 +413,20 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	Int3 boxSize = box.boxparams.boxSize;
 	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
 
-	const int nSuperclustersUpperbound = simulation->box_host->persistentClusters.size() / 2; // a little pessimistic
+	const int nSuperclustersUpperbound = nSuperclusters * 2;// simulation->box_host->persistentClusters.size(); // a little pessimistic
 
 	if (!taskbuilderControl)
 		taskbuilderControl = std::make_unique<TaskBuilderControl>(nSuperclustersUpperbound, box.particlesBondedToParticle, box.pclustersBondedToPcluster);
 	if (!scscTasksDevice) {
-		int maxTasks = TaskBuilderControlContents::maxTasksPerSc/2 * nSuperclustersUpperbound;
+		int maxTasks = (TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound)/2;
 		cudaMalloc(&scscTasksDevice, sizeof(ScScTask) * maxTasks); // THis is probably too many...
 		cudaMalloc(&noInteractionMatricesDevice, sizeof(BoolMatrix16x16) * maxTasks);
 		cudaMalloc(&scResultsDevice, sizeof(SCResult) * maxTasks * 2);
 	}
-
+	cudaDeviceSynchronize();
 
 	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel<<<(nSuperclusters + 31) / 32, 32 >>>(superClustersControl->scData, taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
-
+	cudaDeviceSynchronize();
 
 	//auto iSpheres = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
 
@@ -434,7 +434,7 @@ bool Engine::MakeSuperClusterTasksGPU() {
 		dim3 gridDim{ (uint32_t)boxSize.InnerProduct(), (uint32_t)SuperClustersControl::maxClustersPerBlock, 1u };
 		dim3 blockDim{ 3 * 3 * 3 * SuperClustersControl::maxClustersPerBlock, 1, 1 };
 		ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simparams_host.cutoff_nm);
-		LIMA_UTILS::genericErrorCheckNoSync("ReserveInteractions");
+		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
 	}
 
 	/*auto ninteractionsOwnedHost = GenericCopyToHost(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters);
@@ -445,16 +445,17 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	thrust::exclusive_scan(thrust::device, taskbuilderControl->contents.nResults, taskbuilderControl->contents.nResults + nSuperclusters + 1, taskbuilderControl->contents.nResultsPrefixsum);
 	thrust::exclusive_scan(thrust::device, taskbuilderControl->contents.nInteractionsOwned, taskbuilderControl->contents.nInteractionsOwned + nSuperclusters + 1, taskbuilderControl->contents.nTasksPrefixsum);
 	thrust::exclusive_scan(thrust::device, taskbuilderControl->contents.nNointeractionmatricesOwned, taskbuilderControl->contents.nNointeractionmatricesOwned + nSuperclusters + 1, taskbuilderControl->contents.nNointeractionmatricesPrefixsum);
-
+	cudaDeviceSynchronize();
 
 	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scMeta, nSuperclusters, scscTasksDevice);
 	BuildNointeractionMatricesKernel << <nSuperclusters , 16 >> >(superClustersControl->scMeta, pClusterMetaDevice, taskbuilderControl->contents, noInteractionMatricesDevice, nSuperclusters);
-
+	cudaDeviceSynchronize();
 
 	//auto resCounts = GenericCopyToHost(taskbuilderControl->contents.nResults, nSuperclustersUpperbound);
 
 	nResults = GenericCopyToHost(taskbuilderControl->contents.nResultsPrefixsum + nSuperclusters);
 	nTasks = GenericCopyToHost(taskbuilderControl->contents.nTasksPrefixsum + nSuperclusters);
+	cudaDeviceSynchronize();
 
 	//auto tasksHost = GenericCopyToHost(scscTasksDevice, nSuperclustersUpperbound * TaskBuilderControlContents::maxTasksPerSc);
 	//auto 

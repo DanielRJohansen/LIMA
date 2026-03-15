@@ -124,12 +124,13 @@ int main() {
 
 		//Benchmarks::Benchmark({ "t4", "membrane20", "manyt4" });		
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
-		Benchmarks::Benchmark("membrane20", "membranesolvated_em");
+		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv");
 		//Benchmarks::PrepareSimulation_stmv(envmode);
-		 
-		//TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
+		//Benchmarks::Psome(envmode);
+		//
+		// TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
 
 
 		//{
@@ -158,7 +159,7 @@ int main() {
 		
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");

@@ -120,7 +120,7 @@ namespace Benchmarks {
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
-		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {
@@ -157,7 +157,7 @@ namespace Benchmarks {
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
-		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
 	}
 
 	// Returns {avg ms/step, stdDev}

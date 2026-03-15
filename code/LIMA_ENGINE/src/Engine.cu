@@ -353,15 +353,13 @@ void Engine::_deviceMaster() {
 	// #### Initial round of force computations
 	cudaDeviceSynchronize();
 
-	// TODO
-    //if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-    //    pmeController->CalcCharges(*boxConfigCopy, *boxStateCopy, boxparams.n_compounds, forceEnergyInterims->forceEnergiesPME, forceEnergyInterims->solvents.pmeInteraction, pmeStream);
-    //    LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
-    //}
+    if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
+        pmeController->CalcCharges(*superClustersControl, nSuperclusters, forceEnergyInterims->pme, pmeStream);
+        LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
+    }
 
 	bool newAlg = true;
 
-	//if (newAlg)
 	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
 		dim3 blockDim(16, 1, 1); // TEMP
@@ -382,32 +380,7 @@ void Engine::_deviceMaster() {
 
 		/*std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
 		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));*/
-	}
-	/*else*/ 
-	//{
-	//	cudaDeviceSynchronize();
-	//	if (boxparams.n_compounds > 0) {
-	//	compoundFarneighborShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES>>>
- //           (simulation->simparams_host.enable_electrostatics,
- //               forceEnergyInterims->forceEnergyFarneighborShortrange, compoundQuickData, nlistController->GetBuffers().compoundsNNeighborNonbondedCompounds, 
-	//			nlistController->GetBuffers().compoundsNeighborNonbondedCompounds, nParticlesInCompoundsBufferPtr, 
-	//			sim_dev,
-	//			//nullptr,
- //               step
-	//			);
-	//	cudaDeviceSynchronize();
-	//	int a = 0;
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundFarneighborShortrangeInteractionsKernel");
-
-	//	compoundImmediateneighborAndSelfShortrangeInteractionsKernel<BoundaryCondition, emvariant, computePotE> 
-	//		<<<boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, cudaStreams[1] >>> 
-	//		(sim_dev, step, forceEnergyInterims->forceEnergyImmediateneighborShortrange, nlistController->GetBuffers());
-	//	LIMA_UTILS::genericErrorCheckNoSync("Error after compoundImmediateneighborAndSelfShortrangeInteractionsKernel");
-	//	}
-	//}
-
-	
+	}	
 
 
 	if (simulation->simparams_host.snf_select != None) {

@@ -79,7 +79,7 @@ struct Float3 {
 
 	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
 	constexpr float4 Tofloat4(float w=0) const { return float4{ x, y, z, w }; }
-	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
+	constexpr Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
 	__host__ static Float3 FromInt3(const Int3& a) { return Float3{ static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z) }; }
 
 

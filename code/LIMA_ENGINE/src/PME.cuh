@@ -50,7 +50,7 @@ namespace PME {
 		Controller(const Box& box, float cutoffNM, cudaStream_t& stream);
 		~Controller();
 
-		void CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergyCompounds, ForceEnergy* const forceEnergySolvents, cudaStream_t& stream);
+		void CalcCharges(SuperClustersControl scControl, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream);
 
 	private:
 		//Just for debugging
@@ -169,128 +169,69 @@ constexpr Int3 FloorIndex3d(const Float3& relpos) {
 
 // --------------------------------------------------------------- PME Kernels --------------------------------------------------------------- //	
 
-// Call with MAX_COMPOUND_PARTICLES threads (atleast 27)
-//__global__ void DistributeCompoundchargesToBlocksKernel(const BoxConfig boxConfig, const BoxState boxState, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim)
-//{
-//	NodeIndex compoundOrigo = boxState.compoundOrigos[blockIdx.x]; // This coincides as the center block, or 0,0,0 direction block we target
-//	const int nParticles = boxConfig.compounds[blockIdx.x].n_particles;
-//
-//	__shared__ Float3 relPositions[MAX_COMPOUND_PARTICLES];
-//	__shared__ float charges[MAX_COMPOUND_PARTICLES];
-//
-//	__shared__ int outgoingParticlesId[27 * MAX_COMPOUND_PARTICLES];
-//	__shared__ int offsetsInTarget[27];
-//	__shared__ int nOutgoingParticles[27];
-//	relPositions[threadIdx.x] = boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-//	charges[threadIdx.x] = boxConfig.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-//
-//	if (threadIdx.x < 27) {
-//		nOutgoingParticles[threadIdx.x] = 0;
-//	}
-//	__syncthreads();
-//
-//	// The first 27 threads are assigned a direction. They then count which particles are in their node, and store the id's
-//	if (threadIdx.x < 27) {
-//		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
-//		const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(compoundOrigo + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
-//		int myCount = 0;
-//
-//		for (int i = 0; i < nParticles; i++) {
-//			if (charges[i] == 0.f) // Skip particles with no charge
-//				continue;
-//
-//			const Int3 floorIndex3d = FloorIndex3d(relPositions[i]);
-//			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
-//				outgoingParticlesId[threadIdx.x * MAX_COMPOUND_PARTICLES + myCount] = i; 
-//				myCount++;
-//			}
-//		}
-//
-//		// Now reserve space for these particles
-//		offsetsInTarget[threadIdx.x] = ChargeBlock::MakeReservation(myCount, chargeblockBuffers, targetBlockIndex);
-//		nOutgoingParticles[threadIdx.x] = myCount;
-//	}
-//	__syncthreads();
-//
-//	// Now all threads collaborate in pushing the outbound particles
-//	for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
-//		if (threadIdx.x < nOutgoingParticles[directionIndex]) {
-//			const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
-//			
-//			const int designatedParticleId = outgoingParticlesId[directionIndex * MAX_COMPOUND_PARTICLES + threadIdx.x];
-//			const Float3 relposRelativeToTargetBlock = relPositions[designatedParticleId] - direction.ToFloat3();
-//
-//			const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(compoundOrigo + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
-//			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
-//
-//			ChargeBlock::GetParticles(chargeblockBuffers, targetBlockIndex)[indexInTarget] = ChargePos{ relposRelativeToTargetBlock, charges[designatedParticleId] };
-//		}
-//	}
-//}
+// blockDim = (32, 1, 1)
+__global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* const superclusters, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim)
+{
+	__shared__ Float3 relPositions[SuperCluster::nParticles ];
+	__shared__ float charges[SuperCluster::nParticles];
 
-// Launch with 32 threads
-//__global__ void DistributeSolventsChargesToBlocksKernel(const BoxConfig boxConfig, const BoxState boxState, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim) {
-//	__shared__ Float3 relPositions[SolventBlock::maxParticles];
-//	__shared__ float charges[SolventBlock::maxParticles];
-//
-//	__shared__ int outgoingParticlesId[27 * SolventBlock::maxParticles];
-//	__shared__ int offsetsInTarget[27];
-//	__shared__ int nOutgoingParticles[27];
-//	__shared__ int nParticles;
-//	NodeIndex blockIndex3d = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
-//
-//	if (threadIdx.x == 0) {
-//		nParticles = boxState.nParticlesInSolventblock[blockIdx.x];
-//	}
-//	if (threadIdx.x < 27) {
-//		nOutgoingParticles[threadIdx.x] = 0;
-//	}
-//	__syncthreads();
-//
-//	for (int i = threadIdx.x; i < nParticles; i += blockDim.x) {
-//		ParticleQuickData pqd = boxState.solventsParticleQuickData[blockIdx.x * SolventBlock::maxParticles + i];
-//		relPositions[i] = pqd.relPos;
-//		charges[i] = DeviceConstants::tinymolForcefield.types[pqd.atomType].charge;
-//	}
-//	__syncthreads();
-//
-//	if (threadIdx.x < 27) {
-//		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
-//		const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(blockIndex3d + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
-//		int myCount = 0;
-//
-//		for (int i = 0; i < nParticles; i++) {
-//			if (charges[i] == 0.f) // Skip particles with no charge
-//				continue;
-//
-//			const Int3 floorIndex3d = FloorIndex3d(relPositions[i]);
-//			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
-//				outgoingParticlesId[threadIdx.x * SolventBlock::maxParticles + myCount] = i;
-//				myCount++;
-//			}
-//		}
-//
-//		// Now reserve space for these particles
-//		offsetsInTarget[threadIdx.x] = ChargeBlock::MakeReservation(myCount, chargeblockBuffers, targetBlockIndex);
-//		nOutgoingParticles[threadIdx.x] = myCount;
-//	}
-//	__syncthreads();
-//
-//	// Now all threads collaborate in pushing the outbound particles
-//	for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
-//		if (threadIdx.x < nOutgoingParticles[directionIndex]) {
-//			const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
-//
-//			const int designatedParticleId = outgoingParticlesId[directionIndex * SolventBlock::maxParticles + threadIdx.x];
-//			const Float3 relposRelativeToTargetBlock = relPositions[designatedParticleId] - direction.ToFloat3();
-//
-//			const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(blockIndex3d + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
-//			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
-//
-//			ChargeBlock::GetParticles(chargeblockBuffers, targetBlockIndex)[indexInTarget] = ChargePos{ relposRelativeToTargetBlock, charges[designatedParticleId] };
-//		}
-//	}
-//}
+	__shared__ int outgoingParticlesId[27 * SuperCluster::nParticles];
+	__shared__ int offsetsInTarget[27];
+	__shared__ int nOutgoingParticles[27];
+
+	if (threadIdx.x < SuperCluster::nParticles) {
+		Float3 scNodeOrigoPos = superclusters[blockIdx.x].pData[0].position.Floor();
+		relPositions[threadIdx.x] = superclusters[blockIdx.x].pData[threadIdx.x].position - scNodeOrigoPos;
+
+		//positions[threadIdx.x] = superclusters[blockIdx.x].pData[threadIdx.x].position;
+		charges[threadIdx.x] = superclusters[blockIdx.x].pData[threadIdx.x].params.charge;
+	}
+	for (int i = threadIdx.x; i < 27; i+=blockDim.x) {
+		nOutgoingParticles[threadIdx.x] = 0;
+	}
+	__syncthreads();
+
+	NodeIndex nearestGridnode = superclusters[blockIdx.x].pData[0].position.Floor().ToInt3();
+
+	// The first 27 threads are assigned a direction. They then count which particles are in their node, and store the id's
+	if (threadIdx.x < 27) {
+		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
+		const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
+		int myCount = 0;
+
+		for (int i = 0; i < SuperCluster::nParticles; i++) {
+			if (charges[i] == 0.f || isnan(charges[i])) // Skip particles with no charge
+				continue;
+
+			const Int3 floorIndex3d = FloorIndex3d(relPositions[i]);
+			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
+				outgoingParticlesId[threadIdx.x * SuperCluster::nParticles + myCount] = i; 
+				myCount++;
+			}
+		}
+
+		// Now reserve space for these particles
+		offsetsInTarget[threadIdx.x] = ChargeBlock::MakeReservation(myCount, chargeblockBuffers, targetBlockIndex);
+		nOutgoingParticles[threadIdx.x] = myCount;
+	}
+	__syncthreads();
+
+	// Now all threads collaborate in pushing the outbound particles
+	for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
+		if (threadIdx.x < nOutgoingParticles[directionIndex]) {
+			const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
+			
+			const int designatedParticleId = outgoingParticlesId[directionIndex * SuperCluster::nParticles + threadIdx.x];
+			const Float3 relposRelativeToTargetBlock = relPositions[designatedParticleId] - direction.ToFloat3();
+
+			const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
+			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
+
+			ChargeBlock::GetParticles(chargeblockBuffers, targetBlockIndex)[indexInTarget] = ChargePos{ relposRelativeToTargetBlock, charges[designatedParticleId] };
+		}
+	}
+}
+
 
 
 // This kernel accumulates charges of it's particle in a local shared buffer. Any charge outside any kernels volume is ignored, and assumed handled elsewhere
@@ -555,106 +496,53 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGri
 }
 
 
-//__global__ void InterpolateForcesAndPotentialCompounds(
-//	const BoxConfig config,
-//	const BoxState state,
-//	const float* realspaceGrid,
-//	Int3 gridDim,
-//	ForceEnergy* const forceEnergies,
-//	float selfenergyCorrection			// [J/mol]
-//)
-//{
-//	if (threadIdx.x >= config.compounds[blockIdx.x].n_particles) {
-//		return;
-//	}
-//
-//	const float charge = config.compoundsAtomCharges[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];	// [kC/mol]
-//	if (charge == 0.f)
-//		return;
-//
-//	const NodeIndex origo = state.compoundOrigos[blockIdx.x];
-//	const Float3 relpos = state.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
-//	Float3 absPos = relpos + origo.toFloat3();
-//	PeriodicBoundaryCondition::applyBCNM(absPos);
-//
-//	const Float3 gridPos = absPos * gridpointsPerNm_f;
-//	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, gridPos, gridDim);
-//
-//	// Now add self charge to calculations
-//	fe.force *= charge;
-//	fe.potE *= charge;
-//
-//	// Ewald self-energy correction
-//	fe.potE += selfenergyCorrection;
-//
-//	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
-//
-//#ifdef FORCE_NAN_CHECK
-//	if (force.isNan()) {
-//		printf("PME computed NaN force\n");
-//		asm("trap;");
-//	}
-//#endif
-//
-//	forceEnergies[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = fe;
-//}
+// blockDim = (SuperCluster::nParticles, 1, 1)
+__global__ void InterpolateForcesAndPotentialCompounds(
+	const SuperCluster* const superclusters,
+	const SuperClusterMeta* const scMeta,
+	const float* realspaceGrid,
+	Int3 gridDim,
+	ForceEnergy* const forceEnergies,
+	float selfenergyCorrection			// [J/mol]
+)
+{
+	PData pqd = superclusters[blockIdx.x].pData[threadIdx.x];
+	if (!pqd.Valid())
+		return;
 
+	const float charge = pqd.params.charge;	// [kC/mol]
+	if (charge == 0.f)
+		return;
 
-//__global__ void InterpolateForcesAndPotentialSolvents(
-//	const BoxConfig config,
-//	const BoxState state,
-//	const float* realspaceGrid,
-//	Int3 gridDim,//charge grid
-//	ForceEnergy* const forceEnergies,
-//	float selfenergyCorrection,			// [J/mol]
-//	Int3 blocksPerDim // solventblocksgrid
-//)
-//{
-//	__shared__ int nParticles;
-//	if (threadIdx.x == 0) {
-//		nParticles = state.nParticlesInSolventblock[blockIdx.x];
-//	}
-//	__syncthreads();
-//
-//	/*if (nParticles >= 96)
-//		return;*/
-//
-//	if (threadIdx.x >= nParticles) {
-//		return;
-//	}
-//
-//	const ParticleQuickData pqd = state.solventsParticleQuickData[blockIdx.x * SolventBlock::maxParticles + threadIdx.x];
-//	const float charge = DeviceConstants::tinymolForcefield.types[pqd.atomType].charge;
-//	if (charge == 0.f)
-//		return;
-//
-//	const NodeIndex origo = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
-//	const Float3 relpos = pqd.relPos;
-//	Float3 absPos = relpos + origo.toFloat3();
-//	PeriodicBoundaryCondition::applyBCNM(absPos);
-//
-//	const Float3 gridPos = absPos * gridpointsPerNm_f;
-//	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, gridPos, gridDim);
-//
-//	// Now add self charge to calculations
-//	fe.force *= charge;
-//	fe.potE *= charge;
-//
-//	// Ewald self-energy correction
-//	fe.potE += selfenergyCorrection;
-//
-//	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
-//
-//#ifdef FORCE_NAN_CHECK
-//	if (force.isNan()) {
-//		printf("PME computed NaN force\n");
-//		asm("trap;");
-//	}
-//#endif
-//
-//	forceEnergies[blockIdx.x * SolventBlock::maxParticles + threadIdx.x] = fe;
-//}
+	//const NodeIndex origo = state.compoundOrigos[blockIdx.x];
+	//const Float3 relpos = state.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
+	Float3 absPos = pqd.position;
+	//Float3 absPos = relpos + origo.toFloat3();
+	PeriodicBoundaryCondition::applyBCNM(absPos);
 
+	const Float3 gridPos = absPos * gridpointsPerNm_f;
+	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, gridPos, gridDim);
+
+	// Now add self charge to calculations
+	fe.force *= charge;
+	fe.potE *= charge;
+
+	// Ewald self-energy correction
+	fe.potE += selfenergyCorrection;
+
+	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
+
+#ifdef FORCE_NAN_CHECK
+	if (force.isNan()) {
+		printf("PME computed NaN force\n");
+		asm("trap;");
+	}
+#endif
+
+	int pcId = scMeta[blockIdx.x].pclusterIds[threadIdx.x/4];
+	int pid = threadIdx.x % 4;
+	forceEnergies[pcId * PersistentCluster::nParticles + pid] = fe;
+}
 
 
 
@@ -989,73 +877,65 @@ PME::Controller::~Controller() {
 	chargeblockBuffers->Free();
 }
 
-void PME::Controller::CalcCharges(const BoxConfig& config, const BoxState& state, int nCompounds, ForceEnergy* const forceEnergyCompounds, ForceEnergy* const forceEnergySolvents, cudaStream_t& stream) {
-	//if (nCompounds == 0)
-	//	return;
+void PME::Controller::CalcCharges(SuperClustersControl scControl, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream) {
+	if (nSuperclusters == 0)
+		return;
 
-	//Int3 bpd = boxlenNm.ToInt3();
-	//// TODO: BIGTASK: Still missing solvents in PME
-	//DistributeCompoundchargesToBlocksKernel << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, *chargeblockBuffers, bpd);
-	//LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
+	Int3 bpd = boxlenNm.ToInt3();
+	DistributeCompoundchargesToBlocksKernel << <nSuperclusters, 32, 0, stream >> > (scControl.scData, *chargeblockBuffers, bpd);
+	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
 
-	//DistributeSolventsChargesToBlocksKernel<<<bpd.InnerProduct(), SolventBlock::maxParticles, 0, stream>>>(config, state, *chargeblockBuffers, bpd);
-	//LIMA_UTILS::genericErrorCheckNoSync("DistributeSolventschargesToBlocksKernel failed!");
+	ChargeblockDistributeToGrid<<<bpd.InnerProduct(), 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, bpd, gridpointsPerDim);
+	LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");
 
-	//ChargeblockDistributeToGrid<<<bpd.InnerProduct(), 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, bpd, gridpointsPerDim);
-	//LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");
+	// ForwardFFT
+	{
+		cufftResult result = cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid);
+		if (result != CUFFT_SUCCESS) {
+			fprintf(stderr, "cufftExecR2C failed with error code %d\n", result);
+		}
+	}
 
-	//// ForwardFFT
-	//{
-	//	cufftResult result = cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid);
-	//	if (result != CUFFT_SUCCESS) {
-	//		fprintf(stderr, "cufftExecR2C failed with error code %d\n", result);
-	//	}
-	//}
+	ApplyGreensFunctionKernel << <(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim);
+	LIMA_UTILS::genericErrorCheckNoSync("ApplyGreensFunctionKernel failed!");
 
-	//ApplyGreensFunctionKernel << <(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim);
-	//LIMA_UTILS::genericErrorCheckNoSync("ApplyGreensFunctionKernel failed!");
+	// InverseFFT
+	{
+		cufftResult result = cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid);
+		if (result != CUFFT_SUCCESS) {
+			fprintf(stderr, "cufftExecC2R failed with error code %d\n", result);
+		}
+	}
 
-	//// InverseFFT
-	//{
-	//	cufftResult result = cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid);
-	//	if (result != CUFFT_SUCCESS) {
-	//		fprintf(stderr, "cufftExecC2R failed with error code %d\n", result);
-	//	}
-	//}
+	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
 
-	//Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
+	//PlotPotentialSlices();
 
-	////PlotPotentialSlices();
-
-	//InterpolateForcesAndPotentialCompounds << <nCompounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergyCompounds, selfenergyCorrection);
-	//LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
-
-	//InterpolateForcesAndPotentialSolvents<<<bpd.InnerProduct(), SolventBlock::maxParticles, 0, stream >> >(config, state, realspaceGrid, gridpointsPerDim, forceEnergySolvents, selfenergyCorrection, bpd);
-	////InterpolateForcesAndPotentialSolventsTiledVersion<< <bpd.InnerProduct(), SolventBlock::maxParticles, 0, stream >> > (config, state, realspaceGrid, gridpointsPerDim, forceEnergySolvents, selfenergyCorrection, bpd);
-	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialSolvents failed!");	
+	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::nParticles, 0, stream >> > (scControl.scData, scControl.scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
+	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
 }
 
 void PME::Controller::CalcEnergyCorrection(const Box& box) {
 	// TODO
-	//double chargeSquaredSum = 0;
-	//double chargeSum = 0;
-	//for (const Compound& compound : box.compounds) {
-	//	for (int pid = 0; pid < compound.n_particles; ++pid) {
-	//		const double charge = compound.atom_charges[pid];		// [kC/mol]
-	//		chargeSquaredSum += charge * charge;
-	//		chargeSum += charge;
-	//	}
-	//}
+	double chargeSquaredSum = 0;
+	double chargeSum = 0;
 
- //   selfenergyCorrection = static_cast<float>(-ewaldKappa / std::sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
 
-	/*if (std::abs(chargeSum) > 1e-6) {
-		backgroundchargeCorrection = chargeSum / static_cast<double>
-	}*/
-	// Only relevant for systems with a net charge
-	//const float volume = static_cast<float>(box.boxparams.boxSize) * static_cast<float>(box.boxparams.boxSize) * static_cast<float>(box.boxparams.boxSize);	
-	//const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (kappa * kappa * volume) * PhysicsUtils::modifiedCoulombConstant);
-	//return selfEnergyCorrection + backgroundEnergyCorrection;		// [J/mol]
+	for (const auto& pc : box.persistentClusters) {
+		for (const auto& pqd : pc.pqd) {
+			if (!pqd.Valid())
+				continue;
+			chargeSquaredSum += pqd.params.charge * pqd.params.charge;
+			chargeSum += pqd.params.charge;
+		}
+	}
+
+    selfenergyCorrection = static_cast<float>(-ewaldKappa / std::sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
+
+	 //Only relevant for systems with a net charge
+	/*const float volume = static_cast<float>(box.boxparams.boxSize.Product());	
+	const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (kappa * kappa * volume) * PhysicsUtils::modifiedCoulombConstant);*/
+	///return selfEnergyCorrection + backgroundEnergyCorrection;		// [J/mol]
 }
 
 void PME::Controller::PlotPotentialSlices() {

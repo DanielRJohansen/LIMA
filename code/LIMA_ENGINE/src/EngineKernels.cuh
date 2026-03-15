@@ -380,6 +380,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	 //TODO: Gather from PME, SNF, others??
 	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.snf[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.nbNonlocal[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	//fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	__syncthreads();
 

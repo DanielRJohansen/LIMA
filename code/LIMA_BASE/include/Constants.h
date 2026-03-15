@@ -17,7 +17,7 @@ const bool ENABLE_LJ = true;
 const bool ENABLE_INTEGRATEPOSITION = true;
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = false; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
 const bool ENABLE_UREYBRADLEY = true;
 
 

@@ -180,6 +180,7 @@ private:
 
 
 class Overlay {
+	bool didDrawThisFrame = false;
 public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();

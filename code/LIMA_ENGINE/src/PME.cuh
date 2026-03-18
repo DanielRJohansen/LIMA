@@ -50,7 +50,7 @@ namespace PME {
 		Controller(const Box& box, float cutoffNM, cudaStream_t& stream);
 		~Controller();
 
-		void CalcCharges(SuperClustersControl scControl, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream);
+		void CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream);
 
 	private:
 		//Just for debugging
@@ -179,19 +179,27 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	__shared__ int offsetsInTarget[27];
 	__shared__ int nOutgoingParticles[27];
 
-	if (threadIdx.x < SuperCluster::nParticles) {
-		Float3 scNodeOrigoPos = superclusters[blockIdx.x].pData[0].position.Floor();
-		relPositions[threadIdx.x] = superclusters[blockIdx.x].pData[threadIdx.x].position - scNodeOrigoPos;
+	NodeIndex nearestGridnode = superclusters[blockIdx.x].pData[0].position.Floor().ToInt3();
 
-		//positions[threadIdx.x] = superclusters[blockIdx.x].pData[threadIdx.x].position;
-		charges[threadIdx.x] = superclusters[blockIdx.x].pData[threadIdx.x].params.charge;
+	if (threadIdx.x < SuperCluster::nParticles) {
+		PData pqd = superclusters[blockIdx.x].pData[threadIdx.x];
+
+		if (pqd.Valid()) {
+			Float3 scNodeOrigoPos = nearestGridnode.toFloat3();// superclusters[blockIdx.x].pData[0].position.Floor();
+			relPositions[threadIdx.x] = pqd.position - scNodeOrigoPos;// +Float3{ 0.5, 0.5, 0.5 };
+			charges[threadIdx.x] = pqd.params.charge;
+		}
+		else {
+			relPositions[threadIdx.x] = Float3{ NAN, NAN, NAN };
+			charges[threadIdx.x] = 0.f;
+		}
 	}
 	for (int i = threadIdx.x; i < 27; i+=blockDim.x) {
 		nOutgoingParticles[threadIdx.x] = 0;
 	}
 	__syncthreads();
 
-	NodeIndex nearestGridnode = superclusters[blockIdx.x].pData[0].position.Floor().ToInt3();
+	
 
 	// The first 27 threads are assigned a direction. They then count which particles are in their node, and store the id's
 	if (threadIdx.x < 27) {
@@ -498,15 +506,15 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGri
 
 // blockDim = (SuperCluster::nParticles, 1, 1)
 __global__ void InterpolateForcesAndPotentialCompounds(
-	const SuperCluster* const superclusters,
-	const SuperClusterMeta* const scMeta,
+	SuperCluster* const scData,
+	SuperClusterMeta* const scMeta,
 	const float* realspaceGrid,
 	Int3 gridDim,
 	ForceEnergy* const forceEnergies,
 	float selfenergyCorrection			// [J/mol]
 )
 {
-	PData pqd = superclusters[blockIdx.x].pData[threadIdx.x];
+	PData pqd = scData[blockIdx.x].pData[threadIdx.x];
 	if (!pqd.Valid())
 		return;
 
@@ -514,10 +522,7 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	if (charge == 0.f)
 		return;
 
-	//const NodeIndex origo = state.compoundOrigos[blockIdx.x];
-	//const Float3 relpos = state.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x];
 	Float3 absPos = pqd.position;
-	//Float3 absPos = relpos + origo.toFloat3();
 	PeriodicBoundaryCondition::applyBCNM(absPos);
 
 	const Float3 gridPos = absPos * gridpointsPerNm_f;
@@ -540,7 +545,7 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 #endif
 
 	int pcId = scMeta[blockIdx.x].pclusterIds[threadIdx.x/4];
-	int pid = threadIdx.x % 4;
+	int pid = threadIdx.x % 4;	
 	forceEnergies[pcId * PersistentCluster::nParticles + pid] = fe;
 }
 
@@ -877,12 +882,12 @@ PME::Controller::~Controller() {
 	chargeblockBuffers->Free();
 }
 
-void PME::Controller::CalcCharges(SuperClustersControl scControl, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream) {
+void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream) {
 	if (nSuperclusters == 0)
 		return;
 
 	Int3 bpd = boxlenNm.ToInt3();
-	DistributeCompoundchargesToBlocksKernel << <nSuperclusters, 32, 0, stream >> > (scControl.scData, *chargeblockBuffers, bpd);
+	DistributeCompoundchargesToBlocksKernel << <nSuperclusters, 32, 0, stream >> > (scData, *chargeblockBuffers, bpd);
 	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
 
 	ChargeblockDistributeToGrid<<<bpd.InnerProduct(), 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, bpd, gridpointsPerDim);
@@ -907,16 +912,15 @@ void PME::Controller::CalcCharges(SuperClustersControl scControl, int nSuperclus
 		}
 	}
 
-	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));
+	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));	
+
+	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::nParticles, 0, stream >> > (scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
+	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
 
 	//PlotPotentialSlices();
-
-	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::nParticles, 0, stream >> > (scControl.scData, scControl.scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
-	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
 }
 
 void PME::Controller::CalcEnergyCorrection(const Box& box) {
-	// TODO
 	double chargeSquaredSum = 0;
 	double chargeSum = 0;
 
@@ -933,8 +937,8 @@ void PME::Controller::CalcEnergyCorrection(const Box& box) {
     selfenergyCorrection = static_cast<float>(-ewaldKappa / std::sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
 
 	 //Only relevant for systems with a net charge
-	/*const float volume = static_cast<float>(box.boxparams.boxSize.Product());	
-	const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (kappa * kappa * volume) * PhysicsUtils::modifiedCoulombConstant);*/
+	/*const float volume = static_cast<float>(box.boxparams.boxSize.InnerProduct());	
+	const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (ewaldKappa * ewaldKappa * volume) * PhysicsUtils::modifiedCoulombConstant);*/
 	///return selfEnergyCorrection + backgroundEnergyCorrection;		// [J/mol]
 }
 

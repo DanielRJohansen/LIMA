@@ -1164,8 +1164,9 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 		<< std::setw(10) << resnr
 		<< std::setw(10) << residue
 		<< std::setw(10) << atomname
-		<< std::setw(10) << cgnr
-		<< std::setw(10) << std::fixed << std::setprecision(2) << charge;
+		<< std::setw(10) << cgnr;
+	if (charge.has_value())
+		oss << std::setw(10) << std::fixed << std::setprecision(2) << charge.value();
 	if (mass.has_value())
 		oss << std::setw(10) << std::fixed << std::setprecision(3) << mass.value();
 	oss << '\n';

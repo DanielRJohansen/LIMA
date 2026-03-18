@@ -113,7 +113,6 @@ struct ForceEnergyInterims {
 	void Free() const;
 
 	// These are temp, pushed into fromSuperclusters*
-	ForceEnergy* nbNonlocal = nullptr;// Currently 1 per particle, i guess i want them in pclustergroups lateron
 	ForceEnergy* bonded = nullptr; // TODO: Also temp, not sure how i wanna proceed here..
 	ForceEnergy* pme = nullptr;
 

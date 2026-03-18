@@ -396,19 +396,23 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 				continue;
 			}
 			else {
-				const std::string& atomType = system.particles[pId].topologyAtom.type;
+				const auto topAtom = system.particles[pId].topologyAtom;
+				const std::string& atomType = topAtom.type;
 				const Float3 pos = system.particles[pId].position;
 				NBParams nbParams = forcefield.GetLjParameters(atomType);
+				if (topAtom.charge.has_value())
+					nbParams.charge = topAtom.charge.value() * elementaryChargeToKiloCoulombPerMole;
+
 				pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
 				pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
-				if (system.particles[pId].topologyAtom.mass.has_value())
-					pClusterMetas[pcId].mass[pidRel] = system.particles[pId].topologyAtom.mass.value() / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
+				if (topAtom.mass.has_value())
+					pClusterMetas[pcId].mass[pidRel] = topAtom.mass.value() / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
 				else if (forcefield.GetAtomtype(atomType).has_value())
 					pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
-				pClusterMetas[pcId].atomLetter[pidRel] = !system.particles[pId].topologyAtom.atomname.empty() ? system.particles[pId].topologyAtom.atomname[0] : ' ';
+				pClusterMetas[pcId].atomLetter[pidRel] = !topAtom.atomname.empty() ? topAtom.atomname[0] : ' ';
 				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
 
-				pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), system.particles[pId].topologyAtom.residue) != solventResNames.end();
+				pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), topAtom.residue) != solventResNames.end();
 
 				// Also set mapping
 				particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };

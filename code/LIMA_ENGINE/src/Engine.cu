@@ -40,7 +40,7 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simulation->box_host->persistentClusters.size(), simulation->simparams_host.data_logging_interval);
 
-	superClustersControl = std::make_unique<SuperClustersControl>(SuperClustersControl::Create(boxparams.boxSize, simulation->box_host->persistentClusters.size()));
+	superClustersControl = std::make_unique<SuperClustersControl>(boxparams.boxSize, simulation->box_host->persistentClusters.size());
 	pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(boxparams.boxSize));
 	//cudaMalloc(&pClusterDevice, sizeof(PersistentCluster) * simulation->box_host->persistentClusters.size());// We will never have more sc than pc
 	pClusterDevice = GenericCopyToDevice(simulation->box_host->persistentClusters);
@@ -354,11 +354,10 @@ void Engine::_deviceMaster() {
 	cudaDeviceSynchronize();
 
     if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-        pmeController->CalcCharges(*superClustersControl, nSuperclusters, forceEnergyInterims->pme, pmeStream);
+        pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme, pmeStream);
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
-	bool newAlg = true;
 
 	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
@@ -373,10 +372,6 @@ void Engine::_deviceMaster() {
 
 
 		//std::vector<PersistentClusterMeta> pcMetaTemp = GenericCopyToHost(pClusterMetaDevice, simulation->box_host->persistentClusters.size());
-
-		SuperclusterForceenergyReduce<<<nSuperclusters, 16, 0, cudaStreams[0] >> >
-			(superClustersControl->scMeta, pClusterMetaDevice, scResultsDevice, forceEnergyInterims->nbNonlocal);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterForceenergyReduce");		
 
 		/*std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
 		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));*/

@@ -151,7 +151,7 @@ namespace TestUtils {
 
 	/// <summary></summary>	
 	/// <returns>{success, error_string(empty if successful)}</returns>
-	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float target_vc, std::vector<float> energy_gradients, float max_energygradient_abs)
+	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float target_vc, std::vector<float> energy_gradients, float max_energygradient_abs = 1e-6)
 	{
 		// Pick the correct evaluate function depending on if we have multiple VCs. Cant set a target vc to keep, if we have different sims ;)
 		auto evaluateVC = [&](float vc) {

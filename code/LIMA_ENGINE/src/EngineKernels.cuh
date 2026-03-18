@@ -310,39 +310,6 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 }
 
 
-// TODO: This layout can be much smarter
-// blockdim = 16,1,1
-__global__ void SuperclusterForceenergyReduce(const SuperClusterMeta* const scMeta, const PersistentClusterMeta* const pcMeta, const SCResult* const scResults, ForceEnergy* const particleForceEnergies) {
-	__shared__ SuperClusterMeta scMetaShared;
-	{
-		auto tb = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(tb, &scMetaShared, &scMeta[blockIdx.x], sizeof(SuperClusterMeta));
-		cooperative_groups::wait(tb);
-	}
-	__syncthreads();
-
-	ForceEnergy myFE{};
-	int pcId = scMetaShared.pclusterIds[threadIdx.x / 4];
-	int pid = threadIdx.x % 4;
-	int pidGlobal = pcId == -1 ? -1 : pcMeta[pcId].particleIdsGlobal[threadIdx.x % 4];
-	if (pidGlobal == -1)
-		return;
-
-	for (int i = scMetaShared.resultsStartIndex; i < scMetaShared.resultsStartIndex + scMetaShared.nResults; i++) {
-		/*if (particleId == 4)
-			scResults[i].fe[threadIdx.x].force.print('R');	*/
-
-		myFE += scResults[i].fe[threadIdx.x];
-		if (isnan(scResults[i].fe[threadIdx.x].force.len()))
-			printf("Found nan here %d %d\n", blockIdx.x, threadIdx.x);
-	}
-
-	// push
-
-	
-	//particleForceEnergies[particleId] = myFE;
-	particleForceEnergies[pcId * PersistentCluster::nParticles + pid];
-}
 
 
 
@@ -376,16 +343,14 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		KernelHelpersWarnings::ForceCheck(scResults[i].fe[threadIdx.x].force/*, std::string("SuperclusterIntegrateKernel")*/);
 		fe += scResults[i].fe[threadIdx.x];	
 	}
-	// Gather from bonds : TODO: maybe dont store it ordered like this?
+
 	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-	 //TODO: Gather from PME, SNF, others??
 	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.snf[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.nbNonlocal[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-	//fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.forceEnergySNF[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.pme[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	__syncthreads();
 
 	if (pidGlobal != -1) {
-		//printf("gid %d fx %f\n", pidGlobal, fe.force.x);
+		//printf("gid %d bufferIndex %d fx %f\n", pidGlobal, pcIdGlobal * PersistentCluster::nParticles + pidInPcluster, fe.force.x);
 		/*fe.force.print('F');
 		positions[threadIdx.x].print('P');*/
 	}

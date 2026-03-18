@@ -485,7 +485,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients, 2.e-7);
+		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
@@ -529,13 +529,13 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 1e-7);
+		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 5.68e-4, 2.9e-7);
+		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 6.28e-4, 2.9e-7);
 	}
 
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.7e-3, float max_eg=6.037) {

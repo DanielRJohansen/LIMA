@@ -190,10 +190,14 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
 
 	DrawTopBar(simstatus, fps);
     DrawBottomBar(renderSettings);
+	didDrawThisFrame = true;
 }
 
 
 void Overlay::Render() {
+    if (!didDrawThisFrame)
+        return;
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	didDrawThisFrame = false;
 }

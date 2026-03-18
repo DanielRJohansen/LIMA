@@ -367,7 +367,7 @@ struct TopologyFile::AtomsEntry {
 	std::string residue{};
 	std::string atomname{};
 	int cgnr{};
-	float charge{};// In elementary charges [e]. Convert to kilo kC/mol before using
+	std::optional<float> charge{};// In elementary charges [e]. Convert to kilo kC/mol before using
 	std::optional<float> mass{}; // [g/mol]
 	//int chain_id{ -1 };
 

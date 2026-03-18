@@ -169,14 +169,18 @@ namespace ElectrostaticsTests {
 		//for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
 		//	const auto& compound = sim->box_host->compounds[cid];
 		//	const auto& compoundInterimState = sim->box_host->pclusterInterimStates[cid];
+		for (int pcId = 0; pcId < sim->box_host->persistentClusters.size(); pcId++){
+			for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+				if (!sim->box_host->persistentClusters[pcId].pqd[pid].Valid())
+					continue;
+				const float charge = sim->box_host->persistentClusters[pcId].pqd[pid].params.charge;
+				const float velHorizontal = sim->box_host->pclusterInterimStates[pcId].vels_prev[pid].x;
 
-		//	for (int pid = 0; pid < compound.n_particles; pid++) {
-		//		const float charge = static_cast<float>(compound.atom_charges[pid]);
-		//		const float velHorizontal = compoundInterimState.vels_prev[pid].x;
+				//const float velHorizontal = compoundInterimState.vels_prev[pid].x;
 
-		//		velDistributions[charge].push_back(velHorizontal);
-		//	}
-		//}
+				velDistributions[charge].push_back(velHorizontal);
+			}
+		}
 
 		if (envmode == Full) {
 			for (const auto& pair : velDistributions) {

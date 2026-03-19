@@ -160,8 +160,10 @@ int main() {
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
-
-		RunAllUnitTests();
+Benchmarks::Psome(envmode);
+//Benchmarks::ManyT4(envmode);
+//Benchmarks::PrepareSimulation_stmv(envmode);
+		//RunAllUnitTests();
 		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");

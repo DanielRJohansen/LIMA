@@ -85,9 +85,9 @@ namespace Benchmarks {
 	}
 
 
-	static LimaUnittestResult Psome(EnvMode envmode) {
-		 //if (envmode== Full)
-			// envmode = ConsoleOnly;	// Cant go fast in Full
+	static LimaUnittestResult Psome(EnvMode envmode, std::optional<int> nSteps=std::nullopt) {
+		 if (envmode== Full)
+			 envmode = ConsoleOnly;	// Cant go fast in Full
 
 		const fs::path work_dir = simulations_dir / "psome";
 		
@@ -110,6 +110,8 @@ namespace Benchmarks {
 		ip.data_logging_interval = 20;
 		ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
+		if (nSteps)
+			ip.n_steps = nSteps.value();
 		Environment env{ work_dir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run();

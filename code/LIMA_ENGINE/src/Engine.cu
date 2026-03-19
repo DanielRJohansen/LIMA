@@ -364,7 +364,7 @@ void Engine::_deviceMaster() {
 		dim3 blockDim(16, 1, 1); // TEMP
 		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
-			(superClustersControl->scData, scscTasksDevice, scResultsDevice, noInteractionMatricesDevice, superClustersControl->scMeta, step);
+			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
 		/*std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
@@ -415,7 +415,7 @@ void Engine::_deviceMaster() {
 		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
 			<<<nSuperclusters, 16, 0, cudaStreams[0]>>>
-			(*forceEnergyInterims, sim_dev, scResultsDevice, superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
+			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
 				step, simulation->simparams_host.dt, totalParticlesUpperbound);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();

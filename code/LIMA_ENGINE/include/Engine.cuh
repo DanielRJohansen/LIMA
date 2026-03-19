@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
+#include "CudaBuffer.h"
 
 #include "Constants.h"
 #include "Utilities.h"
@@ -113,14 +114,17 @@ private:
 	//SuperClusterControl// TODO: Handle lifetimes!
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
-	ScScTask* scscTasksDevice = nullptr;
+
 	size_t nTasks = 0;
 	int nSuperclusters = 0;
-	BoolMatrix16x16* noInteractionMatricesDevice = nullptr;
 	PersistentCluster* pClusterDevice = nullptr; // TODO: Handle lifetime somethwere
 	PersistentClusterMeta* pClusterMetaDevice = nullptr;
-	SCResult* scResultsDevice = nullptr;
 	size_t nResults = 0;
+
+	CudaBuffer<ScScTask> scscTasksDevice;
+	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
+	CudaBuffer<SCResult> scResultsDevice;
+
 	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
 	std::unique_ptr<TaskBuilderControl> taskbuilderControl;
 

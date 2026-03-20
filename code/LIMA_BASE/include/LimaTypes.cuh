@@ -245,6 +245,10 @@ struct Float3 {
 
 };
 
+__device__ inline float4 Add(const float4& a, const float4& b) {
+	return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
 // Can only present integer values
 struct Float3Compressed {
 

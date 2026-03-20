@@ -72,8 +72,7 @@ template <typename BoundaryCondition, bool emVariant>
 __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters) {
 	__shared__ Float3 positions[BondGroup::maxParticles];
 
-	__shared__ Float3 forcesInterrim[BondGroup::maxParticles];
-	__shared__ float potEInterrim[BondGroup::maxParticles];
+	__shared__ float4 forceEnergyInterrims[BondGroup::maxParticles];
 
 	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
@@ -81,7 +80,8 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 
 	const BondGroup* const bondGroup = &bondGroups[blockIdx.x];
 	const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];	
-	__syncthreads();
+
+	forceEnergyInterrims[threadIdx.x] = float4{0,0,0,0};
 
 	// Fetch positions, and hyperpos around first particle.
 	if (threadIdx.x < bondGroup->nParticles) {
@@ -92,13 +92,10 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		BoundaryCondition::applyHyperposNM(positions[0], positions[threadIdx.x]);
 	}
 	__syncthreads();
-	
-
-	Float3 force{};
-	float potE{};
 
 	
 	{
+		__syncthreads();
 		SingleBond* bondsBuffer = reinterpret_cast<SingleBond*>(_bondsBuffer);
 		for (int batchStart = 0; batchStart < bondGroup->nSinglebonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nSinglebonds) {
@@ -107,13 +104,12 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-
-
-			force += LimaForcecalc::computeSinglebondForces<emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, forcesInterrim, potEInterrim, &potE, 0);
+			LimaForcecalc::computeSinglebondForces<emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, forceEnergyInterrims, 0);
 		}
 	}
 
 	{
+		__syncthreads();
 		AngleUreyBradleyBond* bondsBuffer = reinterpret_cast<AngleUreyBradleyBond*>(_bondsBuffer);
 		for (int batchStart = 0; batchStart < bondGroup->nAnglebonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nAnglebonds) {
@@ -122,11 +118,12 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			force += LimaForcecalc::computeAnglebondForces(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+			LimaForcecalc::computeAnglebondForces(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forceEnergyInterrims);
 		}
 	}
 
 	{
+		__syncthreads();
 		DihedralBond* bondsBuffer = reinterpret_cast<DihedralBond*>(_bondsBuffer);
 		for (int batchStart = 0; batchStart < bondGroup->nDihedralbonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nDihedralbonds) {
@@ -135,11 +132,12 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			force += LimaForcecalc::computeDihedralForces(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+			LimaForcecalc::computeDihedralForces(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, forceEnergyInterrims);
 		}
 	}
 
 	{
+		__syncthreads();
 		ImproperDihedralBond* bondsBuffer = reinterpret_cast<ImproperDihedralBond*>(_bondsBuffer);
 		for (int batchStart = 0; batchStart < bondGroup->nImproperdihedralbonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nImproperdihedralbonds) {
@@ -148,12 +146,13 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			force += LimaForcecalc::computeImproperdihedralForces(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+			LimaForcecalc::computeImproperdihedralForces(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, forceEnergyInterrims);
 		}
 	}
 
 
 	{
+		__syncthreads();
 		// TODO: i have no clue if pairbonds should also compute SR electrostatics?
 		PairBond* bondsBuffer = reinterpret_cast<PairBond*>(_bondsBuffer);
 		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += blockDim.x) {
@@ -163,9 +162,12 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			force += LimaForcecalc::computePairbondForces(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, forcesInterrim, potEInterrim, &potE);
+			LimaForcecalc::computePairbondForces(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, forceEnergyInterrims);
 		}
 	}
+
+	Float3 force{ forceEnergyInterrims[threadIdx.x].x, forceEnergyInterrims[threadIdx.x].y, forceEnergyInterrims[threadIdx.x].z };
+	float potE = forceEnergyInterrims[threadIdx.x].w;
 
 	forceEnergiesOut[blockIdx.x * BondGroup::maxParticles + threadIdx.x] = ForceEnergy{ force, potE };
 }

@@ -55,6 +55,7 @@ Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir) {
 		(limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
         22.0f
     );
+	io.IniFilename = nullptr; // disable imgui.ini creation
 
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);

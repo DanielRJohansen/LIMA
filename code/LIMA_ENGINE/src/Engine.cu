@@ -366,9 +366,7 @@ void Engine::_deviceMaster() {
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
-	}	
-
-
+	}
 	if (simulation->simparams_host.snf_select != None) {
 		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
@@ -380,13 +378,11 @@ void Engine::_deviceMaster() {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
 
 		// Gather bondgroup ordered forces into particle ordered
-		{
-			const int nPclusters = simulation->box_host->persistentClusters.size();
-			const int nBlocks = (nPclusters + 31) / 32;
-			PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[4] >> >
-				(pClusterMetaDevice, nPclusters, *forceEnergyInterims);
-			LIMA_UTILS::genericErrorCheckNoSync("Error after PclusterBondgroupsGather");
-		}
+		const int nPclusters = simulation->box_host->persistentClusters.size();
+		const int nBlocks = (nPclusters + 31) / 32;
+		PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[4] >> >
+			(pClusterMetaDevice, nPclusters, *forceEnergyInterims);
+		LIMA_UTILS::genericErrorCheckNoSync("Error after PclusterBondgroupsGather");
 	}
 
 	// #### Integration and Transfer kernels
@@ -401,8 +397,6 @@ void Engine::_deviceMaster() {
 
 
 	if (nSuperclusters > 0) {
-		//cudaDeviceSynchronize();
-		auto scMeta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
 		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
 			<<<nSuperclusters, 16, 0, cudaStreams[0]>>>

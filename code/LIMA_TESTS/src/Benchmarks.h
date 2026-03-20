@@ -84,6 +84,26 @@ namespace Benchmarks {
 		////const auto status = result.first == true ? true : false;
 	}
 
+	static LimaUnittestResult Bench(const fs::path& workDir, const GroFile& grofile, const TopologyFile& topfile, SimParams ip, std::chrono::microseconds allowedTimePerStep, std::optional<int> nSteps = std::nullopt) {
+		EnvMode envmode = ConsoleOnly;
+
+		ip.data_logging_interval = 20;
+		ip.dt = 0.5f * FEMTO_TO_NANO;
+		ip.enable_electrostatics = true;
+		if (nSteps)
+			ip.n_steps = nSteps.value();
+		Environment env{ workDir, envmode };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.run();
+
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+
+		auto duration = env.simulationTimer->GetTiming();
+		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+	}
+
 
 	static LimaUnittestResult Psome(EnvMode envmode, std::optional<int> nSteps=std::nullopt) {
 		 if (envmode== Full)
@@ -123,6 +143,15 @@ namespace Benchmarks {
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
 		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+	}
+
+	static LimaUnittestResult STMV() {
+		const fs::path work_dir = simulations_dir / "benchmarking" / "stmv";
+		GroFile grofile{ work_dir / "molecule" / "em.gro" };
+		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
+		SimParams ip{ work_dir / "sim_params.txt" };
+		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 2);
+		return LimaUnittestResult{ true, "STMV benchmark completed", true };
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {
@@ -201,7 +230,8 @@ namespace Benchmarks {
 		TopologyFile topfile(topPath);
 		GroFile grofile(groPath);
 
-		SimParams params{ workDir / "../sim_params.txt" };
+		fs::path spPath = fs::exists(workDir / "sim_params.txt") ? workDir / "sim_params.txt" : workDir / ".." / "sim_params.txt";
+		SimParams params{ spPath };
 		if (nSteps) 
 			params.n_steps = *nSteps;
 		//params.dt = 1.f * FEMTO_TO_NANO; 		

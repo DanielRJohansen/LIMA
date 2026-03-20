@@ -90,7 +90,7 @@ int main() {
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
 		//SimParams simparams; 
 		//simparams.n_steps = 100000;
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 		//for (int i = 0; i < 100; i++) {
 		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
 		//	if (!res.success)
@@ -128,7 +128,8 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
-		//Benchmarks::Benchmark("stmv");
+		Benchmarks::Benchmark("stmv", std::nullopt, 2);
+
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		//Benchmarks::Psome(envmode);
 		//
@@ -160,7 +161,7 @@ int main() {
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
-		Benchmarks::Psome(envmode);
+		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
 		//RunAllUnitTests();

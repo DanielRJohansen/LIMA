@@ -147,10 +147,10 @@ namespace Benchmarks {
 
 	static LimaUnittestResult STMV() {
 		const fs::path work_dir = simulations_dir / "benchmarking" / "stmv";
-		GroFile grofile{ work_dir / "molecule" / "em.gro" };
-		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
+		GroFile grofile{ work_dir  / "conf.gro" };
+		TopologyFile topfile{ work_dir  / "topol.top" };
 		SimParams ip{ work_dir / "sim_params.txt" };
-		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 2);
+		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 4);
 		return LimaUnittestResult{ true, "STMV benchmark completed", true };
 	}
 
@@ -248,6 +248,8 @@ namespace Benchmarks {
 		const float stdDev = Statistics::StdDev(env.avgStepTimes);
 		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.simulationTimer->GetTiming()).count() / (float)params.n_steps);
 		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
+
+		env.PrintTiming();
 
 		return { meanSteptime, stdDev};
 	}

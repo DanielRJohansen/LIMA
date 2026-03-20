@@ -223,6 +223,7 @@ std::chrono::duration<double> Environment::run() {
 	
 	m_logger.finishSection("Simulation Finished");
 
+	engineTime = t1 - t0;
     return t1-t0;
 }
 
@@ -423,4 +424,24 @@ const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()
 	if (!postsim_anal_package.has_value())
 		postsim_anal_package = SimAnalysis::analyzeEnergy(simulation.get());
 	return postsim_anal_package.value();
+}
+
+void Environment::PrintTiming() const {	
+	if (!engineTime || !simulation)
+		return;
+
+	const double wall_time_sec = engineTime->count();
+	const double totalNsSimulated = static_cast<double>(simulation->getStep()) * simulation->simparams_host.dt;
+
+	// Calculate performance metrics
+	const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+	const double hr_per_ns = (wall_time_sec / totalNsSimulated) / 3600.0;    // convert to hours per ns
+
+	// Print time and performance info in the GROMACS-like format
+	printf("\n");
+	printf("               Wall t (s)\n");
+	printf("       Time:    %10.3f\n", wall_time_sec);
+	printf("                 (ns/day)    (hour/ns)\n");
+	printf("Performance:    %10.3f     %10.3f\n", ns_per_day, hr_per_ns);
+
 }

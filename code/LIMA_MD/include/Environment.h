@@ -86,12 +86,15 @@ public:
 
 	std::string getWorkdir() { return work_dir.string(); }
 
+	void PrintTiming() const;
+
 	std::chrono::steady_clock::time_point time0;
 
 	const fs::path work_dir = "";	// Main dir of the current simulation
 
 	std::optional<TimeIt> simulationTimer;
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
+	std::optional<std::chrono::duration<double>> engineTime;
 
 	SimStatus simStatus{};
 

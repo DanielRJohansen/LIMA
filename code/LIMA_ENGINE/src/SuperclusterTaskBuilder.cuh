@@ -444,9 +444,9 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	nResults = GenericCopyToHost(taskbuilderControl->contents.nResultsPrefixsum + nSuperclusters);
 	nTasks = GenericCopyToHost(taskbuilderControl->contents.nTasksPrefixsum + nSuperclusters);
 
-	scscTasksDevice.Expand(nTasks, 1.5);
-	noInteractionMatricesDevice.Expand(nTasks, 1.5);
-	scResultsDevice.Expand(nResults, 1.5);
+	scscTasksDevice.Expand(nTasks, 1.2);
+	noInteractionMatricesDevice.Expand(nTasks, 1.2);
+	scResultsDevice.Expand(nResults, 1.2);
 
 
 

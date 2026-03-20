@@ -198,15 +198,15 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 
-// blockdim=16,2,1
+// blockdim=16,4,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step) {
-	/*__shared__ SuperCluster cluster0;
-	__shared__ SuperCluster cluster1;	*/
+	static_assert(SuperCluster::nParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ PData pqd[SuperCluster::nParticles * 2];
 	__shared__ ScScTask task;	
 	__shared__ Float3 p0Pos; // Used for PBC
 	__shared__ BoolMatrix16x16 nointeractionsMatrix;
+	__shared__ ForceEnergy forceEnergiesShared[SuperCluster::nParticles * 2];
 
 	const bool controlThread = threadIdx.x == 0 && threadIdx.y == 0;
 	uint16_t noInteractions;
@@ -222,22 +222,30 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	__syncthreads();
 
 	if (threadIdx.y == 0) {
+		// Load cluster0
 		pqd[threadIdx.x] = superClusters[task.scIds[0]].pData[threadIdx.x];
-		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetRow(threadIdx.x) : 0;
-	}
-	else {
+
+		// Load cluster1
 		pqd[SuperCluster::nParticles + threadIdx.x] = superClusters[task.scIds[1]].pData[threadIdx.x];
 		BoundaryCondition::applyHyperposNM(p0Pos, pqd[SuperCluster::nParticles + threadIdx.x].position); // optim: This reads from __constant__, consider passing the boxSizeHalf directly to the kernel registers??
-		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetColumn(threadIdx.x) : 0;
 	}
+	__syncthreads();
+
+	if (threadIdx.y < 2)
+		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetRow(threadIdx.x) : 0;
+	else
+		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetColumn(threadIdx.x) : 0;
 
 
 	ForceEnergy myForceEnergy{};
-	const int startQueryIndex = threadIdx.y == 0 ? 16 : 0;
-	const int myIndex = threadIdx.y * SuperCluster::nParticles + threadIdx.x;
-	for (int i = 0; i < SuperCluster::nParticles; i++) {
+
+	const int myIndex = (threadIdx.y > 1) * SuperCluster::nParticles + threadIdx.x;
+	const int startQueryIndex = (SuperCluster::nParticles + threadIdx.y * SuperCluster::nParticles/2) % (SuperCluster::nParticles*2);
+	const int queryBase = (threadIdx.y * (SuperCluster::nParticles / 2)) % SuperCluster::nParticles;
+	for (int i = 0; i < SuperCluster::nParticles/2; i++) {
+		const int queryIndexInCluster = queryBase + i;
 		bool skip = false;
-		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, i)) {
+		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, queryIndexInCluster)) {
 			skip = true;
 		}
 
@@ -246,12 +254,18 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		}
 	}
 
-	if (threadIdx.y == 0) {
-		results[task.resultIndices[0]].fe[threadIdx.x] = myForceEnergy;
+	if (threadIdx.y == 0)
+		forceEnergiesShared[threadIdx.x] = myForceEnergy;
+	if (threadIdx.y == 2)
+		forceEnergiesShared[threadIdx.x + 16] = myForceEnergy;
+	__syncthreads();
+
+	if (threadIdx.y == 1) {
+		results[task.resultIndices[0]].fe[threadIdx.x] = forceEnergiesShared[threadIdx.x] + myForceEnergy;
 	}
-	else {
+	else if (threadIdx.y == 3) {
 		if (task.scIds[0] != task.scIds[1]) {
-			results[task.resultIndices[1]].fe[threadIdx.x] = myForceEnergy;
+			results[task.resultIndices[1]].fe[threadIdx.x] = forceEnergiesShared[SuperCluster::nParticles + threadIdx.x] + myForceEnergy;
 		}
 	}
 }

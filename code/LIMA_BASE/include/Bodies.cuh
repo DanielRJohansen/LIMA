@@ -341,7 +341,6 @@ class BoolMatrix16x16 {
 
 public:
 	constexpr BoolMatrix16x16() {}
-		//memset(data, 0, sizeof(data));
 	constexpr void Clear() {
 		for (int i = 0; i < 16; i++)
 			data[i] = 0;
@@ -358,6 +357,13 @@ public:
 
 	constexpr uint16_t SetRow(int row, uint16_t val) {
 		return data[row] = val;
+	}
+
+	constexpr uint16_t GetColumn(int col) const {
+		uint16_t out = 0;
+		for (int row = 0; row < 16; ++row)
+			out |= static_cast<uint16_t>(((data[row] >> col) & 1u) << row);
+		return out;
 	}
 
 	// TODO: Optim this with a SetRow

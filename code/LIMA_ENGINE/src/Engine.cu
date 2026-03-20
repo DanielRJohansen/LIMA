@@ -351,7 +351,7 @@ void Engine::_deviceMaster() {
 	const int step = simulation->getStep();
 
 	// #### Initial round of force computations
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
     if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
         pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme, pmeStream);
@@ -361,20 +361,11 @@ void Engine::_deviceMaster() {
 
 	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
-		dim3 blockDim(16, 1, 1); // TEMP
+		dim3 blockDim(16, 2, 1);
 		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
-
-		/*std::vector<SCResult> results = GenericCopyToHost(scResultsDevice, nResults);
-		DebugUtils::VerifyIdentical(results, "SCresults" + std::to_string(simulation->getStep()));*/
-
-
-		//std::vector<PersistentClusterMeta> pcMetaTemp = GenericCopyToHost(pClusterMetaDevice, simulation->box_host->persistentClusters.size());
-
-		/*std::vector<ForceEnergy> feNonlocal = GenericCopyToHost(forceEnergyInterims->nbNonlocal, boxparams.total_particles);
-		DebugUtils::VerifyIdentical(feNonlocal, "FeNonlocal" + std::to_string(simulation->getStep()));*/
 	}	
 
 
@@ -410,7 +401,7 @@ void Engine::_deviceMaster() {
 
 
 	if (nSuperclusters > 0) {
-		cudaDeviceSynchronize();
+		//cudaDeviceSynchronize();
 		auto scMeta = GenericCopyToHost(superClustersControl->scMeta, nSuperclusters);
 		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 

@@ -194,121 +194,65 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 	}
 }
 
-// 
-/// <summary>
-/// blockdim=16,2,1  OPTIM: This is too complex, for now its just 16,1,1
-/// MaskMatrix is either BoolMatrix16x16 or NoMat
-/// </summary>
+
+
+// blockdim=16,2,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step) {
-	__shared__ ScScTask task;
-	__shared__ SuperCluster queryCluster;
-	__shared__ Float3 p0Pos; // Used for PBC`
-	__shared__ SCResult utilitySCResult;
+	/*__shared__ SuperCluster cluster0;
+	__shared__ SuperCluster cluster1;	*/
+	__shared__ PData pqd[SuperCluster::nParticles * 2];
+	__shared__ ScScTask task;	
+	__shared__ Float3 p0Pos; // Used for PBC
+	__shared__ BoolMatrix16x16 nointeractionsMatrix;
 
-	
-	uint16_t noInteractionsRow;
-	bool hasNoInteractionMatrix = tasks[blockIdx.x].nointeractionMatrixIndex != -1;
+	const bool controlThread = threadIdx.x == 0 && threadIdx.y == 0;
+	uint16_t noInteractions;
+	bool hasNoInteractionMatrix = tasks[blockIdx.x].nointeractionMatrixIndex != -1;	
 
-	if (threadIdx.x == 0) {
+	if (controlThread) {
 		task = tasks[blockIdx.x];
-		queryCluster = superClusters[task.scIds[1]];
-	}
-
-	utilitySCResult.fe[threadIdx.x] = ForceEnergy{};
-	__syncthreads();
-	
-	
-	if constexpr (useNointeractionMatrix) {
-		if (hasNoInteractionMatrix)
-			noInteractionsRow = nointeractionMatrices[task.nointeractionMatrixIndex].GetRow(threadIdx.x);
-	}
-	
-	const PData myParticle = superClusters[task.scIds[0]].pData[threadIdx.x];
-	if (threadIdx.x == 0) {
 		p0Pos = superClusters[task.scIds[0]].pData[0].position;
+		if (hasNoInteractionMatrix) {
+			nointeractionsMatrix = nointeractionMatrices[task.nointeractionMatrixIndex];
+		}
 	}
 	__syncthreads();
 
-	BoundaryCondition::applyHyperposNM(p0Pos, queryCluster.pData[threadIdx.x].position); // optim: This reads from __constant__, consider passing the boxSizeHalf directly to the kernel registers??		
-	__syncthreads();
+	if (threadIdx.y == 0) {
+		pqd[threadIdx.x] = superClusters[task.scIds[0]].pData[threadIdx.x];
+		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetRow(threadIdx.x) : 0;
+	}
+	else {
+		pqd[SuperCluster::nParticles + threadIdx.x] = superClusters[task.scIds[1]].pData[threadIdx.x];
+		BoundaryCondition::applyHyperposNM(p0Pos, pqd[SuperCluster::nParticles + threadIdx.x].position); // optim: This reads from __constant__, consider passing the boxSizeHalf directly to the kernel registers??
+		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetColumn(threadIdx.x) : 0;
+	}
 
 
 	ForceEnergy myForceEnergy{};
-
-	//const int firstQueryIndex = threadIdx.x + threadIdx.y * SuperCluster::nParticles/2;
+	const int startQueryIndex = threadIdx.y == 0 ? 16 : 0;
+	const int myIndex = threadIdx.y * SuperCluster::nParticles + threadIdx.x;
 	for (int i = 0; i < SuperCluster::nParticles; i++) {
-		int queryIndex = threadIdx.x + i;
-		queryIndex -= SuperCluster::nParticles * (queryIndex >= SuperCluster::nParticles);
-
 		bool skip = false;
-
-		if constexpr (useNointeractionMatrix) {
-			if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractionsRow, queryIndex)) {
-				skip = true;
-			}
+		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, i)) {
+			skip = true;
 		}
 
-
-		ForceEnergy fe{}; 
-		if (!skip) { 
-			int p0pid = superClusterMeta[task.scIds[0]].particlesIds[threadIdx.x];
-			int p1pid = superClusterMeta[task.scIds[1]].particlesIds[queryIndex];
-			if (step != 788) {
-				p0pid = -1;
-				p1pid = -1;
-			}
-
-			fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(myParticle, queryCluster.pData[queryIndex], p0pid, p1pid);
+		if (!skip) {
+			myForceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pqd[myIndex], pqd[startQueryIndex + i], -1, -1);
 		}
-		myForceEnergy += fe;
-
-		// Now invert force and push to query atom also
-		fe.force = -fe.force;
-		utilitySCResult.fe[queryIndex] += fe;
-
-		__syncthreads();
-		/*if (threadIdx.y == 1) {
-			queryFE.fe[queryIndex] += fe;
-		}
-		__syncthreads();*/
 	}
-	__syncthreads();
 
-	// For selfinteraction tasks all particles have already computed their interactions with queryparticles in this cluster, and thus the queryparticle already has the force from this, meaning we DONT need to push here.
-	// I.e. the resultindices are also the same, so we would just be writing the same data again.
-	if (task.scIds[0] != task.scIds[1]) {
-		auto tb = cooperative_groups::this_thread_block();
-
-		if constexpr (INDEXING_CHECKS){
-			if (threadIdx.x == 0 && task.resultIndices[1] < 0)
-				printf("Illegal resultindex %d\n", task.resultIndices[1]);
-			//printf("forceQuery %f %f %f\n", utilitySCResult.fe[threadIdx.x].force.x, utilitySCResult.fe[threadIdx.x].force.y, utilitySCResult.fe[threadIdx.x].force.z);
-		}
-
-		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[1]], &utilitySCResult, sizeof(SCResult));
-		cooperative_groups::wait(tb);
+	if (threadIdx.y == 0) {
+		results[task.resultIndices[0]].fe[threadIdx.x] = myForceEnergy;
 	}
-	__syncthreads();
-
-	
-
-	// Now reduce across y-dimension in the now vacant queryFE
-	utilitySCResult.fe[threadIdx.x] = myForceEnergy;
-	//utilitySCResult.fe[threadIdx.x] = ForceEnergy{ Float3{3000.f}, 300.f };
-	__syncthreads();
-	//if (threadIdx.y == 1) {
-	//	utilitySCResult.fe[threadIdx.x] += myForceEnergy;
-	//}
-	//__syncthreads();
-
-	{
-		auto tb = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(tb, &results[task.resultIndices[0]], &utilitySCResult, sizeof(SCResult));
-		cooperative_groups::wait(tb);
+	else {
+		if (task.scIds[0] != task.scIds[1]) {
+			results[task.resultIndices[1]].fe[threadIdx.x] = myForceEnergy;
+		}
 	}
 }
-
 
 
 
@@ -331,7 +275,6 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	__syncthreads();
 
 	const int pidInPcluster = threadIdx.x % 4;									// Always safe
-	//const int pidGlobal = scMeta[blockIdx.x].particlesIds[threadIdx.x];			// May be -1
 	const int pcIdGlobal = scMeta[blockIdx.x].pclusterIds[threadIdx.x / 4];		// May be -1
 	const int pidGlobal = pcIdGlobal == -1 ? -1 : pcMeta[pcIdGlobal].particleIdsGlobal[pidInPcluster];
 	positions[threadIdx.x] = superClusters[blockIdx.x].pData[threadIdx.x].position;
@@ -340,7 +283,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	ForceEnergy fe{};
 	// Gather from NB kernels
 	for (int i = scMetaShared.resultsStartIndex; i < scMetaShared.resultsStartIndex + scMetaShared.nResults; i++) {
-		KernelHelpersWarnings::ForceCheck(scResults[i].fe[threadIdx.x].force/*, std::string("SuperclusterIntegrateKernel")*/);
+		KernelHelpersWarnings::ForceCheck(scResults[i].fe[threadIdx.x].force);
 		fe += scResults[i].fe[threadIdx.x];	
 	}
 

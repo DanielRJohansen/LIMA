@@ -331,8 +331,8 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 			);
 		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && pb != nullptr) {
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && pb != nullptr) {
 				for (int i = 0; i < 2; i++) {
 					forces_interim[pb->idInBondgroup[i]] += forces[i];
 					potentials_interim[pb->idInBondgroup[i]] += potential * 0.5f;
@@ -374,8 +374,8 @@ __device__ inline Float3 computePairbondForces(const PairBond* const pairbonds, 
 			forces[1] = -forceOnLeft;
 		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && pb != nullptr) {
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && pb != nullptr) {
 				for (int i = 0; i < 2; i++) {
 					forces_interim[pb->atom_indexes[i]] += forces[i];
 					potentials_interim[pb->atom_indexes[i]] += potential; // No *0.5f here, since LJ computes the pot per atom already;
@@ -420,8 +420,8 @@ __device__ inline Float3 computeAnglebondForces(const AngleUreyBradleyBond* cons
 		}
 
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && ab != nullptr) {
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && ab != nullptr) {
 				for (int i = 0; i < ab->nAtoms; i++) {
 					forces_interim[ab->atom_indexes[i]] += forces[i];
 					potentials_interim[ab->atom_indexes[i]] += potential / 3.f;
@@ -468,8 +468,8 @@ __device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedra
 
 		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && db != nullptr) {
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && db != nullptr) {
 				for (int i = 0; i < 4; i++) {
 					forces_interim[db->atom_indexes[i]] += forces[i];
 					potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
@@ -529,8 +529,8 @@ __device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBon
 		}
 
 		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) { /// whaaat the fuckkk is this, nooo fix! DANGER TODO
-			for (int i = 0; i < blockDim.x; i++) {
-				if (threadIdx.x == i && db != nullptr) {
+			for (int tid = 0; tid < blockDim.x; tid++) {
+				if (threadIdx.x == tid && db != nullptr) {
 					for (int i = 0; i < db->nAtoms; i++) {
 						forces_interim[db->atom_indexes[i]] += forces[i];
 						potentials_interim[db->atom_indexes[i]] += potential * 0.25f;

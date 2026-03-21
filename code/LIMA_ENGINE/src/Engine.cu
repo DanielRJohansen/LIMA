@@ -398,10 +398,12 @@ void Engine::_deviceMaster() {
 
 	if (nSuperclusters > 0) {
 		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
+		const int nBlocks = (nSuperclusters + 4 - 1) / 4;
+		const dim3 blockDim(16, 4, 1);
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
-			<<<nSuperclusters, 16, 0, cudaStreams[0]>>>
+			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
 			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
-				step, simulation->simparams_host.dt, totalParticlesUpperbound);
+				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();
 	}

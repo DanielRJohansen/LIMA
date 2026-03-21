@@ -405,7 +405,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		sc.center = blockCenter;
 		
 #endif
-		scMeta.blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, boxSize);
+		//scMeta.blockIndex3D = BoxGrid::Get3dIndex(blockIdx.x, boxSize);
 
 		std::array<Float3, 16> posDebug;
 		int cnt = 0;
@@ -427,14 +427,14 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 					if (pData.Valid())
 						posDebug[cnt++] = pData.position;
 
-					scMeta.particlesIds[pcId * 4 + particleIndex] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[particleIndex];// For debugging only
+					//scMeta.particlesIds[pcId * 4 + particleIndex] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[particleIndex];// For debugging only
 				}						
 			}
 			else {
 				//scDataOut[blockIdx.x * SuperClusterGridData::maxSuperClustersPerBlock + i].constituentPClusterIds[j] = -1;
 				scMeta.pclusterIds[pcId] = -1;
-				for (int i = 0; i < 4; i++)
-					scMeta.particlesIds[pcId * 4 + i] = -1;
+	/*			for (int i = 0; i < 4; i++)
+					scMeta.particlesIds[pcId * 4 + i] = -1;*/
 			}
 		}
 

@@ -277,108 +277,101 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 
  
-// blockDim=(16, 1, 1) - 1 warp per supercluster. Todo: use ydimension of 2, so we use 32 threads total
+// blockDim=(16, 4, 1) - 1 warp per supercluster. Todo: use ydimension of 2, so we use 32 threads total
 template<typename BoundaryCondition, bool emvariant>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
-	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* pcMeta, PersistentclusterInterimState* const pcStates, int64_t step, float dt,
-	int totalParticlesUpperbound) {
-	__shared__ Float3 positions[SuperCluster::nParticles];
-	__shared__ SuperClusterMeta scMetaShared;
+	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* pcMeta, PersistentclusterInterimState* const pcStates, 
+	int64_t step, float dt,	int totalParticlesUpperbound, int numScs) {
+
+	const int nScsPerBlock = 4;
+
+	const int scIdLocal = threadIdx.y;
+	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < numScs ? (blockIdx.x * nScsPerBlock + threadIdx.y) : -1;
+	const int pidLocal = threadIdx.y * SuperCluster::nParticles + threadIdx.x;
+
+
+	//__shared__ Float3 positions[SuperCluster::nParticles * nScsPerBlock];
+	__shared__ Float3 p0s[nScsPerBlock];
+	__shared__ SuperClusterMeta scMetaShared[nScsPerBlock];
 
 	if (threadIdx.x == 0) {
-		scMetaShared = scMeta[blockIdx.x];
+		scMetaShared[threadIdx.y] = scIdGlobal == -1 ? SuperClusterMeta{} : scMeta[scIdGlobal];
+		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].pData[0].position;
+
+		// By applying BC here, we dont need to wait for thread0 later in the kernel
+		BoundaryCondition::applyBCNM(p0s[threadIdx.y]);// TODO: We should use either SC CoM, or a particle close to the middle..
 	}
 	__syncthreads();
 
 	const int pidInPcluster = threadIdx.x % 4;									// Always safe
-	const int pcIdGlobal = scMeta[blockIdx.x].pclusterIds[threadIdx.x / 4];		// May be -1
+	const int pcIdGlobal = scIdGlobal == -1 ? -1 :  scMeta[scIdGlobal].pclusterIds[threadIdx.x / 4];		// May be -1
 	const int pidGlobal = pcIdGlobal == -1 ? -1 : pcMeta[pcIdGlobal].particleIdsGlobal[pidInPcluster];
-	positions[threadIdx.x] = superClusters[blockIdx.x].pData[threadIdx.x].position;
+	if (pidGlobal == -1)
+		return;// NO SYNCS AFTER THIS!
+
+	Float3 pos = superClusters[scIdGlobal].pData[threadIdx.x].position;
 
 	// Collect ForceEnergy from all sources
 	ForceEnergy fe{};
 	// Gather from NB kernels
-	for (int i = scMetaShared.resultsStartIndex; i < scMetaShared.resultsStartIndex + scMetaShared.nResults; i++) {
+	for (int i = scMetaShared[scIdLocal].resultsStartIndex; i < scMetaShared[scIdLocal].resultsStartIndex + scMetaShared[scIdLocal].nResults; i++) {
 		KernelHelpersWarnings::ForceCheck(scResults[i].fe[threadIdx.x].force);
-		fe += scResults[i].fe[threadIdx.x];	
+		fe += scResults[i].fe[threadIdx.x];
 	}
 
-	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.snf[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-	fe += pidGlobal == -1 ? ForceEnergy{} : forceEnergies.pme[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-	__syncthreads();
+	fe += forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+	fe += forceEnergies.snf[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+	fe += forceEnergies.pme[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 
-	if (pidGlobal != -1) {
-		//printf("gid %d bufferIndex %d fx %f\n", pidGlobal, pcIdGlobal * PersistentCluster::nParticles + pidInPcluster, fe.force.x);
-		/*fe.force.print('F');
-		positions[threadIdx.x].print('P');*/
-	}
+
+
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 	float speed = 0.f;
-	if (pidGlobal != -1) {
-		const float mass = pcMeta[pcIdGlobal].mass[pidInPcluster];
 
-		// Energy minimize
-		if constexpr (emvariant) {
-			// TODO: Handle emvariants/ADAM states
-			const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
+	const float mass = pcMeta[pcIdGlobal].mass[pidInPcluster];
 
-			AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
-			const Float3 pos_now = EngineUtils::IntegratePositionADAM(positions[threadIdx.x], safeForce, adamState, step);
-			//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
+	// Energy minimize
+	if constexpr (emvariant) {
+		// TODO: Handle emvariants/ADAM states
+		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
-			positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
-		}
-		else {			
+		AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
+		const Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, adamState, step);
+		//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
 
-			const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
-			const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
-			const Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
-			//printf("PC speed %f dt %f force %f mass %f\n", vel_now.len(), dt, fe.force.len(), mass);
-			const Float3 pos_now = EngineUtils::IntegratePositionVVS(positions[threadIdx.x], vel_now, fe.force, mass, dt);
-			//(pos_now - positions[threadIdx.x]).print('d');
-			//pos_now.print('N');
-			positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
-			//compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
-
-			Float3 velScaled;
-			velScaled = vel_now * DeviceConstants::thermostatScalar;
-
-			simDev->boxState.pclusterInterimStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
-			simDev->boxState.pclusterInterimStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
-
-			speed = velScaled.len();
-		}
+		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 	}
-	__syncthreads();
+	else {
+
+		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
+		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
+		const Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
+		//printf("PC speed %f dt %f force %f mass %f\n", vel_now.len(), dt, fe.force.len(), mass);
+		const Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, dt);
+		//(pos_now - positions[threadIdx.x]).print('d');
+		//pos_now.print('N');
+		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
+		//compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
+
+		Float3 velScaled;
+		velScaled = vel_now * DeviceConstants::thermostatScalar;
+
+		simDev->boxState.pclusterInterimStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
+		simDev->boxState.pclusterInterimStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
+
+		speed = velScaled.len();
+	}
 
 	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
-	if (threadIdx.x == 0) {
-		BoundaryCondition::applyBCNM(positions[0]);// TODO: We should use either SC CoM, or a particle close to the middle..
-	}
-	__syncthreads();
-	BoundaryCondition::applyHyperposNM(positions[0], positions[threadIdx.x]);
 
-	if (pcIdGlobal != -1) {
-		//ParticleToCompoundOrSolventMapping mapping = particleToCompoundOrSolventMapping[pidGlobal];		
-		EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, simDev->params, positions[threadIdx.x], fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
-	}
+	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
+	//ParticleToCompoundOrSolventMapping mapping = particleToCompoundOrSolventMapping[pidGlobal];		
+	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, simDev->params, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
 
 
-	// Push positions for next step
-	//if (threadIdx.x == 0)
-	//	sim->boxState.compoundOrigos[blockIdx.x] = compound_coords.origo;
-	//sim->boxState.compoundsInterimState[blockIdx.x].coords[threadIdx.x] = compound_coords.rel_positions[threadIdx.x];
-	//sim->boxState.compoundsRelposNm[blockIdx.x * MAX_COMPOUND_PARTICLES + threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
-	//compoundQuickData[blockIdx.x].relPos[threadIdx.x] = compound_coords.rel_positions[threadIdx.x].ToRelpos();
-	/*if (pidGlobal != -1) 
-		printf("pid %d Pusing pos %f %f %f\n", pidGlobal, positions[threadIdx.x].x, positions[threadIdx.x].y, positions[threadIdx.x].z);*/
-
-
-	superClusters[blockIdx.x].pData[threadIdx.x].position = positions[threadIdx.x];
-	if (pcIdGlobal != -1 )
-		pclusters[pcIdGlobal].pqd[pidInPcluster].position = positions[threadIdx.x];
+	superClusters[scIdGlobal].pData[threadIdx.x].position = pos;
+	pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;
 }
 
 

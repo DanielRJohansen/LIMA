@@ -400,11 +400,11 @@ struct SuperClusterMeta {
 	// Set by clustering kernel
 	int pclusterIds[SuperCluster::nPclusters];
 	
-	NodeIndex blockIndex3D;
+	//NodeIndex blockIndex3D;
 
 
 	// For debugging, find a way to remove in release automatically
-	std::array<int, SuperCluster::nParticles> particlesIds;
+	//std::array<int, SuperCluster::nParticles> particlesIds;
 
 	// Set by taskbuilder kernel
 	int resultsStartIndex; // TODO: Is int always safe here??

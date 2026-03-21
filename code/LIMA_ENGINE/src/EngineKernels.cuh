@@ -271,17 +271,46 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 }
 
 
-
-
+// blockDim=(16, 4, 1)
+//__global__ void NBGather(const SuperClusterMeta* const scMetas, const SCResult* const scResults, ForceEnergy* const feOut /*Sorted by SC, not PC*/) {
+//	__shared__ SuperClusterMeta scMetaShared;
+//	__shared__ ForceEnergy feShared[SuperCluster::nParticles];
+//	__shared__ SCResult scResultsShared[8];
+//
+//
+//	if (threadIdx.x == 0 && threadIdx.y == 0) {
+//		scMetaShared = scMetas[blockIdx.x];
+//	}
+//	__syncthreads();
+//
+//	ForceEnergy fe{};
+//	for (int i = threadIdx.y; i < scMetaShared.nResults; i+=4) {
+//		int index = scMetaShared.resultsStartIndex + i;
+//		KernelHelpersWarnings::ForceCheck(scResults[index].fe[threadIdx.x].force);
+//		fe += scResults[index].fe[threadIdx.x];
+//	}
+//
+//	if (threadIdx.y == 0)
+//		feShared[threadIdx.x] = fe;
+//	__syncthreads();
+//	for (int i = 1; i < 4; i++) {
+//		if (threadIdx.y == i)
+//			feShared[threadIdx.x] += fe;
+//		__syncthreads();
+//	}
+//	
+//	if (threadIdx.y == 0)
+//		feOut[blockIdx.x * SuperCluster::nParticles + threadIdx.x] = feShared[threadIdx.x];
+//}
 
 
 
  
-// blockDim=(16, 4, 1) - 1 warp per supercluster. Todo: use ydimension of 2, so we use 32 threads total
+// blockDim=(16, 4, 1)
 template<typename BoundaryCondition, bool emvariant>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
-	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt,	int totalParticlesUpperbound, int numScs) {
+	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
+	int64_t step, float dt,	int totalParticlesUpperbound, int numScs/*, const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
 
@@ -318,7 +347,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		KernelHelpersWarnings::ForceCheck(scResults[i].fe[threadIdx.x].force);
 		fe += scResults[i].fe[threadIdx.x];
 	}
-
+//	fe += nbForceenergy[scIdGlobal * SuperCluster::nParticles + threadIdx.x];
 	fe += forceEnergies.bonded[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	fe += forceEnergies.snf[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
 	fe += forceEnergies.pme[pcIdGlobal * PersistentCluster::nParticles + pidInPcluster];
@@ -347,12 +376,8 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
 		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
 		const Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
-		//printf("PC speed %f dt %f force %f mass %f\n", vel_now.len(), dt, fe.force.len(), mass);
 		const Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, dt);
-		//(pos_now - positions[threadIdx.x]).print('d');
-		//pos_now.print('N');
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
-		//compound_coords.rel_positions[threadIdx.x] = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 		Float3 velScaled;
 		velScaled = vel_now * DeviceConstants::thermostatScalar;
@@ -366,9 +391,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
 
 	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
-	//ParticleToCompoundOrSolventMapping mapping = particleToCompoundOrSolventMapping[pidGlobal];		
 	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, simDev->params, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
-
 
 	superClusters[scIdGlobal].pData[threadIdx.x].position = pos;
 	pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;

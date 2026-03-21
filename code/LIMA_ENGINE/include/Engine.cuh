@@ -143,6 +143,8 @@ private:
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
 	std::unique_ptr<NeighborList::Controller> nlistController;
 
+	//CudaBuffer<ForceEnergy> nbGatherForceenergy;
+
 	const BoundaryConditionSelect bc_select;
 
 

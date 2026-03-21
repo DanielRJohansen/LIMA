@@ -366,6 +366,11 @@ void Engine::_deviceMaster() {
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
+
+		//nbGatherForceenergy.Expand(nSuperclusters * SuperCluster::nParticles, 1.2);
+		//NBGather<<<nSuperclusters, dim3(16,4,1), 0, cudaStreams[0]>>>
+		//	(superClustersControl->scMeta, scResultsDevice.Get()/*, nbGatherForceenergy.Get()*/);
+		//LIMA_UTILS::genericErrorCheckNoSync("Error after NBGather");
 	}
 	if (simulation->simparams_host.snf_select != None) {
 		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);

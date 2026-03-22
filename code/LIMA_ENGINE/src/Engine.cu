@@ -364,7 +364,7 @@ void Engine::_deviceMaster() {
 		dim3 blockDim(SuperCluster::nParticles, 4, 1);
 		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
-			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
+			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), noInteractionMatricesTransposedDevice.Get(), superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
 		//nbGatherForceenergy.Expand(nSuperclusters * SuperCluster::nParticles, 1.2);

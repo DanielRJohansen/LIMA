@@ -200,12 +200,20 @@ struct NBParams {
 	float charge = NAN;		// [kC/mol]
 };
 
+struct LJParameters {
+	constexpr LJParameters(){}
+	constexpr LJParameters(const NBParams& nbParams) : sigmaHalf(nbParams.sigmaHalf), epsilonSqrt(nbParams.epsilonSqrt) {}
+	float sigmaHalf = -1.f;
+	float epsilonSqrt = -1.f;
+};
+
 // Precomputed values for pairs of atomtypes
 struct NonbondedInteractionParams {
 	float sigma;
     float epsilon;
     float chargeProduct;
 };
+
 
 
 struct ForceField_NB {
@@ -300,17 +308,16 @@ public:
 using ParticlesBondedToParticle = StaticSet<32>;
 using PclustersBondedToPcluster = StaticSet<32>;
 
-//struct PersistentCluster {
-//	ParticleQuickData pqd[4];
-//};
 
-struct SuperCluster {
+struct alignas(16) SuperCluster {
 	static const int nPclusters = 4;
 	static const int nParticles = PersistentCluster::nParticles * nPclusters;
 
 
-	//Float3 positions[nParticles];
-	PData pData[nParticles];
+	Float3 positions[nParticles];
+	float charges[nParticles];
+	LJParameters ljParams[nParticles];	
+	//PData pData[nParticles];
 
 #if LIMAKERNELDEBUGMODE == 1
 	Float3 center;

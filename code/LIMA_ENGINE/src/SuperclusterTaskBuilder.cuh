@@ -150,9 +150,11 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 		Float3 sum{};
 		int cnt = 0;
 		for (int pid = 0; pid < 4; pid++) {
-			const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
-			if (pData.Valid()) {
-				sum += pData.position;
+			//const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
+			Float3 position = superclusters[scId].positions[pcid * 4 + pid];
+			float epsilonSqrt = superclusters[scId].ljParams[pcid * 4 + pid].epsilonSqrt;
+			if (epsilonSqrt != -1.f) {
+				sum += position;
 				cnt++;
 			}
 		}
@@ -160,8 +162,9 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 		const Float3 meanPos = sum * (1.0f / static_cast<float>(cnt));
 		float radius = 0;
 		for (int pid = 0; pid < cnt; pid++) {
-			const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
-			radius = std::max(radius, (pData.position - meanPos).len());
+			//const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
+			Float3 position = superclusters[scId].positions[pcid * 4 + pid];
+			radius = std::max(radius, (position - meanPos).len());
 		}
 
 		out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
@@ -340,8 +343,8 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, SuperClusterMe
 
 
 
-//// gridDim = (nSuperclusters, 1, 1)
-//// blockDim = (16, 1, 1)
+// gridDim = (nSuperclusters, 1, 1)
+// blockDim = (16, 1, 1)
 __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const superClusterMetas, const PersistentClusterMeta* const pClustersMeta, 
 	TaskBuilderControlContents tbContents, BoolMatrix16x16* const nointeractionMatrices, int nSuperclusters) {
 
@@ -387,6 +390,22 @@ __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const s
 	}
 }
 
+__global__ void TransposeNointeractionMatrices(const BoolMatrix16x16* const in, BoolMatrix16x16* const out) {
+	__shared__ BoolMatrix16x16 matrixIn;
+	__shared__ BoolMatrix16x16 matrixOut;
+
+	if (threadIdx.x == 0) {
+		matrixIn = in[blockIdx.x];
+	}
+	__syncthreads();
+
+	uint16_t column = matrixIn.GetColumn(threadIdx.x);
+	matrixOut.SetRow(threadIdx.x, column);
+	__syncthreads();
+	if (threadIdx.x == 0) {
+		out[blockIdx.x] = matrixOut;
+	}
+}
 
 
 
@@ -443,15 +462,19 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	cudaDeviceSynchronize();
 	nResults = GenericCopyToHost(taskbuilderControl->contents.nResultsPrefixsum + nSuperclusters);
 	nTasks = GenericCopyToHost(taskbuilderControl->contents.nTasksPrefixsum + nSuperclusters);
+	const int nNointeractionMatrices = GenericCopyToHost(taskbuilderControl->contents.nNointeractionmatricesPrefixsum + nSuperclusters);
+
 
 	scscTasksDevice.Expand(nTasks, 1.2);
-	noInteractionMatricesDevice.Expand(nTasks, 1.2);
+	noInteractionMatricesDevice.Expand(nNointeractionMatrices, 1.2);
+	noInteractionMatricesTransposedDevice.Expand(nNointeractionMatrices, 1.2);
 	scResultsDevice.Expand(nResults, 1.2);
 
 
 
 	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scMeta, nSuperclusters, scscTasksDevice.Get());
 	BuildNointeractionMatricesKernel << <nSuperclusters , 16 >> >(superClustersControl->scMeta, pClusterMetaDevice, taskbuilderControl->contents, noInteractionMatricesDevice.Get(), nSuperclusters);
+	TransposeNointeractionMatrices<<<nNointeractionMatrices, 16 >>>(noInteractionMatricesDevice.Get(), noInteractionMatricesTransposedDevice.Get());
 	cudaDeviceSynchronize();
 
 	//auto resCounts = GenericCopyToHost(taskbuilderControl->contents.nResults, nSuperclustersUpperbound);

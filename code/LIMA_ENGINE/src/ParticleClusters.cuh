@@ -422,7 +422,10 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 					PData pData = pClusters[pcIdGlobal].pqd[particleIndex];
 					PeriodicBoundaryCondition::applyHyperposNM(blockCenter, pData.position);
-					sc.pData[pcId * 4 + particleIndex] = pData;
+					//sc.pData[pcId * 4 + particleIndex] = pData;
+					sc.positions[pcId * 4 + particleIndex] = pData.position;
+					sc.ljParams[pcId * 4 + particleIndex] = pData.params;
+					sc.charges[pcId * 4 + particleIndex] = pData.params.charge;
 
 					if (pData.Valid())
 						posDebug[cnt++] = pData.position;
@@ -466,7 +469,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 						const int pcIdRelativeToBlock = sortIds[srcIndex];
 						printf("pcMeanpos %f %f %f\n", meanPositionsOfPClusters[pcIdRelativeToBlock].x, meanPositionsOfPClusters[pcIdRelativeToBlock].y, meanPositionsOfPClusters[pcIdRelativeToBlock].z);
 					}
-					printf("Ids %d %d pos %f %f %f\n", blockIdx.x, threadIdx.x, sc.pData[i].position.x, sc.pData[i].position.y, sc.pData[i].position.z);
+					printf("Ids %d %d pos %f %f %f\n", blockIdx.x, threadIdx.x, sc.positions[i].x, sc.positions[i].y, sc.positions[i].z);
 				}
 			}
 		}

@@ -123,6 +123,7 @@ private:
 
 	CudaBuffer<ScScTask> scscTasksDevice;
 	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
+	CudaBuffer<BoolMatrix16x16> noInteractionMatricesTransposedDevice;
 	CudaBuffer<SCResult> scResultsDevice;
 
 	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;

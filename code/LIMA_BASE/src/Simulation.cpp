@@ -49,7 +49,7 @@ void Simulation::PrepareDataBuffers() {
 	{
 		// Permanent Outputs for energy & trajectory analysis
 		const int nPclusters = box_host->persistentClusters.size();
-		const int particlesUpperbound = nPclusters * PersistentCluster::nParticles;
+		const int particlesUpperbound = nPclusters * PersistentCluster::maxParticles;
 		const size_t n_datapoints = particlesUpperbound * n_steps / simparams_host.data_logging_interval;
 		const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 		

@@ -229,7 +229,7 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simparams_host.data_logging_interval);
 	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	//const int particlesUpperbound = simulation->box_host->boxparams.total_particles_upperbound;
-	const int nParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
+	const int nParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::maxParticles;
 	
 	cudaMemcpyAsync(
 		simulation->potE_buffer->getBufferAtIndex(startindex),
@@ -354,14 +354,14 @@ void Engine::_deviceMaster() {
 	//cudaDeviceSynchronize();
 
     if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-        pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme, pmeStream);
+        pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme);
         LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
     }
 
 
 	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
-		dim3 blockDim(SuperCluster::nParticles, 4, 1);
+		dim3 blockDim(SuperCluster::maxParticles, 4, 1);
 		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
@@ -402,7 +402,7 @@ void Engine::_deviceMaster() {
 
 
 	if (nSuperclusters > 0) {
-		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::nParticles;
+		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::maxParticles;
 		const int nBlocks = (nSuperclusters + 4 - 1) / 4;
 		const dim3 blockDim(16, 4, 1);
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 

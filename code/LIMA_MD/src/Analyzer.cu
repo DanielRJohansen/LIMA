@@ -38,8 +38,8 @@ void __global__ MonitorPclusterEnergy(const PersistentClusterMeta* const pcMeta,
 	
 	const float mass = pcMeta[pcId].mass[pid];
 
-	const int64_t step_offset = step * nPclusters * PersistentCluster::nParticles;
-	const int64_t bufferIndex = pid + pcId * PersistentCluster::nParticles + step_offset;
+	const int64_t step_offset = step * nPclusters * PersistentCluster::maxParticles;
+	const int64_t bufferIndex = pid + pcId * PersistentCluster::maxParticles + step_offset;
 
 	const float potE = potE_buffer[bufferIndex];
 	const float speed = vel_buffer[bufferIndex];
@@ -75,7 +75,7 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simparams_host.data_logging_interval);
 	if (n_entryindices < 2) { return AnalyzedPackage(); }
 
-	const int nParticlesUpperbound = pcMetaHost.size() * PersistentCluster::nParticles;
+	const int nParticlesUpperbound = pcMetaHost.size() * PersistentCluster::maxParticles;
 	int64_t max_steps_per_kernel = 100;
 
 	// First set up some stuff needed on device, that is currently on host
@@ -131,11 +131,11 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 			double3 sum{};
 			int cnt = 0;
 			for (int pcid = 0; pcid < pcMetaHost.size(); pcid++) {
-				for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+				for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 					// TODO: Use precise particle count and std::accumulate here. Or reduce on gpu...
 					if (pcMetaHost[pcid].particleIdsGlobal[pid] == -1) { continue; }
 
-					const int64_t bufferIndex = pid + pcid * PersistentCluster::nParticles + stepRelative * nParticlesUpperbound;
+					const int64_t bufferIndex = pid + pcid * PersistentCluster::maxParticles + stepRelative * nParticlesUpperbound;
 					sum.x += energiesHost[bufferIndex].x;
 					sum.y += energiesHost[bufferIndex].y;
 					sum.z += energiesHost[bufferIndex].z;

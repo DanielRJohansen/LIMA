@@ -23,8 +23,8 @@ namespace _Thermostat {
 			: states(_states), pcMeta(_pcMeta){}
 		__host__ __device__
 			float operator()(int idx) const {
-			int pcId = idx / PersistentCluster::nParticles;
-			int pId = idx % PersistentCluster::nParticles;
+			int pcId = idx / PersistentCluster::maxParticles;
+			int pId = idx % PersistentCluster::maxParticles;
 			const float mass = pcMeta[pcId].mass[pId];
 
 			const Float3& velocity = states[pcId].vels_prev[pId];
@@ -57,20 +57,20 @@ public:
 	Thermostat(int nPclusters)
 		: nPclusters(nPclusters)
 	{
-		cudaMalloc(&intermediate, sizeof(float) * nPclusters * PersistentCluster::nParticles);
-		cudaMemset(intermediate, 0, sizeof(float) * nPclusters * PersistentCluster::nParticles);
+		cudaMalloc(&intermediate, sizeof(float) * nPclusters * PersistentCluster::maxParticles);
+		cudaMemset(intermediate, 0, sizeof(float) * nPclusters * PersistentCluster::maxParticles);
 	}
 
 	// {temp,thermostatScalar}
 	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step, const PersistentClusterMeta* const pcMetaDevice) {
 		// Step 1: Calculate kinetic energy for each Pcluster and store in the intermediate buffer
-		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::nParticles),
+		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::maxParticles),
 			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.pclusterInterimStates, pcMetaDevice));
 		LIMA_UTILS::genericErrorCheckNoSync("TotalKineticEnergyCompounds");
 		cudaDeviceSynchronize();
 
 		// Step 3: Sum up all kinetic energy values (compounds + solvents)
-		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + nPclusters * PersistentCluster::nParticles, 0.0);
+		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + nPclusters * PersistentCluster::maxParticles, 0.0);
 
 		//printf("Total kinetic energy: %f\n", totalKineticEnergy); 
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);

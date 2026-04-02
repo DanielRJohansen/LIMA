@@ -209,7 +209,7 @@ namespace LJ {
 		}
 
 		if constexpr (ENABLE_ES_SR) {
-			if (!isnan(p0.params.charge) && !isnan(p1.params.charge)) {
+			if (p0.params.charge * p1.params.charge != 0.f) {
 				const float chargeProduct = p0.params.charge * p1.params.charge;
 				//printf("PP charproduct %f force %f %f %f\n", chargeProduct,
 				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).x,

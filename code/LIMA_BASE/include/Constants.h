@@ -5,11 +5,12 @@
 
 
 // -------------------------------------------- Debug Parameters -------------------------------------------- //
-constexpr bool INDEXING_CHECKS = false;
-constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
-constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
-constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
-constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS);
+constexpr bool INDEXING_CHECKS = true;
+constexpr bool SYNC_ALL_KERNELS = true;	// Disallow async/concurrent kernels
+constexpr bool FORCE_CHECKS = true;		// Check force is not NaN or Inf
+constexpr bool POSITION_CHECKS = true;		// Check if near overflow when switching to int representation
+constexpr bool DETERMINISTIC_CHECKS = true;	// Check if results are deterministic (only used for debugging non-determinism, since it is expensive)
+constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS || DETERMINISTIC_CHECKS);
 
 //#define FORCE_NAN_CHECK // TODO: make this a const instead
 
@@ -17,7 +18,7 @@ const bool ENABLE_LJ = true;
 const bool ENABLE_INTEGRATEPOSITION = true;
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+const bool ENABLE_ES_LR = true;
 const bool ENABLE_UREYBRADLEY = true;
 
 

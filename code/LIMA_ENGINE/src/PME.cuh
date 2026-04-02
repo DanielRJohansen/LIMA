@@ -40,6 +40,7 @@ namespace PME {
 		cufftHandle planForward;
 		cufftHandle planInverse;
 
+		cudaStream_t& stream;
 		// For system with a net charge, we apply to correction to each realspaceGridnode
 		//LAL::optional<float> backgroundchargeCorrection;
 
@@ -50,7 +51,7 @@ namespace PME {
 		Controller(const Box& box, float cutoffNM, cudaStream_t& stream);
 		~Controller();
 
-		void CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream);
+		void CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy);
 
 	private:
 		//Just for debugging
@@ -172,16 +173,16 @@ constexpr Int3 FloorIndex3d(const Float3& relpos) {
 // blockDim = (32, 1, 1)
 __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* const superclusters, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim)
 {
-	__shared__ Float3 relPositions[SuperCluster::nParticles ];
-	__shared__ float charges[SuperCluster::nParticles];
+	__shared__ Float3 relPositions[SuperCluster::maxParticles];
+	__shared__ float charges[SuperCluster::maxParticles];
 
-	__shared__ int outgoingParticlesId[27 * SuperCluster::nParticles];
+	__shared__ int outgoingParticlesId[27 * SuperCluster::maxParticles];
 	__shared__ int offsetsInTarget[27];
 	__shared__ int nOutgoingParticles[27];
 
 	NodeIndex nearestGridnode = superclusters[blockIdx.x].pData[0].position.Floor().ToInt3();
 
-	if (threadIdx.x < SuperCluster::nParticles) {
+	if (threadIdx.x < SuperCluster::maxParticles) {
 		PData pqd = superclusters[blockIdx.x].pData[threadIdx.x];
 
 		if (pqd.Valid()) {
@@ -207,13 +208,13 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 		const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
 		int myCount = 0;
 
-		for (int i = 0; i < SuperCluster::nParticles; i++) {
+		for (int i = 0; i < SuperCluster::maxParticles; i++) {
 			if (charges[i] == 0.f || isnan(charges[i])) // Skip particles with no charge
 				continue;
 
 			const Int3 floorIndex3d = FloorIndex3d(relPositions[i]);
 			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
-				outgoingParticlesId[threadIdx.x * SuperCluster::nParticles + myCount] = i; 
+				outgoingParticlesId[threadIdx.x * SuperCluster::maxParticles + myCount] = i; 
 				myCount++;
 			}
 		}
@@ -229,7 +230,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 		if (threadIdx.x < nOutgoingParticles[directionIndex]) {
 			const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
 			
-			const int designatedParticleId = outgoingParticlesId[directionIndex * SuperCluster::nParticles + threadIdx.x];
+			const int designatedParticleId = outgoingParticlesId[directionIndex * SuperCluster::maxParticles + threadIdx.x];
 			const Float3 relposRelativeToTargetBlock = relPositions[designatedParticleId] - direction.ToFloat3();
 
 			const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
@@ -544,9 +545,11 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	}
 #endif
 
-	int pcId = scMeta[blockIdx.x].pclusterIds[threadIdx.x/4];
-	int pid = threadIdx.x % 4;	
-	forceEnergies[pcId * PersistentCluster::nParticles + pid] = fe;
+	
+	int pcId = scMeta[blockIdx.x]._pclusterIds[threadIdx.x];
+	int indexInPc = scMeta[blockIdx.x].indexInPcluster[threadIdx.x];
+	//int pid = threadIdx.x % 4;	
+	forceEnergies[pcId * PersistentCluster::maxParticles + indexInPc] = fe;
 }
 
 
@@ -838,7 +841,7 @@ __global__ void Normalize(float* realspaceGrid, int nGridpointsRealspace, float 
 
 
 PME::Controller::Controller(const Box& box, float cutoffNM, cudaStream_t& stream)
-	: boxlenNm(box.boxparams.BoxSizeFloat()), nChargeblocks(box.boxparams.boxSize.InnerProduct()), ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM))
+	: boxlenNm(box.boxparams.BoxSizeFloat()), nChargeblocks(box.boxparams.boxSize.InnerProduct()), ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM)), stream(stream)
 {
 	gridpointsPerDim = box.boxparams.boxSize * gridpointsPerNm;
 	nGridpointsRealspace = gridpointsPerDim.x * gridpointsPerDim.y * gridpointsPerDim.z;
@@ -882,7 +885,7 @@ PME::Controller::~Controller() {
 	chargeblockBuffers->Free();
 }
 
-void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, cudaStream_t& stream) {
+void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy) {
 	if (nSuperclusters == 0)
 		return;
 
@@ -914,7 +917,7 @@ void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* 
 
 	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));	
 
-	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::nParticles, 0, stream >> > (scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
+	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::maxParticles, 0, stream >> > (scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
 	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
 
 	//PlotPotentialSlices();

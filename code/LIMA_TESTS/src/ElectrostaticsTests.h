@@ -170,7 +170,7 @@ namespace ElectrostaticsTests {
 		//	const auto& compound = sim->box_host->compounds[cid];
 		//	const auto& compoundInterimState = sim->box_host->pclusterInterimStates[cid];
 		for (int pcId = 0; pcId < sim->box_host->persistentClusters.size(); pcId++){
-			for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+			for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 				if (!sim->box_host->persistentClusters[pcId].pqd[pid].Valid())
 					continue;
 				const float charge = sim->box_host->persistentClusters[pcId].pqd[pid].params.charge;

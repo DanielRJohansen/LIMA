@@ -348,17 +348,17 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 	// Compute cluster vacancy
 	int vacantCount = 0;
 	for (auto& cluster : persistentClusters) {
-		for (int i = 0; i < PersistentCluster::nParticles; i++) {
+		for (int i = 0; i < PersistentCluster::maxParticles; i++) {
 			if (cluster[i] == -1)
 				vacantCount++;
 		}
 	}
-	double vacancyFraction = static_cast<double>(vacantCount) / (double)(persistentClusters.size() * PersistentCluster::nParticles);
+	double vacancyFraction = static_cast<double>(vacantCount) / (double)(persistentClusters.size() * PersistentCluster::maxParticles);
 
 	float largestDistInsidePcluster = 0.f;
 	for (auto& cluster : persistentClusters) {
 		std::vector<Float3> positions;
-		for (int i = 0; i < PersistentCluster::nParticles; i++) {
+		for (int i = 0; i < PersistentCluster::maxParticles; i++) {
 			if (cluster[i] != -1) {
 				positions.push_back(system.particles[cluster[i]].position);
 			}
@@ -387,7 +387,7 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 	std::vector<std::string> solventResNames{ "SOL", "SPC", "SPCE", "TIP3", "TIP3P" };
 
 	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
-		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
+		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
 			const int pId = clustersParticleIds[pcId][pidRel];			
 
 			if (pId == -1) {
@@ -413,6 +413,7 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
 
 				pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), topAtom.residue) != solventResNames.end();
+				pClusterMetas[pcId].nParticles++;
 
 				// Also set mapping
 				particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };
@@ -428,7 +429,7 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 	// First make a particle-2-pcluster map
 	std::vector<int> particleIdToPclusterIdMap(system.particles.size(), -1);
 	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
-		for (int pidRel = 0; pidRel < PersistentCluster::nParticles; pidRel++) {
+		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
 			const int pId = clustersParticleIds[pcId][pidRel];
 			if (pId == -1) { continue; }
 			particleIdToPclusterIdMap[pId] = pcId;
@@ -745,7 +746,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	int nParticles = 0;
 	//int nSolvents = 0;
 	for (const auto& pc : pClusterMetas) {
-		for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			if (pc.particleIdsGlobal[pid] == -1)
 				continue;
 			nParticles++;

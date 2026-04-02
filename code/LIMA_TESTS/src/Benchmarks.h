@@ -150,7 +150,7 @@ namespace Benchmarks {
 		GroFile grofile{ work_dir  / "conf.gro" };
 		TopologyFile topfile{ work_dir  / "topol.top" };
 		SimParams ip{ work_dir / "sim_params.txt" };
-		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 4);
+		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 3);
 		return LimaUnittestResult{ true, "STMV benchmark completed", true };
 	}
 

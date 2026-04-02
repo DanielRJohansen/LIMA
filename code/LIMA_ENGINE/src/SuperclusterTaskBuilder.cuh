@@ -113,13 +113,9 @@ public:
 
 
 __host__ __device__ inline bool ScAreBonded(const SuperClusterMeta& sc0, const SuperClusterMeta& sc1, const PclustersBondedToPcluster* const pclustersBondedToPcluster) {
-	for (int i = 0; i < SuperCluster::nPclusters; i++) {
-		if (sc0.pclusterIds[i] == -1)
-			break;
-		for (int j = 0; j < SuperCluster::nPclusters; j++) {
-			if (sc1.pclusterIds[j] == -1)
-				break;
-			if (pclustersBondedToPcluster[sc0.pclusterIds[i]].Contains(sc1.pclusterIds[j])) {
+	for (int i = 0; i < sc0.nUniquePcIds; i++) {
+		for (int j = 0; j < sc1.nUniquePcIds; j++) {
+			if (pclustersBondedToPcluster[sc0.uniquePclusterIds[i]].Contains(sc1.uniquePclusterIds[j])) {
 				return true;
 			}
 		}
@@ -127,47 +123,146 @@ __host__ __device__ inline bool ScAreBonded(const SuperClusterMeta& sc0, const S
 	return false;
 }
 
-constexpr std::array<int, 16> GetParticleIdsOfSuperCluster(const PersistentClusterMeta* const pClusterMeta, const SuperClusterMeta& scMeta) {
-	std::array<int, 16> particleIds{};
-	for (auto& e : particleIds) { e = -1; }
-	int cnt = 0;
-	for (auto pcId : scMeta.pclusterIds) {
-		if (pcId == -1) break;
-		for (int particleId : pClusterMeta[pcId].particleIdsGlobal) {
-			particleIds[cnt++] = particleId;
-		}
+//constexpr std::array<int, 16> GetParticleIdsOfSuperCluster(const PersistentClusterMeta* const pClusterMeta, const SuperClusterMeta& scMeta) {
+//	std::array<int, 16> particleIds{};
+//	for (auto& e : particleIds) { e = -1; }
+//	int cnt = 0;
+//	for (auto pcId : scMeta.pclusterIds) {
+//		if (pcId == -1) break;
+//		for (int particleId : pClusterMeta[pcId].particleIdsGlobal) {
+//			particleIds[cnt++] = particleId;
+//		}
+//	}
+//	return particleIds;
+//}
+
+//__global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(const SuperCluster* const superclusters, const SuperClusterMeta* const scMeta, std::array<float4, 16>* const out, int nSuperclusters) {
+//	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
+//
+//	if (scId >= nSuperclusters)
+//		return;
+//
+//	std::array<float4, 16> positionSpheres{};
+//
+//	Float3 sum{};
+//	int cnt = 0;
+//	int positionClusterIndex = 0;
+//	for (int i = 0; i < scMeta[scId].nParticles; i++){
+//		const int pcId = scMeta[scId]._pclusterIds[i];
+//		const PData& pdata = superclusters[scId].pData[i];
+//
+//		sum += pdata.position;
+//		cnt++;
+//
+//		int nextPcId = i == 15 ? -1 : scMeta[scId]._pclusterIds[i + 1];
+//		if (nextPcId != pcId) {
+//			Float3 meanPos = sum * (1.f / static_cast<float>(cnt));
+//			float radius = 0;
+//			for (int ii = i -cnt+1; ii <= i; ii++) {
+//				const PData& pData = superclusters[scId].pData[ii];
+//				radius = std::max(radius, (pData.position - meanPos).len());
+//			}
+//			out[scId][positionClusterIndex] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
+//			sum = {}; 
+//			cnt = 0;
+//			positionClusterIndex++;
+//		}
+//	}
+//
+//
+//	for (int i = positionClusterIndex; i < 16; i++) {
+//		out[scId][i] = float4{ 0,0,0,-1. };
+//	}
+//}
+
+namespace InteractionSpheres {
+	__device__ inline float4 Merge(const float4& a, const float4& b) {
+		const Float3 newCenter{ (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f};
+		const float moveDist = (Float3(a) - Float3(newCenter)).len();
+		const float newRadius = std::max(a.w, b.w) + moveDist;
+		return float4{ newCenter.x, newCenter.y, newCenter.z, newRadius };
 	}
-	return particleIds;
+
+	__device__ inline float SphereVolumeProxy(const float4& s) {// The 4/3pi scalar doesnt matter for comparisons
+		return s.w * s.w * s.w;
+	}
+
+	__device__ inline float MergeCost(const float4& a, const float4& b) {
+		const float4 merged = Merge(a, b);
+		return SphereVolumeProxy(merged) - SphereVolumeProxy(a) - SphereVolumeProxy(b);
+	}
 }
 
-__global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(const SuperCluster* const superclusters, std::array<float4, 4>* const out, int nSuperclusters) {
-	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
 
+__global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(const SuperCluster* const superclusters, const SuperClusterMeta* const scMeta, std::array<float4, 4>* const out, int nSuperclusters) {
+	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (scId >= nSuperclusters)
 		return;
 
-	for (int pcid = 0; pcid < 4; pcid++) { // optim: 1 thread per pcid
-		Float3 sum{};
-		int cnt = 0;
-		for (int pid = 0; pid < 4; pid++) {
-			const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
-			if (pData.Valid()) {
-				sum += pData.position;
-				cnt++;
+	if constexpr (INDEXING_CHECKS) {
+		if (scMeta[scId].nParticles < 0 || scMeta[scId].nParticles > 16)
+			printf("Illegal number of particles in supercluster %d: %d\n", scId, scMeta[scId].nParticles);
+	}
+
+	int sphereCount = 0;
+	static const int nSpheresToPush = 4;
+	std::array<float4, 16> spheres{};
+	for (int i = 0; i < nSpheresToPush; i++)
+		spheres[i] = float4{ 0,0,0,-1. };
+
+
+	Float3 sum{};
+	int cnt = 0;
+	
+	for (int i = 0; i < scMeta[scId].nParticles; i++) {
+		const int pcId = scMeta[scId]._pclusterIds[i];
+		const PData& pdata = superclusters[scId].pData[i];
+
+		sum += pdata.position;
+		cnt++;
+
+		int nextPcId = i == 15 ? -1 : scMeta[scId]._pclusterIds[i + 1];
+		if (nextPcId != pcId) {
+			Float3 meanPos = sum * (1.f / static_cast<float>(cnt));
+			float radius = 0;
+			for (int ii = i - cnt + 1; ii <= i; ii++) {
+				const PData& pData = superclusters[scId].pData[ii];
+				radius = std::max(radius, (pData.position - meanPos).len());
+			}
+			//out[scId][positionClusterIndex] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
+			spheres[sphereCount] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
+			sum = {};
+			cnt = 0;
+			sphereCount++;
+		}
+	}
+
+	// Reduce untill 4 spheres left
+	while (sphereCount > 4) {
+		int bestI = 0;
+		int bestJ = 1;
+		float bestCost = InteractionSpheres::MergeCost(spheres[0], spheres[1]);
+
+		for (int i = 0; i < sphereCount; i++) {
+			for (int j = i + 1; j < sphereCount; j++) {
+				const float cost = InteractionSpheres::MergeCost(spheres[i], spheres[j]);
+				if (cost < bestCost) {
+					bestCost = cost;
+					bestI = i;
+					bestJ = j;
+				}
 			}
 		}
 
-		const Float3 meanPos = sum * (1.0f / static_cast<float>(cnt));
-		float radius = 0;
-		for (int pid = 0; pid < cnt; pid++) {
-			const PData& pData = superclusters[scId].pData[pcid * 4 + pid];
-			radius = std::max(radius, (pData.position - meanPos).len());
-		}
+		spheres[bestI] = InteractionSpheres::Merge(spheres[bestI], spheres[bestJ]);
+		spheres[bestJ] = spheres[sphereCount - 1];
+		sphereCount--;
+	}
 
-		out[scId][pcid] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
+	for (int i = 0; i < nSpheresToPush; i++) {
+		out[scId][i] = spheres[i];
 	}
 }
-
 
 
 __host__ __device__ inline bool DoesSuperclustersInteract(const std::array<float4, 4>* const superclusterPositionSpheres, int scId0, int scId1, float cutoffDistance, Float3 boxSize) {
@@ -176,10 +271,14 @@ __host__ __device__ inline bool DoesSuperclustersInteract(const std::array<float
 		std::swap(scId0, scId1);
 	}
 
-	for (int pcid0 = 0; pcid0 < 4; pcid0++) {
-		for (int pcid1 = 0; pcid1 < 4; pcid1++) {
-			float4 p0 = superclusterPositionSpheres[scId0][pcid0];
-			float4 p1 = superclusterPositionSpheres[scId1][pcid1];
+	for (int posSphereId0 = 0; posSphereId0 < 4; posSphereId0++) {
+		float4 p0 = superclusterPositionSpheres[scId0][posSphereId0];
+		if (p0.w < 0)
+			break;
+		for (int posSphereId1 = 0; posSphereId1 < 4; posSphereId1++) {			
+			float4 p1 = superclusterPositionSpheres[scId1][posSphereId1];
+			if (p1.w < 0)
+				break;
 
 			Float3 pos0 = Float3{ p0 };
 			Float3 pos1 = Float3{ p1 };
@@ -347,7 +446,7 @@ __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const s
 
 	const int scId = blockIdx.x;
 
-	std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
+	//std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
 	int matrixCount = 0;
 
 	for (int i = 0; i < tbContents.nInteractionsOwned[scId]; i++) {
@@ -359,18 +458,18 @@ __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const s
 
 		const int scIdQuery = token.GetQueryId();
 
-		std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scIdQuery]);
+		//std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scIdQuery]);
 		const bool isSelfInteractionTask = scId == scIdQuery;
 
 		const int row = threadIdx.x;
 		uint16_t rowData = 0;
 		for (int col = 0; col < 16; ++col) {
-			int pidSelf = particleIdsSelf[row];
-			int pidQuery = particleIdsQuery[col];
+			int pidSelf = superClusterMetas[scId].globalParticleIds[row];
+			int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[col];
 			if (pidSelf == -1 || pidQuery == -1)
 				continue;
 
-			bool noInteraction = tbContents.particlesBondedToParticle[particleIdsSelf[row]].Contains(particleIdsQuery[col]);
+			bool noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery);
 			if (isSelfInteractionTask && row == col) {
 				noInteraction = true;
 			}
@@ -420,8 +519,12 @@ bool Engine::MakeSuperClusterTasksGPU() {
 
 	cudaDeviceSynchronize();
 
-	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel<<<(nSuperclusters + 31) / 32, 32 >>>(superClustersControl->scData, taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
+	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel<<<(nSuperclusters + 31) / 32, 32 >>>(superClustersControl->scData, superClustersControl->scMeta, taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
 	cudaDeviceSynchronize();
+
+	std::vector<std::array<float4, 4>> scps = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
+	std::vector<float> scpsFlat(reinterpret_cast<float*>(scps.data()), reinterpret_cast<float*>(scps.data()) + scps.size() * 4 * 4);
+	DebugUtils::VerifyIdentical(scpsFlat, "scPositionsSpheres_" + std::to_string(simulation->getStep()));
 
 	//auto iSpheres = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
 

@@ -96,7 +96,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
                 auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-                renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::nParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+                renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
                 renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
                 if (task.coloringMethod == ColoringMethod::Atomname)

@@ -18,7 +18,7 @@ void InsertCompoundInBox(const PersistentCluster& pcluster, Box& box, const SimP
 {
 	PersistentclusterInterimState pcState{};
 	memset(&pcState, 0, sizeof(PersistentclusterInterimState));
-	for (int i = 0; i < PersistentCluster::nParticles; i++) {
+	for (int i = 0; i < PersistentCluster::maxParticles; i++) {
 		//pcState.// TODO!!!
 	}
 	box.pclusterInterimStates.push_back(pcState);
@@ -112,8 +112,8 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	// I dont like doing this here..
 	if (!simparams.enable_electrostatics) {
 		for (auto& pc : boxImage.persistentClusters) {
-			for (int i = 0; i < pc.nParticles; i++) {
-				pc.pqd[i].params.charge = NAN;
+			for (int i = 0; i < PersistentCluster::maxParticles; i++) {
+				pc.pqd[i].params.charge = 0;
 			}
 		}
 	}

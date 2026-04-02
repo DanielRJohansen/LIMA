@@ -76,7 +76,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
 		//doEightResiduesNoSolvent(envmode);
-//		loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
+		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
 				//TestLongrangeEsNoLJ(envmode);
 		//MakeChargeParticlesSim();
 		//TestChargedParticlesVelocityInUniformElectricField(envmode);
@@ -88,14 +88,10 @@ int main() {
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
-		//SimParams simparams; 
-		//simparams.n_steps = 100000;
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		//for (int i = 0; i < 100; i++) {
-		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
-		//	if (!res.success)
-		//		break;
-		//}
+		/*for (int i = 0; i < 10; i++)
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);*/
+		
+		
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
@@ -128,7 +124,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
-		Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+		Benchmarks::Benchmark("stmv", std::nullopt, 100);
 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		//Benchmarks::Psome(envmode);

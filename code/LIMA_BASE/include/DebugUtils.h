@@ -10,7 +10,7 @@ namespace DebugUtils {
 	namespace fs = std::filesystem;
 	template <typename T>
 	bool VerifyIdentical(const std::vector<T>& data, const std::string& name) {
-		return true;
+		//return true;
 		const fs::path filePath = FileUtils::GetLimaDir() / "dev" / "etc" / (name + ".bin");
 
 		if (fs::exists(filePath)) {
@@ -34,6 +34,11 @@ namespace DebugUtils {
 		return true;
 	}
 
-
+	template <typename T>
+	bool VerifyIdentical(const T* const devPtr, size_t count, const std::string& name, int step) {
+		if constexpr (DETERMINISTIC_CHECKS) {			
+			return VerifyIdentical(GenericCopyToHost(devPtr, count), name + std::to_string(step));
+		}
+	}
 
 }

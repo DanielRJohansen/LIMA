@@ -235,7 +235,7 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 
 	for (int pcId = 0; pcId < simulation->box_host->persistentClusters.size(); pcId++) {
 		const PersistentClusterMeta& pcMeta = simulation->box_host->persistentClustersMetadata[pcId];
-		for (int pid = 0; pid < PersistentCluster::nParticles; pid++) {
+		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 			if (pidGlobal != -1) {
 				grofile.atoms[pidGlobal].position = simulation->traj_buffer->GetDatapointAtStep(pcId, pid, stepToLoadFrom);

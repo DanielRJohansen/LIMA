@@ -45,7 +45,7 @@ void BoxState::FreeMembers() const {
 
 
 DatabuffersDeviceController::DatabuffersDeviceController(int nPclusters, int loggingInterval) :
-	nParticlesUpperbound{ nPclusters * PersistentCluster::nParticles }
+	nParticlesUpperbound{ nPclusters * PersistentCluster::maxParticles }
 {
 	// Permanent Outputs for energy & trajectory analysis
 	{
@@ -99,8 +99,8 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	forceBuffer = databuffers.forceBuffer;
 
 	if (params_host.em_variant) {
-		cudaMalloc(&adamState, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::nParticles);
-		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::nParticles);
+		cudaMalloc(&adamState, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::maxParticles);
+		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::maxParticles);
 	}
 
 	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");

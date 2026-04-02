@@ -57,7 +57,7 @@ struct DatabuffersDeviceController {
 		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
 
 		const int stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
-		const int pclusterOffset = pcId * PersistentCluster::nParticles;
+		const int pclusterOffset = pcId * PersistentCluster::maxParticles;
 		return stepOffset + pclusterOffset + pidInPclusters;
 	}
 

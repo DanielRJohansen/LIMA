@@ -197,7 +197,9 @@ struct BondGroup {
 struct NBParams {
 	float sigmaHalf = -1;		// [nm]
 	float epsilonSqrt = -1;		// [J/mol/nm]
-	float charge = NAN;		// [kC/mol]
+	float charge = 0;		// [kC/mol]
+
+	__host__ bool operator==(const NBParams& other) const = default;
 };
 
 // Precomputed values for pairs of atomtypes
@@ -231,6 +233,10 @@ struct PData {
 	Float3 position;
 	NBParams params;
 	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
+
+	__host__ bool operator!=(const PData& other) const {
+		return position != other.position || params != other.params;
+	}
 };
 
 struct BondgroupRefManager {
@@ -245,24 +251,33 @@ struct BondgroupRefManager {
 };
 
 struct PersistentCluster {
-	static const int nParticles = 4;
-	PData pqd[nParticles];
+	static const int maxParticles = 4;
+	PData pqd[maxParticles];
+
+	__host__ bool operator!=(const PersistentCluster& other) const {
+		for (int i = 0; i < maxParticles; i++) {
+			if (pqd[i] != other.pqd[i])
+				return true;
+		}
+		return false;
+	}
 };
 struct PersistentClusterMeta {
-	int particleIdsGlobal[PersistentCluster::nParticles]={ -1, -1, -1, -1 };
-	float mass[PersistentCluster::nParticles] = { 0,0,0,0 };		// [kg/mol]
+	int particleIdsGlobal[PersistentCluster::maxParticles]={ -1, -1, -1, -1 };
+	float mass[PersistentCluster::maxParticles] = { 0,0,0,0 };		// [kg/mol]
 
-	char atomLetter[PersistentCluster::nParticles]; // For rendering
+	char atomLetter[PersistentCluster::maxParticles]; // For rendering
 	bool isSolvent = false;
+	int nParticles = 0;
 
 	// I do not like this setup...
-	BondgroupRefManager bondgroupReferences[PersistentCluster::nParticles];
+	BondgroupRefManager bondgroupReferences[PersistentCluster::maxParticles];
 };
 
 struct PersistentclusterInterimState {
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[PersistentCluster::nParticles]; // [J/mol]
-	Float3 vels_prev[PersistentCluster::nParticles];
+	Float3 forces_prev[PersistentCluster::maxParticles]; // [J/mol]
+	Float3 vels_prev[PersistentCluster::maxParticles];
 	//Coord coords[PersistentCluster::nParticles];
 };
 
@@ -304,36 +319,7 @@ using PclustersBondedToPcluster = StaticSet<32>;
 //	ParticleQuickData pqd[4];
 //};
 
-struct SuperCluster {
-	static const int nPclusters = 4;
-	static const int nParticles = PersistentCluster::nParticles * nPclusters;
 
-
-	//Float3 positions[nParticles];
-	PData pData[nParticles];
-
-#if LIMAKERNELDEBUGMODE == 1
-	Float3 center;
-#endif
-
-	/*float x[nParticles];
-	float y[nParticles];
-	float z[nParticles];*/
-
-};
-
-struct SCResult {
-	ForceEnergy fe[SuperCluster::nParticles];
-
-	__host__ bool operator!=(const SCResult& other) const {
-		for (int i = 0; i < SuperCluster::nParticles; i++) {
-			if (fe[i].force != other.fe[i].force ||
-				fe[i].potE != other.fe[i].potE)
-				return true;
-		}
-		return false;
-	}
-};
 
 
 class BoolMatrix16x16 {
@@ -396,26 +382,59 @@ public:
 class NoMat {};// Needed as a nonlocal variant of the one above.
 
 
+struct SuperCluster {
+	//static const int maxPclusters = 4;
+	static const int maxParticles = 16;
+
+	//Float3 positions[nParticles];
+	PData pData[maxParticles];
+
+	__host__ bool operator!= (const SuperCluster& other) const {
+		for (int i = 0; i < maxParticles; i++) {
+			if (pData[i] != other.pData[i])
+				return true;
+		}
+		return false;
+	}
+};
+
 struct SuperClusterMeta {
 	// Set by clustering kernel
-	int pclusterIds[SuperCluster::nPclusters];
-	
-	//NodeIndex blockIndex3D;
-
-
-	// For debugging, find a way to remove in release automatically
-	//std::array<int, SuperCluster::nParticles> particlesIds;
+	int _pclusterIds[SuperCluster::maxParticles];
+	int indexInPcluster[SuperCluster::maxParticles];
+	int globalParticleIds[SuperCluster::maxParticles];	
+	int uniquePclusterIds[SuperCluster::maxParticles];
+	int nUniquePcIds = 0;
+	int nParticles;
 
 	// Set by taskbuilder kernel
 	int resultsStartIndex; // TODO: Is int always safe here??
 	int nResults;
+	
 
-	__host__ bool operator != (const SuperClusterMeta& other) const {
-		if (resultsStartIndex != other.resultsStartIndex ||
-			nResults != other.nResults)
-			return true;
-		for (int i = 0; i < SuperCluster::nPclusters; i++) {
-			if (pclusterIds[i] != other.pclusterIds[i])
+	//__host__ bool operator != (const SuperClusterMeta& other) const {
+	//	if (nUniquePcIds != other.nUniquePcIds || nParticles != other.nParticles || )
+	//		return true;
+
+
+	//	if (resultsStartIndex != other.resultsStartIndex ||
+	//		nResults != other.nResults)
+	//		return true;
+	//	for (int i = 0; i < SuperCluster::nPclusters; i++) {
+	//		if (pclusterIds[i] != other.pclusterIds[i])
+	//			return true;
+	//	}
+	//	return false;
+	//}
+};
+
+struct SCResult {
+	ForceEnergy fe[SuperCluster::maxParticles];
+
+	__host__ bool operator!=(const SCResult& other) const {
+		for (int i = 0; i < SuperCluster::maxParticles; i++) {
+			if (fe[i].force != other.fe[i].force ||
+				fe[i].potE != other.fe[i].potE)
 				return true;
 		}
 		return false;

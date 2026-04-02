@@ -35,9 +35,9 @@ class ParticleDataBuffer {
 public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_steps, 
 		int loggingInterval, int nPclusters	) :
-		n_particles_upperbound(nPclusters * PersistentCluster::nParticles),
+		n_particles_upperbound(nPclusters * PersistentCluster::maxParticles),
 		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
-		buffer(nPclusters* PersistentCluster::nParticles* n_indices, T{}),
+		buffer(nPclusters* PersistentCluster::maxParticles* n_indices, T{}),
 		loggingInterval(loggingInterval)
 		,nPclusters(nPclusters)
 	{}
@@ -63,8 +63,8 @@ public:
 	}
 
 	T& GetDatapoint(int pcid, int pid, size_t entryindex) {
-		const size_t indexOffset = entryindex * nPclusters * PersistentCluster::nParticles;
-		const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::nParticles;
+		const size_t indexOffset = entryindex * nPclusters * PersistentCluster::maxParticles;
+		const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::maxParticles;
 		return buffer[indexOffset + pcOffset + pid];
 	}
 

@@ -206,9 +206,7 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 
 	int sphereCount = 0;
 	static const int nSpheresToPush = 4;
-	std::array<float4, 16> spheres{};
-	for (int i = 0; i < nSpheresToPush; i++)
-		spheres[i] = float4{ 0,0,0,-1. };
+	std::array<float4, 16> spheres;
 
 
 	Float3 sum{};
@@ -264,8 +262,30 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 	}
 }
 
+// Fine pass
+__host__ __device__ inline bool _DoesSuperclustersInteract(const SuperCluster* const scData, int scId0, int scId1, float cutoffDistance) {
+	for (int i = 0; i < 16; i++) {
+		const PData& p0 = scData[scId0].pData[i];
+		if (!p0.Valid())
+			break;
+		for (int j = 0; j < 16; j++) {
+			const PData& p1 = scData[scId1].pData[j];
+			if (!p1.Valid())
+				break;
+			Float3 pos0 = p0.position;
+			Float3 pos1 = p1.position;
+			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
+			float distance = (pos0 - pos1).len();
+			if (distance <= cutoffDistance) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
-__host__ __device__ inline bool DoesSuperclustersInteract(const std::array<float4, 4>* const superclusterPositionSpheres, int scId0, int scId1, float cutoffDistance, Float3 boxSize) {
+// Coarse pass
+__host__ __device__ inline bool DoesSuperclustersInteract(const std::array<float4, 4>* const superclusterPositionSpheres, const SuperCluster* const scData, int scId0, int scId1, float cutoffDistance, Float3 boxSize) {
 	// Ensure deterministic by comparing smallerId with largerId
 	if (scId0 > scId1) {
 		std::swap(scId0, scId1);
@@ -289,7 +309,8 @@ __host__ __device__ inline bool DoesSuperclustersInteract(const std::array<float
 			float radiusSum = p0.w + p1.w;
 
 			if (distance <= cutoffDistance + radiusSum) {	// optim use LenSq
-				return true;
+//				return true;
+				return _DoesSuperclustersInteract(scData, scId0, scId1, cutoffDistance);
 			}
 		}
 	}
@@ -309,7 +330,6 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	__shared__ int nOwnedInteractions;
 	__shared__ int nNonownedInteractions;
 	__shared__ int nNointeractionMatrices;
-
 
 
 	// we can use gridDIm.y for this dimension, but then we'd have to use atomicAdds to the global counters at the bottom of this kernel, and reset those between runs. Which isnt great
@@ -340,7 +360,7 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	const int queryScId = scControl.scIdsInBlocks[targetIndex * SuperClustersControl::maxClustersPerBlock + scIndexInQueryblock];
 	const bool validQuery = scIndexInQueryblock < scControl.nSuperclustersInBlocks[targetIndex];
 
-	if (validQuery && DoesSuperclustersInteract(tbContents.superclusterPositionSpheres, scId, queryScId, cutoffNm, boxSizeF)) {
+	if (validQuery && DoesSuperclustersInteract(tbContents.superclusterPositionSpheres, scControl.scData, scId, queryScId, cutoffNm, boxSizeF)) {
 		const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryScId], tbContents.pclustersBondedToPcluster);
 		if (scId <= queryScId) {
 			int putIndex = atomicAdd(&nOwnedInteractions, 1);

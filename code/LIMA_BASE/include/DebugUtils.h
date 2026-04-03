@@ -35,10 +35,11 @@ namespace DebugUtils {
 	}
 
 	template <typename T>
-	bool VerifyIdentical(const T* const devPtr, size_t count, const std::string& name, int step) {
+	bool VerifyIdentical(T* devPtr, size_t count, const std::string& name, int step) {
 		if constexpr (DETERMINISTIC_CHECKS) {			
-			return VerifyIdentical(GenericCopyToHost(devPtr, count), name + std::to_string(step));
+			return VerifyIdentical(GenericCopyToHost(devPtr, count), name + "_step" + std::to_string(step));
 		}
+		return true;
 	}
 
 }

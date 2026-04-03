@@ -48,9 +48,9 @@ struct TaskBuilderControlContents {
 
 // Keep on CPU
 class TaskBuilderControl {
-	const int nSuperclustersUpperbound;
-
+	
 public:
+	const int nSuperclustersUpperbound;
 	TaskBuilderControlContents contents;
 
 	TaskBuilderControl(const TaskBuilderControl&) = delete;
@@ -288,7 +288,7 @@ __host__ __device__ inline bool DoesSuperclustersInteract(const std::array<float
 			float distance = (pos0 - pos1).len(); // OPTIM Compute in squared-space instead..
 			float radiusSum = p0.w + p1.w;
 
-			if (distance + radiusSum <= cutoffDistance) {	// optim use LenSq
+			if (distance <= cutoffDistance + radiusSum) {	// optim use LenSq
 				return true;
 			}
 		}
@@ -522,17 +522,20 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel<<<(nSuperclusters + 31) / 32, 32 >>>(superClustersControl->scData, superClustersControl->scMeta, taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
 	cudaDeviceSynchronize();
 
-	std::vector<std::array<float4, 4>> scps = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
+	/*std::vector<std::array<float4, 4>> scps = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
 	std::vector<float> scpsFlat(reinterpret_cast<float*>(scps.data()), reinterpret_cast<float*>(scps.data()) + scps.size() * 4 * 4);
-	DebugUtils::VerifyIdentical(scpsFlat, "scPositionsSpheres_" + std::to_string(simulation->getStep()));
+	DebugUtils::VerifyIdentical(scpsFlat, "scPositionsSpheres_" + std::to_string(simulation->getStep()));*/
 
 	//auto iSpheres = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
+	//DebugUtils::VerifyIdentical(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters, "SCPositionSpheres", simulation->getStep());
 
 	{
 		dim3 gridDim{ (uint32_t)boxSize.InnerProduct(), (uint32_t)SuperClustersControl::maxClustersPerBlock, 1u };
 		dim3 blockDim{ 3 * 3 * 3 * SuperClustersControl::maxClustersPerBlock, 1, 1 };
 		ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simparams_host.cutoff_nm);
 		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
+
+		//DebugUtils::VerifyIdentical(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters, "NInteractionsOwned", simulation->getStep());
 	}
 
 	/*auto ninteractionsOwnedHost = GenericCopyToHost(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters);
@@ -558,7 +561,8 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	cudaDeviceSynchronize();
 
 	//auto resCounts = GenericCopyToHost(taskbuilderControl->contents.nResults, nSuperclustersUpperbound);
-
+	
+	//DebugUtils::VerifyIdentical(scscTasksDevice.Get(), nTasks, "SCSCTasks", simulation->getStep());
 	
 	cudaDeviceSynchronize();
 

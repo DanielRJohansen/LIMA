@@ -228,6 +228,51 @@ namespace LAL {
 //		}
 //	}
 
+	// Always called with 32 threads. nValuesPerBin guaranteed to be a power of 2
+	template <int nBins, int nValuesPerBin, typename T>
+	__device__ __forceinline__
+		void SortInBins(T* keys, int* tiebreakerKeys, int* ids)
+	{
+		constexpr int totalValues = nBins * nValuesPerBin;
+		static_assert(totalValues % 32 == 0, "Total must be a multiple of 32");
+		static_assert((nValuesPerBin & (nValuesPerBin - 1)) == 0, "nValuesPerBin must be power-of-two");
+
+		constexpr int pairsPerBin = nValuesPerBin / 2;
+		constexpr int totalPairs = nBins * pairsPerBin;
+
+		const int tid = threadIdx.x;
+
+		for (int phase = 0; phase < nValuesPerBin; phase++) {
+			const int phaseOffset = phase & 1; // 0 = even phase, 1 = odd phase
+
+			for (int pairIndex = tid; pairIndex < totalPairs; pairIndex += 32) {
+				const int binId = pairIndex / pairsPerBin;
+				const int localPair = pairIndex % pairsPerBin;
+				const int binBase = binId * nValuesPerBin;
+
+				const int i = binBase + phaseOffset + localPair * 2;
+				const int j = i + 1;
+
+				if (j < binBase + nValuesPerBin && (keys[j] < keys[i] || (keys[j] == keys[i] && tiebreakerKeys[j] < tiebreakerKeys[i]))) {
+					T keyTmp = keys[i];
+					keys[i] = keys[j];
+					keys[j] = keyTmp;
+
+					int tiebreakerTmp = tiebreakerKeys[i];
+					tiebreakerKeys[i] = tiebreakerKeys[j];
+					tiebreakerKeys[j] = tiebreakerTmp;
+
+					int idTmp = ids[i];
+					ids[i] = ids[j];
+					ids[j] = idTmp;
+					// TODO: Does cuda not have a swap function?
+				}
+			}
+
+			__syncthreads();
+		}
+	}
+
 	template <int nBins, int nValuesPerBin, typename T>
 	__device__ __forceinline__
 		void SortBins(T* keys, int* ids)

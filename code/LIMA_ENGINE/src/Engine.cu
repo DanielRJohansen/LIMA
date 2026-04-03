@@ -354,8 +354,7 @@ void Engine::_deviceMaster() {
 	//cudaDeviceSynchronize();
 
     if (ENABLE_ES_LR && simulation->simparams_host.enable_electrostatics) {
-        pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme);
-        LIMA_UTILS::genericErrorCheckNoSync("Error after HandleElectrostatics");
+        pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme, step);
     }
 
 
@@ -413,6 +412,8 @@ void Engine::_deviceMaster() {
 		cudaDeviceSynchronize();
 	}
 
+	//DebugUtils::VerifyIdentical(superClustersControl->scData, nSuperclusters, "Engine_SCData", step);
+	//DebugUtils::VerifyIdentical(pClusterDevice, simulation->box_host->persistentClusters.size(), "Engine_PClusterDevice", step);
 }
 
 

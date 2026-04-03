@@ -63,6 +63,10 @@ public:
 		cudaMalloc(&transferModule.idsOfIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.meanpositionsOfIncomingClusters, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
 		transferModule.Reset(boxSize);
+
+		cudaMemset(transferModule.idsOfIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMemset(transferModule.meanpositionsOfIncomingClusters, 0, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
+
 		return transferModule;
 	}
 	__host__ void Reset(Int3 boxSize) {

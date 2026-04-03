@@ -51,7 +51,7 @@ namespace PME {
 		Controller(const Box& box, float cutoffNM, cudaStream_t& stream);
 		~Controller();
 
-		void CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy);
+		void CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, int step);
 
 	private:
 		//Just for debugging
@@ -220,7 +220,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 		}
 
 		// Now reserve space for these particles
-		offsetsInTarget[threadIdx.x] = ChargeBlock::MakeReservation(myCount, chargeblockBuffers, targetBlockIndex);
+		offsetsInTarget[threadIdx.x] = atomicAdd(&chargeblockBuffers.nParticlesInBlock[targetBlockIndex], myCount);
 		nOutgoingParticles[threadIdx.x] = myCount;
 	}
 	__syncthreads();
@@ -235,6 +235,12 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 
 			const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
 			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
+
+			if constexpr (INDEXING_CHECKS) {
+				if (indexInTarget >= ChargeBlock::maxParticlesInBlock) {
+					printf("Error: Chargeblock %d has %d particles of max %d\n", targetBlockIndex, indexInTarget, ChargeBlock::maxParticlesInBlock);
+				}
+			}
 
 			ChargeBlock::GetParticles(chargeblockBuffers, targetBlockIndex)[indexInTarget] = ChargePos{ relposRelativeToTargetBlock, charges[designatedParticleId] };
 		}
@@ -255,15 +261,15 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 		localGrid[i] = 0;
 
 	if (threadIdx.x == 0) {
-		nParticles = ChargeBlock::nParticlesReserved(chargeblockBuffers, blockIdx.x);
-		chargeblockBuffers.reservationKeyBuffer[blockIdx.x] = 0; // Reset the key buffer		
+		nParticles = chargeblockBuffers.nParticlesInBlock[blockIdx.x];	
+		chargeblockBuffers.nParticlesInBlock[blockIdx.x] = 0; // Reset the particle count for the next round of accumulation	
 	}
 	__syncthreads();
 
 
 	// By scaling the charge with the scalar, we can store the charge in the grid as an integer, allowing us to use atomicAdd deterministically	
 	constexpr double largestPossibleValue = (4. / 6.) * (5. * elementaryChargeToKiloCoulombPerMole) * 8; // Highest bspline coeff * (highestCharge) * maxExpectedParticleNearNode
-	constexpr float scalar = static_cast<double>(INT_MAX - 10) / largestPossibleValue; // 10 for safety
+	constexpr float scalar = static_cast<double>(INT_MAX - 10) / largestPossibleValue / 10.f; // 10 for safety
 	constexpr float invScalar = 1.f / scalar;
 
 
@@ -309,7 +315,10 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 
 					const NodeIndex index3d = NodeIndex{ X,Y,Z };
 					const int index1D = GetGridIndexRealspace(index3d, Int3(gridpointsPerNm, gridpointsPerNm, gridpointsPerNm));
-					atomicAdd(&localGrid[index1D], static_cast<int>(charge * wxyCur * wz[dz] * scalar));
+					const float chargeScaled = charge * wxyCur * wz[dz] * scalar;
+					const int clampedChargeDiscretized = static_cast<int>(fminf(fmaxf(chargeScaled, static_cast<float>(INT_MIN)), static_cast<float>(INT_MAX)));
+					atomicAdd(&localGrid[index1D], clampedChargeDiscretized);
+					
 				}
 			}
 		}
@@ -323,26 +332,18 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	__syncthreads();
 
 	// Transform local to global grid coordinates, and push to global memory
-	const int nRowsAtATime = blockDim.x / gridpointsPerNm;
-	const int myRow = threadIdx.x / gridpointsPerNm;
-	if (myRow > nRowsAtATime)
-		return;
-	const int myIndexInRow = threadIdx.x % gridpointsPerNm;
+	const int localCellCount = gridpointsPerNm * gridpointsPerNm * gridpointsPerNm;
+	const NodeIndex blocksFirstIndex3dInRealspacegrid =
+		BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim) * gridpointsPerNm;
 
-	const NodeIndex blocksFirstIndex3dInRealspacegrid = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim) * gridpointsPerNm;
-	for (int row = myRow; row < gridpointsPerNm * gridpointsPerNm; row += nRowsAtATime) {
-		const int zOffset = row / gridpointsPerNm;
-		const int yOffset = row % gridpointsPerNm;
-		const int xOffset = myIndexInRow;
+	for (int localIndex = threadIdx.x; localIndex < localCellCount; localIndex += blockDim.x) {
+		const int x = localIndex % gridpointsPerNm;
+		const int y = (localIndex / gridpointsPerNm) % gridpointsPerNm;
+		const int z = localIndex / (gridpointsPerNm * gridpointsPerNm);
 
-		const NodeIndex globalIndex3d = blocksFirstIndex3dInRealspacegrid + NodeIndex{ xOffset, yOffset, zOffset };
-        //if (globalIndex3d.x < 0 || globalIndex3d.x >= gridpointsPerDim || globalIndex3d.y < 0 || globalIndex3d.y >= gridpointsPerDim || globalIndex3d.z < 0 || globalIndex3d.z >= gridpointsPerDim) {
-        //	globalIndex3d.print('g');
-        //	printf("index %d %d %d\n", xOffset, yOffset, zOffset);
-        //}
-
+		const NodeIndex globalIndex3d = blocksFirstIndex3dInRealspacegrid + NodeIndex{ x, y, z };
 		const int globalIndex = BoxGrid::Get1dIndex(globalIndex3d, gridpointsPerDim);
-		const int localIndex = row * gridpointsPerNm + myIndexInRow;
+
 		realspaceGrid[globalIndex] = localGridAsFloat[localIndex];
 	}
 }
@@ -868,7 +869,7 @@ PME::Controller::Controller(const Box& box, float cutoffNM, cudaStream_t& stream
 
 
 	const int nBlocks = (nGridpointsReciprocalspace + 63) / 64;
-	PrecomputeGreensFunctionKernel << <nBlocks, 64 >> > (greensFunctionScalars, gridpointsPerDim, Double3{ boxlenNm }, ewaldKappa);
+	PrecomputeGreensFunctionKernel << <nBlocks, 64, 0, stream >> > (greensFunctionScalars, gridpointsPerDim, Double3{ boxlenNm }, ewaldKappa);
 	LIMA_UTILS::genericErrorCheck("PrecomputeGreensFunctionKernel failed!");
 }
 
@@ -885,16 +886,26 @@ PME::Controller::~Controller() {
 	chargeblockBuffers->Free();
 }
 
-void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy) {
+void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, int step) {
 	if (nSuperclusters == 0)
 		return;
+
+
+	//DebugUtils::VerifyIdentical(scData, nSuperclusters, "pme_scdata", step);
 
 	Int3 bpd = boxlenNm.ToInt3();
 	DistributeCompoundchargesToBlocksKernel << <nSuperclusters, 32, 0, stream >> > (scData, *chargeblockBuffers, bpd);
 	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
 
+	//DebugUtils::VerifyIdentical(chargeblockBuffers->nParticlesInBlock, nChargeblocks, "pme_chargeblock_reservationkeys", step);
+	//DebugUtils::VerifyIdentical(chargeblockBuffers->chargeposBuffer, nChargeblocks * ChargeBlock::maxParticlesInBlock, "pme_chargeblock_chargepos", step);
+
+
+
 	ChargeblockDistributeToGrid<<<bpd.InnerProduct(), 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, bpd, gridpointsPerDim);
 	LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");
+
+	//DebugUtils::VerifyIdentical(realspaceGrid, nGridpointsRealspace, "pme_realspacegrid_beforefft", step);
 
 	// ForwardFFT
 	{

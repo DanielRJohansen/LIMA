@@ -360,6 +360,8 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	const int queryScId = scControl.scIdsInBlocks[targetIndex * SuperClustersControl::maxClustersPerBlock + scIndexInQueryblock];
 	const bool validQuery = scIndexInQueryblock < scControl.nSuperclustersInBlocks[targetIndex];
 
+	// TODO: Rethink the block-dimensions of this kernel, so more threads collaborate on the DoesSuperclustersInteract check
+	// Beware that we might have to atomicadd the count in global memory instead then..
 	if (validQuery && DoesSuperclustersInteract(tbContents.superclusterPositionSpheres, scControl.scData, scId, queryScId, cutoffNm, boxSizeF)) {
 		const bool useNointeractionMatrix = scId == queryScId || ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryScId], tbContents.pclustersBondedToPcluster);
 		if (scId <= queryScId) {
@@ -380,7 +382,8 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 		if (threadIdx.x == 0 && (nOwnedInteractions + nNonownedInteractions > TaskBuilderControlContents::maxTasksPerSc))
 			printf("Too many interactions for scId %d: %d owned + %d nonowned\n", scId, nOwnedInteractions, nNonownedInteractions);
 	}
-
+	 
+	// TODO: Move this part into a separate kernel, so this kernel focuses on the DoesSuperclustersInteract hot-path
 	// Now sort the elements to obtain deterministic results
 	if (threadIdx.x < TaskBuilderControlContents::maxTasksPerSc) {
 		LAL::Sort(&tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const InteractionToken& token) {
@@ -391,7 +394,7 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 			});
 	}
 	__syncthreads();
-
+	//
 
 	if (threadIdx.x == 0) {
 		tbContents.nInteractionsOwned[scId] = nOwnedInteractions;

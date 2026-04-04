@@ -24,7 +24,7 @@ class Camera;
 class GLFWwindow;
 
 class FPS {
-	std::array<std::chrono::high_resolution_clock::time_point, 20> prevTimepoints;
+	std::array<std::chrono::high_resolution_clock::time_point, 32> prevTimepoints;
 	int head = 0;
 public:
 	FPS();
@@ -52,12 +52,11 @@ public:
 namespace Rendering {
 	struct SimulationTask {
 		const Float3* positions;
-		const std::vector<Compound> compounds;
+		std::vector<PersistentCluster> pclusters;
+		std::vector<PersistentClusterMeta> pcMeta; // TODO: This could just be a ref, since it remains constant?
 		const BoxParams boxparams;
 
-		std::string siminfo; // Will be output in the window header
-		/*int64_t step;
-		float temperature;*/
+		const std::string siminfo; // Will be output in the window header
 		ColoringMethod coloringMethod;
 		SimStatus simStatus;
 	};
@@ -75,14 +74,7 @@ namespace Rendering {
 		std::set<int> highlightedAtoms;
 	};
 
-	struct CompoundsTask {
-		std::vector<Compound> compounds;
-		std::vector<std::array<Float3, MAX_COMPOUND_PARTICLES>> positions;
-		Float3 boxSize;
-		int nAtoms;
-	};
-
-	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>, std::unique_ptr<CompoundsTask>>;
+	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
 }
 
 
@@ -131,21 +123,23 @@ private:
 	void PrepareNewRenderTask(const Rendering::SimulationTask&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
 	void PrepareNewRenderTask(Rendering::GrofileTask&);
-	void PrepareNewRenderTask(Rendering::CompoundsTask&);
 
 
 	// Interfacing
 	bool isDragging = false;
-	double lastX = 0.0, lastY = 0.0;
+	glm::dvec2 mousePosAtBtnDown{};
+	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
+	glm::dvec2 mousePos{};
+	int lastSelectedAtomId = -1;
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
-	
+	void OnMouseLeft();
+
 	bool pause = false;
 	bool renderAtoms = true;
 	bool renderFacets = true;
 	bool renderFacetsNormals = false;
-	//bool renderSolvents = true;
 	RenderSettings rendersettings;
 	FPS fps{};
 
@@ -176,13 +170,9 @@ private:
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 
 	GLFWwindow* window = nullptr;
+	int2 windowSize{};
 
 	const float PI = 3.1415f;
-
-	const int screenHeight = 1400;
-	const int screenWidth = 1400;
-
-	const int screensize[2] = {3840, 2160};
 
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
@@ -190,10 +180,11 @@ private:
 
 
 class Overlay {
+	bool didDrawThisFrame = false;
 public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&, const SimStatus&);
+	void Draw(RenderSettings&, const SimStatus&, int fps);
 	void Render();
 };

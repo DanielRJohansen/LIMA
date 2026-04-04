@@ -36,58 +36,87 @@ namespace BoxGrid {
 };
 
 
-class TinymolTransferModule {
+// Todo move this impl to ParticleClusters.cuh
+class PClusterTransfermodule {
 public:
+	static const int maxClustersPerBlock = 64;
+	static const int blockLen = 1;	
+	static const int maxOutgoingClusters = 8;
 
-	static const int maxOutgoingBondgroups = 8;
-	static const int maxOutgoingParticles = maxOutgoingBondgroups * 3;
-	/*static const int maxIncomingBondgroups = 64;
-	static const int maxIncomingParticles = 192;*/
+	// Set by GetPclusterPositions kernel
+	Float3* meanPositionOfPClustersPerBlock = nullptr; // 1 value per pCluster per block
+	int* idsOfPclustersInBlocks = nullptr; // 1 value per pclusters per block
+	int* nPClustersPerBlock = nullptr;		// 1 value per block
 
+	int* nIncomingClusters = nullptr;
+	int* idsOfIncomingClusters = nullptr;
+	Float3* meanpositionsOfIncomingClusters = nullptr;
 
-	// 6 elements per block
-	int* nIncomingParticles;
-	int* nIncomingBondgroups;
+	__host__ static PClusterTransfermodule Create(Int3 boxSize) {
+		const int nBlocksTotal = boxSize.InnerProduct();
+		PClusterTransfermodule transferModule;
+		cudaMalloc(&transferModule.meanPositionOfPClustersPerBlock, sizeof(Float3) * maxClustersPerBlock * nBlocksTotal);		
+		cudaMalloc(&transferModule.idsOfPclustersInBlocks, sizeof(int) * maxClustersPerBlock * nBlocksTotal);
+		cudaMalloc(&transferModule.nPClustersPerBlock, sizeof(int) * nBlocksTotal);
 
-	Coord* incomingPositions;
-	uint32_t* incomingIds;
-	uint8_t* incomingAtomtypeIds;
-	uint8_t* incomingBondgroupIds;
-	TinyMolParticleState* incomingStates;
+		cudaMalloc(&transferModule.nIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMalloc(&transferModule.idsOfIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMalloc(&transferModule.meanpositionsOfIncomingClusters, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
+		transferModule.Reset(boxSize);
 
-	// TODO: This should just be an index into a variant of the bondgroup kept in constant memory
-	BondgroupTinymol* incomingBondgroups; // 64 elements per block 
-	int* incomingBondgroupsParticlesOffset;
-
-	static TinymolTransferModule Create(int nBlocksTotal) {
-		TinymolTransferModule transferModule;
-		cudaMalloc(&transferModule.nIncomingParticles, sizeof(int) * 6 * nBlocksTotal);		
-		cudaMalloc(&transferModule.nIncomingBondgroups, sizeof(int) * 6 * nBlocksTotal);
-		cudaMemset(transferModule.nIncomingParticles, 0, sizeof(int) * 6 * nBlocksTotal);
-		cudaMemset(transferModule.nIncomingBondgroups, 0, sizeof(int) * 6 * nBlocksTotal);
-
-		cudaMalloc(&transferModule.incomingPositions, sizeof(Coord) * 6 * maxOutgoingParticles * nBlocksTotal);
-		cudaMalloc(&transferModule.incomingIds, sizeof(uint32_t) * 6 * maxOutgoingParticles * nBlocksTotal);
-		cudaMalloc(&transferModule.incomingAtomtypeIds, sizeof(uint8_t) * 6 * maxOutgoingParticles * nBlocksTotal);
-		cudaMalloc(&transferModule.incomingBondgroupIds, sizeof(uint8_t) * 6 * maxOutgoingParticles * nBlocksTotal);
-		cudaMalloc(&transferModule.incomingStates, sizeof(TinyMolParticleState) * 6 * maxOutgoingParticles * nBlocksTotal);
-
-		cudaMalloc(&transferModule.incomingBondgroups, sizeof(BondgroupTinymol) * 6 * maxOutgoingBondgroups * nBlocksTotal);
-		cudaMalloc(&transferModule.incomingBondgroupsParticlesOffset, sizeof(int) * 6 * maxOutgoingBondgroups  * nBlocksTotal);
+		cudaMemset(transferModule.idsOfIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMemset(transferModule.meanpositionsOfIncomingClusters, 0, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
 
 		return transferModule;
 	}
-	void Free() const {
-		cudaFree(nIncomingParticles);
-		cudaFree(nIncomingBondgroups);
+	__host__ void Reset(Int3 boxSize) {
+		const int nBlocksTotal = boxSize.InnerProduct();
+		cudaMemset(nPClustersPerBlock, 0, sizeof(int) * nBlocksTotal);
+		cudaMemset(nIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+	}
+	__host__ void Free() {
+		cudaFree(meanPositionOfPClustersPerBlock);
+		cudaFree(nPClustersPerBlock);
+		cudaFree(idsOfPclustersInBlocks);
+		cudaFree(nIncomingClusters);
+		cudaFree(idsOfIncomingClusters);
+		cudaFree(meanpositionsOfIncomingClusters);
+	}
+};
+	
 
-		cudaFree(incomingPositions);
-		cudaFree(incomingIds);
-		cudaFree(incomingAtomtypeIds);
-		cudaFree(incomingBondgroupIds);
+struct SuperClustersControl {
+	//int* nSuperclustersInGrid;
+	//int* pclusterIdsInSuperclusters;
+	static const int maxClustersPerBlock = 12;
 
-		cudaFree(incomingBondgroups);
-		cudaFree(incomingBondgroupsParticlesOffset);
+	SuperClusterMeta* scMeta = nullptr;
+	SuperCluster* scData = nullptr;
+
+	int* scIdsInBlocks = nullptr;
+	int* nSuperclustersInBlocks = nullptr;
+
+	__host__ SuperClustersControl (Int3 boxSize, int maxSuperclusters) {
+		cudaMalloc(&scMeta, sizeof(SuperClusterMeta) * maxSuperclusters);
+		cudaMalloc(&scData, sizeof(SuperCluster) * maxSuperclusters);
+		
+		cudaMalloc(&scIdsInBlocks, sizeof(int) * maxClustersPerBlock * boxSize.InnerProduct());
+		cudaMalloc(&nSuperclustersInBlocks, sizeof(int) * boxSize.InnerProduct());
+
+		Reset(boxSize);
+	}
+	__host__ void Reset(Int3 boxSize/*int nSuperclustersMax*/ /*The struct does not track this number itself*/) {
+		//cudaMemset(scMeta, 0, sizeof(SuperClusterMeta) * nSuperclustersMax); // doesnt matter
+		//cudaMemset(scData, 0, sizeof(SuperCluster) * nSuperclustersMax);
+		//cudaMemset(nSuperclustersAtomic, 0, sizeof(int));
+		cudaMemset(nSuperclustersInBlocks, 0, sizeof(int) * boxSize.InnerProduct());
+	}
+	__host__ void Free() {
+		cudaFree(scMeta);
+		cudaFree(scData);
+
+		cudaFree(scIdsInBlocks);
+		cudaFree(nSuperclustersInBlocks);
 	}
 };
 

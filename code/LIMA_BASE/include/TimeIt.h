@@ -22,11 +22,11 @@ public:
     static void PrintTaskStats(const std::string& taskName);
 
 private:
-    const std::string taskName;
-    const std::chrono::time_point<std::chrono::high_resolution_clock> start;
+    std::string taskName;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
     bool manuallyStopped;
-    const bool printUponDestruction;
+    bool printUponDestruction;
 
     struct TaskRecord {
         std::chrono::nanoseconds totalTime = std::chrono::nanoseconds(0);

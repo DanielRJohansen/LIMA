@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
+#include "CudaBuffer.h"
 
 #include "Constants.h"
 #include "Utilities.h"
@@ -22,6 +23,11 @@ class CompoundGridNode;
 struct CompoundQuickData;
 struct ForceEnergyInterims;
 class TinymolTransferModule;
+struct SuperClustersControl;
+struct PClusterTransfermodule;
+struct PersistentCluster;
+class SuperclusterStagingControl;
+class TaskBuilderControl;
 
 namespace NeighborList { class Controller; }
 
@@ -63,6 +69,8 @@ public:
 
 	SimulationDevice* getSimDev() { return sim_dev; }
 
+	static bool TestAlgorithms();
+
 private:
 
 
@@ -102,8 +110,26 @@ private:
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
 	BondGroup* bondgroups = nullptr;
-	CompoundQuickData* compoundQuickData = nullptr;
-	
+
+	//SuperClusterControl// TODO: Handle lifetimes!
+	std::unique_ptr<SuperClustersControl> superClustersControl;
+	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
+
+	size_t nTasks = 0;
+	int nSuperclusters = 0;
+	PersistentCluster* pClusterDevice = nullptr; // TODO: Handle lifetime somethwere
+	PersistentClusterMeta* pClusterMetaDevice = nullptr;
+	size_t nResults = 0;
+
+	CudaBuffer<ScScTask> scscTasksDevice;
+	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
+	CudaBuffer<SCResult> scResultsDevice;
+
+	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
+	std::unique_ptr<TaskBuilderControl> taskbuilderControl;
+
+	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
+	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
 
 	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
 	std::unique_ptr<BoxState> boxStateCopy;
@@ -116,9 +142,18 @@ private:
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
 	std::unique_ptr<NeighborList::Controller> nlistController;
-	std::unique_ptr<TinymolTransferModule> tinymolTransferModule;
+
+	//CudaBuffer<ForceEnergy> nbGatherForceenergy;
 
 	const BoundaryConditionSelect bc_select;
+
+
+
+	// Temp
+	bool MakeSuperClusterTasksCPU();
+	bool MakeSuperClusterTasksGPU();
+	void RunClustering(bool runPclustering = true);
+	void BootstrapClustering();
 };
 
  

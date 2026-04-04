@@ -87,7 +87,24 @@ fs::path FileUtils::GetLimaDir() {
 #ifdef __linux__
 	return {"/usr/share/LIMA"};
 #else
-	return { R"(C:\Users\Daniel\git_repo\LIMA)" };
+	static fs::path cachedPath{"C:\\Users\\Daniel\\git_repo\\LIMA"};
+	if (fs::exists(cachedPath))
+		return cachedPath;
+	else
+		cachedPath.clear();
+
+
+	fs::path path = fs::current_path();
+	while (!path.empty() && path!= path.parent_path()) {
+		if (fs::exists(path / "lima_main_dir.txt")) {
+			cachedPath = path;
+			break;
+		}
+		path = path.parent_path();
+	}
+
+	return cachedPath;
+	//return { R"(C:\Users\Daniel\git_repo\LIMA)" };
 #endif
 }
 

@@ -164,6 +164,26 @@ public:
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
 
+    template<typename T>
+    std::vector<T> GetData() {
+        std::vector<T> out(currentSize / sizeof(T));
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, bufferID);
+        void* mappedData = glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY);
+        if (mappedData) {
+            // Copy the data from the mapped buffer to the vector
+            std::memcpy(out.data(), mappedData, currentSize);
+            // Unmap the buffer
+            glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        }
+        else {
+            // Handle error (e.g., throw an exception or log a message)
+            throw std::runtime_error("Failed to map OpenGL buffer for reading.");
+        }
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        return out;
+    }
+
     GLuint GetID() const {
         return bufferID;
     }

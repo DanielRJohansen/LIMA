@@ -24,7 +24,7 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 	env.CreateSimulation(*sim1, simparams);
 	env.run();
 	auto sim2 = env.getSim();
-	for (int cid = 0; cid < sim2->box_host->boxparams.n_compounds; cid++) {
+	/*for (int cid = 0; cid < sim2->box_host->boxparams.n_compounds; cid++) {
 		for (int pid = 0; pid < sim2->box_host->compounds[cid].n_particles; pid++) {
 			Float3 pos1 = sim1->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, 100-1);
 
@@ -32,9 +32,9 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 
 			ASSERT(pos1 == pos2, "Position of compound " + std::to_string(cid) + " particle " + std::to_string(pid) + " is not the same between simulations");
 		}
-	}
+	}*/
 
 
-
-	return LimaUnittestResult{ true, "Success", envmode == Full };
+	return LimaUnittestResult{ false , "Success", envmode == Full };
+	//return LimaUnittestResult{ true, "Success", envmode == Full };
 }

@@ -35,6 +35,7 @@ struct Int3 {
 	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 	constexpr int InnerProduct() const { return x * y * z; }
+	constexpr int Min() const { return std::min(x, std::min(y, z)); }
 
 	__device__ __host__ void print(char c = '_', bool prefix_newline = false) const {
 		char nl = prefix_newline ? '\n' : ' ';
@@ -47,7 +48,6 @@ struct Int3 {
 
 	int x = 0, y = 0, z = 0;
 };
-
 
 
 struct Float3 {
@@ -70,6 +70,7 @@ struct Float3 {
 	constexpr Float3 operator + (const Float3& a) const { return Float3(x + a.x, y + a.y, z + a.z); }
 	constexpr Float3 operator - (const Float3& a) const { return Float3(x - a.x, y - a.y, z - a.z); }
 	constexpr bool operator == (const Float3& a) const { return (a.x == x && a.y == y && a.z == z); }
+	constexpr bool operator != (const Float3& a) const { return !(*this == a); }
 	constexpr void operator += (const Float3& a) { x += a.x; y += a.y; z += a.z; }
 	constexpr void operator -= (const Float3& a) { x -= a.x; y -= a.y; z -= a.z; }
 	constexpr void operator *= (const float a) { x *= a; y *= a; z *= a; }
@@ -78,7 +79,7 @@ struct Float3 {
 
 	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
 	constexpr float4 Tofloat4(float w=0) const { return float4{ x, y, z, w }; }
-	__host__ Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
+	constexpr Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
 	__host__ static Float3 FromInt3(const Int3& a) { return Float3{ static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z) }; }
 
 
@@ -244,6 +245,10 @@ struct Float3 {
 
 };
 
+__device__ inline float4 Add(const float4& a, const float4& b) {
+	return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
 // Can only present integer values
 struct Float3Compressed {
 
@@ -277,6 +282,9 @@ struct ForceEnergy {
 		potE += a.potE;
 	}
 	
+	__host__ bool operator != (const ForceEnergy& a) const {
+		return (force != a.force) || (potE != a.potE);
+	}
 };
 
 struct ParticleQuickData {
@@ -475,80 +483,6 @@ struct BoundingBox {
 	}
 };
 
-class BondedParticlesLUT {
-public:
-	__device__ constexpr BondedParticlesLUT() {}
-	__host__ constexpr BondedParticlesLUT(bool val) {
-		for (int i = 0; i < m_size; i++) {
-			matrix[i] = val ? UINT32_MAX : 0;
-		}
-	}
-
-	constexpr bool get(int i1, int i2) const {
-		int index = i1 + i2 * m_len;
-		int byteIndex = index / 32;
-		int bitIndex = index % 32;
-		return (matrix[byteIndex] >> bitIndex) & 1U;
-	}
-
-	__host__ void set(int i1, int i2, bool val) {
-		int index = i1 + i2 * m_len;
-		int byteIndex = index / 32;
-		int bitIndex = index % 32;
-		if (val)
-			matrix[byteIndex] |= (1U << bitIndex);
-		else
-			matrix[byteIndex] &= ~(1U << bitIndex);
-	}
-
-	__device__ void load(const BondedParticlesLUT& src) {
-		for (int i = threadIdx.x; i < m_size; i += blockDim.x) {
-			matrix[i] = src.matrix[i];
-		}
-	}
-
-	__host__ void printMatrix(int n) const;
-
-	__host__ bool HasEntries() const {
-		for (int i = 0; i < m_size; i++) {
-			if (matrix[i] != 0) return true;
-		}
-		return false;
-	}
-
-private:
-	const static int m_len = MAX_COMPOUND_PARTICLES;
-	const static int m_size = (m_len * m_len + 31) / 32; // Ceil division
-	uint32_t matrix[m_size]{};
-};
-
-namespace BondedParticlesLUTHelpers {
-	static const int max_bonded_compounds = 5;	// first 3: self, res-1 and res+1. The rest are various h bonds i think
-	static const int maxDiff = (max_bonded_compounds - 1) / 2;
-
-	__device__ __host__ int inline getLocalIndex(int id_self, int id_other) {
-		return (max_bonded_compounds / 2) + (id_other - id_self);
-	}
-	__device__ __host__ int inline getGlobalIndex(int local_index, int id_self) {
-		return id_self * max_bonded_compounds + local_index;
-	}
-	__device__ __host__ uint32_t inline getMask(int index) {
-		return 1u << index;
-	}
-
-	__device__ inline const BondedParticlesLUT* get(const BondedParticlesLUT* const bpLutCollection, int idSelf, int idOther) {
-
-		if constexpr (INDEXING_CHECKS)
-			if (std::abs(idSelf - idOther) > 2 || idSelf < 0 || idOther < 0)
-				printf("Error in getLocalIndex: %d %d\n", idSelf, idOther);
-
-		// The around around when this function is called on device, should ensure 
-		// that there is always an entry in the table for the 2 compounds 
-		return &bpLutCollection[getGlobalIndex(getLocalIndex(idSelf, idOther), idSelf)];
-	}
-}
-
-
 template<typename T>
 T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	if (n_elements == 0) { return nullptr; }
@@ -587,10 +521,18 @@ std::vector<T> GenericCopyToHost(T* srcDevice, size_t nElements) {
 }
 
 template<typename T>
+T GenericCopyToHost(T* srcDevice) {
+	static_assert(std::is_trivially_copyable<T>::value, "GenericCopyToHost can only be used with trivially copyable types");
+	T destHost;
+	cudaMemcpy(&destHost, srcDevice, sizeof(T), cudaMemcpyDeviceToHost);
+	return destHost;
+}
+
+template<typename T>
 void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
 	size_t bytesize = n_elements * sizeof(T);
 
-	cudaMallocManaged(dest, bytesize);
+	cudaMallocManaged(dest, bytesize);  // optim: THis shouldnt be managed
 	cudaMemcpy(*dest, &src, bytesize, cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
 }
@@ -635,6 +577,11 @@ struct RenderAtom {
 
 	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
 	float4 color{};					// {r, g, b, a} [0-1]	
+	uint4 flags;
+
+	void HighLight(bool highLight) {
+		flags.x = highLight ? 1 : 0;
+	}
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }

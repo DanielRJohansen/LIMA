@@ -173,63 +173,19 @@ std::vector<std::vector<int>> mapParticleToBondIds(const std::vector<BondType>& 
 }
 
 // Add bonds from a specific type to the bond group
-void AddBondsFromMap(auto& bondGroup, const auto& bondMap, auto& availableBondIds, const auto& bonds, const auto& particlesToCompoundIdMap) {
+void AddBondsFromMap(auto& bondGroup, const auto& bondMap, auto& availableBondIds, const auto& bonds, const auto& particlesToCompoundIdMap, const PersistentCluster* pClusters=nullptr) {
 	for (const int bondId : bondMap) {
 		if (availableBondIds.contains(bondId) && bondGroup.HasSpaceForParticlesInBond(bonds[bondId].global_atom_indexes)) {
-			bondGroup.AddBond(particlesToCompoundIdMap, bonds[bondId]);
+			bondGroup.AddBond(particlesToCompoundIdMap, bonds[bondId], pClusters);
 			availableBondIds.erase(bondId);
 		}
 	}
 };
 
-std::vector<BondgroupTinymol> TinyMolFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<std::vector<int>>& tinymolParticlesIds) {
-	std::vector<BondgroupTinymol> bondgroups(tinymolParticlesIds.size());
-
-	// TODO: OPTIM: Waste that we make these maps both for compounds and tinymols, they could reuse the same
-	const std::vector<std::vector<int>> pid2SinglebondIdMap = mapParticleToBondIds(topology.singlebonds, topology.particles.size());
-	const std::vector<std::vector<int>> pid2AnglebondIdMap = mapParticleToBondIds(topology.anglebonds, topology.particles.size());
-
-	for (int tid = 0; tid < tinymolParticlesIds.size(); tid++) {
-		bondgroups[tid].nParticles = tinymolParticlesIds[tid].size();
-
-		// First find the bonds that are in this tinymol
-		std::set<int> availableSinglebondIds;
-		std::set<int> availableAnglebondIds;
-		for (int pid = 0; pid < tinymolParticlesIds[tid].size(); pid++) {
-			const int particleId = tinymolParticlesIds[tid][pid];
-			for (int singlebondId : pid2SinglebondIdMap[particleId]) {
-				availableSinglebondIds.insert(singlebondId);
-			}
-			for (int anglebondId : pid2AnglebondIdMap[particleId]) {
-				availableAnglebondIds.insert(anglebondId);
-			}
-		}
-
-		assert(availableSinglebondIds.size() <= BondGroup::maxSinglebonds);
-		assert(availableAnglebondIds.size() <= BondGroup::maxAnglebonds);
-
-		for (int singlebondId : availableSinglebondIds) {
-			std::array<uint8_t, 2> idsLocalToTinymol = {
-				static_cast<uint8_t>(topology.singlebonds[singlebondId].global_atom_indexes[0] - tinymolParticlesIds[tid][0]),
-				static_cast<uint8_t>(topology.singlebonds[singlebondId].global_atom_indexes[1] - tinymolParticlesIds[tid][0])
-			};
-			bondgroups[tid].singlebonds[bondgroups[tid].nSinglebonds++] = SingleBond(idsLocalToTinymol, topology.singlebonds[singlebondId].params );
-		}
-		for (int anglebondId : availableAnglebondIds) {
-			std::array<uint8_t, 3> idsLocalToTinymol = {
-				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[0] - tinymolParticlesIds[tid][0]),
-				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[1] - tinymolParticlesIds[tid][0]),
-				static_cast<uint8_t>(topology.anglebonds[anglebondId].global_atom_indexes[2] - tinymolParticlesIds[tid][0])
-			};
-			bondgroups[tid].anglebonds[bondgroups[tid].nAnglebonds++] = AngleUreyBradleyBond(idsLocalToTinymol, topology.anglebonds[anglebondId].params);
-		}
-	}
-
-	return bondgroups;
-}
 
 
-std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap) {
+
+std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology& topology, const ParticleToPclusterMap& particleToPclusterMap, const PersistentCluster* pClusters) {
 
 	if (topology.singlebonds.empty()) return {};
 
@@ -263,16 +219,16 @@ std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECU
 		bool bondBelongsToCompound = true;
 		switch (typeOfBondWithLowestId) {
 		case single:
-			if (particlesToCompoundIdMap[topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes[0]].compoundId == -1
-				|| particlesToCompoundIdMap[topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes[1]].compoundId == -1) {
+			if (particleToPclusterMap[topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes[0]].pcid == -1
+				|| particleToPclusterMap[topology.singlebonds[availableSinglebondIds.front()].global_atom_indexes[1]].pcid == -1) {
 				bondBelongsToCompound = false;
 				availableSinglebondIds.pop();
 			}
 			break;
 		case angle:
-			if (particlesToCompoundIdMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[0]].compoundId == -1
-				|| particlesToCompoundIdMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[1]].compoundId == -1
-				|| particlesToCompoundIdMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[2]].compoundId == -1) {
+			if (particleToPclusterMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[0]].pcid == -1
+				|| particleToPclusterMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[1]].pcid == -1
+				|| particleToPclusterMap[topology.anglebonds[availableAnglebondIds.front()].global_atom_indexes[2]].pcid == -1) {
 				bondBelongsToCompound = false;
 				availableAnglebondIds.pop();
 			}
@@ -289,23 +245,23 @@ std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECU
 		
 		switch (typeOfBondWithLowestId) {
 		case single:
-			bondgroups.back().AddBond(particlesToCompoundIdMap, topology.singlebonds[availableSinglebondIds.front()]);
+			bondgroups.back().AddBond(particleToPclusterMap, topology.singlebonds[availableSinglebondIds.front()], pClusters);
 			availableSinglebondIds.erase(availableSinglebondIds.front());
 			break;
 		case pair:
-			bondgroups.back().AddBond(particlesToCompoundIdMap, topology.pairbonds[availablePairbondIds.front()]);
+			bondgroups.back().AddBond(particleToPclusterMap, topology.pairbonds[availablePairbondIds.front()]);
 			availablePairbondIds.erase(availablePairbondIds.front());
 			break;
 		case angle:
-			bondgroups.back().AddBond(particlesToCompoundIdMap, topology.anglebonds[availableAnglebondIds.front()]);
+			bondgroups.back().AddBond(particleToPclusterMap, topology.anglebonds[availableAnglebondIds.front()]);
 			availableAnglebondIds.erase(availableAnglebondIds.front());
 			break;
 		case dihedral:
-			bondgroups.back().AddBond(particlesToCompoundIdMap, topology.dihedralbonds[availableDihedralbondIds.front()]);
+			bondgroups.back().AddBond(particleToPclusterMap, topology.dihedralbonds[availableDihedralbondIds.front()]);
 			availableDihedralbondIds.erase(availableDihedralbondIds.front());
 			break;
 		case improper:
-			bondgroups.back().AddBond(particlesToCompoundIdMap, topology.improperdihedralbonds[availableImproperDihedralbondIds.front()]);
+			bondgroups.back().AddBond(particleToPclusterMap, topology.improperdihedralbonds[availableImproperDihedralbondIds.front()]);
 			availableImproperDihedralbondIds.erase(availableImproperDihedralbondIds.front());
 			break;
 		}
@@ -318,11 +274,11 @@ std::vector<BondGroupFactory> BondGroupFactory::MakeBondgroups(const LIMA_MOLECU
 		for (; currentParticleIndexInGroup < bondgroups.back().nParticles; currentParticleIndexInGroup++) {
 			const int currentParticleId = bondgroups.back().particleGlobalIds[currentParticleIndexInGroup];
 			
-			AddBondsFromMap(bondgroups.back(), pid2SinglebondIdMap[currentParticleId], availableSinglebondIds, topology.singlebonds, particlesToCompoundIdMap);
-			AddBondsFromMap(bondgroups.back(), pid2PairbondIdMap[currentParticleId], availablePairbondIds, topology.pairbonds, particlesToCompoundIdMap);
-			AddBondsFromMap(bondgroups.back(), pid2AnglebondIdMap[currentParticleId], availableAnglebondIds, topology.anglebonds, particlesToCompoundIdMap);
-			AddBondsFromMap(bondgroups.back(), pid2DihedralbondIdMap[currentParticleId], availableDihedralbondIds, topology.dihedralbonds, particlesToCompoundIdMap);
-			AddBondsFromMap(bondgroups.back(), pid2ImproperDihedralbondIdMap[currentParticleId], availableImproperDihedralbondIds, topology.improperdihedralbonds, particlesToCompoundIdMap);
+			AddBondsFromMap(bondgroups.back(), pid2SinglebondIdMap[currentParticleId], availableSinglebondIds, topology.singlebonds, particleToPclusterMap, pClusters);
+			AddBondsFromMap(bondgroups.back(), pid2PairbondIdMap[currentParticleId], availablePairbondIds, topology.pairbonds, particleToPclusterMap);
+			AddBondsFromMap(bondgroups.back(), pid2AnglebondIdMap[currentParticleId], availableAnglebondIds, topology.anglebonds, particleToPclusterMap);
+			AddBondsFromMap(bondgroups.back(), pid2DihedralbondIdMap[currentParticleId], availableDihedralbondIds, topology.dihedralbonds, particleToPclusterMap);
+			AddBondsFromMap(bondgroups.back(), pid2ImproperDihedralbondIdMap[currentParticleId], availableImproperDihedralbondIds, topology.improperdihedralbonds, particleToPclusterMap);
 		}
 	}
 
@@ -395,7 +351,11 @@ std::array<uint8_t, n> GetLocalIds(const std::unordered_map<int, uint8_t>& parti
 	return localIds;
 }
 
-void BondGroupFactory::AddBondParticles(const ParticleToCompoundMap& particleToCompoundMap, std::span<const int> bondGlobalIds) {
+void BondGroupFactory::AddBondParticles(const ParticleToPclusterMap& particleToPclustermap, std::span<const int> bondGlobalIds) {
+	if (bondGlobalIds.front() == bondGlobalIds.back()) {
+		assert(false);
+	}
+
 	for (int id : bondGlobalIds) {
 		if (!particleGlobalToLocalId.contains(id)) {
 
@@ -405,7 +365,7 @@ void BondGroupFactory::AddBondParticles(const ParticleToCompoundMap& particleToC
 
 			particleGlobalToLocalId.insert({ id, nParticles });
 			particleGlobalIds[nParticles] = id;
-			particles[nParticles] = ParticleRef{ particleToCompoundMap.at(id).compoundId, particleToCompoundMap.at(id).localIdInCompound };
+			particles[nParticles] = ParticleRef{ particleToPclustermap.at(id).pcid, particleToPclustermap.at(id).pid };
 			nParticles++;
 		}
 	}
@@ -413,23 +373,22 @@ void BondGroupFactory::AddBondParticles(const ParticleToCompoundMap& particleToC
 
 
 
-void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const SingleBondFactory& bond) {
+void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclustermap, const SingleBondFactory& bond, const PersistentCluster* pClusters) {
 	if (bond.params.HasZeroParam())
 		return;
 
-	AddBondParticles(particleToCompoundMap, bond.global_atom_indexes);
-
+	AddBondParticles(particleToPclustermap, bond.global_atom_indexes);
 	if (nSinglebonds >= maxSinglebonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
 	}
     singlebonds[nSinglebonds++] = SingleBond{ GetLocalIds<SingleBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
-void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const PairBondFactory& bond) {
+void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclustermap, const PairBondFactory& bond, const PersistentCluster* pClusters) {
 	if (bond.params.HasZeroParam())
 		return;
 
-	AddBondParticles(particleToCompoundMap, bond.global_atom_indexes);
+	AddBondParticles(particleToPclustermap, bond.global_atom_indexes);
 
 	if (nPairbonds >= maxPairbonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
@@ -437,11 +396,11 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
 	pairbonds[nPairbonds++] = PairBond{ GetLocalIds<PairBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
-void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const AngleBondFactory& bond) {
+void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclustermap, const AngleBondFactory& bond, const PersistentCluster* pClusters) {
 	if (bond.params.HasZeroParam())
 		return;
 
-	AddBondParticles(particleToCompoundMap, bond.global_atom_indexes);
+	AddBondParticles(particleToPclustermap, bond.global_atom_indexes);
 
 	if (nAnglebonds >= maxAnglebonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
@@ -449,11 +408,11 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
     anglebonds[nAnglebonds++] = AngleUreyBradleyBond{ GetLocalIds<AngleUreyBradleyBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
-void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const DihedralBondFactory& bond) {
+void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclustermap, const DihedralBondFactory& bond, const PersistentCluster* pClusters) {
 	if (bond.params.HasZeroParam())
 		return;
 
-	AddBondParticles(particleToCompoundMap, bond.global_atom_indexes);
+	AddBondParticles(particleToPclustermap, bond.global_atom_indexes);
 
 	if (nDihedralbonds >= maxDihedralbonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");
@@ -461,11 +420,11 @@ void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMa
     dihedralbonds[nDihedralbonds++] = DihedralBond{ GetLocalIds<DihedralBond::nAtoms>(particleGlobalToLocalId, bond.global_atom_indexes), bond.params };
 }
 
-void BondGroupFactory::AddBond(const ParticleToCompoundMap& particleToCompoundMap, const ImproperDihedralBondFactory& bond) {
+void BondGroupFactory::AddBond(const ParticleToPclusterMap& particleToPclustermap, const ImproperDihedralBondFactory& bond, const PersistentCluster* pClusters) {
 	if (bond.params.HasZeroParam())
 		return;
 
-	AddBondParticles(particleToCompoundMap, bond.global_atom_indexes);
+	AddBondParticles(particleToPclustermap, bond.global_atom_indexes);
 
 	if (nImproperdihedralbonds >= maxImproperdihedralbonds) {
 		throw std::runtime_error("Too many bonds in bondgroup");

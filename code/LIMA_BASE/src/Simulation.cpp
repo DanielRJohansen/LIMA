@@ -23,7 +23,7 @@ Box::Box(Float3 boxSizeNM) {
 	}
 
 	boxparams.boxSize = boxSizeNM.ToInt3();
-	solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxparams.boxSize);
+	//solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxparams.boxSize);
 }
 
 
@@ -48,16 +48,18 @@ void Simulation::PrepareDataBuffers() {
 	// Standard Data Buffers 
 	{
 		// Permanent Outputs for energy & trajectory analysis
-		const int particlesUpperbound = box_host->boxparams.total_particles_upperbound;
+		const int nPclusters = box_host->persistentClusters.size();
+		const int particlesUpperbound = nPclusters * PersistentCluster::maxParticles;
 		const size_t n_datapoints = particlesUpperbound * n_steps / simparams_host.data_logging_interval;
 		const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
+		
 		//m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
 
 
-		potE_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
-		vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
-		forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
-		traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, box_host->boxparams.n_compounds, n_steps, simparams_host.data_logging_interval);
+		potE_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, n_steps, simparams_host.data_logging_interval, nPclusters);
+		vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, n_steps, simparams_host.data_logging_interval, nPclusters);
+		forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, simparams_host.data_logging_interval, nPclusters);
+		traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, simparams_host.data_logging_interval, nPclusters);
 		
 		temperature_buffer.reserve(n_steps / simparams_host.steps_per_temperature_measurement + 1);
 	}

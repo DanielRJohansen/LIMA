@@ -36,16 +36,29 @@ namespace EngineUtils {
 		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
 		return pos_tadd1;
 	}
+	constexpr static Float3 IntegratePositionVVS(const Float3& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
+		if constexpr (!ENABLE_INTEGRATEPOSITION) {
+			return pos;
+		}
+
+		const Float3 pos_tadd1 = pos + (vel * dt + force * (0.5f / mass * dt * dt));				// precise version
+		return pos_tadd1;
+	}
 	__device__ static Float3 integrateVelocityVVS(const Float3& vel_tsub1, const Float3& force_tsub1, const Float3& force, const float dt, const float mass) {
 		const Float3 vel = vel_tsub1 + (force + force_tsub1) * (dt * 0.5f / mass);
 		return vel;
 	}
 	
 
-	__device__ static Coord IntegratePositionADAM(const Coord& pos, Float3 force, AdamState* const adamState, int step) {
+	__device__ static Float3 IntegratePositionADAM(const Float3& pos, Float3 force, AdamState* const adamState, int step) {
 
 		// TODO: Maybe figure out the highest force particle in the system, and scale each particles lr based on that, so only particles with high forces move, and the rest are relatively still
 		// untill the highest forces get down to their level?
+
+		if (adamState->firstMoment.isNan())
+			printf("AdamState NaN firstMoment\n");
+		if (adamState->secondMoment.isNan())
+			printf("AdamState NaN secondMoment\n");
 
 		const float alpha = 8000.f;        // Learning rate (can be tuned)
 		const float beta1 = 0.9f;          // Decay rate for first moment
@@ -61,15 +74,16 @@ namespace EngineUtils {
 		adamState->secondMoment = secondMoment;
 
 		// 4. Compute Bias-Corrected Estimates
-		const Float3 firstMomentCorrected = firstMoment / (1 - powf(beta1, step));
-		const Float3 secondMomentCorrected = secondMoment / (1 - powf(beta2, step));
+		const Float3 firstMomentCorrected = firstMoment / (1 - powf(beta1, step+1));
+		const Float3 secondMomentCorrected = secondMoment / (1 - powf(beta2, step+1));
 
 		const Float3 deltaPos = (firstMomentCorrected / (secondMomentCorrected.sqrtElementwise() + Float3{ epsilon })) * alpha;
-		//if (deltaPos.len() > 5.f) {
-		//	force.print('F');
-		//	deltaPos.print('D');
-		//}
-		return pos + Coord{ deltaPos * 1e-8f };
+		/*if (deltaPos.len() > 5.f || deltaPos.isNan()) {
+			force.print('F');
+			deltaPos.print('D');
+		}*/
+
+		return pos +  deltaPos * 1e-8f;
 	}
 
 //	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
@@ -140,40 +154,37 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	// TODO: Clean this up, used args
-	__device__ inline void LogCompoundData(const CompoundCompact& compound, int totalParticlesUpperbound, CompoundCoords& compound_coords, 
-		const float* potE_sum, const Float3& force, Float3& force_LJ_sol, const SimParams& simparams, SimSignals& simsignals, 
-		float* poteBuffer, Float3* trajBuffer, float* velBuffer, Float3* forceBuffer, const float speed, int64_t step)
-	{
-		if (threadIdx.x >= compound.n_particles) { return; }
+	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, SimParams simparams, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
+		//if (threadIdx.x >= compound.n_particles) { return; }
 
 		if (step % simparams.data_logging_interval != 0) { return; }
 
-		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(threadIdx.x, blockIdx.x, step, simparams.data_logging_interval, totalParticlesUpperbound);
-		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(compound_coords.origo, compound_coords.rel_positions[threadIdx.x]); 
-		poteBuffer[index] = *potE_sum;
-		velBuffer[index] = speed;
-		forceBuffer[index] = force;
+		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, simparams.data_logging_interval, totalParticlesUpperbound);
+		simDev->traj_buffer[index] = position;
+		simDev->potE_buffer[index] = potential;
+		simDev->vel_buffer[index] = speed;
+		simDev->forceBuffer[index] = force;
 
-		EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
+
+		//EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
 
-	__device__ inline void LogSolventData(const BoxParams& boxparams, const float& potE, const NodeIndex& origo, int id, const Coord& relPos, bool solvent_active, 
-		const Float3& force, const Float3& velocity, uint32_t step, float* poteBuffer, Float3* trajBuffer, float* velBuffer, int loggingInterval)
-	{
-		if (step % loggingInterval != 0) { return; }
+	//__device__ inline void LogSolventData(const BoxParams& boxparams, const float& potE, const NodeIndex& origo, int id, const Coord& relPos, bool solvent_active, 
+	//	const Float3& force, const Float3& velocity, uint32_t step, float* poteBuffer, Float3* trajBuffer, float* velBuffer, int loggingInterval)
+	//{
+	//	if (step % loggingInterval != 0) { return; }
 
-		if (solvent_active) {
-			const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
-				loggingInterval, boxparams.total_particles_upperbound);
+	//	if (solvent_active) {
+	//		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
+	//			loggingInterval, boxparams.total_particles_upperbound);
 
-			//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
+	//		//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
 
-			trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
-			poteBuffer[index] = potE;
-			velBuffer[index] = velocity.len();
-		}
-	}
+	//		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
+	//		poteBuffer[index] = potE;
+	//		velBuffer[index] = velocity.len();
+	//	}
+	//}
 
 	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
 		if constexpr (HARD_CUTOFF) {
@@ -227,6 +238,28 @@ namespace EngineUtils {
 
 		return bonds;
 	}
+
+	//template<int maxElements>
+	//__device__ void PrintfInts(int* data, int n) {
+	//	constexpr int maxCharsPerInt = 11;
+	//	constexpr int BufSize = maxElements * maxCharsPerInt;
+
+	//	char buf[BufSize];
+	//	int pos = 0;
+
+	//	pos += snprintf(buf + pos, BufSize - pos, "\n");
+
+	//	const int limit = min(n, maxElements);
+	//	for (int i = 0; i < limit && pos < BufSize; ++i) {
+	//		pos += snprintf(buf + pos, BufSize - pos, "%d ", data[i]);
+	//	}
+
+	//	snprintf(buf + pos, BufSize - pos, "\n");
+	//	
+	//	printf("%s", buf);
+	//}
+
+
 
 };
 

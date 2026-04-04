@@ -2,6 +2,7 @@
 #include "TestUtils.h"
 #include "TimeIt.h"
 #include "MoleculeUtils.h"
+#include "Statistics.h"
 
 namespace Benchmarks {
 
@@ -83,10 +84,30 @@ namespace Benchmarks {
 		////const auto status = result.first == true ? true : false;
 	}
 
+	static LimaUnittestResult Bench(const fs::path& workDir, const GroFile& grofile, const TopologyFile& topfile, SimParams ip, std::chrono::microseconds allowedTimePerStep, std::optional<int> nSteps = std::nullopt) {
+		EnvMode envmode = ConsoleOnly;
 
-	static LimaUnittestResult Psome(EnvMode envmode) {
-		 //if (envmode== Full)
-			// envmode = ConsoleOnly;	// Cant go fast in Full
+		ip.data_logging_interval = 20;
+		ip.dt = 0.5f * FEMTO_TO_NANO;
+		ip.enable_electrostatics = true;
+		if (nSteps)
+			ip.n_steps = nSteps.value();
+		Environment env{ workDir, envmode };
+		env.CreateSimulation(grofile, topfile, ip);
+		env.run();
+
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+
+		auto duration = env.simulationTimer->GetTiming();
+		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+	}
+
+
+	static LimaUnittestResult Psome(EnvMode envmode, std::optional<int> nSteps=std::nullopt) {
+		 if (envmode== Full)
+			 envmode = ConsoleOnly;	// Cant go fast in Full
 
 		const fs::path work_dir = simulations_dir / "psome";
 		
@@ -109,6 +130,8 @@ namespace Benchmarks {
 		ip.data_logging_interval = 20;
 		ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
+		if (nSteps)
+			ip.n_steps = nSteps.value();
 		Environment env{ work_dir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run();
@@ -119,7 +142,16 @@ namespace Benchmarks {
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
-		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+	}
+
+	static LimaUnittestResult STMV() {
+		const fs::path work_dir = simulations_dir / "benchmarking" / "stmv";
+		GroFile grofile{ work_dir  / "conf.gro" };
+		TopologyFile topfile{ work_dir  / "topol.top" };
+		SimParams ip{ work_dir / "sim_params.txt" };
+		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 3);
+		return LimaUnittestResult{ true, "STMV benchmark completed", true };
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {
@@ -156,11 +188,11 @@ namespace Benchmarks {
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
-		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [ys] Allowed: {} [ys]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
 	}
 
 	// Returns {avg ms/step, stdDev}
-	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt) {
+	static std::pair<float, float> Benchmark(const fs::path& dir, std::optional<std::string> name = std::nullopt, std::optional<int> nSteps = std::nullopt) {
 		
 		if (!IS_FAST_MODE) {
 			TestUtils::setConsoleTextColorYellow();
@@ -198,7 +230,10 @@ namespace Benchmarks {
 		TopologyFile topfile(topPath);
 		GroFile grofile(groPath);
 
-		SimParams params{ workDir / "../sim_params.txt" };
+		fs::path spPath = fs::exists(workDir / "sim_params.txt") ? workDir / "sim_params.txt" : workDir / ".." / "sim_params.txt";
+		SimParams params{ spPath };
+		if (nSteps) 
+			params.n_steps = *nSteps;
 		//params.dt = 1.f * FEMTO_TO_NANO; 		
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
@@ -213,6 +248,8 @@ namespace Benchmarks {
 		const float stdDev = Statistics::StdDev(env.avgStepTimes);
 		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.simulationTimer->GetTiming()).count() / (float)params.n_steps);
 		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
+
+		env.PrintTiming();
 
 		return { meanSteptime, stdDev};
 	}

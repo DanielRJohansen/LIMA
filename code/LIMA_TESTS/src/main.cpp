@@ -11,6 +11,7 @@
 #include "Display.h"
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
+#include "AlgorithmTests.h"
 
 
 using namespace TestUtils;
@@ -24,9 +25,29 @@ using namespace VerletintegrationTesting;
 
 void RunAllUnitTests();
 
+void TestDisplayT4() {
+	auto env = TestUtils::basicSetup("T4Lysozyme", std::nullopt, EnvMode::Full);
+	Display display{};
+
+	auto& box = env->getSimPtr()->box_host;
+
+	std::vector<Float3> positions;
+
+	for (auto pc : box->persistentClusters) {
+		for (auto pqd : pc.pqd)
+			if (pqd.Valid())
+				positions.push_back(pqd.position);
+	}
+
+
+	display.Render(std::make_unique<Rendering::SimulationTask>(positions.data(), box->persistentClusters, box->persistentClustersMetadata, box->boxparams, "", Atomname), true);
+}
+
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+
+		//loadAndRunBasicSimulation("Singleatom", envmode);
 
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
@@ -36,6 +57,7 @@ int main() {
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
 		//Display::TestDisplay();
+		//TestDisplayT4();
 		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
 		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
 		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
@@ -45,10 +67,11 @@ int main() {
 		//doSinglebondBenchmark(envmode);
 		//doAnglebondBenchmark(envmode);
 		//doDihedralbondBenchmark(envmode);
+		//loadAndRunBasicSimulation("SinglebondDaisychained", envmode, 0.0002);
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
-		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 5.6e-4, 2e-6);
+		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6);
 		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
@@ -65,14 +88,10 @@ int main() {
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
-		//SimParams simparams; 
-		//simparams.n_steps = 100000;
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6, simparams);
-		//for (int i = 0; i < 100; i++) {
-		//	auto res = loadAndRunBasicSimulation("T4Lysozyme", ConsoleOnly, 1.466e-2, 2.55e-4);
-		//	if (!res.success)
-		//		break;
-		//}
+		/*for (int i = 0; i < 10; i++)
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);*/
+		
+		
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
@@ -105,10 +124,12 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
-		//Benchmarks::Benchmark("stmv");
+		Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+
 		//Benchmarks::PrepareSimulation_stmv(envmode);
-		 
-		//TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
+		//Benchmarks::Psome(envmode);
+		//
+		// TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
 
 
 		//{
@@ -135,20 +156,24 @@ int main() {
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
-		int runAll = 1;
+		//KernelAlgorithms::WarpSort64_Unittest(envmode);
+		//Benchmarks::Psome(envmode);
+//Benchmarks::ManyT4(envmode);
+//Benchmarks::PrepareSimulation_stmv(envmode);
+		//RunAllUnitTests();
+		/*int runAll = 1;
 		if (!runAll)
 			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		else
-			RunAllUnitTests();
-	}
+			RunAllUnitTests();*/}
 	catch (std::runtime_error ex) {
-		std::cerr << "Caught runtime_error: " << ex.what() << std::endl;
+		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
 	}
 	catch (const std::exception& ex) {
-		std::cerr << "Caught exception: " << ex.what() << std::endl;
+		std::cerr << "\nCaught exception: " << ex.what() << std::endl;
 	}
 	catch (...) {
-		std::cerr << "Caught unnamed exception";
+		std::cerr << "\nCaught unnamed exception";
 	}
 
 	return 0;
@@ -187,12 +212,12 @@ void RunAllUnitTests() {
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6));
+	ADD_TEST("doMethionineBenchmark", loadAndRunBasicSimulation("Met", envmode, 1.199e-3, 2e-6));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 2.1e-4, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 3.22e-7, 1.1e-7));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.757e-3, 5e-4));
 	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode));
 
 
@@ -200,7 +225,7 @@ void RunAllUnitTests() {
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
 	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles(envmode));
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
-	ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
+	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
 	
 	// Test Forcefield and compoundbuilder

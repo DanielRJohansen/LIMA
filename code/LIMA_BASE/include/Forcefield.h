@@ -71,12 +71,13 @@ public:
 	LIMAForcefield(const LIMAForcefield&) = delete;
 	~LIMAForcefield();
 
-	int GetActiveLjParameterIndex(const std::string& query);
+	int GetActiveLjParameterIndex(const std::string& query);	
 	ForceField_NB GetActiveLjParameters();
 	std::vector<NonbondedInteractionParams> GetNonbondedInteractionParams() const;
 
-	int GetActiveTinymoltypeIndex(const std::string& query);
-	ForcefieldTinymol GetTinymolTypes();
+	NBParams GetLjParameters(const std::string& query) const;// Experimental, breaks the ActiveLjParamsSystem
+	std::optional<AtomType> GetAtomtype(const std::string& query) const;
+//	ForcefieldTinymol GetTinymolTypes();
 	
 
 	template<typename GenericBond>
@@ -84,7 +85,6 @@ public:
 
 private:
 	std::unique_ptr<AtomtypeDatabase> ljParameters;
-	std::unique_ptr<AtomtypeDatabase> tinymolTypes;
 
 	std::unique_ptr<ParameterDatabase<SinglebondType>> singlebondParameters;
 	std::unique_ptr<ParameterDatabase<PairbondType>> pairbondParameters;

@@ -200,9 +200,6 @@ void Display::PrepareTask(Task& task) {
         else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
 			PrepareNewRenderTask(*taskPtr);
 		}
-		else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
-			PrepareNewRenderTask(*taskPtr);
-		}
 		else {
 			throw std::runtime_error("Unknown task type");
 		}
@@ -213,6 +210,7 @@ void Display::Mainloop() {
     Rendering::Task currentRenderTask = nullptr;
 
     Overlay overlay{window, FileUtils::GetLimaDir()};
+    TimeIt frameTime{};
 
     while (!kill) {
         // Update camera, check if window is closed
@@ -224,8 +222,8 @@ void Display::Mainloop() {
         
 
         // Check if new data
+        bool newData = false;
         {
-            bool newData = false;
             incomingRenderTaskMutex.lock();
             if (!std::holds_alternative<void*>(incomingRenderTask)) {
                 currentRenderTask = std::move(incomingRenderTask);
@@ -239,29 +237,33 @@ void Display::Mainloop() {
             }
         }
 
-        if (!std::holds_alternative<void*>(currentRenderTask)) {            
-            std::visit([&](auto& taskPtr) {
-                using T = std::decay_t<decltype(taskPtr)>;
-                if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-					const int nParticles = rendersettings.showSolvents ? taskPtr->boxparams.total_particles : taskPtr->boxparams.total_compound_particles;
-                    overlay.Draw(rendersettings, taskPtr->simStatus);
-                    _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, true);
-                }
-                else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
-                    _Render(taskPtr->molCollection, taskPtr->boxSize);
-                }
-                else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-                    _RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
-				}
-                else if constexpr (std::is_same_v<T, std::unique_ptr<CompoundsTask>>) {
-                    _RenderAtoms(taskPtr->boxSize, taskPtr->nAtoms, true);
-                }
-                }, currentRenderTask);
+        const int msPerFrame = std::floor(1. / 60. * 1000.);
+        bool shouldDraw = newData || frameTime.elapsed().count() > msPerFrame;
+
+        if (shouldDraw) {
+            if (!std::holds_alternative<void*>(currentRenderTask)) {
+                std::visit([&](auto& taskPtr) {
+                    using T = std::decay_t<decltype(taskPtr)>;
+                    if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
+                        const int nParticles = taskPtr->boxparams.totalParticles;
+                        overlay.Draw(rendersettings, taskPtr->simStatus, fps.GetFps());
+                        _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
+                    }
+                    else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
+                        _Render(taskPtr->molCollection, taskPtr->boxSize);
+                    }
+                    else if constexpr (std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
+                        _RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
+                    }
+                    }, currentRenderTask);
+            }
+
+            overlay.Render();
+
+            glfwSwapBuffers(window);
+            fps.NewFrame();
+            frameTime = TimeIt{};
         }
-
-        overlay.Render();
-
-        glfwSwapBuffers(window);
     }
 }
 
@@ -291,24 +293,50 @@ void Display::Render(Rendering::Task task, bool blocking) {
 void Display::OnMouseMove(double xpos, double ypos) {
     if (isDragging) {
         const float sensitivity = 0.001f; // Adjust sensitivity as needed
-        const float xOffset = static_cast<float>(xpos - lastX) * sensitivity;
-        const float yOffset = static_cast<float>(lastY - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
+        const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
+        const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
 
         camera.Update(xOffset, -yOffset, 0);
     }
 
-    lastX = xpos;
-    lastY = ypos;
+    mousePos.x = xpos;
+    mousePos.y = ypos;
+}
+
+void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
+    if (atomId == prevAtomId)
+        return;
+
+    auto renderAtomsHost = renderAtoms.GetData<RenderAtom>();
+    if (prevAtomId != -1)
+        renderAtomsHost[prevAtomId].HighLight(false);
+    if (atomId != -1)
+        renderAtomsHost[atomId].HighLight(true);
+    prevAtomId = atomId;
+    renderAtoms.SetData(renderAtomsHost);
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             isDragging = true;
-            glfwGetCursorPos(window, &lastX, &lastY);
+            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
+            mousePosAtBtnDown = mousePos;
+            timeAtBtnDown = std::chrono::steady_clock::now();
         }
         else if (action == GLFW_RELEASE) {
             isDragging = false;
+
+            glm::dvec2 mousePos{};
+            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
+            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - timeAtBtnDown).count();
+            bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
+
+            if (isClick && drawAtomsFromCpuShader) {
+                int atomId = drawAtomsFromCpuShader->GetAtomIdAtPixel(int2{ (int)mousePos.x, (int)mousePos.y });
+                HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
+                printf("Atomid %d\n", atomId);
+            }
         }
     }
 }
@@ -323,16 +351,29 @@ bool Display::initGLFW() {
         throw std::runtime_error("\nGLFW failed to initialize");
     }
 
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    if (!primaryMonitor) {
+        glfwTerminate();
+        return -1;
+    }
+
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+    int displayWidth = mode->width;
+    int displayHeight = mode->height;
+
+    windowSize = int2{ (int)((float)displayHeight * 0.8f), (int)((float)displayHeight * 0.8f) };
+
+
     // Create a windowed mode window and its OpenGL context
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE); // Do not focus the window on creation
-    window = glfwCreateWindow(screenWidth, screenHeight, window_title.c_str(), NULL, NULL);
+    window = glfwCreateWindow(windowSize.x, windowSize.y, window_title.c_str(), NULL, NULL);
     if (!window)
     {
         glfwTerminate();
         return 0;
     }
 #ifndef __linux__
-    glfwSetWindowPos(window, screensize[0] - screenWidth - 550, 50);
+    glfwSetWindowPos(window, displayWidth - windowSize.x - 50, 50);
 #endif
 
     // Make the window's context current
@@ -380,7 +421,7 @@ void FPS::NewFrame() {
 int FPS::GetFps() const {
 	const int back = (head + 1) % prevTimepoints.size();
     const auto elapsed = duration_cast<std::chrono::nanoseconds>(prevTimepoints[head] - prevTimepoints[back]);
-    const auto avgFrameTime = elapsed / prevTimepoints.size();
+    const auto avgFrameTime = elapsed / (prevTimepoints.size()-1);
     return static_cast<int>(1e9 / avgFrameTime.count());
 }
 
@@ -388,16 +429,17 @@ void Display::TestDisplay() {
 	Display display{};
 	
 	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
-	Compound compound;
-	compound.n_particles = 1;
-	compound.atomLetters[0] = '_';
 	BoxParams params;
     params.boxSize = { 3, 2, 1 };
-	params.total_compound_particles = 1;
-	params.total_particles = 1;
-	params.total_particles_upperbound = 1;
-	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), std::vector<Compound>{compound}, params, "", Atomname), true);
+	params.totalParticles = 1;
+    std::vector<PersistentCluster> pclusters(1);
+    std::vector<PersistentClusterMeta> pcMetas(1);
+    pcMetas.front().particleIdsGlobal[0] = 0;
+    pcMetas.front().atomLetter[0] = 'l';
+	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), pclusters, pcMetas, params, "", Atomname), true);
 }
+
+
 
 //void Display::RenderGrofile(const GroFile& grofile) {
 //    Display d;

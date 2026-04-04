@@ -55,6 +55,7 @@ Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir) {
 		(limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
         22.0f
     );
+	io.IniFilename = nullptr; // disable imgui.ini creation
 
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -67,7 +68,7 @@ Overlay::~Overlay() {
     ImGui::DestroyContext();
 }
 
-void DrawTopBar(const SimStatus& status) {
+void DrawTopBar(const SimStatus& status, int fps) {
     const float barHeight = 36.0f;
     ImGuiIO& io = ImGui::GetIO();
 
@@ -135,6 +136,10 @@ void DrawTopBar(const SimStatus& status) {
         );
     }
 
+#ifdef _DEBUG
+    RightAlignedField("FPS", std::to_string(fps), "", "9999");
+#endif
+
 
     ImGui::PopStyleVar(2);
     ImGui::End();
@@ -179,17 +184,21 @@ void DrawBottomBar(RenderSettings& renderSettings) {
     ImGui::PopStyleColor();
 }
 
-void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus) {
+void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-	DrawTopBar(simstatus);
+	DrawTopBar(simstatus, fps);
     DrawBottomBar(renderSettings);
+	didDrawThisFrame = true;
 }
 
 
 void Overlay::Render() {
+    if (!didDrawThisFrame)
+        return;
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	didDrawThisFrame = false;
 }

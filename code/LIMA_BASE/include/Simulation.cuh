@@ -6,6 +6,7 @@
 #include <filesystem>
 #include "BoxGrid.cuh"
 #include "SimParams.h"
+#include <set>
 
 namespace MDFiles { struct TrrFile; }
 
@@ -19,13 +20,8 @@ struct SimSignals {
 
 struct BoxParams {
 	Int3 boxSize{};	// [nm]
-	int n_compounds = 0;
 	int n_bridges = 0;
-	int nTinymols = 0;
-	int nTinymolParticles = 0;
-	int total_particles_upperbound = 0;
-	int total_particles = 0;					// Precise number. DO NOT USE IN INDEXING!!
-	int total_compound_particles = 0;			// Precise number. DO NOT USE IN INDEXING!!
+	int totalParticles = 0;
 	int64_t degreesOfFreedom=0;
 
 	__host__ Float3 BoxSizeFloat() const {
@@ -37,11 +33,13 @@ struct BoxParams {
 template <typename T>
 class ParticleDataBuffer {
 public:
-	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_compounds, size_t n_steps, int loggingInterval) : 
-		n_particles_upperbound(n_particles_upperbound), n_compounds(n_compounds), 
+	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_steps, 
+		int loggingInterval, int nPclusters	) :
+		n_particles_upperbound(nPclusters * PersistentCluster::maxParticles),
 		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
-		buffer(n_particles_upperbound* n_indices, T{}),
+		buffer(nPclusters* PersistentCluster::maxParticles* n_indices, T{}),
 		loggingInterval(loggingInterval)
+		,nPclusters(nPclusters)
 	{}
 
 	T* data() { return buffer.data(); }	// temporary: DO NOT USE IN NEW CODE
@@ -64,26 +62,15 @@ public:
 		return &buffer[n_particles_upperbound * entryIndex];
 	}
 
-	T& getCompoundparticleDatapointAtIndex(int compound_id, int particle_id_compound, size_t entryindex) {
-		const size_t index_offset = entryindex * n_particles_upperbound;
-		const size_t compound_offset = static_cast<size_t>(compound_id) * MAX_COMPOUND_PARTICLES;
-		return buffer[index_offset + compound_offset + particle_id_compound];
+	T& GetDatapoint(int pcid, int pid, size_t entryindex) {
+		const size_t indexOffset = entryindex * nPclusters * PersistentCluster::maxParticles;
+		const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::maxParticles;
+		return buffer[indexOffset + pcOffset + pid];
 	}
 
-	T& getSolventparticleDatapointAtIndex(int solvent_id, size_t entryindex) {
-		const size_t index_offset = entryindex * n_particles_upperbound;
-		const size_t firstsolvent_offset = n_compounds * MAX_COMPOUND_PARTICLES;
-		return buffer[index_offset + firstsolvent_offset + solvent_id];
-	}
-
-	T& GetMostRecentCompoundparticleDatapoint(int compound_id, int particle_id_compound, size_t step) {
-		const size_t entryIndex = step / loggingInterval;		
-		return getCompoundparticleDatapointAtIndex(compound_id, particle_id_compound, entryIndex);
-	}
-
-	T& GetMostRecentSolventparticleDatapointAtIndex(int solvent_id, size_t step) {
+	T& GetDatapointAtStep(int pcid, int pid, size_t step) {
 		const size_t entryIndex = step / loggingInterval;
-		return getSolventparticleDatapointAtIndex(solvent_id, entryIndex);
+		return GetDatapoint(pcid, pid, entryIndex);
 	}
 
 	size_t GetLoggingInterval() const { return loggingInterval; }
@@ -92,8 +79,8 @@ public:
 
 private:
 	const size_t loggingInterval;
-	const size_t n_compounds;
 	const size_t n_indices;
+	const size_t nPclusters;
 	std::vector<T> buffer;
 };
 
@@ -116,18 +103,25 @@ struct Box {
 	BoxParams boxparams;
 
 
-	std::vector<Compound> compounds;
-	std::vector<CompoundInterimState> compoundInterimStates;
-	std::vector<CompoundCoords> compoundCoordsBuffer;
-
-	std::vector<TinyMolParticleState> tinyMolParticlesState;
-	std::vector<SolventBlock> solventblockgrid_circularqueue;
-
-	std::vector<BondedParticlesLUT> bpLutCollection;
+	//std::vector<Compound> compounds;
+	////std::vector<CompoundInterimState> compoundInterimStates;
+	
+	//std::vector<CompoundCoords> compoundCoordsBuffer;
+	//std::vector<TinyMolParticleState> tinyMolParticlesState;
+	//std::vector<SolventBlock> solventblockgrid_circularqueue;
+	//std::vector<BondedParticlesLUT> bpLutCollection;
+	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 
 	std::vector<BondGroup> bondgroups;
 
 	UniformElectricField uniformElectricField;
+
+	// Clusters
+	std::vector<PersistentCluster> persistentClusters;
+	std::vector<PersistentClusterMeta> persistentClustersMetadata;
+
+	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
+	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
 };
 
 
@@ -171,7 +165,7 @@ public:
 	SimParams simparams_host;
 
 	ForceField_NB forcefield;
-	ForcefieldTinymol forcefieldTinymol;
+	//ForcefieldTinymol forcefieldTinymol;
 	std::vector<NonbondedInteractionParams> forcefieldTest;
 
 

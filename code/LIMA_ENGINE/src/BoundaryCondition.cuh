@@ -7,7 +7,7 @@ public:
 	__device__ __host__ void static applyBC(NodeIndex& origo) {}
 
 	__device__ constexpr static NodeIndex applyBC(const NodeIndex& nodeindex, const Int3& nodesPerDim) { return nodeindex; }
-
+	static void constexpr applyBCNM(const Float3&) {}
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {}
@@ -64,13 +64,13 @@ public:
 		movable_particle.z += DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) > boxlenhalf_nm.z);
 		movable_particle.z -= DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm.z);
 	}
-
+// TODO: CHECK ALL THESE! Most are wrong, its CRITICAL we do >= not just >!!!
 	__device__ constexpr static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		
 		current_position.x += DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x < 0.f);
-		current_position.x -= DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x > DeviceConstants::boxSize.boxSizeNM_f.x);
+		current_position.x -= DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x >= DeviceConstants::boxSize.boxSizeNM_f.x);
 		current_position.y += DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y < 0.f);
-		current_position.y -= DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y > DeviceConstants::boxSize.boxSizeNM_f.y);
+		current_position.y -= DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y >= DeviceConstants::boxSize.boxSizeNM_f.y);
 		current_position.z += DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z < 0.f);
-		current_position.z -= DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z > DeviceConstants::boxSize.boxSizeNM_f.z);
+		current_position.z -= DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z >= DeviceConstants::boxSize.boxSizeNM_f.z);
 	}
 };

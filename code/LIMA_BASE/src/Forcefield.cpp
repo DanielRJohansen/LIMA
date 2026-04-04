@@ -27,7 +27,9 @@ public:
 		return *activeAtomTypes;
 	}
 
-	AtomType& GetAtomType(const std::string& query) {
+	std::optional<AtomType> GetAtomType(const std::string& query) {
+		if (!atomTypes.contains(query))
+			return std::nullopt;			
 		return atomTypes.at(query);
 	}
 
@@ -246,7 +248,6 @@ LIMAForcefield::LIMAForcefield() {};
 LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 
 	ljParameters = std::make_unique<AtomtypeDatabase>();
-	tinymolTypes = std::make_unique<AtomtypeDatabase>();
 
 	singlebondParameters = std::make_unique<ParameterDatabase<SinglebondType>>();
 	pairbondParameters = std::make_unique<ParameterDatabase<PairbondType>>();
@@ -255,12 +256,6 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
 
 	LoadFileIntoForcefield(file);
-
-	// TEMP while we force solvents to be singleparticle
-	if constexpr (!AllAtom) {
-		if (tinymolTypes->_getAll().contains("OW"))
-			tinymolTypes->_getAll().at("OW").mass += 2.f * tinymolTypes->_getAll().at("HW").mass;
-	}
 }
 
 LIMAForcefield::~LIMAForcefield() {}
@@ -268,6 +263,23 @@ LIMAForcefield::~LIMAForcefield() {}
 int LIMAForcefield::GetActiveLjParameterIndex(const std::string& query) {
 	return ljParameters->GetActiveIndex(query);
 }
+NBParams LIMAForcefield::GetLjParameters(const std::string& query) const {
+	auto params = ljParameters->GetAtomType(query);
+
+	if (!params.has_value())
+		throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
+
+	NBParams nbparams{};
+	nbparams.sigmaHalf = params->parameters.sigmaHalf;
+	nbparams.epsilonSqrt = params->parameters.epsilonSqrt;
+	nbparams.charge = params->charge;
+	return nbparams;
+}
+
+std::optional<AtomType> LIMAForcefield::GetAtomtype(const std::string& query) const {
+	return ljParameters->GetAtomType(query);
+}
+
 ForceField_NB LIMAForcefield::GetActiveLjParameters() {
 	ForceField_NB forcefieldNB{};
 	const std::vector<AtomType>& activeParameters = ljParameters->GetActiveParameters();//  *activeLJParamtypes;
@@ -295,24 +307,6 @@ std::vector<NonbondedInteractionParams> LIMAForcefield::GetNonbondedInteractionP
 }
 
 
-int LIMAForcefield::GetActiveTinymoltypeIndex(const std::string& query) {
-	return tinymolTypes->GetActiveIndex(query);
-}
-
-ForcefieldTinymol LIMAForcefield::GetTinymolTypes() {
-	ForcefieldTinymol forcefieldTinymol{};
-	const std::vector<AtomType>& activeParameters = tinymolTypes->GetActiveParameters();
-	if (activeParameters.size() > ForcefieldTinymol::MAX_TYPES)
-		throw std::runtime_error("Too many atom types");
-	for (int i = 0; i < activeParameters.size(); i++) {
-		const AtomType& at = activeParameters[i];
-		forcefieldTinymol.types[i] = ForcefieldTinymol::TinyMolType{ at.parameters.sigmaHalf, at.parameters.epsilonSqrt, at.mass, at.charge };
-		if (!AllAtom)
-			forcefieldTinymol.types[i].charge = 0;
-	}
-	return forcefieldTinymol;
-}
-
 void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file) 
 {
 	for (const auto& line : file.GetSection(TopologySection::includes)) {	
@@ -336,7 +330,6 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		atomtype.parameters.sigmaHalf = sigma * 0.5f;
 
 		ljParameters->insert(atomtype);
-		tinymolTypes->insert(atomtype);
 	}
 	for (const auto& line : file.GetSection(TopologySection::bondtypes)) {
 		std::istringstream iss(line);
@@ -421,8 +414,8 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 		// Pairbonds are special, as they are only defined for special interactions. In other cases we simply combine the LJ params for the types
 		if (pairbondParameters->get(query).empty()) {
 			
-			const AtomType& left = ljParameters->GetAtomType(query[0]);
-			const AtomType& right = ljParameters->GetAtomType(query[1]);
+			const AtomType left = *ljParameters->GetAtomType(query[0]);
+			const AtomType right = *ljParameters->GetAtomType(query[1]);
 
 			// TODO: Would prefer to have this computation in a file specialized for it..
 			const float sigma = left.parameters.sigmaHalf + right.parameters.sigmaHalf;

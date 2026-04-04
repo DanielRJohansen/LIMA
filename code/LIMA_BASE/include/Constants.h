@@ -9,7 +9,8 @@ constexpr bool INDEXING_CHECKS = false;
 constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
 constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
 constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation
-constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS);
+constexpr bool DETERMINISTIC_CHECKS = false;	// Check if results are deterministic (only used for debugging non-determinism, since it is expensive)
+constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS || DETERMINISTIC_CHECKS);
 
 //#define FORCE_NAN_CHECK // TODO: make this a const instead
 
@@ -17,7 +18,7 @@ const bool ENABLE_LJ = true;
 const bool ENABLE_INTEGRATEPOSITION = true;
 
 const bool ENABLE_ES_SR = true;
-const bool ENABLE_ES_LR = true; // This is not deterministic, due to the atomicAdd in DistributeChargesToChargegrid
+const bool ENABLE_ES_LR = true;
 const bool ENABLE_UREYBRADLEY = true;
 
 
@@ -30,7 +31,7 @@ const bool ERFC_USE_CHEBYSHEV_APPROXIMATION = false;
 const bool ALL_PHYSICS_ENABLED = ENABLE_ES_SR && ENABLE_ES_LR && ENABLE_LJ && ENABLE_UREYBRADLEY && ENABLE_INTEGRATEPOSITION;
 //#define GENERATETRAINDATA
 
-//#define LIMAKERNELDEBUGMODE
+#define LIMAKERNELDEBUGMODE 0
 //#define DONTGENDATA
 constexpr bool COULUMB_USE_CHEBYSHEV_APPROXIMATION = true;
 
@@ -60,7 +61,7 @@ const float DEG_TO_RAD = PI / 180.f;
 
 const int MAX_REPRESENTABLE_DIFF_NM = 16;	// I should probably do this some other way..
 
-constexpr double BOLTZMANNCONSTANT = 1.38066e-23f;	// [J/K]
+constexpr double BOLTZMANNCONSTANT = 1.38066e-23;	// [J/K]
 constexpr double AVOGADROSNUMBER = 6.02214076e23;	
 constexpr double COULOMBCONSTANT = 8.9875517873681764e9;	// [n*m^2/C^2] == [ J*m / C^2]
 constexpr double ELEMENTARYCHARGE = 1.602176634e-19;	// [C]
@@ -73,8 +74,7 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-#define ENABLE_SOLVENTS				// Enables Explicit Solvents
-const size_t MAX_SOLVENTS = INT32_MAX-1;	// limited by boxparams
+#define ENABLE_SOLVENTS 1				// Enables Explicit Solvents
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 constexpr bool AllAtom = true;
 // -------------------------------------------------------------------------------------------------------------- //
@@ -89,11 +89,3 @@ const bool HARD_CUTOFF = true;
 const bool ENABLE_POTE = true;
 const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;
-
-// If we go larger, a single compound can stretch over 2 nm!
-constexpr int MAX_COMPOUND_PARTICLES = 32;
-const int MAX_COMPOUNDS = UINT16_MAX-1;			// Arbitrary i think. true max int16_t max - 1. Can also cause trouble when the bondedparticlesLUT static array becomes very large bytewise..
-
-const bool USE_ATOMICS_FOR_BONDS_RESULTS = false;
-
-const int MAX_SAFE_SHIFT = 6;	// Maxmimum manhattan dist that it is safe to shift

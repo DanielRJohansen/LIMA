@@ -7,51 +7,18 @@
 
 struct BoxConfig {
 	BoxConfig() {};
-	BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomCharges, BondedParticlesLUT* bpLUTs,
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences);
-	static BoxConfig Create(const Box& boxHost); // Returns a ptr to device
+	static BoxConfig Create(const Box& boxHost);
 	void FreeMembers() const;
-
-	// CompoundData used ALOT, kept here for memory locality
-	const uint8_t* const compoundsAtomtypes = nullptr;
-	const float* const compoundsAtomCharges = nullptr;	// [kC/mol]
-	const Compound* const compounds = nullptr;
-
-	// BondedParticlesLUT data - NEVER access directly, use the bpLUTHelpers namespace
-	const BondedParticlesLUT* const bpLUTs = nullptr;
-
-	const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds = nullptr;
-	const BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences = nullptr;
 };
 
 struct BoxState {
 	BoxState() {};
-	BoxState(NodeIndex* compoundsOrigos, Float3* compoundsRelpos, CompoundInterimState* compoundInterimState,
-		//TinyMolParticleState* tinyMolParticlesState,
-		SolventBlock* solventblockgrid_circularqueue, int* nParticlesInSolventblock, int* nParticlesPrefixsumInX, 
-		ParticleQuickData* solventsParticleQuickdata, ParticleQuickData* solventsParticleQuickDataCompressed,
-		BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences
-		);
+	BoxState(PersistentclusterInterimState*);
 	static BoxState Create(const Box& boxHost);
 	void CopyDataToHost(Box& boxDev) const;
 	void FreeMembers() const;
 
-	CompoundInterimState* const compoundsInterimState = nullptr;
-	NodeIndex* const compoundOrigos = nullptr;
-	Float3* const compoundsRelposNm = nullptr;
-
-	//TinyMolParticleState* const tinyMolParticlesState;
-	SolventBlock* const solventblockgrid_circularqueue = nullptr;
-
-	// TODO: OPTIM: IMPORTANT: For now these are duplicates of whats in SolventBlock. We need a SolventBlockHost and SolventBlockDevice for optimal performance anyway
-	int* const nParticlesInSolventblock = nullptr; // Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality
-	int* const nParticlesPrefixsumInX = nullptr; // Exclusive. Honestly could be uint16_t, or even uint8 if we really wanna push it, just need. Not to save space, but for improved cache locality 
-	ParticleQuickData* const solventsParticleQuickData = nullptr;
-	ParticleQuickData* const solventsParticleQuickDataCompressed = nullptr; // TEMP, we should just overwrite the other one above..
-	BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequencesParticles* tinymolNearbyBlocksSequences = nullptr;
-
-	//Float3* const solventsRelposNm=nullptr;
-	//uint8_t* const solventsAtomtypeIds = nullptr; // Not necessary now that we only have h2o, and its always OHH. But futureproofing maybe..
+	PersistentclusterInterimState* const pclusterInterimStates = nullptr;	
 };
 
 struct AdamState {
@@ -60,22 +27,22 @@ struct AdamState {
 };
 
 
-struct alignas(128) CompoundQuickData {
-	Float3 relPos[MAX_COMPOUND_PARTICLES];
-	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
-	float charges[MAX_COMPOUND_PARTICLES];
-
-	// Returns ptr to device buffer
-	__host__ static CompoundQuickData* CreateBuffer(const Simulation& sim);
-};
+//struct alignas(128) CompoundQuickData {
+//	Float3 relPos[MAX_COMPOUND_PARTICLES];
+//	ForceField_NB::ParticleParameters ljParams[MAX_COMPOUND_PARTICLES];
+//	float charges[MAX_COMPOUND_PARTICLES];
+//
+//	// Returns ptr to device buffer
+//	__host__ static CompoundQuickData* CreateBuffer(const Simulation& sim);
+//};
 
 
 struct DatabuffersDeviceController {
 	DatabuffersDeviceController(const DatabuffersDeviceController&) = delete;
-	DatabuffersDeviceController(int total_particles_upperbound, int n_compounds, int loggingInterval);
+	DatabuffersDeviceController(int nPclusters, int loggingInterval);
 	~DatabuffersDeviceController();
 
-	static const int nStepsInBuffer = 5;
+	static const int nStepsInBuffer = 5; // TODO: I want this to be dynamic.
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		return step % (nStepsInBuffer * loggingInterval) == 0;
@@ -85,13 +52,13 @@ struct DatabuffersDeviceController {
 		return stepsSinceTransfer / loggingInterval;
 	}
 
-	__device__ static int GetLogIndexOfParticle(int particleIdLocal, int compound_id, int64_t step,
-		int loggingInterval, int totalParticleUpperbound) {
-		const int64_t steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
+	__device__ static int GetLogIndexOfParticle(int pidInPclusters, int pcId, int step,
+		int loggingInterval, const int totalParticleUpperbound) {
+		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
 
-		const int64_t stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
-		const int compound_offset = compound_id * MAX_COMPOUND_PARTICLES;
-		return stepOffset + compound_offset + particleIdLocal;
+		const int stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
+		const int pclusterOffset = pcId * PersistentCluster::maxParticles;
+		return stepOffset + pclusterOffset + pidInPclusters;
 	}
 
 	float* potE_buffer = nullptr;				// For total energy summation
@@ -99,7 +66,7 @@ struct DatabuffersDeviceController {
 	float* vel_buffer = nullptr;				// Dont need direciton here, so could be a float
 	Float3* forceBuffer = nullptr;				// [J/mol/nm] // For debug only
 
-	const int total_particles_upperbound;
+	const int nParticlesUpperbound;
 };
 
 
@@ -130,7 +97,6 @@ struct SimulationDevice {
 	const BoxParams boxparams;
 
 	uint8_t* nParticlesInCompoundsBuffer = nullptr;
-	CompoundInteractionBoundary* compoundsInteractionBoundaryBuffer = nullptr;
 
 	// Databuffers, NOT owned by this class, so dont free them
 	float* potE_buffer = nullptr;
@@ -143,35 +109,16 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nCompounds, int nTinymols, int nSolventblocks, int nBondgroups);
+	ForceEnergyInterims(int nBondgroups, int nParticles, int nPclusters);
 	void Free() const;
 
-	__device__ ForceEnergy SumCompound(int compoundId, int particleId) const {
-		ForceEnergy pmeFE = {};
-		if constexpr (ENABLE_ES_LR) {
-			pmeFE = forceEnergiesPME[compoundId * MAX_COMPOUND_PARTICLES + particleId];
-		}
+	// These are temp, pushed into fromSuperclusters*
+	ForceEnergy* bonded = nullptr; // TODO: Also temp, not sure how i wanna proceed here..
+	ForceEnergy* pme = nullptr;
 
-		return forceEnergyFarneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyImmediateneighborShortrange[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ forceEnergyBonds[compoundId * MAX_COMPOUND_PARTICLES + particleId]
-			+ pmeFE;
-	}
-
-	// Compounds
-	ForceEnergy* forceEnergyFarneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyImmediateneighborShortrange = nullptr;
-	ForceEnergy* forceEnergyBonds = nullptr;
-	ForceEnergy* forceEnergiesPME = nullptr;
+	// Pushed to from pclusters
+	ForceEnergy* snf = nullptr;
 
 	// Bondgroups
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
-
-	// Tinymol
-	struct {
-		ForceEnergy* compoundsInteractions = nullptr;
-		ForceEnergy* solventsInteractions = nullptr;
-		ForceEnergy* bondgroupsInteractions = nullptr;
-		ForceEnergy* pmeInteraction = nullptr;
-	} solvents;
 };

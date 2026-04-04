@@ -2,7 +2,7 @@
 
 #include "Constants.h"
 #include "LimaTypes.cuh"
-
+#include <set>
 #include <memory>
 #include <vector>
 #include <array>
@@ -39,7 +39,7 @@ namespace Bondtypes {
 		SingleBond(std::array<uint8_t, 2> ids, const Parameters&);
 
 		Parameters params;
-		uint8_t atom_indexes[2] = { 0,0 };	// Relative to the compund
+		uint8_t idInBondgroup[2] = { 0,0 };	// Relative to the bondgroup
 		const static int nAtoms = 2;
 	};
 
@@ -135,33 +135,6 @@ namespace Bondtypes {
 	};
 }
 using namespace Bondtypes;
-// ------------------------------------------------- COMPOUNDS ------------------------------------------------- //
-
-
-
-
-
-
-
-struct CompoundCoords {
-	__device__ void loadData(const CompoundCoords& coords) {
-		if (threadIdx.x == 0) { origo = coords.origo; };
-		rel_positions[threadIdx.x] = coords.rel_positions[threadIdx.x];
-	}
-	
-	NodeIndex origo{};								// [nm]
-	Coord rel_positions[MAX_COMPOUND_PARTICLES];	// [nm]
-};
-
-
-
-
-// struct with data that only the solvent itself needs
-struct TinyMolParticleState {
-	Float3 vel_prev{};
-	Float3 force_prev{};
-	int tinymolTypeIndex = -1; // wrong place to have this
-};
 
 
 
@@ -173,62 +146,7 @@ struct TinyMolParticleState {
 
 
 
-
-
-
-
-
-
-
-
-
-// Instead of having a single key_particle and an single radius, we now have multiple
-struct CompoundInteractionBoundary {
-    static const int k = 2;
-
-	float radii[k];	// [nm]
-	int key_particle_indices[k];
-};
-
-struct alignas(4) CompoundCompact {
-	constexpr CompoundCompact() {}
-
-	alignas(4) uint8_t atom_types[MAX_COMPOUND_PARTICLES];
-	int n_particles = 0;
-
-#ifdef LIMAKERNELDEBUGMODE
-	uint32_t particle_global_ids[MAX_COMPOUND_PARTICLES];
-#endif
-
-
-	// Use this to quickly lookup wheter a bondedparticleslut exists with another compound
-	static const int max_bonded_compounds = 4 * 2 - 2;
-	int n_bonded_compounds = 0;
-
-	__device__ void loadMeta(const CompoundCompact* const compound) {
-		n_particles = compound->n_particles;
-		n_bonded_compounds = compound->n_bonded_compounds;
-	}
-
-	__device__ void loadData(const CompoundCompact* const compound) {
-		if (threadIdx.x < n_particles) {
-			atom_types[threadIdx.x] = compound->atom_types[threadIdx.x];
-
-			#ifdef LIMAKERNELDEBUGMODE
-			particle_global_ids[threadIdx.x] = compound->particle_global_ids[threadIdx.x];
-			#endif
-		}
-	}
-};
-
-
-struct CompoundInterimState {
-	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
-	Float3 forces_prev[MAX_COMPOUND_PARTICLES]; // [J/mol]
-	Float3 vels_prev[MAX_COMPOUND_PARTICLES];
-
-	Coord coords[MAX_COMPOUND_PARTICLES];
-};
+// ------------------------------------------------- Etc ------------------------------------------------- //
 
 
 
@@ -243,31 +161,15 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 	}
 };
 
-// Rather large unique structures in global memory, that can be partly loaded when needed
-struct Compound : public CompoundCompact {
-	CompoundInteractionBoundary interaction_boundary;
-	int centerparticle_index = -1;			// Index of particle initially closest to CoM
-
-	uint16_t bonded_compound_ids[max_bonded_compounds];	// *2-2because it should exclude itself from both sides
-    float atom_charges[MAX_COMPOUND_PARTICLES];	// [C/mol] - prolly move next to atomtypes to improve locality
-	// For drawing pretty spheres :)
-	char atomLetters[MAX_COMPOUND_PARTICLES];
-
-	float atomMasses[MAX_COMPOUND_PARTICLES];	// [kg/mol]
-
-	int absoluteIndexOfFirstParticle = 0;
-
-	struct BondgroupRefManager {
-		static const int maxBondgroupApperances = 4;
-		int nBondgroupApperances = 0;
-		BondgroupRef bondgroupApperances[maxBondgroupApperances];
-	} bondgroupReferences[MAX_COMPOUND_PARTICLES];
-};
-
 struct BondGroup {
 	struct ParticleRef {
-		int compoundId=0; // TODO: make uint16_t?
-		int localIdInCompound=0; // TODO: make uint16_t?
+		// TODO: REmove these 2!!
+		//int compoundId = 0; // TODO: make uint16_t?
+		//int localIdInCompound = 0; // TODO: make uint16_t?
+
+
+		int pcid;
+		int pid; // local to pcluster
 	};
 
 	static const int maxParticles = 64;
@@ -292,38 +194,12 @@ struct BondGroup {
 	int nImproperdihedralbonds = 0;
 };
 
-// TODO: OPTIM: THese should actually be cached in constant memory and accessed with a single id,
-// because most tinymols are identical, just with different positions
-struct BondgroupTinymol {
-	
-	static const int maxParticles = 4;
-	static const int maxSinglebonds = 4;
-	static const int maxAnglebonds = 4;
+struct NBParams {
+	float sigmaHalf = -1;		// [nm]
+	float epsilonSqrt = -1;		// [J/mol/nm]
+	float charge = 0;		// [kC/mol]
 
-	
-	//uint8_t particleIndicesRelativeToTinymol[maxParticles];
-	// All indices are relative to the tinymol, so add the tinymols indexOfFirstInSolventlblock when accessing particle pos
-	SingleBond singlebonds[maxSinglebonds];
-	AngleUreyBradleyBond anglebonds[maxAnglebonds];
-	int nParticles = 0;
-	int nSinglebonds = 0;
-	int nAnglebonds = 0;
-};
-
-
-
-struct ParticleReference {
-	// Used by moleculebuilder only
-	constexpr ParticleReference(int compound_id, int local_id_compound, uint8_t compoundid_local_to_bridge) :
-		compound_id(compound_id), local_id_compound(local_id_compound),
-		compoundid_local_to_bridge(compoundid_local_to_bridge) 
-	{}
-
-	int compound_id;	// global
-	int local_id_compound;	// id of particle
-	uint8_t compoundid_local_to_bridge = 255;
-
-	//int global_id = -1; // For debug
+	__host__ bool operator==(const NBParams& other) const = default;
 };
 
 // Precomputed values for pairs of atomtypes
@@ -347,24 +223,252 @@ struct ForceField_NB {
 	ParticleParameters particle_parameters[MAX_TYPES];
 };
 
-struct ForcefieldTinymol {
-    static const int MAX_TYPES = 16; // TODO OPTIM change to 4
 
-	// Can make mass and epsilon half
-	struct TinyMolType {
-		float sigmaHalf = -1;		// [nm]
-		float epsilonSqrt = -1;		// [J/mol/nm]
-		float mass = -1;		// [kg/mol]
-		float charge = -1;		// [kC/mol]
-	};
 
-	TinyMolType types[MAX_TYPES];
+
+// ------------------------------------------------- CLUSTERS ------------------------------------------------- //
+
+
+struct PData {
+	Float3 position;
+	NBParams params;
+	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
+
+	__host__ bool operator!=(const PData& other) const {
+		return position != other.position || params != other.params;
+	}
 };
 
-//struct PrecomputedSolventForcefield {
-//	NonbondedInteractionParams ljParams[3]; // [O-O, O-H, H-H]
-//	float chargeProducts[3]; // [O-O, O-H, H-H]
+struct BondgroupRefManager {
+	static const int maxBondgroupApperances = 4;
+	int nBondgroupApperances = 0;
+	BondgroupRef bondgroupApperances[maxBondgroupApperances];
+	__host__ void Add(const BondgroupRef& bgRef) {
+		if (nBondgroupApperances >= maxBondgroupApperances)
+			throw std::runtime_error("Too many bondgroup apperances for a particle, increase maxBondgroupApperances or check your clustering");
+		bondgroupApperances[nBondgroupApperances++] = bgRef;
+	}
+};
+
+struct PersistentCluster {
+	static const int maxParticles = 4;
+	PData pqd[maxParticles];
+
+	__host__ bool operator!=(const PersistentCluster& other) const {
+		for (int i = 0; i < maxParticles; i++) {
+			if (pqd[i] != other.pqd[i])
+				return true;
+		}
+		return false;
+	}
+};
+struct PersistentClusterMeta {
+	int particleIdsGlobal[PersistentCluster::maxParticles]={ -1, -1, -1, -1 };
+	float mass[PersistentCluster::maxParticles] = { 0,0,0,0 };		// [kg/mol]
+
+	char atomLetter[PersistentCluster::maxParticles]; // For rendering
+	bool isSolvent = false;
+	int nParticles = 0;
+
+	// I do not like this setup...
+	BondgroupRefManager bondgroupReferences[PersistentCluster::maxParticles];
+};
+
+struct PersistentclusterInterimState {
+	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
+	Float3 forces_prev[PersistentCluster::maxParticles]; // [J/mol]
+	Float3 vels_prev[PersistentCluster::maxParticles];
+	//Coord coords[PersistentCluster::nParticles];
+};
+
+template <int size>
+class StaticSet {	
+	int data[size]; // is sorted
+	static const int noVal = INT_MIN;
+public:
+	constexpr bool Contains(int value) const {
+		for (int i = 0; i < size; i++) {
+			if (data[i] == value)
+				return true;
+			if (data[i] > value || data[i] == noVal)
+				return false;
+		}
+		return false;
+	}
+
+	static std::vector<StaticSet> Create(const std::vector<std::set<int>>& sets) {
+		std::vector<StaticSet> result(sets.size());
+		for (int i= 0; i < sets.size(); i++) {
+			int j = 0;
+			for (int val : sets[i]) {
+				if (j >= size)
+					throw std::runtime_error("Too many values in set, increase size or check your clustering");
+				result[i].data[j++] = val;
+			}
+			for (; j < size; j++)
+				result[i].data[j] = noVal;
+		}
+		return result;
+	}
+};
+
+using ParticlesBondedToParticle = StaticSet<32>;
+using PclustersBondedToPcluster = StaticSet<32>;
+
+//struct PersistentCluster {
+//	ParticleQuickData pqd[4];
 //};
+
+
+
+
+class BoolMatrix16x16 {
+	uint16_t data[16]; // rowmajor
+
+public:
+	constexpr BoolMatrix16x16() {}
+	constexpr void Clear() {
+		for (int i = 0; i < 16; i++)
+			data[i] = 0;
+	}
+
+	constexpr static bool Get(const uint16_t& row, int col) {
+		return (row >> col) & 1;
+	}
+	template <typename T> constexpr static bool Get(const T& row, int col) = delete;
+
+	constexpr uint16_t GetRow(int row) const {
+		return data[row];
+	}
+
+	constexpr uint16_t SetRow(int row, uint16_t val) {
+		return data[row] = val;
+	}
+
+	constexpr uint16_t GetColumn(int col) const {
+		uint16_t out = 0;
+		for (int row = 0; row < 16; ++row)
+			out |= static_cast<uint16_t>(((data[row] >> col) & 1u) << row);
+		return out;
+	}
+
+	// TODO: Optim this with a SetRow
+	constexpr void Set(int row, int col, bool val) {
+		unsigned bit = 1u << col;
+		unsigned mask = -static_cast<unsigned>(val);  // 0xFFFFFFFF if val==1, else 0
+		unsigned old = data[row];
+
+		data[row] = (old & ~bit) | (mask & bit);
+		/*if (val)
+			data[row] |= (1 << col);
+		else
+			data[row] &= ~(1 << col);		*/
+	}
+
+	constexpr static void SetValueInRow(int col, uint16_t& rowData) {
+		rowData |= (1 << col);
+	}
+
+	__host__ void Print() const {
+		for (int r = 0; r < 16; r++) {
+			for (int c = 0; c < 16; c++) {
+				printf("%d ", Get(data[r], c) ? 1 : 0);
+			}
+			printf("\n");
+		}
+		printf("\n");
+	}
+};
+class NoMat {};// Needed as a nonlocal variant of the one above.
+
+
+struct SuperCluster {
+	//static const int maxPclusters = 4;
+	static const int maxParticles = 16;
+
+	//Float3 positions[nParticles];
+	PData pData[maxParticles];
+
+	__host__ bool operator!= (const SuperCluster& other) const {
+		for (int i = 0; i < maxParticles; i++) {
+			if (pData[i] != other.pData[i])
+				return true;
+		}
+		return false;
+	}
+};
+
+struct SuperClusterMeta {
+	// Set by clustering kernel
+	int _pclusterIds[SuperCluster::maxParticles];
+	int indexInPcluster[SuperCluster::maxParticles];
+	int globalParticleIds[SuperCluster::maxParticles];	
+	int uniquePclusterIds[SuperCluster::maxParticles];
+	int nUniquePcIds = 0;
+	int nParticles;
+
+	// Set by taskbuilder kernel
+	int resultsStartIndex; // TODO: Is int always safe here??
+	int nResults;
+	
+
+	//__host__ bool operator != (const SuperClusterMeta& other) const {
+	//	if (nUniquePcIds != other.nUniquePcIds || nParticles != other.nParticles || )
+	//		return true;
+
+
+	//	if (resultsStartIndex != other.resultsStartIndex ||
+	//		nResults != other.nResults)
+	//		return true;
+	//	for (int i = 0; i < SuperCluster::nPclusters; i++) {
+	//		if (pclusterIds[i] != other.pclusterIds[i])
+	//			return true;
+	//	}
+	//	return false;
+	//}
+};
+
+struct SCResult {
+	ForceEnergy fe[SuperCluster::maxParticles];
+
+	__host__ bool operator!=(const SCResult& other) const {
+		for (int i = 0; i < SuperCluster::maxParticles; i++) {
+			if (fe[i].force != other.fe[i].force ||
+				fe[i].potE != other.fe[i].potE)
+				return true;
+		}
+		return false;
+	}
+};
+
+struct ScScTask {
+	int scIds[2];
+	int resultIndices[2];
+	int nointeractionMatrixIndex = -1;
+
+	__host__ constexpr bool operator!=(const ScScTask& other) const {
+		for (int i = 0; i < 2; i++) {
+			if (scIds[i] != other.scIds[i])
+				return true;
+			if (resultIndices[i] != other.resultIndices[i])
+				return true;
+		}
+		return false;
+	}
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class UniformElectricField {

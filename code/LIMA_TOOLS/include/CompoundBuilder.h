@@ -65,6 +65,12 @@ struct ParticleToBridgeMapping {
 using ParticleToCompoundMap = std::vector<ParticleToCompoundMapping>;
 using ParticleToBridgeMap = std::vector<std::optional<ParticleToBridgeMapping>>;
 
+struct ParticleToPclusterMapping {
+	int pcid;
+	int pid; // pc local
+};
+using ParticleToPclusterMap = std::vector<ParticleToPclusterMapping>;
+
 namespace LIMA_MOLECULEBUILD {
 	class SuperTopology {
 
@@ -104,77 +110,13 @@ namespace LIMA_MOLECULEBUILD {
 	);
 }
 
-class CompoundFactory : public Compound, public CompoundInterimState {
-public:
-	CompoundFactory() {
-		memset(this, 0, sizeof(CompoundFactory));
-	}
 
-	void addParticle(const ParticleFactory&,int global_id, const Float3& boxlen_nm, BoundaryConditionSelect bc);
-
-	bool hasRoomForRes(int n_particles_in_res) const {
-		return ((int)n_particles + n_particles_in_res) <= MAX_COMPOUND_PARTICLES;
-	}
-
-	void addIdOfBondedCompound(int id);
-
-	void AddBondgroupReference(int particleId, const BondgroupRef& bgRef);
-
-	static void CalcCompoundMetaInfo(const Float3& boxlen_nm, std::vector<CompoundFactory>& compounds, BoundaryConditionSelect bc_select);
-
-
-	Float3 positions[MAX_COMPOUND_PARTICLES];	// Extern positions [nm]
-	int global_ids[MAX_COMPOUND_PARTICLES]{};		// For debug ddont like this TODO TODO DELETE
-
-	int indicesInGrofile[MAX_COMPOUND_PARTICLES];	// Temp prolly, used to map compounds atoms back to their index in grofile
-};
-
-//
-//struct BondgroupTinymolFactory {
-//	std::vector<SingleBondFactory> singlebonds;
-//	std::vector<AngleBondFactory> anglebonds;
-//	
-//	int nParticles = 0;
-//	int nSinglebonds = 0;
-//	int nAnglebonds = 0;
-//
-//	static std::vector<BondgroupTinymolFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-//		const std::vector<std::vector<int>>& tinymolParticlesIds);
-//};
-
-struct TinyMolFactory {
-	TinyMolFactory() {}
-	TinyMolFactory(std::span<const Float3> pos, std::span<const int> tinymolTypeIndices,
-		std::span<const std::string> _atomTypes, int nParticles, int firstParticleIdInGrofile,
-		std::span<const Float3> velocities, const BondgroupTinymol& bondgroup
-	) : 
-		nParticles(AllAtom ? nParticles : 1), firstParticleIdInGrofile(firstParticleIdInGrofile), bondgroup(AllAtom ? bondgroup : BondgroupTinymol{})
-	{
-		assert(pos.size() == nParticles);
-		for (int i = 0; i < nParticles; i++) {
-			positions[i] = pos[i];
-			states[i] = TinyMolParticleState{ velocities[i], Float3{}, tinymolTypeIndices[i] };
-			atomTypes[i] = _atomTypes[i]; // Debug only
-		}
-	}
-	std::array<Float3, BondgroupTinymol::maxParticles> positions;
-	std::array<TinyMolParticleState,BondgroupTinymol::maxParticles> states;
-    std::array<std::string,BondgroupTinymol::maxParticles> atomTypes; // Debug only
-
-	BondgroupTinymol bondgroup;
-
-	int nParticles = -1;
-	int firstParticleIdInGrofile = -1;
-
-	static std::vector<BondgroupTinymol> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-		const std::vector<std::vector<int>>& tinymolParticlesIds);
-};
 
 
 class BondGroupFactory : public BondGroup {
 
 	
-	void AddBondParticles(const ParticleToCompoundMap&, std::span<const int> globalIds);
+	void AddBondParticles(const ParticleToPclusterMap&, std::span<const int> globalIds);
 public:
 	BondGroupFactory() {}
 
@@ -182,17 +124,17 @@ public:
 
 	//void AddParticles(const std::span<const uint32_t>& particleIds);
 
-	void AddBond(const ParticleToCompoundMap&, const SingleBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const PairBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const AngleBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const DihedralBondFactory&);
-	void AddBond(const ParticleToCompoundMap&, const ImproperDihedralBondFactory&);
+	void AddBond(const ParticleToPclusterMap&, const SingleBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const PairBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const AngleBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const DihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
+	void AddBond(const ParticleToPclusterMap&, const ImproperDihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
 	
 	std::array<int, maxParticles> particleGlobalIds;
 	std::unordered_map<int, uint8_t> particleGlobalToLocalId;
 
 	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-		const std::vector<ParticleToCompoundMapping>& particlesToCompoundIdMap);
+		const ParticleToPclusterMap&, const PersistentCluster* pClusters);
 
 	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
 		const std::vector<BondGroupFactory>&, int nParticlesTotal);
@@ -203,24 +145,25 @@ public:
 
 
 // A translation unit between Gro file representation, and LIMA Box representation
-struct BoxImage {
-	const std::vector<CompoundFactory> compounds;
-	const int32_t total_compound_particles;
-
-	std::vector<BondedParticlesLUT> bpLutCollection;
-	
-	const std::vector<TinyMolFactory> solvent_positions;
+struct BoxImage {	
 
 	GroFile grofile;
 
 	const ForceField_NB forcefield;
 
-	const ForcefieldTinymol tinymolTypes;
 
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 
 	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
 
 	const std::vector<BondGroup> bondgroups;
+
+	// Clusters
+	std::vector<PersistentCluster> persistentClusters;
+	std::vector<PersistentClusterMeta> persistentClustersMetadata;
+	std::vector<std::set<int>> particleBondedToParticle;
+	std::vector<std::set<int>> pclusterBondedToPcluster;
+	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
+	int totalParticles = 0;
 };
  

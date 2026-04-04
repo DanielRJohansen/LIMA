@@ -15,10 +15,10 @@ namespace LimaForcecalc
 
 
 template <bool energyMinimize>
-__device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& pos_b, const SingleBond::Parameters& bondParams, Float3* results, float& potE, bool bridgekernel) {
+__device__ inline void calcSinglebondForces(const Float3& p0, const Float3& p1, const SingleBond::Parameters& bondParams, Float3* results, float& potE, bool bridgekernel, int id0=-1, int id1=-1) {
 	// Calculates bond force on both particles					
 	// Calculates forces as J/mol*M								
-	const Float3 difference = pos_a - pos_b;						// [nm]
+	const Float3 difference = p0 - p1;						// [nm]
 	const float error = difference.len() - bondParams.b0;				// [nm]
 
 	if constexpr (ENABLE_POTE) {
@@ -37,6 +37,13 @@ __device__ inline void calcSinglebondForces(const Float3& pos_a, const Float3& p
 	const Float3 dir = difference.norm();							// dif_unit_vec, but shares variable with dif
 	results[0] = dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
 	results[1] = -dir * force_scalar;								// [kg * nm / (mol*ls^2)] = [1/n N]
+
+	if constexpr (FORCE_CHECKS) {
+		//printf("p0 %d %f %f %f p1 %d %f %f %f dist %f\n", id0, p0.x, p0.y, p0.z, id1, p1.x, p1.y, p1.z, difference.len());
+		if (results[0].isNan()) {
+			printf("Singlebond produces NAN force: kb %f b0 %f dist %f\n", bondParams.kb, bondParams.b0, difference.len());
+		}
+	}
 
 #if defined LIMASAFEMODE
 	if (abs(error) > bondtype.b0/2.f || 0) {
@@ -104,9 +111,17 @@ __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3&
 		results[2] += -dir * force_scalar;
 
 
+		if constexpr (FORCE_CHECKS) {
+			if (results[0].isNan()) {
+				printf("Anglebond produces NAN force: kTheta %f theta0 %f distance %f\n", angletype.params.kTheta, angletype.params.theta0, difference.len());
+			}
+		}
 		//results[0] += -inward_force_direction1 * force_scalar;
 		//results[2] += -inward_force_direction2 * force_scalar;
 	}
+
+
+
 #if defined LIMASAFEMODE
 	if (results[0].len() > 0.1f) {
 		printf("\nAngleBond: angle %f [rad] error %f [rad] force %f t0 %f [rad] kt %f\n", angle, error, results[0].len(), angletype.theta_0, angletype.k_theta);
@@ -264,37 +279,18 @@ __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Flo
 }
 
 
-// ------------------------------------------------------------------------------------------- LJ Forces -------------------------------------------------------------------------------------------//
 
 
 
 
 
-
-
-
-
-
-
-
-__device__ inline void cudaAtomicAdd(Float3& target, const Float3& add) {
-	atomicAdd(&target.x, add.x);
-	atomicAdd(&target.y, add.y);
-	atomicAdd(&target.z, add.z);
-}
 
 // ------------------------------------------------------------ Forcecalc handlers ------------------------------------------------------------ //
 
 // only works if n threads >= n bonds
 template<bool energyMinimization>
-__device__ inline Float3 computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,
-	Float3* const forces_interim, float* const potentials_interim, float* const potE, int bridgekernel)
+__device__ inline void computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,	float4* const feInterrims, int bridgekernel)
 {
-	// First clear the buffer which will store the forces.
-	forces_interim[threadIdx.x] = Float3(0.f);
-	potentials_interim[threadIdx.x] = 0.f;
-	__syncthreads();
-
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_singlebonds; bond_offset++) {
 		const SingleBond* pb = nullptr;
 		Float3 forces[2] = { Float3{}, Float3{} };
@@ -305,41 +301,29 @@ __device__ inline Float3 computeSinglebondForces(const SingleBond* const singleb
 			pb = &singlebonds[bond_index];
 
 			LimaForcecalc::calcSinglebondForces<energyMinimization>(
-				positions[pb->atom_indexes[0]],
-				positions[pb->atom_indexes[1]],
+				positions[pb->idInBondgroup[0]],
+				positions[pb->idInBondgroup[1]],
 				pb->params,
 				forces,
 				potential,
-				bridgekernel
+				bridgekernel,
+				(int)pb->idInBondgroup[0],
+				(int)pb->idInBondgroup[1]
 			);
 		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && pb != nullptr) {
-				for (int i = 0; i < 2; i++) {
-					forces_interim[pb->atom_indexes[i]] += forces[i];
-					potentials_interim[pb->atom_indexes[i]] += potential * 0.5f;
-				}
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && pb != nullptr) {
+				feInterrims[pb->idInBondgroup[0]] = Add(feInterrims[pb->idInBondgroup[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential * 0.5f));
+				feInterrims[pb->idInBondgroup[1]] = Add(feInterrims[pb->idInBondgroup[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential * 0.5f));
 			}
 			__syncthreads();
 		}
 	}
-
-	*potE += potentials_interim[threadIdx.x];
-	const Float3 force = forces_interim[threadIdx.x];
-	__syncthreads();
-
-	return force;
 }
 
-__device__ inline Float3 computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,
-	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+__device__ inline void computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,	float4* const feInterrims)
 {
-	// First clear the buffer which will store the forces.
-	forces_interim[threadIdx.x] = Float3(0.f);
-	potentials_interim[threadIdx.x] = 0.f;
-	__syncthreads();
-
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_pairbonds; bond_offset++) {
 		const PairBond* pb = nullptr;
 		Float3 forces[2] = { Float3{}, Float3{} };
@@ -357,32 +341,18 @@ __device__ inline Float3 computePairbondForces(const PairBond* const pairbonds, 
 			forces[1] = -forceOnLeft;
 		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && pb != nullptr) {
-				for (int i = 0; i < 2; i++) {
-					forces_interim[pb->atom_indexes[i]] += forces[i];
-					potentials_interim[pb->atom_indexes[i]] += potential; // No *0.5f here, since LJ computes the pot per atom already;
-				}
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && pb != nullptr) {
+				feInterrims[pb->atom_indexes[0]] = Add(feInterrims[pb->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential)); // No *0.5f here, since LJ computes the pot per atom already;
+				feInterrims[pb->atom_indexes[1]] = Add(feInterrims[pb->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential));
 			}
 			__syncthreads();
 		}
 	}
-
-	*potE += potentials_interim[threadIdx.x];
-	const Float3 force = forces_interim[threadIdx.x];
-	__syncthreads();
-
-	return force;
 }
 
-__device__ inline Float3 computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions,
-	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+__device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions, float4* const feInterrims)
 {
-	// First clear the buffer which will store the forces.
-	forces_interim[threadIdx.x] = Float3(0.f);
-	potentials_interim[threadIdx.x] = 0.f;
-	__syncthreads();
-
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_anglebonds; bond_offset++) {
 		const AngleUreyBradleyBond* ab = nullptr;
 		Float3 forces[3] = { Float3{}, Float3{}, Float3{} };
@@ -403,33 +373,20 @@ __device__ inline Float3 computeAnglebondForces(const AngleUreyBradleyBond* cons
 		}
 
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && ab != nullptr) {
-				for (int i = 0; i < ab->nAtoms; i++) {
-					forces_interim[ab->atom_indexes[i]] += forces[i];
-					potentials_interim[ab->atom_indexes[i]] += potential / 3.f;
-				}
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && ab != nullptr) {
+				feInterrims[ab->atom_indexes[0]] = Add(feInterrims[ab->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential / 3.f));
+				feInterrims[ab->atom_indexes[1]] = Add(feInterrims[ab->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential / 3.f));
+				feInterrims[ab->atom_indexes[2]] = Add(feInterrims[ab->atom_indexes[2]], make_float4(forces[2].x, forces[2].y, forces[2].z, potential / 3.f));
 			}
 			__syncthreads();
 		}
 	}
-
-	*potE += potentials_interim[threadIdx.x];
-	const Float3 force = forces_interim[threadIdx.x];
-	__syncthreads();
-
-	return force;
 }
 
 
-__device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,
-	Float3* const forces_interim, float* const potentials_interim, float* const potE)
+__device__ inline void computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,	float4* const feInterrims)
 {
-	// First clear the buffer which will store the forces.
-	forces_interim[threadIdx.x] = Float3(0.f);
-	potentials_interim[threadIdx.x] = 0.f;
-	__syncthreads();
-
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_dihedrals; bond_offset++) {
 		const DihedralBond* db = nullptr;
 		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
@@ -447,42 +404,22 @@ __device__ inline Float3 computeDihedralForces(const DihedralBond* const dihedra
 				forces,
 				potential
 			);
-
-
 		}
 
-		for (int i = 0; i < blockDim.x; i++) {
-			if (threadIdx.x == i && db != nullptr) {
-				for (int i = 0; i < 4; i++) {
-					forces_interim[db->atom_indexes[i]] += forces[i];
-					potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
-				}
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && db != nullptr) {
+				feInterrims[db->atom_indexes[0]] = Add(feInterrims[db->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential * 0.25f));
+				feInterrims[db->atom_indexes[1]] = Add(feInterrims[db->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential * 0.25f));
+				feInterrims[db->atom_indexes[2]] = Add(feInterrims[db->atom_indexes[2]], make_float4(forces[2].x, forces[2].y, forces[2].z, potential * 0.25f));
+				feInterrims[db->atom_indexes[3]] = Add(feInterrims[db->atom_indexes[3]], make_float4(forces[3].x, forces[3].y, forces[3].z, potential * 0.25f));
 			}
 			__syncthreads();
 		}
 	}
-
-	*potE += potentials_interim[threadIdx.x];
-	const Float3 force = forces_interim[threadIdx.x];
-	__syncthreads();
-
-	//if (threadIdx.x == 0 )
-	//	for (int i = 0; i < blockDim.x; i++) 
-	//		printf("%f\n", potentials_interim[i]);
-
-	return force;
 }
 
-__device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,
-	Float3* const forces_interim, float* const potentials_interim, float* const potE)
-{
-	__syncthreads();
-
-	// First clear the buffer which will store the forces.
-	forces_interim[threadIdx.x] = Float3(0.f);
-	potentials_interim[threadIdx.x] = 0.f;
-	__syncthreads();
-
+__device__ inline void computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,	float4* const feInterrims)
+{	
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
 		const ImproperDihedralBond* db = nullptr;
 		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
@@ -502,33 +439,18 @@ __device__ inline Float3 computeImproperdihedralForces(const ImproperDihedralBon
 				forces,
 				potential
 			);
-
-			if constexpr (USE_ATOMICS_FOR_BONDS_RESULTS) {
-				for (int i = 0; i < db->nAtoms; i++) {
-					cudaAtomicAdd(forces_interim[db->atom_indexes[i]], forces[i]);
-					atomicAdd(&potentials_interim[db->atom_indexes[i]], potential * 0.25f);
-				}
-			}
 		}
 
-		if constexpr (!USE_ATOMICS_FOR_BONDS_RESULTS) {
-			for (int i = 0; i < blockDim.x; i++) {
-				if (threadIdx.x == i && db != nullptr) {
-					for (int i = 0; i < db->nAtoms; i++) {
-						forces_interim[db->atom_indexes[i]] += forces[i];
-						potentials_interim[db->atom_indexes[i]] += potential * 0.25f;
-					}
-				}
-				__syncthreads();
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && db != nullptr) {
+				feInterrims[db->atom_indexes[0]] = Add(feInterrims[db->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential * 0.25f));
+				feInterrims[db->atom_indexes[1]] = Add(feInterrims[db->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential * 0.25f));
+				feInterrims[db->atom_indexes[2]] = Add(feInterrims[db->atom_indexes[2]], make_float4(forces[2].x, forces[2].y, forces[2].z, potential * 0.25f));
+				feInterrims[db->atom_indexes[3]] = Add(feInterrims[db->atom_indexes[3]], make_float4(forces[3].x, forces[3].y, forces[3].z, potential * 0.25f));
 			}
+			__syncthreads();
 		}
 	}
-
-	*potE += potentials_interim[threadIdx.x];
-	const Float3 force = forces_interim[threadIdx.x];
-	__syncthreads();
-
-	return force;
 }
 
 

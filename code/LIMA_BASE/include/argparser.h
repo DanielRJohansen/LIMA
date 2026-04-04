@@ -129,10 +129,10 @@ public:
         flags[aliases[0]] = std::move(callback);
     }
 
-    void Parse(int argc, char** argv) {
+    void Parse(const std::vector<std::string>& inputArgs) {
         std::unordered_map<std::string, bool> seen;
-        for (int i = 2; i < argc; ++i) {
-            std::string key = argv[i];
+        for (int i = 2; i < inputArgs.size(); ++i) {
+            std::string key = inputArgs[i];
             if (!aliasMap.contains(key)) {
                 std::cerr << std::format("Unknown argument: {}\n", key);
                 std::cout << helpText;
@@ -149,8 +149,8 @@ public:
                 seen[name] = true;
                 std::vector<std::string> args;
                 int j = i + 1;
-                while (j < argc && argv[j][0] != '-') {
-                    args.emplace_back(argv[j++]);
+                while (j < inputArgs.size() && inputArgs[j][0] != '-') {
+                    args.emplace_back(inputArgs[j++]);
                 }
                 if (args.empty()) {
                     std::cerr << std::format("Argument {} expected a value\n", name);
@@ -171,6 +171,11 @@ public:
                 std::exit(1);
             }
         }
+    }
+
+    void Parse(int argc, char** argv) {
+        std::vector<std::string> inputArgs(argv, argv + argc);
+        Parse(inputArgs);
     }
 
 private:

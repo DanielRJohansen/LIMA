@@ -202,11 +202,11 @@ public:
 	struct ForcefieldInclude {
 		//ForcefieldInclude(const std::string& name, const fs::path& path) : name(name), path(path) {};
 		ForcefieldInclude(const fs::path& filename) : filename(filename) {};
-
+		
 		void SaveToDir(const fs::path& dir) const;
 		void AddEntry(TopologySection section, const std::string& entry);
 
-		const fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
+		fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
 		GenericItpFile contents;
 	};
 	struct MoleculeEntry {

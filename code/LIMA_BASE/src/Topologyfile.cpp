@@ -855,7 +855,10 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 //	}
 //}
 
-TopologyFile::TopologyFile() {}
+TopologyFile::TopologyFile() {
+	title = "My Topology file";
+	SetSystem("mysystem");
+}
 TopologyFile::TopologyFile(const fs::path& path) : path(path)
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
@@ -1037,12 +1040,20 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		file << "; " << title << "\n\n";
 
 		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
-		if (forcefieldInclude) {
-			forcefieldInclude.value().SaveToDir(path.parent_path());
-			file << ("#include \"forcefield.itp\"\n");
+		{
+			bool usesInternalForcefield = fs::exists(GetLimaDir() / "resources/forcefields" / forcefieldInclude->filename);
+		
+			if (forcefieldInclude) {
+				if (usesInternalForcefield) {
+					file << ("#include \"" + forcefieldInclude->filename.string() + "\"\n");
+				}
+				else {
+					forcefieldInclude.value().SaveToDir(path.parent_path());
+					file << ("#include \"forcefield.itp\"\n");
+				}
+				file << "\n";
+			}			
 		}
-		file << "\n";
-
 		for (const auto& [_, moleculetype] : moleculetypes) {
 			moleculetype->ToFile(path.parent_path());
 			file << "#include \"" << moleculetype->includePath.value_or(fs::path(moleculetype->name + ".itp")).string() << "\"\n";

@@ -8,7 +8,7 @@
 #include <numeric>
 #include <set>
 
-#include "Display.h"
+//#include "Display.h"
 using namespace LIMA_MOLECULEBUILD;
 using namespace LimaMoleculeGraph;
 

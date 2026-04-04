@@ -130,6 +130,15 @@ public:
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
+    void Expand(size_t byteSize) {
+        if (byteSize > currentSize) {
+            Resize(byteSize);
+        }
+    }
+    const size_t Capacity() const {
+		return currentSize;
+    }
+
     void SetData_FromCuda(const void* data, size_t byteSize) {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, bufferID);
         if (byteSize > currentSize) {

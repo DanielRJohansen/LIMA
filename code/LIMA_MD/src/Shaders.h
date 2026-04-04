@@ -497,11 +497,10 @@ void main() {
 
 public:
     SSBO renderAtomsBuffer{};
-    const int numAtomsReservedInRenderatomsBuffer;
 
     DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCudaResource, int2 windowSize)
-        : Shader(vertexShaderSource, fragmentShaderSource),
-        numAtomsReservedInRenderatomsBuffer(numAtoms)
+        : Shader(vertexShaderSource, fragmentShaderSource)
+      //  numAtomsReservedInRenderatomsBuffer(numAtoms)
     {
         // Minimal VAO: required in core profile even when using only gl_VertexID.
         glGenVertexArrays(1, &vao);
@@ -509,7 +508,7 @@ public:
         glBindVertexArray(0);
 
         // Allocate SSBO storage always (CUDA or not)
-        renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
+        //renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
 
         if constexpr (isCUDA) {
             cudaGraphicsGLRegisterBuffer(renderAtomsBufferCudaResource,
@@ -569,9 +568,11 @@ public:
 
     // Normal render pass: does NOT touch your picking FBO.
     void Draw(const glm::mat4& view, const glm::mat4& projection, int nAtoms) {
-        if (nAtoms > numAtomsReservedInRenderatomsBuffer) {
+        /*if (nAtoms > numAtomsReservedInRenderatomsBuffer) {
             throw std::runtime_error("DrawToScreen: nAtoms exceeds reserved SSBO capacity.");
-        }
+        }*/
+
+        renderAtomsBuffer.Expand(sizeof(RenderAtom) * nAtoms);
 
         use();
         renderAtomsBuffer.Bind(0);
@@ -596,7 +597,7 @@ public:
         if (!framebuffer || !atomIdTexture) {
             throw std::runtime_error("DrawPicking: framebuffer not initialized.");
         }
-        if (prevNAtoms > numAtomsReservedInRenderatomsBuffer) {
+        if (prevNAtoms * sizeof(RenderAtom) > renderAtomsBuffer.Capacity()) {
             throw std::runtime_error("DrawPicking: nAtoms exceeds reserved SSBO capacity.");
         }
 

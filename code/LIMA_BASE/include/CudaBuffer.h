@@ -8,6 +8,7 @@ class CudaBuffer {
 
 public:
 	CudaBuffer() {}
+	CudaBuffer(const CudaBuffer& other) = delete;
 	~CudaBuffer() {
 		if (devicePtr)
 			cudaFree(devicePtr);
@@ -15,7 +16,7 @@ public:
 	T* Get() const {
 		return devicePtr;
 	}
-	void Expand(size_t requiredSize, std::optional<double> margin) {
+	void Expand(size_t requiredSize, std::optional<double> margin=std::nullopt) {
 		if (requiredSize <= size)
 			return;
 

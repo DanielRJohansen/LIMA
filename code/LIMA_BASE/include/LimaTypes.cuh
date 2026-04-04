@@ -12,6 +12,8 @@
 #include "Constants.h"
 
 #include <array>
+#include <ranges>
+//#include <generator>
 
 // TODO: EASY: LARGE: Its a huge waste that the boxsize is a Int3, when it really should be a packed into a single 32 bit DWORD..
 // 1024 nm boxsize is a reasonable limitation. However we cant use the same type for PME grid obviously
@@ -461,13 +463,27 @@ struct BoundingBox {
 		: min(min), max(max) {}
 
 	constexpr BoundingBox(const std::vector<Float3>& points);
-
+	//BoundingBox(std::generator<Float3> generator); 
+	BoundingBox(std::ranges::input_range auto&& range) {
+		min = Float3{ std::numeric_limits<float>::max() };
+		max = Float3{ std::numeric_limits<float>::min() };
+		for (const Float3& p : range) {
+			min.x = std::min(min.x, p.x);
+			min.y = std::min(min.y, p.y);
+			min.z = std::min(min.z, p.z);
+			max.x = std::max(max.x, p.x);
+			max.y = std::max(max.y, p.y);
+			max.z = std::max(max.z, p.z);
+		}
+	}
 	Float3 min, max;
 
 	constexpr Float3 Center() const {
 		return (min + max) * 0.5f;
 	}
-
+	constexpr Float3 Dimensions() const {
+		return max - min;
+	}
 	constexpr bool intersects(BoundingBox b) const {
 		return
 			min.x <= b.max.x && max.x >= b.min.x &&

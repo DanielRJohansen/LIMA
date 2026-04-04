@@ -36,8 +36,8 @@ namespace NeighborList{struct IdAndRelshift;}
 
 
 struct RunStatus {
-	Float3* most_recent_positions = nullptr;
-	int64_t stepForMostRecentData = 0;
+	Float3* most_recent_positions = nullptr; // TODO: Refactor this out
+	int64_t stepForMostRecentData = -1;
 	int current_step = 0;
 	float current_temperature = NAN;
 	float greatestForce = NAN; // measured in a single particle
@@ -49,7 +49,7 @@ struct RunStatus {
 
 class Engine {
 public:
-	Engine(std::unique_ptr<Simulation>, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
+	Engine(Simulation*, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
 	~Engine();
 
 	void step();
@@ -60,7 +60,7 @@ public:
 	void runAsync(std::unique_ptr<Simulation>, RunStatus& runstatus);
 
 
-	std::unique_ptr<Simulation> takeBackSim();
+	void CopySimulationToHost();
 
 
 	volatile RunStatus runstatus;
@@ -70,6 +70,14 @@ public:
 	SimulationDevice* getSimDev() { return sim_dev; }
 
 	static bool TestAlgorithms();
+
+	// Offloads current pcluster state to another (existing) device buffer, and returns a reference to that
+	// 1. This ensure that this funciton is rather quick, and the caller can continue sim immediately after this
+	// kernel, and do copytohost async afterwards
+	// 2. We return a reference to an existing buffer, so we wont have to allocate mem each time!
+	CudaBuffer<PersistentCluster>& OffloadPclusterState();
+	// TODO: Make another version of the func above, that does the copy-to-host-part async, and can reuse
+	// the host memory..
 
 private:
 
@@ -105,7 +113,7 @@ private:
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
 	uint64_t step_at_last_traj_transfer = 0;
-	std::unique_ptr<Simulation> simulation;
+	Simulation* simulation;
 
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
@@ -147,7 +155,8 @@ private:
 
 	const BoundaryConditionSelect bc_select;
 
-
+	// Available to be copied to, while sim is running
+	CudaBuffer<PersistentCluster> pdataCopyBuffer; 
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();

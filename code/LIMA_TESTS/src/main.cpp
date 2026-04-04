@@ -43,9 +43,19 @@ void TestDisplayT4() {
 	display.Render(std::make_unique<Rendering::SimulationTask>(positions.data(), box->persistentClusters, box->persistentClustersMetadata, box->boxparams, "", Atomname), true);
 }
 
+void LiveEditTest() {
+	Environment env({R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)"}, EnvMode::Full);
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(10.f));
+	env.CreateSimulation(grofile, topfile, simparams);
+	// TODO: Pre-load insertmolecule command here
+	env.LiveEdit(grofile, topfile);
+}
+
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+
+		LiveEditTest();
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
 
@@ -124,7 +134,7 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
-		Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		//Benchmarks::Psome(envmode);

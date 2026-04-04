@@ -10,6 +10,8 @@
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 #include "UpgradeableFileFormat.h"
+#include "SimulationBuilder.h"
+#include "MoleculeUtils.h"
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -78,24 +80,39 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 }
 
 
-void Environment::createSimulationFiles(float boxlen) {
+std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(Float3 boxlen) {
 	GroFile grofile{};
-	grofile.m_path = work_dir / "molecule/conf.gro";
+	grofile.m_path = work_dir / "conf.gro";
 	grofile.box_size = Float3{ boxlen };
 	grofile.printToFile();
 
 	TopologyFile topfile{};
-	topfile.path = work_dir / "molecule/topol.top";
+	topfile.path = work_dir / "topol.top";
+	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	topfile.printToFile();
+	topfile = TopologyFile{work_dir / "topol.top"}; // Reload the topfile to parse the ffinclude
+
 
 	SimParams simparams{};
 	simparams.dumpToFile(work_dir / "sim_params.txt");
+
+	return { grofile, topfile, simparams };
 }
 
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
 	if (simulation->simparams_host.cutoff_nm != 1.2f) {// TODO: DANGER
 		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
 	}
+}
+
+fs::path Environment::FixPath(const fs::path& path) const {
+	if (path.is_absolute())
+		return path;
+	if (fs::exists(work_dir / path))
+		return work_dir / path;
+	if (fs::exists( "./" / path))
+		return "./" / path;
+	return path;
 }
 
 void Environment::verifyBox() {
@@ -142,17 +159,12 @@ bool Environment::prepareForRun() {
 
 	avgStepTimes.reserve((simulation->simparams_host.n_steps + 1) / STEPS_PER_UPDATE);
 
-	// TEMP, this is a bad solution ?? TODO NOW
-	//this->compounds = simulation->box_host->compounds;
-	this->pClusters = simulation->box_host->persistentClusters;
-	this->pClusterMeta = simulation->box_host->persistentClustersMetadata;
-
-	boxparams = simulation->box_host->boxparams;
+	//boxparams = simulation->box_host->boxparams;
 	coloringMethod = simulation->simparams_host.coloring_method;
 
 
 	engine = std::make_unique<Engine>(
-		std::move(simulation),
+		simulation.get(),
 		simulation->simparams_host.bc_select,
 		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
 
@@ -191,7 +203,7 @@ std::chrono::duration<double> Environment::run() {
     auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(boxparams, display.get(), emVariant, stepwise)) {
+		if (!handleDisplay(simulation->box_host->boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
@@ -214,7 +226,7 @@ std::chrono::duration<double> Environment::run() {
 	// Transfers the remaining traj data and more
 	engine->terminateSimulation();
 
-	simulation = engine->takeBackSim();
+	//simulation = engine->takeBackSim();
 	simparamsCopy.reset();
 
 	simulation->finished = true;
@@ -225,6 +237,111 @@ std::chrono::duration<double> Environment::run() {
 
 	engineTime = t1 - t0;
     return t1-t0;
+}
+
+
+
+void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd) {
+	insertionCmd.groPath = FixPath(insertionCmd.groPath);
+	insertionCmd.topPath = FixPath(insertionCmd.topPath);
+
+	// First load the new data
+	GroFile newmolGro(insertionCmd.groPath);	
+	auto newmolTop = std::make_shared<TopologyFile>(insertionCmd.topPath);
+	MoleculeUtils::CenterMolecule(newmolGro, newmolTop->GetMoleculeType());	// Make molecule whole
+
+	BoundingBox newmolBb(newmolGro.atoms | std::views::transform([](auto& a) { return a.position; }));
+
+
+	// Save the current state to current files
+	WriteBoxCoordinatesToFile(grofile);	
+	Float3 defaultInsertSite = Float3{ grofile.box_size.x / 2, grofile.box_size.y / 2, grofile.box_size.z - (newmolBb.Dimensions().z / 2.f) }; 
+	Float3 insertionPosition = insertionCmd.position.value_or(defaultInsertSite);
+
+	engine.reset(); // Kill the engine, since it holds a pointer to the sim which we will now change under it. We will make a new engine after creating the new sim
+	SimulationBuilder::InsertSubmoleculeInSimulation(grofile, topfile, newmolGro, newmolTop, insertionPosition);
+	SimParams params{};
+	params.n_steps = 0;
+	CreateSimulation(grofile, topfile, params);
+	//SimulationBuilder
+	//FileUtils::mer
+	//MDFiles::
+}
+
+void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCluster>& pcBuffer, int nPclusters) {
+	dst.resize(nPclusters * PersistentCluster::maxParticles);
+	std::vector<PersistentCluster> pcHost = GenericCopyToHost(pcBuffer.Get(), nPclusters); // TODO: Reuse mem here somehow, this'll be slow..
+	for (int pcId = 0; pcId < nPclusters; pcId++) {
+		const PersistentCluster& pc = pcHost[pcId];
+		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
+			dst[pcId * PersistentCluster::maxParticles + pid] = pc.pqd[pid].position;
+		}
+	}
+}
+
+void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
+	std::unique_ptr<Display> display = nullptr;
+
+	simulation->simparams_host.n_steps = 0;
+
+	display = std::make_unique<Display>();
+	display->WaitForDisplayReady();	
+
+	bool shouldExit = false;
+	std::vector<Float3> positionData;
+	bool shouldUpdateRender = true;
+
+	while (true) {
+		if (shouldExit) {
+			break;
+		}
+
+		if (display->DisplaySelfTerminated()) {
+			break;
+		}
+
+		// Poll interface for new commands, and execute if any		
+		if (auto newCmd = display->GetLiveEditCommand()) {
+			std::visit(
+				[&](auto&& cmd) {
+					using T = std::decay_t<decltype(cmd)>;
+
+					if constexpr (std::is_same_v<T, LiveEdit::Invalid>) {
+						return;
+					}
+					else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
+						InsertMolecule(grofile, topfile, cmd);
+					}
+				},
+				*newCmd
+			);
+		}
+
+		// Decide if engine should run, if so new params?
+
+		// Run engine
+		if (!engine && simulation->box_host->boxparams.totalParticles > 0) {
+			engine = std::make_unique<Engine>(
+				simulation.get(),
+				simulation->simparams_host.bc_select,
+				std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
+
+			 auto& pcBuffer = engine->OffloadPclusterState();
+			 GatherPositionsIntoVector(positionData, pcBuffer, simulation->box_host->persistentClusters.size());
+			 shouldUpdateRender = true;
+		}
+		if (engine) {
+			// Add step logic here
+			//shouldUpdateRender = true;
+		}
+
+		if (shouldUpdateRender) {
+			display->Render(std::make_unique<Rendering::SimulationTask>(
+				positionData.data(), simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, "", coloringMethod, simStatus
+			), false);
+			shouldUpdateRender = false;
+		}
+	}
 }
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
@@ -385,20 +502,22 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 		std::rethrow_exception(displayException);
 	}
 
-	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {		
+	int64_t stepForMostRecentData = engine ? engine->runstatus.stepForMostRecentData : -1;
+	Float3* renderPositions = engine ? engine->runstatus.most_recent_positions : nullptr;
+	std::string info{};
 
-		const std::string info = emVariant
+	if (engine) {
+		info = emVariant
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
+	}
 
-		/*display->Render(std::make_unique<Rendering::SimulationTask>(
-			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
-		), stepwise);*/
+	if (stepForMostRecentData > step_at_last_render) {
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			engine->runstatus.most_recent_positions, pClusters, pClusterMeta, boxparams, info, coloringMethod, simStatus
+			renderPositions, simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, boxparams, info, coloringMethod, simStatus
 		), stepwise);
-		step_at_last_render = engine->runstatus.current_step;
-		engine->runstatus.most_recent_positions = nullptr;
+		step_at_last_render = stepForMostRecentData;
+		//engine->runstatus.most_recent_positions = nullptr;
 	}
 
 	return !display->DisplaySelfTerminated();

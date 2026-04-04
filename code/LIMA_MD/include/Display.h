@@ -5,6 +5,7 @@
 #include "Utilities.h"
 #include "MoleculeHull.cuh"
 #include "filesystem"
+#include "LiveEditCommands.h"
 
 #include <chrono>
 #include <string>
@@ -13,6 +14,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <set>
+#include <deque>
 
 class DrawBoxOutlineShader;
 class DrawTrianglesShader;
@@ -57,7 +59,7 @@ namespace Rendering {
 		const BoxParams boxparams;
 
 		const std::string siminfo; // Will be output in the window header
-		ColoringMethod coloringMethod;
+		ColoringMethod coloringMethod{};
 		SimStatus simStatus;
 	};
 
@@ -77,10 +79,28 @@ namespace Rendering {
 	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
 }
 
-
 struct RenderSettings {
 	bool showSolvents = true;
 };
+
+class Overlay {
+	bool didDrawThisFrame = false;
+
+	void HandleConsole();
+
+public:
+	std::mutex consoleMutex;
+	std::deque<std::string> submittedCommands;// If we ever access from other than renderthread, well need a mutex`
+
+	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
+	~Overlay();
+
+	void Draw(RenderSettings&, const SimStatus&, int fps);
+	void Render();
+};
+
+
+
 
 class Display {
 public:
@@ -106,6 +126,8 @@ public:
 		Display d;
 		d.Render(std::make_unique<Rendering::GrofileTask>(grofile, drawSolvent), true);
 	}
+
+	std::optional<LiveEdit::Command> GetLiveEditCommand();
 
 private:
 	// The renderThread will be spawned during construction, and run this indefinitely
@@ -165,6 +187,7 @@ private:
 	std::condition_variable cv_;
 	bool setupCompleted = false;
 
+	std::unique_ptr<Overlay> overlay;
 	Camera camera;
 
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
@@ -179,12 +202,3 @@ private:
 };
 
 
-class Overlay {
-	bool didDrawThisFrame = false;
-public:
-	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
-	~Overlay();
-
-	void Draw(RenderSettings&, const SimStatus&, int fps);
-	void Render();
-};

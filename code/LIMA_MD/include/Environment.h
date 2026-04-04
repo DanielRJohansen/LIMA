@@ -5,6 +5,7 @@
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "Trajectory.h"
+#include "LiveEditCommands.h"
 
 #include <memory>
 #include <chrono>
@@ -40,20 +41,35 @@ public:
 	// The basic createSim
 	void CreateSimulation(const GroFile&, const TopologyFile&, const SimParams&);
 
-
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
 	void CreateSimulation(Simulation& simulation_src, SimParams);
 
 	/// <summary>
-	/// Create .gro .top and simparams.txt files in the current directory
+	/// Create .gro .top and simparams.txt files in the current directory, and returns them in memory for optional use
 	/// </summary>
-	void createSimulationFiles(float boxlen);
+	std::tuple<GroFile, TopologyFile, SimParams> CreateSimulationFiles(Float3 boxlen);
 
 	// Run a standard MD sim
     /// <returns>Elapsed Engine time in seconds</returns>
     std::chrono::duration<double> run();
+
+
+
+	////////////////// LIVE EDIT //////////////////
+
+	/// <summary>
+	/// A mode where the user can continously give inputs to the program
+	/// </summary>
+	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
+	void InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd);
+
+
+	////////////////// ////////////////// ////////////////// 
+
+
+
 
 	/// <summary>
 	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
@@ -72,7 +88,7 @@ public:
 
 	void RenderSimulation();
 	
-	
+
 	
 	
 	void renderTrajectory(std::string trj_path);
@@ -101,6 +117,8 @@ public:
 	bool prepareForRun();
 private:
 
+	fs::path FixPath(const fs::path& path) const;
+
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
@@ -128,13 +146,13 @@ private:
 	std::unique_ptr<Simulation> simulation;
 	std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
 
-	ColoringMethod coloringMethod;	// Not ideal to have here..
+	ColoringMethod coloringMethod{};	// Not ideal to have here..
 
 	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
 	//std::vector<Compound> compounds;
-	BoxParams boxparams;
-	std::vector<PersistentCluster> pClusters;
-	std::vector<PersistentClusterMeta> pClusterMeta;
+	//BoxParams boxparams;
+	/*std::vector<PersistentCluster> pClusters;
+	std::vector<PersistentClusterMeta> pClusterMeta;*/
 
 	std::unique_ptr<BoxImage> boximage;
 

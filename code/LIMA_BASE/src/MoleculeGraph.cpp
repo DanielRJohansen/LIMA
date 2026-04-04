@@ -80,7 +80,7 @@ MoleculeGraph::MoleculeGraph(const std::vector<std::pair<int, std::string>>& ato
 	}
 
 	nodes.insert(temp_nodes.begin(), temp_nodes.end());
-	root = &nodes.at(temp_nodes[0].first);
+	root = temp_nodes.empty() ? nullptr : & nodes.at(temp_nodes[0].first);
 	
 	for (const auto& edge : edges) {
 		connectNodes(edge[0], edge[1]);

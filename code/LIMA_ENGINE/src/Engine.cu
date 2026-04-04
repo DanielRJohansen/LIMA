@@ -27,12 +27,12 @@
 #include "SuperClusterTaskBuilder.cuh"
 
 
-Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
+Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc, std::unique_ptr<LimaLogger> logger)
 	: bc_select(bc)
 	, m_logger(std::move(logger))
 	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box_host->bondgroups.size(), _sim->box_host->boxparams.totalParticles, _sim->box_host->persistentClusters.size()))
 {
-	simulation = std::move(_sim);
+	simulation = _sim;
 
     verifyEngine();
 
@@ -83,9 +83,6 @@ Engine::Engine(std::unique_ptr<Simulation> _sim, BoundaryConditionSelect bc, std
 
 	nlistController = std::make_unique<NeighborList::Controller>(boxparams);
 			
-
-
-
 
 	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
 	bootstrapTrajbufferWithCoords();
@@ -272,6 +269,12 @@ void Engine::offloadTrainData() {
 #endif
 }
 
+//
+CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState() {
+	pdataCopyBuffer.Expand(simulation->box_host->persistentClusters.size());
+	cudaMemcpy(pdataCopyBuffer.Get(), pClusterDevice, sizeof(PersistentCluster) * simulation->box_host->persistentClusters.size(), cudaMemcpyDeviceToDevice);
+	return pdataCopyBuffer;
+}
 
 void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;

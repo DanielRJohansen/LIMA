@@ -127,8 +127,8 @@ void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
     if (!drawTrianglesShader)
         drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 
-    if (!drawAtomsFromCudaShader || drawAtomsFromCudaShader->numAtomsReservedInRenderatomsBuffer < task.molCollection.nParticles)
-        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource, windowSize);
+    /*if (!drawAtomsFromCudaShader || drawAtomsFromCudaShader->numAtomsReservedInRenderatomsBuffer < task.molCollection.nParticles)
+        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource, windowSize);*/
 
     if (!drawNormalsShader)
         drawNormalsShader = std::make_unique<DrawNormalsShader>();

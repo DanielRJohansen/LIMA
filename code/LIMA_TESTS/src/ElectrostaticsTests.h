@@ -111,7 +111,7 @@ namespace ElectrostaticsTests {
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
 		Environment env(simulations_dir / dirName, EnvMode::Headless);
 
-		env.createSimulationFiles(boxLen);
+		env.CreateSimulationFiles(Float3{ boxLen });
 
 		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		for (const auto& atom : atomsSelection) {

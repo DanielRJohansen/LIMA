@@ -6,27 +6,28 @@
 #include "Display.h"
 #include "filesystem"
 
+#include <deque>
+#include <string>
+#include <cstdio>
+#include <format>
 
-static void RightAlignedField(const std::string& label,
+
+void RightAlignedField(const std::string& label,
     const std::string& value,
     const std::string& unit,
     const std::string& maxPattern)
 {
-    // Label
     ImGui::Text("%s", label.c_str());
     ImGui::SameLine();
 
-    // Width calculations
     const ImVec2 maxWidth = ImGui::CalcTextSize(maxPattern.c_str());
     const ImVec2 valWidth = ImGui::CalcTextSize(value.c_str());
 
     float pad = maxWidth.x - valWidth.x;
     if (pad < 0.f) pad = 0.f;
 
-    // pad to right-align
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
 
-    // Value + optional unit
     if (unit.empty()) {
         ImGui::Text("%s ", value.c_str());
     }
@@ -34,34 +35,68 @@ static void RightAlignedField(const std::string& label,
         ImGui::Text("%s %s ", value.c_str(), unit.c_str());
     }
 
-    ImGui::SameLine();   // keep next field on same row
+    ImGui::SameLine();
 }
 
+static std::deque<std::string>& ConsoleLines()
+{
+    static std::deque<std::string> lines;
+    return lines;
+}
+
+char* ConsoleInputBuffer()
+{
+    static char buffer[512] = "";
+    return buffer;
+}
+
+constexpr const char* ConsolePrompt()
+{
+    return "> ";
+}
+
+std::string SubmitConsoleInput()
+{
+    char* buffer = ConsoleInputBuffer();
+    if (buffer[0] == '\0')
+        return "";
+
+    auto& lines = ConsoleLines();
+    lines.emplace_back(std::format("{}{}", ConsolePrompt(), buffer));
+    if (lines.size() > 2)
+        lines.pop_front();
+	std::string inputText(buffer);
 
 
+    //std::printf("[OverlayConsole] %s\n", buffer);
+    buffer[0] = '\0';
+	return inputText;
+}
 
-
-
-
-
+int TerminalInputCallback(ImGuiInputTextCallbackData* data)
+{
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+        return 0;
+    }
+    return 0;
+}
 
 Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir) {
-    // Setup imgui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.Fonts->AddFontFromFileTTF(
-		(limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
+        (limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
         22.0f
     );
-	io.IniFilename = nullptr; // disable imgui.ini creation
+    io.IniFilename = nullptr; // disable imgui.ini creation
 
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
-
 }
+
 Overlay::~Overlay() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -93,14 +128,8 @@ void DrawTopBar(const SimStatus& status, int fps) {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(14, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
 
-    RightAlignedField(
-        "Step",
-        std::to_string(status.step),
-        "",
-        "999999999"   // width reference
-    );
+    RightAlignedField("Step", std::to_string(status.step), "", "999999999");
 
-    // Temperature
     if (status.temperature) {
         RightAlignedField(
             "Temp",
@@ -110,7 +139,6 @@ void DrawTopBar(const SimStatus& status, int fps) {
         );
     }
 
-    // Max force
     if (status.maxForce) {
         RightAlignedField(
             "MaxF",
@@ -120,13 +148,13 @@ void DrawTopBar(const SimStatus& status, int fps) {
         );
     }
 
-    // Performance
     RightAlignedField(
         "Performance",
         std::format("{:.3f}", status.avgStepTime),
         "[ms/step]",
         "999.999"
     );
+
     if (status.simulationPerformance) {
         RightAlignedField(
             "",
@@ -140,16 +168,82 @@ void DrawTopBar(const SimStatus& status, int fps) {
     RightAlignedField("FPS", std::to_string(fps), "", "9999");
 #endif
 
-
     ImGui::PopStyleVar(2);
     ImGui::End();
 
-    ImGui::PopStyleVar(2); // rounding + border size
-    ImGui::PopStyleColor(); // bg
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+}
+
+void Overlay::HandleConsole()
+{
+    constexpr float bottomBarHeight = 50.0f;
+    constexpr float consoleHeight = 100.0f;
+
+    const ImVec2 winSize = ImGui::GetIO().DisplaySize;
+
+    ImGui::SetNextWindowPos(ImVec2(0, winSize.y - bottomBarHeight - consoleHeight));
+    ImGui::SetNextWindowSize(ImVec2(winSize.x, consoleHeight));
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar
+        | ImGuiWindowFlags_NoResize
+        | ImGuiWindowFlags_NoMove
+        | ImGuiWindowFlags_NoCollapse
+        | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoBringToFrontOnFocus
+        | ImGuiWindowFlags_NoScrollbar;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.05f, 0.05f, 0.06f, 0.97f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.05f, 0.05f, 0.06f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+
+    ImGui::Begin("OverlayConsole", nullptr, flags);
+
+    auto& lines = ConsoleLines();
+    char* inputBuffer = ConsoleInputBuffer();
+
+    for (const std::string& line : lines) {
+        ImGui::TextUnformatted(line.c_str());
+    }
+
+    ImGui::TextUnformatted(ConsolePrompt());
+    ImGui::SameLine(0.0f, 0.0f);
+
+    ImGui::PushItemWidth(-1.0f);
+    const bool submitted = ImGui::InputText(
+        "##TerminalInput",
+        inputBuffer,
+        512,
+        ImGuiInputTextFlags_EnterReturnsTrue
+        | ImGuiInputTextFlags_CallbackHistory,
+        TerminalInputCallback
+    );
+    ImGui::PopItemWidth();
+
+    if (ImGui::IsWindowAppearing()) {
+        ImGui::SetKeyboardFocusHere(-1);
+    }
+
+    if (submitted) {
+        std::string submittedCommand = SubmitConsoleInput();
+		std::lock_guard<std::mutex> lock(consoleMutex);
+		submittedCommands.push_back(submittedCommand);
+        ImGui::SetKeyboardFocusHere(-1);
+    }
+
+    ImGui::SetScrollHereY(1.0f);
+
+    ImGui::End();
+
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(3);
 }
 
 void DrawBottomBar(RenderSettings& renderSettings) {
-
     float barHeight = 50.0f;
     ImVec2 winSize = ImGui::GetIO().DisplaySize;
 
@@ -174,9 +268,6 @@ void DrawBottomBar(RenderSettings& renderSettings) {
 
     ImGui::Checkbox("Show solvents", &renderSettings.showSolvents);
     ImGui::SameLine();
-    //ImGui::Checkbox("Render facets", &renderSettings.renderFacets);
-    //ImGui::SameLine();
-    //ImGui::Checkbox("Render normals", &renderSettings.renderFacetNormals);
 
     ImGui::End();
 
@@ -189,16 +280,16 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-	DrawTopBar(simstatus, fps);
+    DrawTopBar(simstatus, fps);
+    HandleConsole();
     DrawBottomBar(renderSettings);
-	didDrawThisFrame = true;
+    didDrawThisFrame = true;
 }
-
 
 void Overlay::Render() {
     if (!didDrawThisFrame)
         return;
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-	didDrawThisFrame = false;
+    didDrawThisFrame = false;
 }

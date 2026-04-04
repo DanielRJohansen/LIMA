@@ -456,8 +456,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 }
 
 void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-	const GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter)
+	GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter)
 {
+	MoleculeUtils::CenterMolecule(submolGro, submolTop->GetMoleculeType());
 	const Float3 molCenter = MoleculeUtils::GeometricCenter(submolGro);
 
 	std::function<void(Float3&)> position_transform = [&](Float3& pos) {

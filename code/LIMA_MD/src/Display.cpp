@@ -146,6 +146,7 @@ void Display::Setup() {
         }
         });
 
+    overlay = std::make_unique<Overlay>(window, FileUtils::GetLimaDir());
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -208,8 +209,7 @@ void Display::PrepareTask(Task& task) {
 
 void Display::Mainloop() {
     Rendering::Task currentRenderTask = nullptr;
-
-    Overlay overlay{window, FileUtils::GetLimaDir()};
+    
     TimeIt frameTime{};
 
     while (!kill) {
@@ -224,13 +224,12 @@ void Display::Mainloop() {
         // Check if new data
         bool newData = false;
         {
-            incomingRenderTaskMutex.lock();
+			std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);            
             if (!std::holds_alternative<void*>(incomingRenderTask)) {
                 currentRenderTask = std::move(incomingRenderTask);
                 incomingRenderTask = nullptr;
                 newData = true;
             }
-            incomingRenderTaskMutex.unlock();
 
             if (newData) {
                 PrepareTask(currentRenderTask);
@@ -246,7 +245,7 @@ void Display::Mainloop() {
                     using T = std::decay_t<decltype(taskPtr)>;
                     if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
                         const int nParticles = taskPtr->boxparams.totalParticles;
-                        overlay.Draw(rendersettings, taskPtr->simStatus, fps.GetFps());
+                        overlay->Draw(rendersettings, taskPtr->simStatus, fps.GetFps());
                         _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
                     }
                     else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
@@ -258,7 +257,7 @@ void Display::Mainloop() {
                     }, currentRenderTask);
             }
 
-            overlay.Render();
+            overlay->Render();
 
             glfwSwapBuffers(window);
             fps.NewFrame();
@@ -380,6 +379,29 @@ bool Display::initGLFW() {
     glfwMakeContextCurrent(window);
     return 1;
 }
+
+
+
+std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
+	std::lock_guard<std::mutex> lock(overlay->consoleMutex);
+    if (!overlay->submittedCommands.empty()) {
+        std::string str = overlay->submittedCommands.front();
+		overlay->submittedCommands.pop_front();
+        std::optional<LiveEdit::Command> cmd = LiveEdit::ParseCommand(str);
+        return cmd;
+    }
+
+
+    return std::nullopt;
+}
+
+
+
+
+
+
+
+
 
 
 Camera::Camera(Float3 boxSize) : center(boxSize/2.f), dist(-2.0f * boxSize.y) {}

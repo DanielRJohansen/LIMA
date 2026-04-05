@@ -283,12 +283,11 @@ void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDra
 		// New particle, need to find new affected particles
 		// TODO: Search the moleculegraph for connected ids instead of this!
 		affectedParticleIds.resize(simulation->box_host->boxparams.totalParticles);
-		std::iota(affectedParticleIds.begin(), affectedParticleIds.end(), 0);
-
-		fixedMovements.resize(affectedParticleIds.size(), Float3{0,0,0});
+		for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
+			affectedParticleIds.push_back(node.atomid);
+		}
 	}
 
-	//const float forceChangeMagnitude = (newDragCommand.draggingForce - prevDragCommand.draggingForce).len();
 	if (newDragCommand.draggingForce == prevDragCommand.draggingForce) {		
 		return;
 	}
@@ -349,13 +348,14 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 					}
 					else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
 						InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
-						remainingStepsCount = 10;
+						fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
+						remainingStepsCount = 50;
 					}
 					else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
 						HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
 						prevDragmoleculeCmd = cmd;
 						engine->SetFixedParticleMovementBuffer(fixedMovements);
-						remainingStepsCount = 10;
+						remainingStepsCount = 50;
 					}
 				},
 				*newCmd
@@ -400,15 +400,20 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
 	int particlesUpdated = 0;
 
-	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
-
+	
+	// First offload the current state from engine to host - if there is no engine, the state in the current boxhost IS the current state
+	if (engine) {
+		CudaBuffer<PersistentCluster>& pcBuffer = engine->OffloadPclusterState();
+		simulation->box_host->persistentClusters = GenericCopyToHost(pcBuffer.Get(), simulation->box_host->persistentClusters.size()); // TODO: Reuse mem here somehow, this'll be slow..
+	}
 
 	for (int pcId = 0; pcId < simulation->box_host->persistentClusters.size(); pcId++) {
 		const PersistentClusterMeta& pcMeta = simulation->box_host->persistentClustersMetadata[pcId];
+		const PersistentCluster& pcData = simulation->box_host->persistentClusters[pcId];
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 			if (pidGlobal != -1) {
-				grofile.atoms[pidGlobal].position = simulation->traj_buffer->GetDatapointAtStep(pcId, pid, stepToLoadFrom);
+				grofile.atoms[pidGlobal].position = pcData.pqd[pid].position;
 				particlesUpdated++;
 			}
 		}

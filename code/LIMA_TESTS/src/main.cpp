@@ -45,10 +45,11 @@ void TestDisplayT4() {
 
 void LiveEditTest() {
 	Environment env({R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)"}, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(10.f));
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(15.f));
 	env.CreateSimulation(grofile, topfile, simparams);
 	// TODO: Pre-load insertmolecule command here
 	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp"});
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
 	env.LiveEdit(grofile, topfile);
 }
 

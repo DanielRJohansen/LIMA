@@ -134,41 +134,6 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
 
 
-
-std::pair<const std::vector<std::vector<int>>, const std::vector<std::vector<int>>> SeparateMolecules(const SuperTopology& system) {
-	std::vector<std::vector<int>> molecules;
-	std::vector<std::vector<int>> tinyMolecules;
-
-	std::vector<std::pair<int, std::string>> atoms;
-	atoms.reserve(system.particles.size());
-	for (int pid = 0; pid < system.particles.size(); pid++) {
-		atoms.push_back({ pid, system.particles[pid].topologyAtom.type});
-	}
-	std::vector<std::array<int, 2>> edges;
-	edges.reserve(system.singlebonds.size());
-	for (const auto& bond : system.singlebonds) {
-		edges.push_back(bond.global_atom_indexes);
-	}
-
-
-	const auto systemGraph = std::make_shared<MoleculeGraph>(atoms, edges);
-
-	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph->GetListOfListsofConnectedNodeids();
-
-	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
-
-		const bool collectionIsCustomLimaMolecule = system.particles[collection[0]].topologyAtom.residue == "lxx";
-
-		if (collection.size() > 3 || collectionIsCustomLimaMolecule)
-			molecules.emplace_back(collection);
-		else {
-			tinyMolecules.emplace_back(collection);
-		}
-	}
-
-	return { molecules, tinyMolecules };
-}
-
 struct ParticleBondedToParticlesLookup {
 	ParticleBondedToParticlesLookup(const SuperTopology& system) {
 		particleBondedToParticle.resize(system.particles.size());
@@ -254,7 +219,7 @@ void SplitClusters(std::span<int> ids, const ParticleBondedToParticlesLookup& pa
 		SplitClusters(std::span<int>(remainingIds), particleBondedToParticlesLookup, outClusters);
 }
 
-std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup, Float3 box_size) {
+std::unique_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
 	std::vector<std::pair<int, std::string>> atoms;
 	atoms.reserve(system.particles.size());
 	for (int pid = 0; pid < system.particles.size(); pid++) {
@@ -267,11 +232,16 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 	}
 
 	// TODO: This is under the assumption that we get a ideally sorted graph back, ill need to verify that
-	const auto systemGraph = std::make_shared<MoleculeGraph>(atoms, edges);
-	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph->GetListOfListsofConnectedNodeids();
+	auto systemGraph = std::make_unique<MoleculeGraph>(atoms, edges);
+	return systemGraph;
+}
+
+std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const MoleculeGraph& systemGraph, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup, Float3 box_size) {
+
+	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph.GetListOfListsofConnectedNodeids();
 
 	std::vector<std::array<int, 4>> persistentClusters;
-	persistentClusters.reserve(atoms.size()); // A bit too big..
+	persistentClusters.reserve(system.particles.size()); // A bit too big..
 
 
 	
@@ -285,8 +255,8 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		if (nextIndex == 0)
 			return true;
 
-		std::optional<int> distanceToPreviousNode = systemGraph->DistanceBetweenNodes(cluster[nextIndex - 1], particleId, 5);
-		std::optional<int> distanceToFirstNode = systemGraph->DistanceBetweenNodes(cluster[0], particleId, 5);
+		std::optional<int> distanceToPreviousNode = systemGraph.DistanceBetweenNodes(cluster[nextIndex - 1], particleId, 5);
+		std::optional<int> distanceToFirstNode = systemGraph.DistanceBetweenNodes(cluster[0], particleId, 5);
 
 		const bool canAppend = distanceToFirstNode.value_or(INT_MAX) < 3 ||
 			distanceToFirstNode.value_or(INT_MAX) <= 4 && distanceToPreviousNode.value_or(INT_MAX) <= 2;
@@ -689,7 +659,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
 
 	// Make PersistenClusters
-	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, particleBondedToParticlesLookup, grofile.box_size);
+	std::unique_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
+	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, *systemGraph, particleBondedToParticlesLookup, grofile.box_size);
 
 	auto [pClusters, pClusterMetas, particleToPclusterMap] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
 
@@ -757,6 +728,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
 		superTopology,
+		std::move(systemGraph),
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
 		pClusters,

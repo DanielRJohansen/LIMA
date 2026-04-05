@@ -11,7 +11,7 @@
 #include "Utilities.h"
 #include "BoundaryConditionPublic.h"
 #include "EngineCore.h"
-
+#include "MoleculeGraph.h"
 #include "MDFiles.h"
 
 #include "Forcefield.h"
@@ -153,6 +153,8 @@ struct BoxImage {
 
 
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
+
+	std::unique_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
 
 	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
 

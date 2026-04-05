@@ -122,8 +122,13 @@ void Display::OnMouseButton(int button, int action, int mods) {
             bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
 
             if (isClick && drawAtomsFromCpuShader) {
-                drawAtomsFromCpuShader->DrawPicking(*renderTargetControl);
+                auto scopedDrawBinding = renderTargetControl->BindForDraw();
+                renderTargetControl->ClearForPicking();
+                drawAtomsFromCpuShader->Draw(camera.View(), camera.Projection());
                 int atomId = renderTargetControl->ReadIdAtPixel(glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
+
+
+
                 HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
                 HandleGizmo(atomId);
             }

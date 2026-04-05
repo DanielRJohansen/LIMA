@@ -47,9 +47,9 @@ public:
 	void Update(float deltaYaw, float deltaPitch, float deltaDist);
 	void Update(Float3 boxSize);
 
-	glm::mat4 View();
-	glm::mat4 Projection();
-	glm::mat4 ViewProjection();
+	glm::mat4 View() const;
+	glm::mat4 Projection() const;
+	glm::mat4 ViewProjection() const;
 
 };
 
@@ -114,12 +114,12 @@ public:
 struct TranslateGizmo {
 	glm::vec3 position{};
 	std::optional<int> activeAxis = std::nullopt;
+	std::optional<glm::vec3> pullForce;
 	//std::optional<int> hoveredAxis = std::nullopt;
-	//bool isDragging = false;
 
 	glm::vec3 dragStartPosition{};
 	//glm::vec3 dragStartHitPoint{};
-	//glm::dvec2 dragStartMousePos{};
+	glm::vec2 dragStartMousePos{};
 
 	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowX };
 	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowY };
@@ -127,6 +127,7 @@ struct TranslateGizmo {
 
 	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
 	void SetActiveAxis(int selectedObjectId);
+	void UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize);
 };
 
 

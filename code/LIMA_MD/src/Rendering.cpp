@@ -11,7 +11,7 @@ const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
 
 
-glm::mat4 Camera::View() {
+glm::mat4 Camera::View() const {
 	glm::mat4 view = glm::mat4(1.0f);
 
 	// Translate the camera back by the camera distance
@@ -30,7 +30,7 @@ glm::mat4 Camera::View() {
 	return view;
 }
 
-glm::mat4 Camera::Projection() {
+glm::mat4 Camera::Projection() const {
 	//double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
 	double aspectRatio = 1.f;
 	double fovY = 45.0;
@@ -42,7 +42,7 @@ glm::mat4 Camera::Projection() {
 	return glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
 }
 
-glm::mat4 Camera::ViewProjection() {
+glm::mat4 Camera::ViewProjection() const {
 	return Projection() * View();
 }
 
@@ -151,16 +151,6 @@ void TranslateGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) cons
 	arrowZ.Draw(shader, VP, position, scales[2]);
 }
 
-void TranslateGizmo::SetActiveAxis(int selectedObjectId) {
-	if (selectedObjectId == arrowX.uniqueId)
-		activeAxis = 0;
-	else if (selectedObjectId == arrowY.uniqueId)
-		activeAxis = 1;
-	else if (selectedObjectId == arrowZ.uniqueId)
-		activeAxis = 2;
-	else
-		activeAxis = std::nullopt;
-}
 
 
 
@@ -215,7 +205,7 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
 
 	int elementId = renderTargetControl->ReadIdAtPixel(glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
-	printf("ElementId %d\n", elementId);
+	//printf("ElementId %d\n", elementId);
 	return elementId;
 }
 

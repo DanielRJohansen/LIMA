@@ -12,143 +12,263 @@ const float rad2deg = 1.f / deg2rad;
 
 
 glm::mat4 Camera::View() {
-    glm::mat4 view = glm::mat4(1.0f);
+	glm::mat4 view = glm::mat4(1.0f);
 
-    // Translate the camera back by the camera distance
-    view = glm::translate(view, glm::vec3(0.0f, 0.0f, dist));
+	// Translate the camera back by the camera distance
+	view = glm::translate(view, glm::vec3(0.0f, 0.0f, dist));
 
-    // Apply the fixed rotation to make Z up
-    view = glm::rotate(view, (-PI / 2.f), glm::vec3(1.0f, 0.0f, 0.0f));
+	// Apply the fixed rotation to make Z up
+	view = glm::rotate(view, (-PI / 2.f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-    // Apply pitch and yaw rotations
-    view = glm::rotate(view, pitch, glm::vec3(1.0f, 0.0f, 0.0f));  // Rotation around x-axis for pitch
-    view = glm::rotate(view, yaw, glm::vec3(0.0f, 0.0f, 1.0f));    // Rotation around z-axis for yaw
+	// Apply pitch and yaw rotations
+	view = glm::rotate(view, pitch, glm::vec3(1.0f, 0.0f, 0.0f));  // Rotation around x-axis for pitch
+	view = glm::rotate(view, yaw, glm::vec3(0.0f, 0.0f, 1.0f));    // Rotation around z-axis for yaw
 
-    // Translate the world to the opposite direction of the camera position to look at the center
-    view = glm::translate(view, ToVec3(-center));
+	// Translate the world to the opposite direction of the camera position to look at the center
+	view = glm::translate(view, ToVec3(-center));
 
-    return view;
+	return view;
 }
 
 glm::mat4 Camera::Projection() {
-    //double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
-    double aspectRatio = 1.f;
-    double fovY = 45.0;
-    double nearPlane = 0.1;
-    double farPlane = 1000.0;
-    double fH = tan(glm::radians(fovY / 2.0)) * nearPlane;
-    double fW = fH * aspectRatio;
+	//double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
+	double aspectRatio = 1.f;
+	double fovY = 45.0;
+	double nearPlane = 0.1;
+	double farPlane = 1000.0;
+	double fH = tan(glm::radians(fovY / 2.0)) * nearPlane;
+	double fW = fH * aspectRatio;
 
-    return glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
+	return glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
 }
 
 glm::mat4 Camera::ViewProjection() {
-    return Projection() * View();
+	return Projection() * View();
 }
+
+glm::vec3 AnyPerpendicular(const glm::vec3& dir)
+{
+	const glm::vec3 helper = std::abs(dir.z) < 0.999f
+		? glm::vec3(0.f, 0.f, 1.f)
+		: glm::vec3(0.f, 1.f, 0.f);
+	return glm::normalize(glm::cross(helper, dir));
+}
+
+
+Arrow::Arrow(glm::vec3 direction, glm::vec4 color) : direction(glm::normalize(direction)), color(color) {
+	constexpr int radialSegments = 64;
+	constexpr float totalLength = 1.0f;
+	constexpr float shaftLength = 0.78f * totalLength;
+	constexpr float shaftRadius = 0.035f * totalLength;
+	constexpr float headLength = totalLength - shaftLength;
+	constexpr float headRadius = 0.09f * totalLength;
+
+	const glm::vec3 axis(0.f, 0.f, 1.f);
+	const glm::vec3 u(1.f, 0.f, 0.f);
+	const glm::vec3 v(0.f, 1.f, 0.f);
+
+	const glm::vec3 shaftStart(0.f, 0.f, 0.f);
+	const glm::vec3 shaftEnd(0.f, 0.f, shaftLength);
+	const glm::vec3 coneBase(0.f, 0.f, shaftLength);
+	const glm::vec3 apex(0.f, 0.f, totalLength);
+
+	vertices.reserve(radialSegments * 12);
+
+	auto AppendTriangle = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+		const glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
+		vertices.push_back({ a, normal });
+		vertices.push_back({ b, normal });
+		vertices.push_back({ c, normal });
+		};
+
+	for (int i = 0; i < radialSegments; ++i) {
+		const float a0 = 2.f * 3.1415f * static_cast<float>(i) / static_cast<float>(radialSegments);
+		const float a1 = 2.f * 3.1415f * static_cast<float>(i + 1) / static_cast<float>(radialSegments);
+
+		const glm::vec3 r0s = std::cos(a0) * u * shaftRadius + std::sin(a0) * v * shaftRadius;
+		const glm::vec3 r1s = std::cos(a1) * u * shaftRadius + std::sin(a1) * v * shaftRadius;
+
+		const glm::vec3 p0 = shaftStart + r0s;
+		const glm::vec3 p1 = shaftStart + r1s;
+		const glm::vec3 q0 = shaftEnd + r0s;
+		const glm::vec3 q1 = shaftEnd + r1s;
+
+		AppendTriangle(p0, p1, q1);
+		AppendTriangle(p0, q1, q0);
+
+		const glm::vec3 r0c = std::cos(a0) * u * headRadius + std::sin(a0) * v * headRadius;
+		const glm::vec3 r1c = std::cos(a1) * u * headRadius + std::sin(a1) * v * headRadius;
+
+		const glm::vec3 c0 = coneBase + r0c;
+		const glm::vec3 c1 = coneBase + r1c;
+
+		AppendTriangle(c0, c1, apex);
+		AppendTriangle(coneBase, c1, c0);
+	}
+
+	AppendTriangle(shaftStart, shaftStart + glm::vec3(shaftRadius, 0.f, 0.f), shaftStart + glm::vec3(0.f, shaftRadius, 0.f));
+}
+
+
+void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos) const {
+	const float length = 2.f;
+	const glm::vec3 localAxis(0.f, 0.f, 1.f);
+
+	glm::mat4 rotation(1.f);
+	const float c = glm::clamp(glm::dot(localAxis, direction), -1.f, 1.f);
+
+	if (c < 0.99999f) {
+		if (c > -0.99999f) {
+			const glm::vec3 rotAxis = glm::normalize(glm::cross(localAxis, direction));
+			const float angle = std::acos(c);
+			rotation = glm::rotate(glm::mat4(1.f), angle, rotAxis);
+		}
+		else {
+			const glm::vec3 rotAxis = AnyPerpendicular(localAxis);
+			rotation = glm::rotate(glm::mat4(1.f), 3.1415f, rotAxis);
+		}
+	}
+
+	glm::mat4 model(1.f);
+	model = glm::translate(model, pos);
+	model *= rotation;
+	model = glm::scale(model, glm::vec3(length));
+
+	glm::mat4 MVP = VP * model;
+
+	shader->Draw(vertices, MVP, model, color);
+};
+
+void TranslateGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
+	arrowX.Draw(shader, VP, position);
+	arrowY.Draw(shader, VP, position);
+	arrowZ.Draw(shader, VP, position);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	const glm::mat4 VP = camera.ViewProjection();
 
 	{
-        const glm::mat4 VP = camera.ViewProjection();
-        drawBoxOutlineShader->Draw(VP, Float3{ boxSize });
+		drawBoxOutlineShader->Draw(VP, boxSize);
 	}
 
-    // TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
-    const glm::mat4 view = camera.View();
-    const glm::mat4 projection = camera.Projection();
-    
-    if (fromCuda)
-        drawAtomsFromCudaShader->Draw(view, projection, totalParticles);
-    else
-        drawAtomsFromCpuShader->Draw(view, projection, totalParticles);	
+	// TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
+	const glm::mat4 view = camera.View();
+	const glm::mat4 projection = camera.Projection();
+
+	if (fromCuda)
+		drawAtomsFromCudaShader->Draw(view, projection, totalParticles);
+	else
+		drawAtomsFromCpuShader->Draw(view, projection, totalParticles);
+
+	if (activeGizmo) {
+		activeGizmo->Draw(drawTrianglesShader.get(), VP);		
+	}
 }
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
-    camera.Update(task.boxparams.BoxSizeFloat());
+	camera.Update(task.boxparams.BoxSizeFloat());
 
-    auto start = std::chrono::high_resolution_clock::now();
+	auto start = std::chrono::high_resolution_clock::now();
 
-    if (!drawBoxOutlineShader)
-        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+	if (!drawBoxOutlineShader)
+		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+	if (!drawAtomsFromCpuShader)
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr, windowSize);
+	if (!drawTrianglesShader)
+		drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 
-    if (!drawAtomsFromCpuShader)
-        drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr, windowSize);
+	//std::string windowText = window_title + "\n" + task.siminfo;
+	//glfwSetWindowTitle(window, windowText.c_str());
+
+	// Preprocess the renderAtoms
+	{
+		renderAtomsTemp.resize(task.boxparams.totalParticles, RenderAtom{});
 
 
-    //std::string windowText = window_title + "\n" + task.siminfo;
-    //glfwSetWindowTitle(window, windowText.c_str());
-
-    // Preprocess the renderAtoms
-    {
-        renderAtomsTemp.resize(task.boxparams.totalParticles, RenderAtom{});
-
-
-        //int index = 0;
-        for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
-            for (int pid = 0; pid < 4; pid++) {
+		//int index = 0;
+		for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
+			for (int pid = 0; pid < 4; pid++) {
 				const PersistentClusterMeta& pcMeta = task.pcMeta[pcid];
-                const int pidGlobal = pcMeta.particleIdsGlobal[pid];
+				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 
-                if (pidGlobal == -1)
+				if (pidGlobal == -1)
 					continue;
 
-                auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
+				auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-                renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
-                renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
+				renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+				renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
-                if (task.coloringMethod == ColoringMethod::Atomname)
-                    renderAtomsTemp[pidGlobal].color = RenderUtilities::getColor(atomType);
-                else if (task.coloringMethod == ColoringMethod::Charge) {
-                    renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
-                }
-                else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
-                    renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
-                }
+				if (task.coloringMethod == ColoringMethod::Atomname)
+					renderAtomsTemp[pidGlobal].color = RenderUtilities::getColor(atomType);
+				else if (task.coloringMethod == ColoringMethod::Charge) {
+					renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+				}
+				else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
+					renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
+				}
 
-                if (!rendersettings.showSolvents && pcMeta.isSolvent)
+				if (!rendersettings.showSolvents && pcMeta.isSolvent)
 					renderAtomsTemp[pidGlobal].color.w = 0.f;
-            }
-        }
-    }
+			}
+		}
+	}
 
-    // Move the renderAtoms to device
-    drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+	// Move the renderAtoms to device
+	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
 }
 
 
 
 void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
-    if (!drawBoxOutlineShader)
-        drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
+	if (!drawBoxOutlineShader)
+		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
-    if (!drawTrianglesShader)
-        drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
+	if (!drawFacetsShader)
+		drawFacetsShader = std::make_unique<DrawFacetsShader>();
 
-    /*if (!drawAtomsFromCudaShader || drawAtomsFromCudaShader->numAtomsReservedInRenderatomsBuffer < task.molCollection.nParticles)
-        drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource, windowSize);*/
+	/*if (!drawAtomsFromCudaShader || drawAtomsFromCudaShader->numAtomsReservedInRenderatomsBuffer < task.molCollection.nParticles)
+		drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource, windowSize);*/
 
-    if (!drawNormalsShader)
-        drawNormalsShader = std::make_unique<DrawNormalsShader>();
+	if (!drawNormalsShader)
+		drawNormalsShader = std::make_unique<DrawNormalsShader>();
 
-    camera.Update(task.boxSize);
+	camera.Update(task.boxSize);
 
-    if (renderAtoms) {
-        // Map buffer object for writing from CUDA
-        RenderAtom* renderAtomsBuffer;
-        cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
-        size_t num_bytes = 0;
+	if (renderAtoms) {
+		// Map buffer object for writing from CUDA
+		RenderAtom* renderAtomsBuffer;
+		cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+		size_t num_bytes = 0;
 
-        cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
-        assert(num_bytes >= task.molCollection.nParticles * sizeof(RenderAtom));
+		cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+		assert(num_bytes >= task.molCollection.nParticles * sizeof(RenderAtom));
 
-        cudaMemcpy(renderAtomsBuffer, task.molCollection.particles, sizeof(RenderAtom) * task.molCollection.nParticles, cudaMemcpyDeviceToDevice);
+		cudaMemcpy(renderAtomsBuffer, task.molCollection.particles, sizeof(RenderAtom) * task.molCollection.nParticles, cudaMemcpyDeviceToDevice);
 
-        // Release buffer object from CUDA
-        cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
-    }
+		// Release buffer object from CUDA
+		cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+	}
 }
 
 
@@ -157,16 +277,16 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	//const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxSize.x);
-    const glm::mat4 V = camera.View();
-    const glm::mat4 P = camera.Projection();
-    const glm::mat4 VP = camera.ViewProjection();
+	const glm::mat4 V = camera.View();
+	const glm::mat4 P = camera.Projection();
+	const glm::mat4 VP = camera.ViewProjection();
 	drawBoxOutlineShader->Draw(VP, boxSize);
 
-    if (renderAtoms) 
-        drawAtomsFromCudaShader->Draw(V, P, molCollection.nParticles);
+	if (renderAtoms)
+		drawAtomsFromCudaShader->Draw(V, P, molCollection.nParticles);
 
 	if (renderFacets)
-		drawTrianglesShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
+		drawFacetsShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
 
 	if (renderFacetsNormals)
 		drawNormalsShader->Draw(VP, molCollection.facets, molCollection.nFacets, boxSize);
@@ -179,17 +299,17 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 
 
 void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
-    int nAtoms = task.grofile.atoms.size();
-    if (!task.drawSolvent) {
-        for (int i = 0; i < task.grofile.atoms.size(); i++) {
-            auto resname = task.grofile.atoms[i].residueName;
-            if (resname == "SOL" || resname == "TIP3") {
-                nAtoms = i;
-                break;
-            }
-        }
-    }
-    task.nAtoms = nAtoms;
+	int nAtoms = task.grofile.atoms.size();
+	if (!task.drawSolvent) {
+		for (int i = 0; i < task.grofile.atoms.size(); i++) {
+			auto resname = task.grofile.atoms[i].residueName;
+			if (resname == "SOL" || resname == "TIP3") {
+				nAtoms = i;
+				break;
+			}
+		}
+	}
+	task.nAtoms = nAtoms;
 
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
@@ -199,27 +319,27 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 
 
 
-    camera.Update(task.grofile.box_size);
+	camera.Update(task.grofile.box_size);
 
 	// Preprocess the renderAtoms
 	{
 		renderAtomsTemp.resize(nAtoms);
 
-        for (int i = 0; i < nAtoms; i++) {
+		for (int i = 0; i < nAtoms; i++) {
 			renderAtomsTemp[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
 
-            if (task.highlightedAtoms.contains(i)) 
-				renderAtomsTemp[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f) ; // Highlighted atoms are pink
-            else if (task.coloringMethod == GradientFromAtomid)
-                renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
-            else 
-			    renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
+			if (task.highlightedAtoms.contains(i))
+				renderAtomsTemp[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f); // Highlighted atoms are pink
+			else if (task.coloringMethod == GradientFromAtomid)
+				renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
+			else
+				renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
 		}
 	}
 
 	// Move the renderAtoms to device
 	{
-        drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+		drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
 	}
 
 }

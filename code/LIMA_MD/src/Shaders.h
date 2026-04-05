@@ -6,7 +6,7 @@
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
-
+#include "RenderCommons.h"
 
 #include <cuda_gl_interop.h>
 
@@ -15,6 +15,8 @@
 #include <optional>
 #include <atomic>
 #include <future>
+
+
 
 
 
@@ -103,7 +105,7 @@ public:
     }
 };
 
-class DrawTrianglesShader : public Shader {
+class DrawFacetsShader : public Shader {
     static constexpr const char* hullVertexShaderSource = R"(
     #version 430 core
 
@@ -204,14 +206,14 @@ class DrawTrianglesShader : public Shader {
 public:
 
 
-    DrawTrianglesShader() : Shader(hullVertexShaderSource, hullFragmentShaderSource) {
+    DrawFacetsShader() : Shader(hullVertexShaderSource, hullFragmentShaderSource) {
         // Generate and bind VAO
         glGenVertexArrays(1, &VAO);
         glBindVertexArray(VAO);
         glBindVertexArray(0);  // Unbind VAO
     }
 
-    ~DrawTrianglesShader() {
+    ~DrawFacetsShader() {
         glDeleteVertexArrays(1, &VAO);
     }
 
@@ -349,7 +351,112 @@ public:
     }
 };
 
+class DrawTrianglesShader final : public Shader {
+public:
 
+
+private:
+    static constexpr const char* vertexSource = R"(
+        #version 430 core
+
+        layout(location = 0) in vec3 inPosition;
+        layout(location = 1) in vec3 inNormal;
+
+        uniform mat4 MVP;        
+        uniform mat4 Model;
+
+        out vec3 fragNormal;
+
+        void main()
+        {
+            gl_Position = MVP * vec4(inPosition, 1.0);
+            fragNormal = vec3(Model * vec4(inNormal, 0.0));
+        }
+    )";
+
+    static constexpr const char* fragmentSource = R"(
+        #version 430 core
+        
+        in vec3 fragNormal;
+
+        uniform vec3 LightDir;
+        uniform vec4 Color;
+
+        out vec4 outColor;
+
+        void main()
+        {
+            vec3 N = normalize(fragNormal);
+            vec3 L = normalize(-LightDir);
+
+            float diffuse = max(dot(N, L), 0.0);
+            float ambient = 0.25;
+            float lighting = ambient + diffuse * 0.75;
+
+            outColor = vec4(Color.rgb * lighting, Color.a);
+        }
+    )";
+
+    GLuint vao = 0;
+    GLuint vbo = 0;
+
+public:
+    DrawTrianglesShader() : Shader(vertexSource, fragmentSource)
+    {
+        glCreateVertexArrays(1, &vao);
+        glCreateBuffers(1, &vbo);
+
+        glVertexArrayVertexBuffer(vao, 0, vbo, 0, sizeof(Vertex));
+
+        glEnableVertexArrayAttrib(vao, 0);
+        glEnableVertexArrayAttrib(vao, 1);
+
+        glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
+        glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
+
+        glVertexArrayAttribBinding(vao, 0, 0);
+        glVertexArrayAttribBinding(vao, 1, 0);
+    }
+
+    ~DrawTrianglesShader()
+    {
+        if (vbo != 0) {
+            glDeleteBuffers(1, &vbo);
+        }
+        if (vao != 0) {
+            glDeleteVertexArrays(1, &vao);
+        }
+    }
+
+    void Draw(
+        const std::vector<Vertex>& vertices,
+        const glm::mat4& MVP,
+        const glm::mat4& Model,
+        const glm::vec4& color,
+        const glm::vec3& lightDir = glm::normalize(glm::vec3(0.1f, 0.1f, -1.0f))
+    )
+    {
+        if (vertices.empty()) {
+            return;
+        }
+
+        glNamedBufferData(vbo, static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_DYNAMIC_DRAW);
+
+        use();
+		SetUniformMat4("MVP", MVP);
+		SetUniformMat4("Model", Model);
+        SetUniform("Color", color);
+        SetUniform("LightDir", lightDir);
+
+        //const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
+        //glUniformMatrix3fv(glGetUniformLocation(program, "uNormalMatrix"), 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+        glBindVertexArray(0);
+        glUseProgram(0);
+    }
+};
 
 
 

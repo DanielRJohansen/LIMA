@@ -6,6 +6,7 @@
 #include "MoleculeHull.cuh"
 #include "filesystem"
 #include "LiveEditCommands.h"
+#include "RenderCommons.h"
 
 #include <chrono>
 #include <string>
@@ -17,12 +18,12 @@
 #include <deque>
 
 class DrawBoxOutlineShader;
-class DrawTrianglesShader;
+class DrawFacetsShader;
 template <bool>class DrawAtomsShader;
 class DrawNormalsShader;
+class DrawTrianglesShader;
 
 class Camera;
-
 class GLFWwindow;
 
 class FPS {
@@ -51,6 +52,14 @@ public:
 
 };
 
+
+struct Arrow {
+	glm::vec3 direction = glm::vec3(1.f, 0.f, 0.f);
+	std::vector<Vertex> vertices;
+	glm::vec4 color;
+	Arrow(glm::vec3 direction, glm::vec4 color);
+	void Draw(DrawTrianglesShader*, const glm::mat4& MVP,const glm::vec3& position) const;
+};
 namespace Rendering {
 	struct SimulationTask {
 		const Float3* positions;
@@ -100,6 +109,20 @@ public:
 };
 
 
+struct TranslateGizmo {
+	glm::vec3 position{};
+	std::optional<int> activeAxis = std::nullopt;
+	bool isDragging = false;
+
+	glm::vec3 dragStartPosition{};
+	glm::vec3 dragStartHitPoint{};
+
+	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f) };
+	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f) };
+	Arrow arrowZ{ glm::vec3(0.f, 0.f, 1.f), glm::vec4(0.f, 0.f, 1.f, 1.f) };
+
+	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
+};
 
 
 class Display {
@@ -134,6 +157,7 @@ private:
 	void Mainloop();
 
 	void Setup();
+	void SetupCallbacks();
 
 	bool initGLFW();
 
@@ -157,6 +181,7 @@ private:
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
 	void OnMouseLeft();
+	void HandleGizmo(int atomId);
 
 	bool pause = false;
 	bool renderAtoms = true;
@@ -165,17 +190,18 @@ private:
 	RenderSettings rendersettings;
 	FPS fps{};
 
-
+	std::optional<TranslateGizmo> activeGizmo;
 
 	Rendering::Task incomingRenderTask = nullptr;
 	std::mutex incomingRenderTaskMutex;
 
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
-	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
+	std::unique_ptr<DrawFacetsShader> drawFacetsShader;
 	std::unique_ptr<DrawAtomsShader<true>> drawAtomsFromCudaShader;
 	std::unique_ptr<DrawAtomsShader<false>> drawAtomsFromCpuShader;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
+	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
 
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
 

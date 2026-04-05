@@ -112,6 +112,8 @@ public:
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 	std::optional<std::chrono::duration<double>> engineTime;
 
+	std::deque<LiveEdit::Command> liveEditCommandsQueue;
+
 	SimStatus simStatus{};
 
 	bool prepareForRun();

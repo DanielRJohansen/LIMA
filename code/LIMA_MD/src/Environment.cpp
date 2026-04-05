@@ -291,6 +291,15 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	std::vector<Float3> positionData;
 	bool shouldUpdateRender = true;
 
+	auto GetNextCommand = [&]() -> std::optional<LiveEdit::Command> {
+		if (!liveEditCommandsQueue.empty()) {
+			LiveEdit::Command cmd = liveEditCommandsQueue.front();
+			liveEditCommandsQueue.pop_front();
+			return cmd;
+		}
+		return display->GetLiveEditCommand();
+		};
+
 	while (true) {
 		if (shouldExit) {
 			break;
@@ -301,7 +310,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		}
 
 		// Poll interface for new commands, and execute if any		
-		if (auto newCmd = display->GetLiveEditCommand()) {
+		if (auto newCmd = GetNextCommand()) {
 			std::visit(
 				[&](auto&& cmd) {
 					using T = std::decay_t<decltype(cmd)>;

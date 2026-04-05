@@ -62,24 +62,7 @@ void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
     }
 }
 
-
-void Display::Setup() {
-    int success = initGLFW();
-    SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
-
-    SetThreadName("RenderThread");
-
-    // Initialize GLEW
-    glewExperimental = GL_TRUE; // Ensure GLEW uses modern techniques for managing OpenGL functionality
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
-    }
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glfwSetWindowUserPointer(window, this);
+void Display::SetupCallbacks() {
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
         if (action == GLFW_PRESS) {
@@ -145,6 +128,28 @@ void Display::Setup() {
             display->OnMouseScroll(xoffset, yoffset);
         }
         });
+}
+
+
+void Display::Setup() {
+    SetThreadName("RenderThread");
+    int success = initGLFW();
+    SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
+
+   
+    // Initialize GLEW
+    glewExperimental = GL_TRUE; // Ensure GLEW uses modern techniques for managing OpenGL functionality
+    if (glewInit() != GLEW_OK) {
+        std::cerr << "Failed to initialize GLEW" << std::endl;
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glfwSetWindowUserPointer(window, this);
+
+    SetupCallbacks();
 
     overlay = std::make_unique<Overlay>(window, FileUtils::GetLimaDir());
 
@@ -315,6 +320,19 @@ void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
     renderAtoms.SetData(renderAtomsHost);
 }
 
+void Display::HandleGizmo(int atomId) {
+    if (atomId == -1) {
+        activeGizmo.reset();
+		return;
+    }
+
+    if (!activeGizmo.has_value()) {
+        activeGizmo = TranslateGizmo{};        
+    }
+
+    activeGizmo->position = glm::vec3{ renderAtomsTemp[atomId].position.x, renderAtomsTemp[atomId].position.y, renderAtomsTemp[atomId].position.z };
+}
+
 void Display::OnMouseButton(int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
@@ -334,7 +352,8 @@ void Display::OnMouseButton(int button, int action, int mods) {
             if (isClick && drawAtomsFromCpuShader) {
                 int atomId = drawAtomsFromCpuShader->GetAtomIdAtPixel(int2{ (int)mousePos.x, (int)mousePos.y });
                 HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
-                printf("Atomid %d\n", atomId);
+                //printf("Atomid %d\n", atomId);
+                HandleGizmo(atomId);
             }
         }
     }

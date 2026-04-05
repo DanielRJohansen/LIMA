@@ -48,6 +48,7 @@ void LiveEditTest() {
 	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(10.f));
 	env.CreateSimulation(grofile, topfile, simparams);
 	// TODO: Pre-load insertmolecule command here
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp"});
 	env.LiveEdit(grofile, topfile);
 }
 

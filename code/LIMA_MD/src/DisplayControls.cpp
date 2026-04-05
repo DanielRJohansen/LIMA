@@ -26,20 +26,13 @@
 
 
 
-std::optional<int> GetHoveredGizmoAxisAtPixel(std::optional<TranslateGizmo>& gizmo, glm::ivec2 pixel) {
-    if (!gizmo.has_value())
-        return std::nullopt;
-
-    // TODO: replace with your actual gizmo picking
-    return std::nullopt;
-}
 
 void Display::OnMouseMove(double xpos, double ypos) {
-    if (activeGizmo.has_value()) {
+    /*if (activeGizmo.has_value()) {
         activeGizmo->hoveredAxis = GetHoveredGizmoAxisAtPixel(activeGizmo, glm::ivec2{ (int)xpos, (int)ypos });
-    }
+    }*/
 
-    if (activeGizmo.has_value() && activeGizmo->isDragging) {
+    if (activeGizmo.has_value() && activeGizmo->activeAxis.has_value()) {
         mousePos.x = xpos;
         mousePos.y = ypos;
         return;
@@ -64,14 +57,16 @@ void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
     auto renderAtomsHost = renderAtoms.GetData<RenderAtom>();
     if (prevAtomId != -1)
         renderAtomsHost[prevAtomId].HighLight(false);
-    if (atomId != -1)
+    if (atomId != -1 && atomId < renderAtomsHost.size())
         renderAtomsHost[atomId].HighLight(true);
-    prevAtomId = atomId;
+
+    prevAtomId = atomId < renderAtomsHost.size() ? atomId : -1;
     renderAtoms.SetData(renderAtomsHost);
 }
 
-void Display::HandleGizmo(int atomId) {
-    if (atomId == -1) {
+void Display::HandleGizmo(int objectId) {
+	//bool isGizmoElement = elementId == (int)UniqueRenderElementIds::gizmoArrowX || elementId == (int)UniqueRenderElementIds::gizmoArrowY || elementId == (int)UniqueRenderElementIds::gizmoArrowZ;
+    if (objectId == -1) {
         activeGizmo.reset();
         return;
     }
@@ -79,39 +74,32 @@ void Display::HandleGizmo(int atomId) {
     if (!activeGizmo.has_value()) {
         activeGizmo = TranslateGizmo{};
     }
-
-    activeGizmo->position = glm::vec3{ renderAtomsTemp[atomId].position.x, renderAtomsTemp[atomId].position.y, renderAtomsTemp[atomId].position.z };
+    if (objectId < renderAtomsTemp.size()) {
+        activeGizmo->position = glm::vec3{ renderAtomsTemp[objectId].position.x, renderAtomsTemp[objectId].position.y, renderAtomsTemp[objectId].position.z };
+    }
 }
 
-
-
 void Display::OnMouseButton(int button, int action, int mods) {
+
+	glm::ivec2 pixel{ static_cast<int>(mousePos.x),        static_cast<int>(mousePos.y) };
+	const int objectId = GetObjectIdAtPixel(pixel);
+
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
             mousePosAtBtnDown = mousePos;
             timeAtBtnDown = std::chrono::steady_clock::now();
+            isDragging = true;
 
-            if (activeGizmo.has_value()) {
-                activeGizmo->hoveredAxis = GetHoveredGizmoAxisAtPixel(activeGizmo, glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
-
-                if (activeGizmo->hoveredAxis.has_value()) {
-                    activeGizmo->isDragging = true;
-                    activeGizmo->activeAxis = activeGizmo->hoveredAxis;
-                    activeGizmo->dragStartPosition = activeGizmo->position;
-                    activeGizmo->dragStartMousePos = mousePos;
-                    return;
-                }
+            if (activeGizmo) {
+				activeGizmo->SetActiveAxis(objectId);
+                activeGizmo->dragStartPosition = activeGizmo->position;
             }
 
-            isDragging = true;
         }
         else if (action == GLFW_RELEASE) {
-            if (activeGizmo.has_value() && activeGizmo->isDragging) {
-                activeGizmo->isDragging = false;
+            if (activeGizmo.has_value()) {
                 activeGizmo->activeAxis.reset();
-                activeGizmo->hoveredAxis = GetHoveredGizmoAxisAtPixel(activeGizmo, glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
-                return;
             }
 
             isDragging = false;
@@ -122,15 +110,8 @@ void Display::OnMouseButton(int button, int action, int mods) {
             bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
 
             if (isClick && drawAtomsFromCpuShader) {
-                auto scopedDrawBinding = renderTargetControl->BindForDraw();
-                renderTargetControl->ClearForPicking();
-                drawAtomsFromCpuShader->Draw(camera.View(), camera.Projection());
-                int atomId = renderTargetControl->ReadIdAtPixel(glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
-
-
-
-                HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
-                HandleGizmo(atomId);
+                HandleHighlightAtom(objectId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
+                HandleGizmo(objectId);
             }
         }
     }

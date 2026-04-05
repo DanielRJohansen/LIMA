@@ -479,7 +479,7 @@ private:
         layout(location = 0) in vec3 inPosition;
         layout(location = 1) in vec3 inNormal;
 
-        uniform mat4 MVP;        
+        uniform mat4 MVP;
         uniform mat4 Model;
 
         out vec3 fragNormal;
@@ -487,13 +487,13 @@ private:
         void main()
         {
             gl_Position = MVP * vec4(inPosition, 1.0);
-            fragNormal = vec3(Model * vec4(inNormal, 0.0));
+            fragNormal = mat3(Model) * inNormal;
         }
     )";
 
     static constexpr const char* fragmentSource = R"(
         #version 430 core
-        
+
         in vec3 fragNormal;
 
         uniform vec3 LightDir;

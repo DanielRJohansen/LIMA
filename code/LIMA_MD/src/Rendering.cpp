@@ -111,7 +111,7 @@ Arrow::Arrow(glm::vec3 direction, glm::vec4 color, int id) : direction(glm::norm
 
 
 void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const {
-	const float length = 2.f;
+	//const float length = 2.f;
 	const glm::vec3 localAxis(0.f, 0.f, 1.f);
 
 	glm::mat4 rotation(1.f);
@@ -132,7 +132,7 @@ void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::ve
 	glm::mat4 model(1.f);
 	model = glm::translate(model, pos);
 	model *= rotation;
-	model = glm::scale(model, glm::vec3(length));
+	model = glm::scale(model, glm::vec3(scale));
 
 	glm::mat4 MVP = VP * model;
 
@@ -140,11 +140,26 @@ void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::ve
 };
 
 void TranslateGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
-	const float scale = (hoveredAxis.has_value() || isDragging) ? 2.6f : 2.0f;
+	std::vector<float> scales = {
+		activeAxis.value_or(-1) == 0 ? 2.2f : 2.f,
+		activeAxis.value_or(-1) == 1 ? 2.2f : 2.f,
+		activeAxis.value_or(-1) == 2 ? 2.2f : 2.f
+	};
 
-	arrowX.Draw(shader, VP, position, scale);
-	arrowY.Draw(shader, VP, position, scale);
-	arrowZ.Draw(shader, VP, position, scale);
+	arrowX.Draw(shader, VP, position, scales[0]);
+	arrowY.Draw(shader, VP, position, scales[1]);
+	arrowZ.Draw(shader, VP, position, scales[2]);
+}
+
+void TranslateGizmo::SetActiveAxis(int selectedObjectId) {
+	if (selectedObjectId == arrowX.uniqueId)
+		activeAxis = 0;
+	else if (selectedObjectId == arrowY.uniqueId)
+		activeAxis = 1;
+	else if (selectedObjectId == arrowZ.uniqueId)
+		activeAxis = 2;
+	else
+		activeAxis = std::nullopt;
 }
 
 
@@ -190,22 +205,19 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 	}
 }
 
-//int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
-//{
-//	GLint prevFramebuffer = 0;
-//	GLint prevViewport[4]{};
-//	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFramebuffer);
-//	glGetIntegerv(GL_VIEWPORT, prevViewport);
-//
-//	/*pickingFramebuffer->Resize(windowSize);
-//	pickingFramebuffer->Begin();*/
-//
-////	DrawScene(false);
-//
-//	PickingFramebuffer::End(prevFramebuffer, prevViewport);
-//
-//	return pickingFramebuffer->ReadIdAtPixel(pixel);
-//}
+int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
+{
+	auto scopedDrawBinding = renderTargetControl->BindForDraw();
+	renderTargetControl->ClearForPicking();
+
+	drawAtomsFromCpuShader->Draw(camera.View(), camera.Projection());
+	if (activeGizmo)
+		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
+
+	int elementId = renderTargetControl->ReadIdAtPixel(glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
+	printf("ElementId %d\n", elementId);
+	return elementId;
+}
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {

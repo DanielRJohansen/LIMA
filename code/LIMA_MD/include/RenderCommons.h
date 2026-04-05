@@ -10,6 +10,10 @@ struct Vertex {
 
 enum class UniqueRenderElementIds {
 	gizmoArrowX = 1 << 30 + 0,
-	gizmoArrowY = 1 << 30 + 1,
-	gizmoArrowZ = 1 << 30 + 2
+	gizmoArrowY,
+	gizmoArrowZ
 };
+
+static bool ElementIdIsAtomid(int id) {
+	return (id & (1 << 30)) == 0; // If the highest bit is not set, it's an atom id
+}

@@ -114,18 +114,19 @@ public:
 struct TranslateGizmo {
 	glm::vec3 position{};
 	std::optional<int> activeAxis = std::nullopt;
-	std::optional<int> hoveredAxis = std::nullopt;
-	bool isDragging = false;
+	//std::optional<int> hoveredAxis = std::nullopt;
+	//bool isDragging = false;
 
 	glm::vec3 dragStartPosition{};
-	glm::vec3 dragStartHitPoint{};
-	glm::dvec2 dragStartMousePos{};
+	//glm::vec3 dragStartHitPoint{};
+	//glm::dvec2 dragStartMousePos{};
 
 	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowX };
 	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowY };
 	Arrow arrowZ{ glm::vec3(0.f, 0.f, 1.f), glm::vec4(0.f, 0.f, 1.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowZ };
 
 	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
+	void SetActiveAxis(int selectedObjectId);
 };
 
 
@@ -185,8 +186,9 @@ private:
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
 	void OnMouseLeft();
+	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
-	//int GetObjectIdAtPixel(glm::ivec2);
+	int GetObjectIdAtPixel(glm::ivec2);
 
 	bool pause = false;
 	bool renderAtoms = true;

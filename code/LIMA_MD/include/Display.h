@@ -23,6 +23,7 @@ template <bool>class DrawAtomsShader;
 class DrawNormalsShader;
 class DrawTrianglesShader;
 
+class RenderTargetControl;
 class Camera;
 class GLFWwindow;
 
@@ -57,8 +58,9 @@ struct Arrow {
 	glm::vec3 direction = glm::vec3(1.f, 0.f, 0.f);
 	std::vector<Vertex> vertices;
 	glm::vec4 color;
-	Arrow(glm::vec3 direction, glm::vec4 color);
-	void Draw(DrawTrianglesShader*, const glm::mat4& MVP,const glm::vec3& position) const;
+	int uniqueId;
+	Arrow(glm::vec3 direction, glm::vec4 color, int uniqueId);
+	void Draw(DrawTrianglesShader*, const glm::mat4& MVP,const glm::vec3& position, float scale = 1.f) const;
 };
 namespace Rendering {
 	struct SimulationTask {
@@ -112,14 +114,16 @@ public:
 struct TranslateGizmo {
 	glm::vec3 position{};
 	std::optional<int> activeAxis = std::nullopt;
+	std::optional<int> hoveredAxis = std::nullopt;
 	bool isDragging = false;
 
 	glm::vec3 dragStartPosition{};
 	glm::vec3 dragStartHitPoint{};
+	glm::dvec2 dragStartMousePos{};
 
-	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f) };
-	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f) };
-	Arrow arrowZ{ glm::vec3(0.f, 0.f, 1.f), glm::vec4(0.f, 0.f, 1.f, 1.f) };
+	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowX };
+	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowY };
+	Arrow arrowZ{ glm::vec3(0.f, 0.f, 1.f), glm::vec4(0.f, 0.f, 1.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowZ };
 
 	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
 };
@@ -182,6 +186,7 @@ private:
 	void OnMouseScroll(double xoffset, double yoffset);
 	void OnMouseLeft();
 	void HandleGizmo(int atomId);
+	//int GetObjectIdAtPixel(glm::ivec2);
 
 	bool pause = false;
 	bool renderAtoms = true;
@@ -207,6 +212,8 @@ private:
 
 	std::vector<RenderAtom> renderAtomsTemp;
 
+	std::unique_ptr<RenderTargetControl> renderTargetControl;
+
 
 	std::jthread renderThread;
 	std::mutex mutex_;
@@ -219,7 +226,7 @@ private:
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 
 	GLFWwindow* window = nullptr;
-	int2 windowSize{};
+	glm::ivec2 windowSize{};
 
 	const float PI = 3.1415f;
 

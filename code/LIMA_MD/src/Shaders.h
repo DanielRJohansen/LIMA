@@ -17,7 +17,89 @@
 #include <future>
 
 
+class RenderTargetControl {
+public:
+    GLuint framebuffer = 0;
+    GLuint colorTexture = 0;
+    GLuint idTexture = 0;
+    GLuint depthBuffer = 0;
+    glm::ivec2 size{};
 
+
+    RenderTargetControl() {};
+
+    ~RenderTargetControl() {
+        Destroy();
+    }
+
+    void Destroy() {
+        if (depthBuffer) { glDeleteRenderbuffers(1, &depthBuffer); depthBuffer = 0; }
+        if (idTexture) { glDeleteTextures(1, &idTexture); idTexture = 0; }
+        if (colorTexture) { glDeleteTextures(1, &colorTexture); colorTexture = 0; }
+        if (framebuffer) { glDeleteFramebuffers(1, &framebuffer); framebuffer = 0; }
+    }
+
+    void Resize(glm::ivec2 newSize) {
+        size = newSize;
+        Destroy();
+
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+        // Color output (for debugging/optional, not required for picking)
+        glGenTextures(1, &colorTexture);
+        glBindTexture(GL_TEXTURE_2D, colorTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size.x, size.y, 0,
+            GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+        // AtomId output
+        glGenTextures(1, &idTexture);
+        glBindTexture(GL_TEXTURE_2D, idTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, size.x, size.y, 0,
+            GL_RED_INTEGER, GL_INT, nullptr);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, idTexture, 0);
+
+        // Depth buffer
+        glGenRenderbuffers(1, &depthBuffer);
+        glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, size.x, size.y);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBuffer);
+
+        GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+        glDrawBuffers(2, drawBuffers);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            throw std::runtime_error("Picking framebuffer incomplete.");
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    int ReadIdAtPixel(glm::ivec2 pixel) const {
+        GLint prevReadFbo = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+        glReadBuffer(GL_COLOR_ATTACHMENT1);
+
+        int pixelValue = -1;
+        glReadPixels(pixel.x,
+            size.y - 1 - pixel.y,
+            1, 1,
+            GL_RED_INTEGER,
+            GL_INT,
+            &pixelValue);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
+        return pixelValue;
+    }
+};
 
 
 class DrawBoxOutlineShader : public Shader {
@@ -249,7 +331,6 @@ public:
     }
 };
 
-
 class DrawNormalsShader : public Shader {
     static constexpr const char* hullVertexShaderSource = R"(
     #version 430 core
@@ -381,8 +462,10 @@ private:
 
         uniform vec3 LightDir;
         uniform vec4 Color;
+        uniform int ObjectId;
 
-        out vec4 outColor;
+        layout(location = 0) out vec4 outColor;
+        layout(location = 1) out int outObjectId;
 
         void main()
         {
@@ -394,6 +477,7 @@ private:
             float lighting = ambient + diffuse * 0.75;
 
             outColor = vec4(Color.rgb * lighting, Color.a);
+            outObjectId = ObjectId;
         }
     )";
 
@@ -433,23 +517,21 @@ public:
         const glm::mat4& MVP,
         const glm::mat4& Model,
         const glm::vec4& color,
+        int objectId,
         const glm::vec3& lightDir = glm::normalize(glm::vec3(0.1f, 0.1f, -1.0f))
     )
     {
-        if (vertices.empty()) {
+        if (vertices.empty())
             return;
-        }
 
         glNamedBufferData(vbo, static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_DYNAMIC_DRAW);
 
         use();
-		SetUniformMat4("MVP", MVP);
-		SetUniformMat4("Model", Model);
+        SetUniformMat4("MVP", MVP);
+        SetUniformMat4("Model", Model);
         SetUniform("Color", color);
         SetUniform("LightDir", lightDir);
-
-        //const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-        //glUniformMatrix3fv(glGetUniformLocation(program, "uNormalMatrix"), 1, GL_FALSE, glm::value_ptr(normalMatrix));
+        SetUniformI("ObjectId", objectId);
 
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
@@ -457,7 +539,6 @@ public:
         glUseProgram(0);
     }
 };
-
 
 
 
@@ -585,29 +666,32 @@ void main() {
 
     GLuint vao = 0;
 
-    GLuint framebuffer = 0;
-    GLuint colorTexture = 0;
-    GLuint atomIdTexture = 0;
-    GLuint depthBuffer = 0;
-    int2 framebufferSize{ 0, 0 };
+    //GLuint framebuffer = 0;
+    //GLuint colorTexture = 0;
+    //GLuint atomIdTexture = 0;
+    //GLuint depthBuffer = 0;
+    //glm::ivec2 framebufferSize{ 0, 0 };
+
+    
 
     glm::mat4 prevView;
     glm::mat4 prevProjection;
     int prevNAtoms;
 
-    void DestroyFramebuffer() {
-        if (depthBuffer) { glDeleteRenderbuffers(1, &depthBuffer); depthBuffer = 0; }
-        if (atomIdTexture) { glDeleteTextures(1, &atomIdTexture); atomIdTexture = 0; }
-        if (colorTexture) { glDeleteTextures(1, &colorTexture); colorTexture = 0; }
-        if (framebuffer) { glDeleteFramebuffers(1, &framebuffer); framebuffer = 0; }
-    }
+    //void DestroyFramebuffer() {
+    //    if (depthBuffer) { glDeleteRenderbuffers(1, &depthBuffer); depthBuffer = 0; }
+    //    if (atomIdTexture) { glDeleteTextures(1, &atomIdTexture); atomIdTexture = 0; }
+    //    if (colorTexture) { glDeleteTextures(1, &colorTexture); colorTexture = 0; }
+    //    if (framebuffer) { glDeleteFramebuffers(1, &framebuffer); framebuffer = 0; }
+    //}
 
 public:
     SSBO renderAtomsBuffer{};
+    //RenderTargetControl renderTargetControl;
 
-    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCudaResource, int2 windowSize)
+    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCudaResource)
         : Shader(vertexShaderSource, fragmentShaderSource)
-      //  numAtomsReservedInRenderatomsBuffer(numAtoms)
+        //  numAtomsReservedInRenderatomsBuffer(numAtoms)
     {
         // Minimal VAO: required in core profile even when using only gl_VertexID.
         glGenVertexArrays(1, &vao);
@@ -623,55 +707,56 @@ public:
                 cudaGraphicsMapFlagsWriteDiscard);
         }
 
-        ResizeFramebuffer(windowSize);
+        //ResizeFramebuffer(windowSize);
+		//renderTargetControl.Resize(windowSize);// refactor out
     }
 
     ~DrawAtomsShader() {
         if (vao) glDeleteVertexArrays(1, &vao);
-        DestroyFramebuffer();
+        //DestroyFramebuffer();
     }
 
-    void ResizeFramebuffer(int2 windowSize) {
-        framebufferSize = windowSize;
-        DestroyFramebuffer();
+    //void ResizeFramebuffer(glm::ivec2 windowSize) {
+    //    framebufferSize = windowSize;
+    //    DestroyFramebuffer();
 
-        glGenFramebuffers(1, &framebuffer);
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    //    glGenFramebuffers(1, &framebuffer);
+    //    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-        // Color output (for debugging/optional, not required for picking)
-        glGenTextures(1, &colorTexture);
-        glBindTexture(GL_TEXTURE_2D, colorTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferSize.x, framebufferSize.y, 0,
-            GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+    //    // Color output (for debugging/optional, not required for picking)
+    //    glGenTextures(1, &colorTexture);
+    //    glBindTexture(GL_TEXTURE_2D, colorTexture);
+    //    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    //    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    //    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferSize.x, framebufferSize.y, 0,
+    //        GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    //    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
 
-        // AtomId output
-        glGenTextures(1, &atomIdTexture);
-        glBindTexture(GL_TEXTURE_2D, atomIdTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, framebufferSize.x, framebufferSize.y, 0,
-            GL_RED_INTEGER, GL_INT, nullptr);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, atomIdTexture, 0);
+    //    // AtomId output
+    //    glGenTextures(1, &atomIdTexture);
+    //    glBindTexture(GL_TEXTURE_2D, atomIdTexture);
+    //    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    //    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    //    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, framebufferSize.x, framebufferSize.y, 0,
+    //        GL_RED_INTEGER, GL_INT, nullptr);
+    //    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, atomIdTexture, 0);
 
-        // Depth buffer
-        glGenRenderbuffers(1, &depthBuffer);
-        glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, framebufferSize.x, framebufferSize.y);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBuffer);
+    //    // Depth buffer
+    //    glGenRenderbuffers(1, &depthBuffer);
+    //    glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
+    //    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, framebufferSize.x, framebufferSize.y);
+    //    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBuffer);
 
-        GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-        glDrawBuffers(2, drawBuffers);
+    //    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    //    glDrawBuffers(2, drawBuffers);
 
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            throw std::runtime_error("Picking framebuffer incomplete.");
-        }
+    //    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    //        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    //        throw std::runtime_error("Picking framebuffer incomplete.");
+    //    }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
+    //    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    //}
 
     // Normal render pass: does NOT touch your picking FBO.
     void Draw(const glm::mat4& view, const glm::mat4& projection, int nAtoms) {
@@ -700,13 +785,15 @@ public:
     }
 
     // Picking pass: renders to internal FBO, restores viewport/FBO so other shaders are unaffected.
-    void DrawPicking() {
-        if (!framebuffer || !atomIdTexture) {
+    void DrawPicking(RenderTargetControl& renderTargetControl) {
+        if (!renderTargetControl.framebuffer || !renderTargetControl.idTexture) {
             throw std::runtime_error("DrawPicking: framebuffer not initialized.");
         }
         if (prevNAtoms * sizeof(RenderAtom) > renderAtomsBuffer.Capacity()) {
             throw std::runtime_error("DrawPicking: nAtoms exceeds reserved SSBO capacity.");
         }
+
+        use();
 
         GLint prevDrawFbo = 0;
         GLint prevReadFbo = 0;
@@ -715,10 +802,10 @@ public:
         glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
         glGetIntegerv(GL_VIEWPORT, prevViewport);
 
-        use();
 
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
-        glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderTargetControl.framebuffer);
+        glViewport(0, 0, renderTargetControl.size.x, renderTargetControl.size.y);
 
         // Clear ID attachment to -1 so "no hit" is obvious.
         const GLfloat clearColor[4] = { 0.f, 0.f, 0.f, 0.f };
@@ -744,30 +831,5 @@ public:
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevDrawFbo);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
         glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
-    }
-
-    int GetAtomIdAtPixel(int2 pixel) {
-        if (!atomIdTexture || !framebuffer) {
-            throw std::runtime_error("GetAtomIdAtPixel: framebuffer not initialized.");
-        }
-
-        DrawPicking();
-
-        GLint prevReadFbo = 0;
-        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
-
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-        glReadBuffer(GL_COLOR_ATTACHMENT1);
-
-        int pixelValue = -1;
-        glReadPixels(pixel.x,
-            framebufferSize.y - 1 - pixel.y,
-            1, 1,
-            GL_RED_INTEGER,
-            GL_INT,
-            &pixelValue);
-
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
-        return pixelValue;
     }
 };

@@ -23,7 +23,7 @@ add_library(LIMA_MD STATIC
     src/Overlay.cpp
     src/SimulationBuilder.cpp
     src/LiveEditCommands.cpp
-)
+ "src/DisplayControls.cpp")
 
 
 
@@ -71,5 +71,5 @@ endif()
 
 
 # Self-test executable
-add_executable(md_self_test src/Main.cpp "src/Shaders.h" "src/LiveEditCommands.cpp")
+add_executable(md_self_test src/Main.cpp "src/Shaders.h" "src/LiveEditCommands.cpp" "src/DisplayControls.cpp")
 target_link_libraries(md_self_test LIMA_MD ${GLFW_LIBRARIES})

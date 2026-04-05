@@ -55,7 +55,7 @@ glm::vec3 AnyPerpendicular(const glm::vec3& dir)
 }
 
 
-Arrow::Arrow(glm::vec3 direction, glm::vec4 color) : direction(glm::normalize(direction)), color(color) {
+Arrow::Arrow(glm::vec3 direction, glm::vec4 color, int id) : direction(glm::normalize(direction)), color(color), uniqueId(id) {
 	constexpr int radialSegments = 64;
 	constexpr float totalLength = 1.0f;
 	constexpr float shaftLength = 0.78f * totalLength;
@@ -110,7 +110,7 @@ Arrow::Arrow(glm::vec3 direction, glm::vec4 color) : direction(glm::normalize(di
 }
 
 
-void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos) const {
+void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const {
 	const float length = 2.f;
 	const glm::vec3 localAxis(0.f, 0.f, 1.f);
 
@@ -136,13 +136,15 @@ void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::ve
 
 	glm::mat4 MVP = VP * model;
 
-	shader->Draw(vertices, MVP, model, color);
+	shader->Draw(vertices, MVP, model, color, uniqueId);
 };
 
 void TranslateGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
-	arrowX.Draw(shader, VP, position);
-	arrowY.Draw(shader, VP, position);
-	arrowZ.Draw(shader, VP, position);
+	const float scale = (hoveredAxis.has_value() || isDragging) ? 2.6f : 2.0f;
+
+	arrowX.Draw(shader, VP, position, scale);
+	arrowY.Draw(shader, VP, position, scale);
+	arrowZ.Draw(shader, VP, position, scale);
 }
 
 
@@ -170,6 +172,10 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 		drawBoxOutlineShader->Draw(VP, boxSize);
 	}
 
+	/*if (pickingFramebuffer->size != windowSize) {
+		pickingFramebuffer->Resize(windowSize);
+	}*/
+
 	// TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
 	const glm::mat4 view = camera.View();
 	const glm::mat4 projection = camera.Projection();
@@ -184,6 +190,23 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 	}
 }
 
+//int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
+//{
+//	GLint prevFramebuffer = 0;
+//	GLint prevViewport[4]{};
+//	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFramebuffer);
+//	glGetIntegerv(GL_VIEWPORT, prevViewport);
+//
+//	/*pickingFramebuffer->Resize(windowSize);
+//	pickingFramebuffer->Begin();*/
+//
+////	DrawScene(false);
+//
+//	PickingFramebuffer::End(prevFramebuffer, prevViewport);
+//
+//	return pickingFramebuffer->ReadIdAtPixel(pixel);
+//}
+
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
 	camera.Update(task.boxparams.BoxSizeFloat());
@@ -193,9 +216,14 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr, windowSize);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr);
 	if (!drawTrianglesShader)
 		drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
+	if (!renderTargetControl)
+		renderTargetControl = std::make_unique<RenderTargetControl>();
+	renderTargetControl->Resize(windowSize);
+	/*if (!pickingFramebuffer)
+		pickingFramebuffer = std::make_unique<PickingFramebuffer>();*/
 
 	//std::string windowText = window_title + "\n" + task.siminfo;
 	//glfwSetWindowTitle(window, windowText.c_str());
@@ -315,7 +343,7 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nAtoms, &renderAtomsBufferCudaResource, windowSize);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nAtoms, &renderAtomsBufferCudaResource);
 
 
 

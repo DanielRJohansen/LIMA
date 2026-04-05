@@ -294,74 +294,6 @@ void Display::Render(Rendering::Task task, bool blocking) {
 
 
 
-void Display::OnMouseMove(double xpos, double ypos) {
-    if (isDragging) {
-        const float sensitivity = 0.001f; // Adjust sensitivity as needed
-        const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
-        const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
-
-        camera.Update(xOffset, -yOffset, 0);
-    }
-
-    mousePos.x = xpos;
-    mousePos.y = ypos;
-}
-
-void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
-    if (atomId == prevAtomId)
-        return;
-
-    auto renderAtomsHost = renderAtoms.GetData<RenderAtom>();
-    if (prevAtomId != -1)
-        renderAtomsHost[prevAtomId].HighLight(false);
-    if (atomId != -1)
-        renderAtomsHost[atomId].HighLight(true);
-    prevAtomId = atomId;
-    renderAtoms.SetData(renderAtomsHost);
-}
-
-void Display::HandleGizmo(int atomId) {
-    if (atomId == -1) {
-        activeGizmo.reset();
-		return;
-    }
-
-    if (!activeGizmo.has_value()) {
-        activeGizmo = TranslateGizmo{};        
-    }
-
-    activeGizmo->position = glm::vec3{ renderAtomsTemp[atomId].position.x, renderAtomsTemp[atomId].position.y, renderAtomsTemp[atomId].position.z };
-}
-
-void Display::OnMouseButton(int button, int action, int mods) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        if (action == GLFW_PRESS) {
-            isDragging = true;
-            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
-            mousePosAtBtnDown = mousePos;
-            timeAtBtnDown = std::chrono::steady_clock::now();
-        }
-        else if (action == GLFW_RELEASE) {
-            isDragging = false;
-
-            glm::dvec2 mousePos{};
-            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
-            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - timeAtBtnDown).count();
-            bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
-
-            if (isClick && drawAtomsFromCpuShader) {
-                int atomId = drawAtomsFromCpuShader->GetAtomIdAtPixel(int2{ (int)mousePos.x, (int)mousePos.y });
-                HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
-                //printf("Atomid %d\n", atomId);
-                HandleGizmo(atomId);
-            }
-        }
-    }
-}
-
-void Display::OnMouseScroll(double xoffset, double yoffset) {
-    camera.Update(0,0,yoffset * 0.1f);
-}
 
 bool Display::initGLFW() {
     // Initialize the library
@@ -379,7 +311,7 @@ bool Display::initGLFW() {
     int displayWidth = mode->width;
     int displayHeight = mode->height;
 
-    windowSize = int2{ (int)((float)displayHeight * 0.8f), (int)((float)displayHeight * 0.8f) };
+    windowSize = glm::ivec2{ (int)((float)displayHeight * 0.8f), (int)((float)displayHeight * 0.8f) };
 
 
     // Create a windowed mode window and its OpenGL context

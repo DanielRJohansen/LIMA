@@ -224,11 +224,6 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 	if (!renderTargetControl)
 		renderTargetControl = std::make_unique<RenderTargetControl>();
 	renderTargetControl->Resize(windowSize);
-	/*if (!pickingFramebuffer)
-		pickingFramebuffer = std::make_unique<PickingFramebuffer>();*/
-
-	//std::string windowText = window_title + "\n" + task.siminfo;
-	//glfwSetWindowTitle(window, windowText.c_str());
 
 	// Preprocess the renderAtoms
 	{
@@ -261,6 +256,13 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 				if (!rendersettings.showSolvents && pcMeta.isSolvent)
 					renderAtomsTemp[pidGlobal].color.w = 0.f;
 			}
+		}
+	}
+
+	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsTemp.size()) {
+		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
+		if (attachedAtomId < renderAtomsTemp.size()) {
+			activeGizmo->position = glm::vec3(renderAtomsTemp[attachedAtomId].position.x, renderAtomsTemp[attachedAtomId].position.y, renderAtomsTemp[attachedAtomId].position.z);
 		}
 	}
 

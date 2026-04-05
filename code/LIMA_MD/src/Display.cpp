@@ -341,7 +341,10 @@ std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
         std::optional<LiveEdit::Command> cmd = LiveEdit::ParseCommand(str);
         return cmd;
     }
-
+    if (activeGizmo && activeGizmo->pullForce) {
+        Float3 draggingForce{ activeGizmo->pullForce->x, activeGizmo->pullForce->y, activeGizmo->pullForce->z };
+		return LiveEdit::DragMolecule{ activeGizmo->idOfAtomAttachedTo, draggingForce };
+    }
 
     return std::nullopt;
 }

@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <string>
 #include <optional>
+#include <numeric>
 
 #include "Environment.h"
 #include "MDFiles.h"
@@ -241,7 +242,7 @@ std::chrono::duration<double> Environment::run() {
 
 
 
-void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd) {
+void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams) {
 	insertionCmd.groPath = FixPath(insertionCmd.groPath);
 	insertionCmd.topPath = FixPath(insertionCmd.topPath);
 
@@ -260,9 +261,7 @@ void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEd
 
 	engine.reset(); // Kill the engine, since it holds a pointer to the sim which we will now change under it. We will make a new engine after creating the new sim
 	SimulationBuilder::InsertSubmoleculeInSimulation(grofile, topfile, newmolGro, newmolTop, insertionPosition);
-	SimParams params{};
-	params.n_steps = 0;
-	CreateSimulation(grofile, topfile, params);
+	CreateSimulation(grofile, topfile, simparams);
 	//SimulationBuilder
 	//FileUtils::mer
 	//MDFiles::
@@ -279,10 +278,33 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 	}
 }
 
+void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDragCommand, const LiveEdit::DragMolecule& prevDragCommand, std::vector<int>& affectedParticleIds, std::vector<Float3>&fixedMovements) {
+	if (newDragCommand.particleId != prevDragCommand.particleId) {
+		// New particle, need to find new affected particles
+		// TODO: Search the moleculegraph for connected ids instead of this!
+		affectedParticleIds.resize(simulation->box_host->boxparams.totalParticles);
+		std::iota(affectedParticleIds.begin(), affectedParticleIds.end(), 0);
+
+		fixedMovements.resize(affectedParticleIds.size(), Float3{0,0,0});
+	}
+
+	//const float forceChangeMagnitude = (newDragCommand.draggingForce - prevDragCommand.draggingForce).len();
+	if (newDragCommand.draggingForce == prevDragCommand.draggingForce) {		
+		return;
+	}
+
+	float scale = .1f;
+	for (const auto& id : affectedParticleIds) {
+		fixedMovements[id] = newDragCommand.draggingForce * scale;
+	}
+}
+
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	std::unique_ptr<Display> display = nullptr;
 
 	simulation->simparams_host.n_steps = 0;
+	simulation->simparams_host.data_logging_interval = 0;
+	simulation->simparams_host.em_variant = true;
 
 	display = std::make_unique<Display>();
 	display->WaitForDisplayReady();	
@@ -290,6 +312,13 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	bool shouldExit = false;
 	std::vector<Float3> positionData;
 	bool shouldUpdateRender = true;
+
+	// MoleculeDragging
+	LiveEdit::DragMolecule prevDragmoleculeCmd{};
+	std::vector<int> affectedParticleIds;
+	std::vector<Float3> fixedMovements;
+
+	int remainingStepsCount = 0;
 
 	auto GetNextCommand = [&]() -> std::optional<LiveEdit::Command> {
 		if (!liveEditCommandsQueue.empty()) {
@@ -319,7 +348,14 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						return;
 					}
 					else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
-						InsertMolecule(grofile, topfile, cmd);
+						InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
+						remainingStepsCount = 10;
+					}
+					else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
+						HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
+						prevDragmoleculeCmd = cmd;
+						engine->SetFixedParticleMovementBuffer(fixedMovements);
+						remainingStepsCount = 10;
 					}
 				},
 				*newCmd
@@ -339,9 +375,17 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			 GatherPositionsIntoVector(positionData, pcBuffer, simulation->box_host->persistentClusters.size());
 			 shouldUpdateRender = true;
 		}
-		if (engine) {
+		if (engine && remainingStepsCount > 0) {
 			// Add step logic here
 			//shouldUpdateRender = true;
+			engine->step();
+			auto& pcBuffer = engine->OffloadPclusterState();
+			GatherPositionsIntoVector(positionData, pcBuffer, simulation->box_host->persistentClusters.size());
+			shouldUpdateRender = true;
+			remainingStepsCount--;
+			if (remainingStepsCount == 0) {
+				// check engine if we should continue..
+			}
 		}
 
 		if (shouldUpdateRender) {

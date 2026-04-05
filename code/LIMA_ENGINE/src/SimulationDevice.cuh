@@ -45,6 +45,8 @@ struct DatabuffersDeviceController {
 	static const int nStepsInBuffer = 5; // TODO: I want this to be dynamic.
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
+		if (loggingInterval == 0)
+			return false;
 		return step % (nStepsInBuffer * loggingInterval) == 0;
 	}
 	static int StepsReadyToTransfer(size_t step, int loggingInterval) {

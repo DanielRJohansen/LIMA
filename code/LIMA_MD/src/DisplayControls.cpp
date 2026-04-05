@@ -58,8 +58,9 @@ void TranslateGizmo::SetActiveAxis(int selectedObjectId) {
     else
         activeAxis = std::nullopt;
 }
-void TranslateGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize) {
-    const glm::vec2 mouseDelta = mousePos - dragStartMousePos;
+
+void TranslateGizmo::UpdateDraggingForce(glm::vec2 mousePos, glm::vec2 prevMousePos, const Camera& camera, glm::vec2 windowSize) {
+    const glm::vec2 mouseDelta = mousePos - prevMousePos;
 
     // Replace these with your actual matrices/getters.
     const glm::mat4 view = camera.View();
@@ -95,7 +96,7 @@ void TranslateGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camer
 
 void Display::OnMouseMove(double xpos, double ypos) {
     if (activeGizmo.has_value() && activeGizmo->activeAxis.has_value()) {
-        activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), camera, windowSize);   
+        activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), mousePos, camera, windowSize);   
     } 
     else if (isDragging) {
         const float sensitivity = 0.001f;
@@ -124,7 +125,6 @@ void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
 }
 
 void Display::HandleGizmo(int objectId) {
-	//bool isGizmoElement = elementId == (int)UniqueRenderElementIds::gizmoArrowX || elementId == (int)UniqueRenderElementIds::gizmoArrowY || elementId == (int)UniqueRenderElementIds::gizmoArrowZ;
     if (objectId == -1) {
         activeGizmo.reset();
         return;
@@ -135,6 +135,7 @@ void Display::HandleGizmo(int objectId) {
     }
     if (objectId < renderAtomsTemp.size()) {
         activeGizmo->position = glm::vec3{ renderAtomsTemp[objectId].position.x, renderAtomsTemp[objectId].position.y, renderAtomsTemp[objectId].position.z };
+        activeGizmo->idOfAtomAttachedTo = objectId;
     }
 }
 
@@ -153,13 +154,14 @@ void Display::OnMouseButton(int button, int action, int mods) {
             if (activeGizmo) {
 				activeGizmo->SetActiveAxis(objectId);
                 activeGizmo->dragStartPosition = activeGizmo->position;
-                activeGizmo->dragStartMousePos = glm::vec2(mousePos);
+                //activeGizmo->dragStartMousePos = glm::vec2(mousePos);
             }
 
         }
         else if (action == GLFW_RELEASE) {
             if (activeGizmo.has_value()) {
                 activeGizmo->activeAxis.reset();
+                activeGizmo->pullForce.reset();
             }
 
             isDragging = false;

@@ -10,7 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <thread>
-
+#include <optional>
 
 
 
@@ -78,6 +78,9 @@ public:
 	CudaBuffer<PersistentCluster>& OffloadPclusterState();
 	// TODO: Make another version of the func above, that does the copy-to-host-part async, and can reuse
 	// the host memory..
+
+	// Overwrites force in IntegrationKernel during EM if present
+	void SetFixedParticleMovementBuffer(const std::vector<Float3>& velocities);
 
 private:
 
@@ -157,6 +160,9 @@ private:
 
 	// Available to be copied to, while sim is running
 	CudaBuffer<PersistentCluster> pdataCopyBuffer; 
+
+	// For EM only, overwrites forces in integration kernel. 
+	std::optional<CudaBuffer<Float3>> fixedParticleMovementBuffer; 
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();

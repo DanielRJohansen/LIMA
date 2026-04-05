@@ -310,7 +310,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 template<typename BoundaryCondition, bool emvariant>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt,	int totalParticlesUpperbound, int numScs/*, const ForceEnergy* const nbForceenergy*/) {
+	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, Float3* fixedParticleMovementBuffer /*Only available in EM*/  /*, const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
 
@@ -375,8 +375,16 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
 		AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
-		const Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, adamState, step);
+		Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, adamState, step);
 		//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
+
+		// Overrule movement inferred by force, if this value is available AND nonzeory
+		if (fixedParticleMovementBuffer != nullptr) {
+			Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
+			if (fixedMovement.lenSquared() > 0) {
+				pos_now = pos + fixedMovement;
+			}
+		}
 
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 	}

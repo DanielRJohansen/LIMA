@@ -276,6 +276,13 @@ CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState() {
 	return pdataCopyBuffer;
 }
 
+void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement) {
+	assert(movement.size() == simulation->box_host->boxparams.totalParticles);
+	if (!fixedParticleMovementBuffer.has_value())
+		fixedParticleMovementBuffer.emplace();
+	fixedParticleMovementBuffer->SetData(movement);
+}
+
 void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
 
@@ -407,10 +414,13 @@ void Engine::_deviceMaster() {
 		int totalParticlesUpperbound = simulation->box_host->persistentClusters.size() * PersistentCluster::maxParticles;
 		const int nBlocks = (nSuperclusters + 4 - 1) / 4;
 		const dim3 blockDim(16, 4, 1);
+
+		Float3* fixedParticleMovementBufferPtr = fixedParticleMovementBuffer.has_value() ? fixedParticleMovementBuffer->Get() : nullptr;
+
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
 			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
-				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters);
+				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, fixedParticleMovementBufferPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();
 	}
@@ -423,7 +433,7 @@ void Engine::_deviceMaster() {
 
 void Engine::deviceMaster() {
 
-	const bool logData = simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
+	const bool logData = simulation->simparams_host.data_logging_interval != 0 && simulation->getStep() % simulation->simparams_host.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
 
 	switch (simulation->simparams_host.bc_select) {
 	case NoBC:

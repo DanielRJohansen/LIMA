@@ -113,13 +113,14 @@ public:
 
 struct TranslateGizmo {
 	glm::vec3 position{};
+	int idOfAtomAttachedTo = -1;
 	std::optional<int> activeAxis = std::nullopt;
 	std::optional<glm::vec3> pullForce;
 	//std::optional<int> hoveredAxis = std::nullopt;
 
 	glm::vec3 dragStartPosition{};
 	//glm::vec3 dragStartHitPoint{};
-	glm::vec2 dragStartMousePos{};
+	//glm::vec2 dragStartMousePos{};
 
 	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowX };
 	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowY };
@@ -127,7 +128,8 @@ struct TranslateGizmo {
 
 	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
 	void SetActiveAxis(int selectedObjectId);
-	void UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize);
+	void UpdateDraggingForce(glm::vec2 mousePos, glm::vec2 prevMousePos, const Camera& camera, glm::vec2 windowSize);
+	//glm::vec3 CalcPosition(const std::vector<RenderAtom>& renderAtoms) const;
 };
 
 
@@ -157,7 +159,6 @@ public:
 	}
 
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
-
 private:
 	// The renderThread will be spawned during construction, and run this indefinitely
 	void Mainloop();

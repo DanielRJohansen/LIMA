@@ -26,4 +26,11 @@ public:
 		cudaMalloc(&devicePtr, newSize * sizeof(T));
 		size = newSize;
 	}
+	void SetData(const std::vector<T>& v){
+		Expand(v.size());
+		cudaMemcpy(devicePtr, v.data(), v.size() * sizeof(T), cudaMemcpyHostToDevice);
+	}
+	size_t Size() const {
+		return size;
+	}
 };

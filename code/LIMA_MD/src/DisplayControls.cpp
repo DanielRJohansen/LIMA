@@ -18,7 +18,7 @@
 
 
 
-static glm::vec3 GetAxisDirection(int axis)
+glm::vec3 GetAxisDirection(int axis)
 {
     switch (axis) {
     case 0: return glm::vec3(1.f, 0.f, 0.f);
@@ -27,26 +27,48 @@ static glm::vec3 GetAxisDirection(int axis)
     default: return glm::vec3(0.f);
     }
 }
-
-static glm::vec2 WorldToScreen(
-    const glm::vec3& worldPos,
-    const glm::mat4& view,
-    const glm::mat4& proj,
-    int viewportWidth,
-    int viewportHeight)
+glm::vec3 GetCameraWorldPosition(const glm::mat4& view)
 {
-    const glm::vec4 clip = proj * view * glm::vec4(worldPos, 1.f);
-    if (clip.w == 0.f)
-        return glm::vec2(0.f);
-
-    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-
-    return glm::vec2{
-        (ndc.x * 0.5f + 0.5f) * static_cast<float>(viewportWidth),
-        (1.f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(viewportHeight)
-    };
+    const glm::mat4 invView = glm::inverse(view);
+    return glm::vec3(invView[3]);
 }
 
+glm::vec3 ScreenToWorldRayDirection(
+    glm::vec2 mousePos,
+    const glm::mat4& view,
+    const glm::mat4& proj,
+    glm::vec2 windowSize)
+{
+    const float x = 2.f * mousePos.x / windowSize.x - 1.f;
+    const float y = 1.f - 2.f * mousePos.y / windowSize.y;
+
+    const glm::vec4 rayClip{ x, y, -1.f, 1.f };
+
+    glm::vec4 rayEye = glm::inverse(proj) * rayClip;
+    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.f, 0.f);
+
+    return glm::normalize(glm::vec3(glm::inverse(view) * rayEye));
+}
+
+bool ClosestPointBetweenLines(
+    const glm::vec3& p1, const glm::vec3& d1,
+    const glm::vec3& p2, const glm::vec3& d2,
+    float& t1Out)
+{
+    const glm::vec3 r = p1 - p2;
+    const float a = glm::dot(d1, d1);
+    const float e = glm::dot(d2, d2);
+    const float b = glm::dot(d1, d2);
+    const float c = glm::dot(d1, r);
+    const float f = glm::dot(d2, r);
+
+    const float denom = a * e - b * b;
+    if (std::abs(denom) < 1e-8f)
+        return false;
+
+    t1Out = (b * f - c * e) / denom;
+    return true;
+}
 
 void TranslateGizmo::SetActiveAxis(int selectedObjectId) {
     if (selectedObjectId == arrowX.uniqueId)
@@ -59,45 +81,65 @@ void TranslateGizmo::SetActiveAxis(int selectedObjectId) {
         activeAxis = std::nullopt;
 }
 
-void TranslateGizmo::UpdateDraggingForce(glm::vec2 mousePos, glm::vec2 prevMousePos, const Camera& camera, glm::vec2 windowSize) {
-    const glm::vec2 mouseDelta = mousePos - prevMousePos;
+void TranslateGizmo::BeginDragging(glm::vec2 mousePos, const Camera& camera)
+{
+    if (!activeAxis)
+        return;
+    dragStartPosition = position;
+    dragStartMousePos = mousePos;
+    pullForce = glm::vec3(0.f);
+}
 
-    // Replace these with your actual matrices/getters.
+void TranslateGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize)
+{
+    if (!activeAxis.has_value()) {
+        pullForce = std::nullopt;
+        return;
+    }
+
+    const glm::vec3 axisDir = GetAxisDirection(*activeAxis);
+    const glm::vec3 axisOrigin = dragStartPosition;
+
     const glm::mat4 view = camera.View();
     const glm::mat4 proj = camera.Projection();
 
-    int viewport[4]{};
-    glGetIntegerv(GL_VIEWPORT, viewport);
-    const int viewportWidth = viewport[2];
-    const int viewportHeight = viewport[3];
+    const glm::vec3 rayOrigin = GetCameraWorldPosition(view);
+    const glm::vec3 rayDirStart = ScreenToWorldRayDirection(dragStartMousePos, view, proj, windowSize);
+    const glm::vec3 rayDirCurrent = ScreenToWorldRayDirection(mousePos, view, proj, windowSize);
 
-    const glm::vec3 axisDirWorld = GetAxisDirection(*activeAxis);
-    const glm::vec2 gizmoScreenPos = WorldToScreen(position, view, proj, viewportWidth, viewportHeight);
-    const glm::vec2 gizmoAxisScreenPos = WorldToScreen(position + axisDirWorld, view, proj, viewportWidth, viewportHeight);
+    float axisTAtStart = 0.f;
+    float axisTNow = 0.f;
 
-    glm::vec2 axisDirScreen = gizmoAxisScreenPos - gizmoScreenPos;
-    const float axisLen = glm::length(axisDirScreen);
+    const bool okStart = ClosestPointBetweenLines(axisOrigin, axisDir, rayOrigin, rayDirStart, axisTAtStart);
+    const bool okNow = ClosestPointBetweenLines(axisOrigin, axisDir, rayOrigin, rayDirCurrent, axisTNow);
 
-    if (axisLen > 1e-5f) {
-        axisDirScreen /= axisLen;
-
-        const float signedPixels = glm::dot(mouseDelta, axisDirScreen);
-
-        // 100 screen pixels = full pull.
-        float pixelsForFullPull = (float)std::max(windowSize.x, windowSize.y);
-        const float pull = std::clamp(signedPixels / pixelsForFullPull, -1.f, 1.f);
-
-        glm::vec3 force{};
-        force[activeAxis.value()] = pull;
-		pullForce = force;
+    if (!okStart || !okNow) {
+        pullForce = glm::vec3(0.f);
+        return;
     }
+
+    const float deltaAxis = axisTNow - axisTAtStart;
+    const glm::vec3 targetPosition = dragStartPosition + axisDir * deltaAxis;
+
+    const float axisError = glm::dot(targetPosition - position, axisDir);
+
+    const float stiffness = 1.0f;
+    float scalarForce = axisError * stiffness;
+
+    const float maxForce = 1.0f;
+    scalarForce = std::clamp(scalarForce, -maxForce, maxForce);
+
+    pullForce = axisDir * scalarForce;
 }
 
 
+
+
+// ----------------------------------------- GLFW callbacks ----------------------------------------- //
 void Display::OnMouseMove(double xpos, double ypos) {
     if (activeGizmo.has_value() && activeGizmo->activeAxis.has_value()) {
-        activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), mousePos, camera, windowSize);   
-    } 
+        activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), camera, windowSize);
+    }
     else if (isDragging) {
         const float sensitivity = 0.001f;
         const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
@@ -127,6 +169,7 @@ void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
 void Display::HandleGizmo(int objectId) {
     if (objectId == -1) {
         activeGizmo.reset();
+        stopMovingLiveeditCmd.store(true);
         return;
     }
 
@@ -153,8 +196,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
 
             if (activeGizmo) {
 				activeGizmo->SetActiveAxis(objectId);
-                activeGizmo->dragStartPosition = activeGizmo->position;
-                //activeGizmo->dragStartMousePos = glm::vec2(mousePos);
+                activeGizmo->BeginDragging(mousePos, camera);
             }
 
         }
@@ -162,6 +204,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
             if (activeGizmo.has_value()) {
                 activeGizmo->activeAxis.reset();
                 activeGizmo->pullForce.reset();
+				stopMovingLiveeditCmd.store(true);
             }
 
             isDragging = false;
@@ -181,4 +224,12 @@ void Display::OnMouseButton(int button, int action, int mods) {
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
     camera.Update(0, 0, yoffset * 0.1f);
+}
+// -------------------------------------------------------------------------------------------------- //
+
+
+void Display::ConsumeInputs() {
+    if (activeGizmo) {
+        activeGizmo->UpdateDraggingForce(mousePos, camera, windowSize);
+    }
 }

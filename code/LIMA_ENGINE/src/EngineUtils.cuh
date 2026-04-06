@@ -157,7 +157,7 @@ namespace EngineUtils {
 	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, SimParams simparams, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
 		//if (threadIdx.x >= compound.n_particles) { return; }
 
-		if (step % simparams.data_logging_interval != 0) { return; }
+		if (simparams.data_logging_interval == 0 || step % simparams.data_logging_interval != 0) { return; }
 
 		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, simparams.data_logging_interval, totalParticlesUpperbound);
 		simDev->traj_buffer[index] = position;

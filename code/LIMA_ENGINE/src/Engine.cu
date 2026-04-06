@@ -277,6 +277,10 @@ CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState() {
 }
 
 void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement) {
+	if (movement.empty()) {
+		fixedParticleMovementBuffer.reset();
+		return;
+	}
 	assert(movement.size() == simulation->box_host->boxparams.totalParticles);
 	if (!fixedParticleMovementBuffer.has_value())
 		fixedParticleMovementBuffer.emplace();
@@ -354,7 +358,7 @@ void Engine::HandleEarlyStoppingInEM() {
 
 
 //--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
-template <typename BoundaryCondition, bool emvariant, bool computePotE>
+template <typename BoundaryCondition, bool emvariant, bool logData>
 void Engine::_deviceMaster() {
 	
 	const BoxParams& boxparams = simulation->box_host->boxparams;
@@ -371,7 +375,7 @@ void Engine::_deviceMaster() {
 	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
 		dim3 blockDim(SuperCluster::maxParticles, 4, 1);
-		NbNonlocalKernel<BoundaryCondition, emvariant, computePotE, useNointeractionMatrix>
+		NbNonlocalKernel<BoundaryCondition, emvariant, logData, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
@@ -417,7 +421,7 @@ void Engine::_deviceMaster() {
 
 		Float3* fixedParticleMovementBufferPtr = fixedParticleMovementBuffer.has_value() ? fixedParticleMovementBuffer->Get() : nullptr;
 
-		SuperclusterIntegrateKernel<BoundaryCondition, emvariant> 
+		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
 			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
 				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, fixedParticleMovementBufferPtr);

@@ -279,23 +279,46 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 }
 
 void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDragCommand, const LiveEdit::DragMolecule& prevDragCommand, std::vector<int>& affectedParticleIds, std::vector<Float3>&fixedMovements) {
-	if (newDragCommand.particleId != prevDragCommand.particleId) {
-		// New particle, need to find new affected particles
-		// TODO: Search the moleculegraph for connected ids instead of this!
-		affectedParticleIds.resize(simulation->box_host->boxparams.totalParticles);
+
+	if (newDragCommand.particleId == prevDragCommand.particleId && newDragCommand.draggingForce == prevDragCommand.draggingForce) {
+		return;
+	}
+	
+	affectedParticleIds.clear();
+	fixedMovements.clear();
+
+	if (newDragCommand.particleId >= 0 && newDragCommand.draggingForce.len() > 0) {
+		fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{0.f});
 		for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
 			affectedParticleIds.push_back(node.atomid);
+			fixedMovements[node.atomid] = newDragCommand.draggingForce * .1f;
+			//fixedMovements.push_back(newDragCommand.draggingForce * .1f);
 		}
 	}
 
-	if (newDragCommand.draggingForce == prevDragCommand.draggingForce) {		
-		return;
-	}
 
-	float scale = .1f;
-	for (const auto& id : affectedParticleIds) {
-		fixedMovements[id] = newDragCommand.draggingForce * scale;
-	}
+	//bool newId = newDragCommand.particleId != prevDragCommand.particleId;
+	//bool newForce = newDragCommand.draggingForce != prevDragCommand.draggingForce;
+
+	//if (newId || newForce) {
+	//	for (const auto& id : affectedParticleIds) {
+	//		fixedMovements[id] = Float3{ 0 };
+	//	}
+	//}
+
+	//if (newId) {
+	//	affectedParticleIds.clear();
+	//	for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
+	//		affectedParticleIds.push_back(node.atomid);
+	//	}		
+	//}
+
+	//if (newForce || newDragCommand.draggingForce.len() > 0) {
+	//	float scale = .1f;
+	//	for (const auto& id : affectedParticleIds) {
+	//		fixedMovements[id] = Float3{ 0.01f, 0.f, 0.f };// newDragCommand.draggingForce* scale;
+	//	}
+	//}
 }
 
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
@@ -303,7 +326,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 	simulation->simparams_host.n_steps = 0;
 	simulation->simparams_host.data_logging_interval = 0;
-	simulation->simparams_host.em_variant = true;
+	simulation->simparams_host.em_variant = false;
 
 	display = std::make_unique<Display>();
 	display->WaitForDisplayReady();	
@@ -350,6 +373,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
 						fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
 						remainingStepsCount = 50;
+						prevDragmoleculeCmd = LiveEdit::DragMolecule{};
 					}
 					else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
 						HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
@@ -375,6 +399,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			 GatherPositionsIntoVector(positionData, pcBuffer, simulation->box_host->persistentClusters.size());
 			 shouldUpdateRender = true;
 		}
+		//printf("Step count %d\n", remainingStepsCount);
 		if (engine && remainingStepsCount > 0) {
 			// Add step logic here
 			//shouldUpdateRender = true;

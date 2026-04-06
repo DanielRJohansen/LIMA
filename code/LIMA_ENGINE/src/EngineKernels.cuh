@@ -307,7 +307,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
  
 // blockDim=(16, 4, 1)
-template<typename BoundaryCondition, bool emvariant>
+template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
 	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, Float3* fixedParticleMovementBuffer /*Only available in EM*/  /*, const ForceEnergy* const nbForceenergy*/) {
@@ -328,7 +328,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].pData[0].position;
 
 		// By applying BC here, we dont need to wait for thread0 later in the kernel
-		BoundaryCondition::applyBCNM(p0s[threadIdx.y]);// TODO: We should use either SC CoM, or a particle close to the middle..
+		BoundaryCondition::applyBCNM(p0s[threadIdx.y]);// TODO: We should use either SC CoM, or a particle close to the middle..		
 	}
 	__syncthreads();
 
@@ -348,6 +348,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 	}
 
 	Float3 pos = superClusters[scIdGlobal].pData[threadIdx.x].position;
+	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
 
 	// Collect ForceEnergy from all sources
 	ForceEnergy fe{};
@@ -371,7 +372,6 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 
 	// Energy minimize
 	if constexpr (emvariant) {
-		// TODO: Handle emvariants/ADAM states
 		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
 		AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
@@ -379,12 +379,12 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
 
 		// Overrule movement inferred by force, if this value is available AND nonzeory
-		if (fixedParticleMovementBuffer != nullptr) {
+		/*if (fixedParticleMovementBuffer != nullptr) {
 			Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
 			if (fixedMovement.lenSquared() > 0) {
 				pos_now = pos + fixedMovement;
 			}
-		}
+		}*/
 
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 	}
@@ -393,11 +393,21 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
 		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
 		const Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
-		const Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, dt);
+		Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, dt);
 
 		if constexpr (FORCE_CHECKS) {
 			if ((pos_now - pos).len() > 0.5f) {
 				printf("Warning: Particle %d in PC %d moved %f nm in one step.\n", pidInPcluster, pcIdGlobal, (pos_now - pos).len());
+			}
+		}
+
+		// TODO: This should be happening in the EM variant, but i cant get that working properly
+		if constexpr (!logData) {
+			if (fixedParticleMovementBuffer != nullptr && pidGlobal != -1) {
+				//pos_now = pos + Float3(0.01f, 0.f, 0.f);
+
+				Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
+				pos_now += fixedMovement;
 			}
 		}
 
@@ -414,7 +424,8 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 
 	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
 
-	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
+	//BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
+
 	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, simDev->params, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
 
 	superClusters[scIdGlobal].pData[threadIdx.x].position = pos;

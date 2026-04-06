@@ -119,8 +119,7 @@ struct TranslateGizmo {
 	//std::optional<int> hoveredAxis = std::nullopt;
 
 	glm::vec3 dragStartPosition{};
-	//glm::vec3 dragStartHitPoint{};
-	//glm::vec2 dragStartMousePos{};
+	glm::vec2 dragStartMousePos{};
 
 	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowX };
 	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowY };
@@ -128,8 +127,8 @@ struct TranslateGizmo {
 
 	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
 	void SetActiveAxis(int selectedObjectId);
-	void UpdateDraggingForce(glm::vec2 mousePos, glm::vec2 prevMousePos, const Camera& camera, glm::vec2 windowSize);
-	//glm::vec3 CalcPosition(const std::vector<RenderAtom>& renderAtoms) const;
+	void BeginDragging(glm::vec2 mousePos, const Camera& camera);
+	void UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize);
 };
 
 
@@ -191,6 +190,7 @@ private:
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
 	int GetObjectIdAtPixel(glm::ivec2);
+	void ConsumeInputs();
 
 	bool pause = false;
 	bool renderAtoms = true;
@@ -200,6 +200,7 @@ private:
 	FPS fps{};
 
 	std::optional<TranslateGizmo> activeGizmo;
+	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	Rendering::Task incomingRenderTask = nullptr;
 	std::mutex incomingRenderTaskMutex;

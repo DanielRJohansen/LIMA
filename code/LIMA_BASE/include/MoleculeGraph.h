@@ -176,6 +176,8 @@ namespace LimaMoleculeGraph {
 		}
 
 		auto BFS(int start_node_id) {
+			if (!nodes.contains(start_node_id)) 
+				return BFSRange<Node*>(nullptr);
 			return BFSRange(&nodes.at(start_node_id));
 		}
 

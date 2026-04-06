@@ -241,6 +241,8 @@ void Display::Mainloop() {
             }
         }
 
+        ConsumeInputs();
+
         const int msPerFrame = std::floor(1. / 60. * 1000.);
         bool shouldDraw = newData || frameTime.elapsed().count() > msPerFrame;
 
@@ -344,6 +346,9 @@ std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
     if (activeGizmo && activeGizmo->pullForce) {
         Float3 draggingForce{ activeGizmo->pullForce->x, activeGizmo->pullForce->y, activeGizmo->pullForce->z };
 		return LiveEdit::DragMolecule{ activeGizmo->idOfAtomAttachedTo, draggingForce };
+    }
+    if (bool stopMove = stopMovingLiveeditCmd.exchange(false)) {
+		return LiveEdit::DragMolecule{ -1, Float3{} };
     }
 
     return std::nullopt;

@@ -857,7 +857,6 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 
 TopologyFile::TopologyFile() {
 	title = "My Topology file";
-	SetSystem("mysystem");
 }
 TopologyFile::TopologyFile(const fs::path& path) : path(path)
 {

@@ -88,6 +88,7 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(
 	grofile.printToFile();
 
 	TopologyFile topfile{};
+	topfile.SetSystem("MySystem");
 	topfile.path = work_dir / "topol.top";
 	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	topfile.printToFile();

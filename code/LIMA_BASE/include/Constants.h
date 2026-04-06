@@ -5,7 +5,7 @@
 
 
 // -------------------------------------------- Debug Parameters -------------------------------------------- //
-constexpr bool INDEXING_CHECKS = false;
+constexpr bool INDEXING_CHECKS = true;
 constexpr bool SYNC_ALL_KERNELS = false;	// Disallow async/concurrent kernels
 constexpr bool FORCE_CHECKS = false;		// Check force is not NaN or Inf
 constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switching to int representation

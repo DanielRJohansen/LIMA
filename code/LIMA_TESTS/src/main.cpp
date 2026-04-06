@@ -44,11 +44,11 @@ void TestDisplayT4() {
 }
 
 void LiveEditTest() {
-	Environment env({R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)"}, EnvMode::Full);
+	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
 	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(15.f));
 	env.CreateSimulation(grofile, topfile, simparams);
 	// TODO: Pre-load insertmolecule command here
-	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp"});
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
 	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
 	env.LiveEdit(grofile, topfile);
 }
@@ -57,7 +57,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		LiveEditTest();
+		//LiveEditTest();
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
 
@@ -100,9 +100,9 @@ int main() {
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
-		
-		
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+
+
 		//const fs::path work_dir = simulations_dir / "test";
 		//Lipids::Selection lipids;
 		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
@@ -116,16 +116,16 @@ int main() {
 		//topfile->printToFile(work_dir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//TestBuildmembraneSmall(envmode, false);
+		TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
 		//Lipids::_MakeLipid("cholesterol");
 
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		
+
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
-		
+
 		//TestForces1To1(envmode);
 
 		//ForceComparisons::T4RmsdAndRmsf();
@@ -166,17 +166,14 @@ int main() {
 		env.CreateSimulation(grofile, topfile, SimParams{});
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
-		
+
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
 		//RunAllUnitTests();
-		/*int runAll = 1;
-		if (!runAll)
-			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
-		else
-			RunAllUnitTests();*/}
+
+	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
 	}
@@ -204,7 +201,7 @@ void RunAllUnitTests() {
 		std::cout << "WARNING: Not all physics modules are enabled, expect tests to fail!" << std::endl;
 		TestUtils::setConsoleTextColorDefault();
 	}
-		
+
 
 
 	// Isolated forces sanity checks
@@ -238,7 +235,7 @@ void RunAllUnitTests() {
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
 	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
-	
+
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 

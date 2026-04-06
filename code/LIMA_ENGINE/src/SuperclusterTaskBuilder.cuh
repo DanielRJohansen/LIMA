@@ -438,13 +438,15 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, SuperClusterMe
 		{
 			//int searchStartIndex = //
 			int indexInQuery = scId != scIdQuery
-				? IndexOfId(&tbContents.scIdsQueryNonowned[scIdQuery * TaskBuilderControlContents::maxTasksPerSc], tbContents.nInteractionsNonowned[token.GetQueryId()], scId)
+				? IndexOfId(&tbContents.scIdsQueryNonowned[scIdQuery * TaskBuilderControlContents::maxTasksPerSc], tbContents.nInteractionsNonowned[scIdQuery], scId)
 				: task.resultIndices[0];
 
 			 if (indexInQuery == -1) {
-				 // This means that the query sc does not have an interaction with the sc of this task. This can only happen if the query sc has less interactions than the sc of this task, and thus we can be sure that the result index of the query sc is after the result index of this task, and thus we can safely set it to -1 to indicate that it should be ignored.
+				 // This means that the query sc does not have an interaction with the sc of this task. This can only happen if the query sc has less interactions than the sc of this task, 
+				 // and thus we can be sure that the result index of the query sc is after the result index of this task, and thus we can safely set it to -1 to indicate that it should be ignored.
 				 task.resultIndices[1] = -1;
-				 printf("Something went very wrong!\n");
+				 printf("Illegal query index for scId %d querying scId %d. Check %d ids\n", scId, scIdQuery, tbContents.nInteractionsNonowned[scIdQuery]);
+				 //printf("Something went very wrong!\n");
 			 }
 			 else {
 				 const int queryNumOwnedTasks = tbContents.nInteractionsOwned[scIdQuery];

@@ -92,9 +92,11 @@ void Display::SetupCallbacks() {
                 case GLFW_KEY_N:
                     display->debugValue = 1;
                     break;
-                case GLFW_KEY_P:
-                    display->pause = !display->pause;
+                case GLFW_KEY_P: {
+                    std::lock_guard<std::mutex> lock2(display->liveEditCommandsQueueMutex);
+                    display->liveEditCommandsQueue.push_back(LiveEdit::TogglePause{});
                     break;
+                }
                 case GLFW_KEY_1:
                     display->renderAtoms = !display->renderAtoms;
                     break;
@@ -351,6 +353,14 @@ std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
 		return LiveEdit::DragMolecule{ -1, Float3{} };
     }
 
+    {
+        std::lock_guard<std::mutex> lock2(liveEditCommandsQueueMutex);
+        if (!liveEditCommandsQueue.empty()) {
+            LiveEdit::Command cmd = liveEditCommandsQueue.front();
+            liveEditCommandsQueue.pop_front();
+            return cmd;
+        }
+    }
     return std::nullopt;
 }
 

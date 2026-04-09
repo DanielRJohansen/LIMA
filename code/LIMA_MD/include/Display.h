@@ -192,7 +192,8 @@ private:
 	int GetObjectIdAtPixel(glm::ivec2);
 	void ConsumeInputs();
 
-	bool pause = false;
+	std::mutex liveEditCommandsQueueMutex;
+	std::deque<LiveEdit::Command> liveEditCommandsQueue;
 	bool renderAtoms = true;
 	bool renderFacets = true;
 	bool renderFacetsNormals = false;

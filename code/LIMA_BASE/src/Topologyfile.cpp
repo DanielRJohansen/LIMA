@@ -485,7 +485,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				// This file is a forcefield. We add it to the includes, and return to parent topol
 				if (topology.forcefieldInclude != std::nullopt)
 					throw std::runtime_error("Trying to include a forcefield, but topology already has 1!");
-
+				
 				topology.forcefieldInclude.emplace(ForcefieldInclude(fs::path{includefileName.value_or("forcefield.itp")}));
 			}
 			continue;
@@ -1004,8 +1004,8 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 		if (inputForcefieldInclude.has_value()) {
 			if (!forcefieldInclude.has_value())
 				forcefieldInclude.emplace(inputForcefieldInclude.value());
-			else
-				assert(forcefieldInclude->filename == inputForcefieldInclude->filename);
+			else 
+				assert(forcefieldInclude->filename == inputForcefieldInclude->filename);			
 		}
 	}
 	AppendMolecule(moleculetype->name);
@@ -1039,10 +1039,9 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		file << "; " << title << "\n\n";
 
 		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
-		{
-			bool usesInternalForcefield = fs::exists(GetLimaDir() / "resources/forcefields" / forcefieldInclude->filename);
-		
+		{				
 			if (forcefieldInclude) {
+				bool usesInternalForcefield = fs::exists(GetLimaDir() / "resources/forcefields" / forcefieldInclude->filename);
 				if (usesInternalForcefield) {
 					file << ("#include \"" + forcefieldInclude->filename.string() + "\"\n");
 				}

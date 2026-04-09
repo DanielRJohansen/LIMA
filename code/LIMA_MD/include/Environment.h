@@ -64,6 +64,7 @@ public:
 	/// </summary>
 	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
 	void InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
+	void BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
 	void HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDragCommand, 
 		const LiveEdit::DragMolecule& prevDragCommand, std::vector<int>& affectedParticleIds, std::vector<Float3>& fixedVelocities);
 
@@ -125,7 +126,7 @@ private:
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
-	void handleStatus(int64_t step, bool emVariant);
+	void UpdateSimstatus(bool printToConsole);
 
 	// Returns false if display has been closed by user
 	bool handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
@@ -147,7 +148,7 @@ private:
 
 	std::unique_ptr<Engine> engine;
 	std::unique_ptr<Simulation> simulation;
-	std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
+	//std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
 
 	ColoringMethod coloringMethod{};	// Not ideal to have here..
 

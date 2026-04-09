@@ -90,7 +90,7 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(
 	TopologyFile topfile{};
 	topfile.SetSystem("MySystem");
 	topfile.path = work_dir / "topol.top";
-	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
+	//topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	topfile.printToFile();
 	topfile = TopologyFile{work_dir / "topol.top"}; // Reload the topfile to parse the ffinclude
 
@@ -189,7 +189,7 @@ void Environment::sayHello() {
 std::chrono::duration<double> Environment::run() {
 	const bool emVariant = simulation->simparams_host.em_variant;
 	const bool stepwise = simulation->simparams_host.stepwise;
-	simparamsCopy = simulation->simparams_host;
+	//simparamsCopy = simulation->simparams_host;
 
     if (!prepareForRun()) { return {}; }
 
@@ -213,7 +213,7 @@ std::chrono::duration<double> Environment::run() {
 		
 		engine->step();
 
-		handleStatus(engine->runstatus.current_step, emVariant);
+		UpdateSimstatus(true);
 		
 		if (engine->runstatus.simulation_finished) {
 			break;
@@ -229,7 +229,7 @@ std::chrono::duration<double> Environment::run() {
 	engine->terminateSimulation();
 
 	//simulation = engine->takeBackSim();
-	simparamsCopy.reset();
+	//simparamsCopy.reset();
 
 	simulation->finished = true;
 	simulation->ready_to_run = false ;
@@ -262,6 +262,8 @@ void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEd
 
 	engine.reset(); // Kill the engine, since it holds a pointer to the sim which we will now change under it. We will make a new engine after creating the new sim
 	SimulationBuilder::InsertSubmoleculeInSimulation(grofile, topfile, newmolGro, newmolTop, insertionPosition);
+	if (!topfile.forcefieldInclude.has_value())
+		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	CreateSimulation(grofile, topfile, simparams);
 	//SimulationBuilder
 	//FileUtils::mer
@@ -292,7 +294,7 @@ void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDra
 		fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{0.f});
 		for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
 			affectedParticleIds.push_back(node.atomid);
-			fixedMovements[node.atomid] = newDragCommand.draggingForce * .1f;
+			fixedMovements[node.atomid] = newDragCommand.draggingForce * .05f;
 			//fixedMovements.push_back(newDragCommand.draggingForce * .1f);
 		}
 	}
@@ -322,6 +324,18 @@ void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDra
 	//}
 }
 
+void Environment::BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
+	Lipids::Selection lipidselection;
+	for (const auto [name, percentage] : cmd.lipids) {
+		lipidselection.emplace_back(Lipids::Select(name, work_dir, percentage));
+	}
+	float membraneCenterZ = cmd.membraneCenterZ.value_or(grofile.box_size.z / 2.f);
+	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ);
+	SimParams simparams = simulation->simparams_host;
+	CreateSimulation(grofile, topfile, simparams);
+	//run();
+}
+
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	std::unique_ptr<Display> display = nullptr;
 
@@ -335,13 +349,16 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	bool shouldExit = false;
 	std::vector<Float3> positionData;
 	bool shouldUpdateRender = true;
+	bool canAcceptNewCommand = true;
 
 	// MoleculeDragging
 	LiveEdit::DragMolecule prevDragmoleculeCmd{};
 	std::vector<int> affectedParticleIds;
 	std::vector<Float3> fixedMovements;
 
+	// Control stepping
 	int remainingStepsCount = 0;
+	bool runContinous = false;
 
 	auto GetNextCommand = [&]() -> std::optional<LiveEdit::Command> {
 		if (!liveEditCommandsQueue.empty()) {
@@ -362,31 +379,46 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		}
 
 		// Poll interface for new commands, and execute if any		
-		if (auto newCmd = GetNextCommand()) {
-			std::visit(
-				[&](auto&& cmd) {
-					using T = std::decay_t<decltype(cmd)>;
+		if (canAcceptNewCommand) {
+			if (auto newCmd = GetNextCommand()) {
+				std::visit(
+					[&](auto&& cmd) {
+						using T = std::decay_t<decltype(cmd)>;
 
-					if constexpr (std::is_same_v<T, LiveEdit::Invalid>) {
-						return;
-					}
-					else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
-						InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
-						fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
-						remainingStepsCount = 50;
-						prevDragmoleculeCmd = LiveEdit::DragMolecule{};
-					}
-					else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
-						HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
-						prevDragmoleculeCmd = cmd;
-						engine->SetFixedParticleMovementBuffer(fixedMovements);
-						remainingStepsCount = 50;
-					}
-				},
-				*newCmd
-			);
+						if constexpr (std::is_same_v<T, LiveEdit::Invalid>) {
+							return;
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
+							InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
+							fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
+							remainingStepsCount = 50;
+							prevDragmoleculeCmd = LiveEdit::DragMolecule{};
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
+							HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
+							prevDragmoleculeCmd = cmd;
+							engine->SetFixedParticleMovementBuffer(fixedMovements);
+							if (cmd.draggingForce.len() > 0)
+								remainingStepsCount = 50;
+							simulation->simparams_host.em_variant = false;
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::BuildMembrane>) {
+							BuildMembrane(cmd, grofile, topfile);
+							simulation->simparams_host.em_variant = true;
+							remainingStepsCount = 4000;
+							canAcceptNewCommand = false;
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::TogglePause>) {
+							runContinous = !runContinous;
+						}
+						else {
+							//static_assert(always_false<T>, "Non-exhaustive visitor!");
+						}
+					},
+					*newCmd
+				);
+			}
 		}
-
 		// Decide if engine should run, if so new params?
 
 		// Run engine
@@ -401,7 +433,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			 shouldUpdateRender = true;
 		}
 		//printf("Step count %d\n", remainingStepsCount);
-		if (engine && remainingStepsCount > 0) {
+		if (engine && (remainingStepsCount > 0 || runContinous)) {
 			// Add step logic here
 			//shouldUpdateRender = true;
 			engine->step();
@@ -412,6 +444,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			if (remainingStepsCount == 0) {
 				// check engine if we should continue..
 			}
+			UpdateSimstatus(false);
 		}
 
 		if (shouldUpdateRender) {
@@ -419,6 +452,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				positionData.data(), simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, "", coloringMethod, simStatus
 			), false);
 			shouldUpdateRender = false;
+		}
+
+		if (remainingStepsCount == 0) {
+			canAcceptNewCommand = true;
 		}
 	}
 }
@@ -538,22 +575,26 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
-void Environment::handleStatus(const int64_t step, bool emVariant) {
-	if (m_mode == Headless) {
+void Environment::UpdateSimstatus(bool printToConsole) {
+	if (!simulation || !engine) {
 		return;
 	}
 
+	const int64_t step = simulation->getStep();
 	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {		
 		auto duration = std::chrono::steady_clock::now() - time0;
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
-		//// First clear the current line
-		//printf("\r\033[K");
-		// Move cursor to the beginning of the line and clear it
-		printf("\033[1000D\033[K");
 
-		printf("Step #%06llu", step);
-		printf("\tAvg. time: %.2fms", avgSteptime);
+		if (printToConsole) {
+			//// First clear the current line
+			//printf("\r\033[K");
+			// Move cursor to the beginning of the line and clear it
+			printf("\033[1000D\033[K");
+
+			printf("Step #%06llu", step);
+			printf("\tAvg. time: %.2fms", avgSteptime);
+		}
 
 		time0 = std::chrono::steady_clock::now();
 		avgStepTimes.emplace_back(avgSteptime);
@@ -562,11 +603,11 @@ void Environment::handleStatus(const int64_t step, bool emVariant) {
 
 		SimStatus newStatus{};
 		newStatus.step = engine->runstatus.current_step;
-		newStatus.maxForce = emVariant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
-		newStatus.temperature = !emVariant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
+		newStatus.maxForce = simulation->simparams_host.em_variant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
+		newStatus.temperature = !simulation->simparams_host.em_variant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
-		const double totalNsSimulated = nStepsSinceLast * simparamsCopy->dt; // [ns]
+		const double totalNsSimulated = nStepsSinceLast * simulation->simparams_host.dt; // [ns]
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		newStatus.simulationPerformance = ns_per_day;

@@ -45,11 +45,21 @@ void TestDisplayT4() {
 
 void LiveEditTest() {
 	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(15.f));
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(13.f));
 	env.CreateSimulation(grofile, topfile, simparams);
-	// TODO: Pre-load insertmolecule command here
+
+	// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
+	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
+	topfile.printToFile();
+	topfile = TopologyFile{ topfile.path };
+
+
+	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
+	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
+	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "cholesterol/cholesterol.gro", "cholesterol/cholesterol.itp" });
 	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
-	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
 	env.LiveEdit(grofile, topfile);
 }
 
@@ -57,7 +67,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
-		//LiveEditTest();
+		LiveEditTest();
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
 

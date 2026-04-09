@@ -283,13 +283,6 @@ public:
 					| std::views::join;
 	}
 
-	const GenericItpFile& GetForcefield() const {
-		if (forcefieldInclude.has_value()) {
-			return forcefieldInclude->contents;
-		}
-		throw std::runtime_error("No forcefield include in this topology");
-	}
-
 	const Moleculetype& GetMoleculeType() const {
 		if (moleculetypes.size() != 1) {
 			throw std::runtime_error("Illegal call to GetMoleculeType");

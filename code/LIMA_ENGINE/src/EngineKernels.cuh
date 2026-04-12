@@ -392,7 +392,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 
 		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
 		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
-		const Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
+		Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
 		Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, dt);
 
 		if constexpr (FORCE_CHECKS) {
@@ -402,15 +402,15 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		}
 
 		// TODO: This should be happening in the EM variant, but i cant get that working properly
-		if constexpr (!logData) {
-			if (fixedParticleMovementBuffer != nullptr && pidGlobal != -1) {
-				//pos_now = pos + Float3(0.01f, 0.f, 0.f);
-
-				Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
-				pos_now += fixedMovement;
-			}
+		if (fixedParticleMovementBuffer != nullptr) {
+			Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
+			if (fixedMovement.lenSquared() > 0) {
+				fe.force = Float3{};
+				vel_now = Float3{};
+				pos_now = pos + fixedMovement;
+			}				
 		}
-
+	
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 		Float3 velScaled;

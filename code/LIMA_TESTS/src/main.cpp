@@ -60,7 +60,7 @@ void LiveEditTest() {
 	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "cholesterol/cholesterol.gro", "cholesterol/cholesterol.itp" });
 	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
-	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
 	env.LiveEdit(grofile, topfile);
 }
 

@@ -304,33 +304,8 @@ void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDra
 		for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
 			affectedParticleIds.push_back(node.atomid);
 			fixedMovements[node.atomid] = newDragCommand.draggingForce * .05f;
-			//fixedMovements.push_back(newDragCommand.draggingForce * .1f);
 		}
 	}
-
-
-	//bool newId = newDragCommand.particleId != prevDragCommand.particleId;
-	//bool newForce = newDragCommand.draggingForce != prevDragCommand.draggingForce;
-
-	//if (newId || newForce) {
-	//	for (const auto& id : affectedParticleIds) {
-	//		fixedMovements[id] = Float3{ 0 };
-	//	}
-	//}
-
-	//if (newId) {
-	//	affectedParticleIds.clear();
-	//	for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
-	//		affectedParticleIds.push_back(node.atomid);
-	//	}		
-	//}
-
-	//if (newForce || newDragCommand.draggingForce.len() > 0) {
-	//	float scale = .1f;
-	//	for (const auto& id : affectedParticleIds) {
-	//		fixedMovements[id] = Float3{ 0.01f, 0.f, 0.f };// newDragCommand.draggingForce* scale;
-	//	}
-	//}
 }
 
 void UpdateSelection(std::set<int>& selection, LimaMoleculeGraph::MoleculeGraph& molGraph, int pid) {
@@ -415,7 +390,6 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
 							InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
 							fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
-							remainingStepsCount = 50;
 							prevDragmoleculeCmd = LiveEdit::DragMolecule{};
 							display->Render(std::make_unique<Rendering::SimulationTask>(
 								simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus

@@ -56,7 +56,7 @@ void LiveEditTest() {
 
 	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
 	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
-	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "cholesterol/cholesterol.gro", "cholesterol/cholesterol.itp" });
 	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });

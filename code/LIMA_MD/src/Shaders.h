@@ -603,16 +603,13 @@ uniform float pi = 3.14159265359f;
 out vec4 vertexColor;
 flat out int atomId;
 flat out uint highlight;
+out vec2 localCoord;
 
 void main() {
-    // Triangle fan: vertex 0 is center, vertices 1..(N-1) are rim.
     const int numTrianglesPerAtom = numVerticesPerAtom - 2;
-
-    // Note: gl_VertexID in [0..numVerticesPerAtom-1]
     float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom);
 
     vec4 atomPos = atoms[gl_InstanceID].position;
-    uint atomIndex = gl_InstanceID;
     atomId = int(atoms[gl_InstanceID].flags.y);
 
     vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0);
@@ -629,34 +626,27 @@ void main() {
     if (gl_VertexID == 0) {
         posVS = viewSpacePos;
         light = 0.7f;
+        localCoord = vec2(0.0, 0.0);
     } else {
         float coneSlope = 0.15f;
         float coneDepth = radius * coneSlope;
 
+        vec2 circle = vec2(cos(angle), sin(angle));
         vec3 offset3 =
-            right * (cos(angle) * radius) +
-            up2   * (sin(angle) * radius) -
+            right * (circle.x * radius) +
+            up2   * (circle.y * radius) -
             viewDir * coneDepth;
 
         posVS = viewSpacePos + vec4(offset3, 0.0);
 
         float ny = clamp(offset3.y / radius, -1.0f, 1.0f);
         light = clamp(ny * 0.5f + 0.6f, 0.0f, 1.0f);
-        
-   
+        localCoord = circle;
     }
 
-
     highlight = atoms[gl_InstanceID].flags.x;
-    if (highlight == 1)
-        light *= 4.f;
-
-    vec4 finalcolor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w);
-    finalcolor.x = min(finalcolor.x, 1.); 
-    finalcolor.y = min(finalcolor.y, 1.); 
-    finalcolor.z = min(finalcolor.z, 1.); 
+    vertexColor = vec4(atoms[gl_InstanceID].color.xyz * light, atoms[gl_InstanceID].color.w);
     gl_Position = Proj * posVS;
-    vertexColor = finalcolor;
 }
 )";
 
@@ -666,34 +656,33 @@ void main() {
 in vec4 vertexColor;
 flat in int atomId;
 flat in uint highlight;
+in vec2 localCoord;
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out int  FragAtomId;
 
 void main() {
-    FragColor  = vertexColor;
+    vec3 color = vertexColor.rgb;
+
+    if (highlight == 1u) {
+
+        const float thickness = 0.08;
+        const float intensity = 5.f;
+
+        float r = length(localCoord);
+
+        // thin bright ring near the outer edge        
+        float halo = smoothstep(1.f-thickness, 1.f, r);
+        
+        // optional sharper falloff so it stays a rim instead of a wash
+        halo *= halo * halo;
+
+        if (halo > 0)
+            color += color * vec3(halo*intensity);
+    }
+
+    FragColor = vec4(min(color, vec3(1.0f)), vertexColor.a);
     FragAtomId = atomId;
-
-    //if (highlight==1) {
-    //       vec3 baseColor = vertexColor.rgb * 2.0; // Double brightness
-
-    //    // Calculate distance from the center of the atom
-    //    float distFromCenter = length(gl_PointCoord - vec2(0.5, 0.5));
-
-    //    // Create a strong glow (brighter at the center, fading outward)
-    //    float glowIntensity = 1.0 - smoothstep(0.2, 0.8, distFromCenter);
-    //    vec3 glowColor = baseColor * glowIntensity * 2.0; // Amplify glow
-
-    //    // Add a vibrant halo (e.g., cyan/blue/purple)
-    //    float haloIntensity = 1.0 - smoothstep(0.3, 0.9, distFromCenter);
-    //    vec3 haloColor = vec3(0.3, 0.8, 1.0) * haloIntensity * 1.5; // Cyan/blue halo
-
-    //    // Combine base, glow, and halo
-    //    vec3 finalColor = baseColor + glowColor + haloColor;
-
-    //    // Output the final color (clamped to avoid overbrightening)
-    //    FragColor = vec4(min(finalColor, vec3(1.0)), vertexColor.a);
-    //}
 }
 )";
 

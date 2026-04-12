@@ -63,12 +63,12 @@ namespace RenderUtilities {
         }
     }
 
-    //https://en.wikipedia.org/wiki/Van_der_Waals_radius
+    // https://en.wikipedia.org/wiki/Van_der_Waals_radius
     __device__ float inline getRadius(ATOM_TYPE atom_type) {
         switch (atom_type)
         {
         case ATOM_TYPE::H:
-            return 0.109f * 0.25f;   // Make smaller for visibility
+            return 0.109f * 0.5f;   // Make smaller for visibility
         case ATOM_TYPE::C:
             return 0.17f;
         case ATOM_TYPE::N:

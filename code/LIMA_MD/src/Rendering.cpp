@@ -213,8 +213,6 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 {
 	camera.Update(task.boxparams.BoxSizeFloat());
 
-	auto start = std::chrono::high_resolution_clock::now();
-
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 	if (!drawAtomsFromCpuShader)
@@ -241,7 +239,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
 				auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-				renderAtomsTemp[pidGlobal].position = task.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(RenderUtilities::getRadius(atomType));
+				renderAtomsTemp[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
 				renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
 				if (task.coloringMethod == ColoringMethod::Atomname)
@@ -266,6 +264,32 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 		}
 	}
 
+	// Move the renderAtoms to device
+	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+}
+
+void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate& update)
+{
+	currentTask.simStatus = update.simStatus;
+
+	// Update the renderAtoms
+	{
+		for (int pcid = 0; pcid < currentTask.pcMeta.size(); pcid++) {
+			for (int pid = 0; pid < 4; pid++) {
+				const PersistentClusterMeta& pcMeta = currentTask.pcMeta[pcid];
+				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
+				if (pidGlobal == -1)
+					continue;
+				renderAtomsTemp[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsTemp[pidGlobal].position.w);
+			}
+		}
+	}
+	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsTemp.size()) {
+		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
+		if (attachedAtomId < renderAtomsTemp.size()) {
+			activeGizmo->position = glm::vec3(renderAtomsTemp[attachedAtomId].position.x, renderAtomsTemp[attachedAtomId].position.y, renderAtomsTemp[attachedAtomId].position.z);
+		}
+	}
 	// Move the renderAtoms to device
 	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
 }

@@ -63,14 +63,19 @@ struct Arrow {
 	void Draw(DrawTrianglesShader*, const glm::mat4& MVP,const glm::vec3& position, float scale = 1.f) const;
 };
 namespace Rendering {
+	struct NoTask{};
+
+	// Sent at simulation start
 	struct SimulationTask {
-		const Float3* positions;
 		std::vector<PersistentCluster> pclusters;
 		std::vector<PersistentClusterMeta> pcMeta; // TODO: This could just be a ref, since it remains constant?
 		const BoxParams boxparams;
-
-		const std::string siminfo; // Will be output in the window header
-		ColoringMethod coloringMethod{};
+		ColoringMethod coloringMethod{};		
+		SimStatus simStatus;
+	};
+	// Sent at each render-step
+	struct SimulationTaskUpdate {
+		const Float3* positions;
 		SimStatus simStatus;
 	};
 
@@ -87,7 +92,7 @@ namespace Rendering {
 		std::set<int> highlightedAtoms;
 	};
 
-	using Task = std::variant<void*, std::unique_ptr<SimulationTask>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
+	using Task = std::variant<NoTask, std::unique_ptr<SimulationTask>, std::unique_ptr<SimulationTaskUpdate>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
 }
 
 struct RenderSettings {
@@ -173,6 +178,7 @@ private:
 	void PrepareTask(Rendering::Task& task);
 
 	void PrepareNewRenderTask(const Rendering::SimulationTask&);
+	void PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
 	void PrepareNewRenderTask(Rendering::GrofileTask&);
 
@@ -203,7 +209,7 @@ private:
 	std::optional<TranslateGizmo> activeGizmo;
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
-	Rendering::Task incomingRenderTask = nullptr;
+	Rendering::Task incomingRenderTask = Rendering::NoTask{};
 	std::mutex incomingRenderTaskMutex;
 
 

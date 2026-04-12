@@ -198,6 +198,9 @@ std::chrono::duration<double> Environment::run() {
 	if (m_mode == Full) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
+		display->Render(std::make_unique<Rendering::SimulationTask>(
+			simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+		), stepwise);
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
@@ -345,6 +348,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 	display = std::make_unique<Display>();
 	display->WaitForDisplayReady();	
+	display->Render(std::make_unique<Rendering::SimulationTask>(
+		simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+	), false);
+
 
 	bool shouldExit = false;
 	std::vector<Float3> positionData;
@@ -393,6 +400,9 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 							fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
 							remainingStepsCount = 50;
 							prevDragmoleculeCmd = LiveEdit::DragMolecule{};
+							display->Render(std::make_unique<Rendering::SimulationTask>(
+								simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+							));
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
 							HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
@@ -407,6 +417,9 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 							simulation->simparams_host.em_variant = true;
 							remainingStepsCount = 4000;
 							canAcceptNewCommand = false;
+							display->Render(std::make_unique<Rendering::SimulationTask>(
+								simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+							));
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::TogglePause>) {
 							runContinous = !runContinous;
@@ -448,8 +461,8 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		}
 
 		if (shouldUpdateRender) {
-			display->Render(std::make_unique<Rendering::SimulationTask>(
-				positionData.data(), simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, "", coloringMethod, simStatus
+			display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
+				positionData.data(), simStatus
 			), false);
 			shouldUpdateRender = false;
 		}
@@ -638,8 +651,8 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 	}
 
 	if (stepForMostRecentData > step_at_last_render) {
-		display->Render(std::make_unique<Rendering::SimulationTask>(
-			renderPositions, simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, boxparams, info, coloringMethod, simStatus
+		display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
+			renderPositions, simStatus
 		), stepwise);
 		step_at_last_render = stepForMostRecentData;
 		//engine->runstatus.most_recent_positions = nullptr;

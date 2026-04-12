@@ -215,7 +215,7 @@ void Display::PrepareTask(Task& task) {
 }
 
 void Display::Mainloop() {
-    Rendering::Task currentRenderTask = nullptr;
+    Rendering::Task currentRenderTask = Rendering::NoTask{};
     
     TimeIt frameTime{};
 
@@ -229,27 +229,46 @@ void Display::Mainloop() {
         
 
         // Check if new data
-        bool newData = false;
+        bool newTask = false;
+        bool updatedPositions = false;
         {
 			std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);            
-            if (!std::holds_alternative<void*>(incomingRenderTask)) {
+            if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
+                if (std::holds_alternative<std::unique_ptr<SimulationTask>>(currentRenderTask)) {
+                    if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
+                        int a = 0;
+                    }
+                    PrepareNewRenderTask(*std::get<std::unique_ptr<SimulationTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
+                    incomingRenderTask = Rendering::NoTask{};
+                    updatedPositions = true;
+                }
+                else {
+                    // This shouldn't happen
+                }
+            }
+            else if (!std::holds_alternative<Rendering::NoTask>(incomingRenderTask)) {
                 currentRenderTask = std::move(incomingRenderTask);
-                incomingRenderTask = nullptr;
-                newData = true;
+                incomingRenderTask = Rendering::NoTask{};
+                newTask = true;
             }
+            
 
-            if (newData) {
-                PrepareTask(currentRenderTask);
-            }
+
+
+ 
+        }
+
+        if (newTask) {
+            PrepareTask(currentRenderTask);
         }
 
         ConsumeInputs();
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newData || frameTime.elapsed().count() > msPerFrame;
+        bool shouldDraw = newTask || updatedPositions || frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw) {
-            if (!std::holds_alternative<void*>(currentRenderTask)) {
+            if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
                 std::visit([&](auto& taskPtr) {
                     using T = std::decay_t<decltype(taskPtr)>;
                     if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
@@ -276,9 +295,15 @@ void Display::Mainloop() {
 }
 
 void Display::Render(Rendering::Task task, bool blocking) {
-    incomingRenderTaskMutex.lock();
-    incomingRenderTask = std::move(task);
-    incomingRenderTaskMutex.unlock();
+    {
+        if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
+            if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {
+                int a = 0;
+            }
+        }
+		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
+        incomingRenderTask = std::move(task);
+    }
 
     if (blocking) {
         while (1) {
@@ -427,7 +452,8 @@ void Display::TestDisplay() {
     std::vector<PersistentClusterMeta> pcMetas(1);
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
-	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), pclusters, pcMetas, params, "", Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params, Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), SimStatus{}), true);
 }
 
 

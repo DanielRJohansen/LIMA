@@ -154,7 +154,7 @@ struct BoxImage {
 
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 
-	std::unique_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
+	std::shared_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
 
 	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
 

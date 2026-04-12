@@ -219,7 +219,7 @@ void SplitClusters(std::span<int> ids, const ParticleBondedToParticlesLookup& pa
 		SplitClusters(std::span<int>(remainingIds), particleBondedToParticlesLookup, outClusters);
 }
 
-std::unique_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
+std::shared_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
 	std::vector<std::pair<int, std::string>> atoms;
 	atoms.reserve(system.particles.size());
 	for (int pid = 0; pid < system.particles.size(); pid++) {
@@ -232,7 +232,7 @@ std::unique_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
 	}
 
 	// TODO: This is under the assumption that we get a ideally sorted graph back, ill need to verify that
-	auto systemGraph = std::make_unique<MoleculeGraph>(atoms, edges);
+	auto systemGraph = std::make_shared<MoleculeGraph>(atoms, edges);
 	return systemGraph;
 }
 
@@ -659,7 +659,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
 
 	// Make PersistenClusters
-	std::unique_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
+	std::shared_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
 	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, *systemGraph, particleBondedToParticlesLookup, grofile.box_size);
 
 	auto [pClusters, pClusterMetas, particleToPclusterMap] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
@@ -728,7 +728,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
 		superTopology,
-		std::move(systemGraph),
+		systemGraph,
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
 		pClusters,

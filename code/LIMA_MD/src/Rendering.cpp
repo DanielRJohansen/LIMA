@@ -399,3 +399,16 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 	}
 
 }
+
+void Display::_UpdateSelection(const std::set<int>& selection) {
+	// This is purposefully done in 2 passes, as the selection is likely MUCH smaller that the renderatoms, and this no point in doing lookings.
+	for (auto& atom : renderAtomsTemp) {
+		atom.HighLight(false);
+	}
+	for (int id : selection) {
+		if (id < renderAtomsTemp.size())
+			renderAtomsTemp[id].HighLight(true);
+	}
+	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+	//renderatomsBuffer.SetData(renderatomsHost);
+}

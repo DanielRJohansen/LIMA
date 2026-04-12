@@ -68,6 +68,12 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 	simulation->forcefield = boximage->forcefield;
 	//simulation->forcefieldTinymol = boximage->tinymolTypes;
 	simulation->forcefieldTest = boximage->nonbondedInteractionParams;
+
+	if (display) {
+		display->Render(std::make_unique<Rendering::SimulationTask>(
+			simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+		));
+	}
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
@@ -327,6 +333,17 @@ void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDra
 	//}
 }
 
+void UpdateSelection(std::set<int>& selection, LimaMoleculeGraph::MoleculeGraph& molGraph, int pid) {
+	if (selection.contains(pid)) {
+		return; // This operation will just yield the same set
+	}
+
+	selection.clear();
+	for (const auto& node : molGraph.BFS(pid)) {
+		selection.insert(node.atomid);
+	}
+}
+
 void Environment::BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
 	Lipids::Selection lipidselection;
 	for (const auto [name, percentage] : cmd.lipids) {
@@ -340,8 +357,6 @@ void Environment::BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& gro
 }
 
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
-	std::unique_ptr<Display> display = nullptr;
-
 	simulation->simparams_host.n_steps = 0;
 	simulation->simparams_host.data_logging_interval = 0;
 	simulation->simparams_host.em_variant = false;
@@ -357,6 +372,8 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	std::vector<Float3> positionData;
 	bool shouldUpdateRender = true;
 	bool canAcceptNewCommand = true;
+
+	std::set<int> activeSelection{};
 
 	// MoleculeDragging
 	LiveEdit::DragMolecule prevDragmoleculeCmd{};
@@ -423,6 +440,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::TogglePause>) {
 							runContinous = !runContinous;
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::AtomSelected>) {
+							UpdateSelection(activeSelection, *boximage->systemGraph, cmd.particleId);
+							display->UpdateSelection(activeSelection);
 						}
 						else {
 							//static_assert(always_false<T>, "Non-exhaustive visitor!");

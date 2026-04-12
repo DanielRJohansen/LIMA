@@ -145,9 +145,9 @@ private:
 	LimaLogger m_logger;
 
 
-
-	std::unique_ptr<Engine> engine;
-	std::unique_ptr<Simulation> simulation;
+	std::unique_ptr<Display> display = nullptr;
+	std::unique_ptr<Engine> engine = nullptr;
+	std::unique_ptr<Simulation> simulation = nullptr;
 	//std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
 
 	ColoringMethod coloringMethod{};	// Not ideal to have here..

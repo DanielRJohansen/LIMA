@@ -228,7 +228,7 @@ void Display::Mainloop() {
         }
         
 
-        // Check if new data
+        // Check for new task
         bool newTask = false;
         bool updatedPositions = false;
         {
@@ -250,22 +250,28 @@ void Display::Mainloop() {
                 currentRenderTask = std::move(incomingRenderTask);
                 incomingRenderTask = Rendering::NoTask{};
                 newTask = true;
-            }
-            
-
-
-
- 
+            }            
         }
-
         if (newTask) {
             PrepareTask(currentRenderTask);
         }
 
+        // Check for new input
+        bool newInput = false;
+		std::optional<std::set<int>> newSelection;
+        {
+			std::lock_guard<std::mutex> lock(inputMutex);
+            newSelection = std::exchange(newSelectionInput, std::nullopt);
+        }
+        if (newSelection.has_value()) {
+            _UpdateSelection(newSelection.value());
+            newInput = true;
+		}
+
         ConsumeInputs();
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newTask || updatedPositions || frameTime.elapsed().count() > msPerFrame;
+        bool shouldDraw = newTask || updatedPositions || newInput || frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw) {
             if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
@@ -315,7 +321,11 @@ void Display::Render(Rendering::Task task, bool blocking) {
     }
 }
 
+void Display::UpdateSelection(const std::set<int>& selection) {
 
+	std::lock_guard<std::mutex> lock(inputMutex);
+	newSelectionInput = selection;
+}
 
 
 

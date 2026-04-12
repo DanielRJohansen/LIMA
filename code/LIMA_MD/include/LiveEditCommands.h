@@ -28,7 +28,11 @@ namespace LiveEdit {
 
 	struct TogglePause {};
 
-	using Command = std::variant<Invalid, InsertMolecule, DragMolecule, BuildMembrane, TogglePause>;
+	struct AtomSelected {
+		int particleId = -1;// Global id 
+	};
+
+	using Command = std::variant<Invalid, InsertMolecule, DragMolecule, BuildMembrane, TogglePause, AtomSelected>;
 
 
 	Command ParseCommand(const std::string& commandStr);

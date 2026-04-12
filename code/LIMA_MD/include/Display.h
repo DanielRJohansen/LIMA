@@ -27,6 +27,10 @@ class RenderTargetControl;
 class Camera;
 class GLFWwindow;
 
+namespace LimaMoleculeGraph {
+	class MoleculeGraph;
+}
+
 class FPS {
 	std::array<std::chrono::high_resolution_clock::time_point, 32> prevTimepoints;
 	int head = 0;
@@ -152,6 +156,8 @@ public:
 	void Render(Rendering::Task, bool blocking=false);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
+	void UpdateSelection(const std::set<int>& particleIds);
+
 	volatile int debugValue = 0;
 
 	std::exception_ptr displayThreadException{ nullptr };
@@ -182,6 +188,8 @@ private:
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
 	void PrepareNewRenderTask(Rendering::GrofileTask&);
 
+	void _UpdateSelection(const std::set<int>& selection);
+
 
 	// Interfacing
 	bool isDragging = false;
@@ -209,8 +217,14 @@ private:
 	std::optional<TranslateGizmo> activeGizmo;
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
-	Rendering::Task incomingRenderTask = Rendering::NoTask{};
+	// Inputs
 	std::mutex incomingRenderTaskMutex;
+	Rendering::Task incomingRenderTask = Rendering::NoTask{};
+
+	std::mutex inputMutex;
+	std::optional<std::set<int>> newSelectionInput;
+	//
+	
 
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;

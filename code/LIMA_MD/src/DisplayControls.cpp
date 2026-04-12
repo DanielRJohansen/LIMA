@@ -10,7 +10,7 @@
 #include "MDFiles.h"
 
 
-
+#include "MoleculeGraph.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -152,20 +152,6 @@ void Display::OnMouseMove(double xpos, double ypos) {
     mousePos.y = ypos;
 }
 
-void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
-    if (atomId == prevAtomId)
-        return;
-
-    auto renderAtomsHost = renderAtoms.GetData<RenderAtom>();
-    if (prevAtomId != -1)
-        renderAtomsHost[prevAtomId].HighLight(false);
-    if (atomId != -1 && atomId < renderAtomsHost.size())
-        renderAtomsHost[atomId].HighLight(true);
-
-    prevAtomId = atomId < renderAtomsHost.size() ? atomId : -1;
-    renderAtoms.SetData(renderAtomsHost);
-}
-
 void Display::HandleGizmo(int objectId) {
     if (objectId == -1) {
         activeGizmo.reset();
@@ -215,7 +201,13 @@ void Display::OnMouseButton(int button, int action, int mods) {
             bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
 
             if (isClick && drawAtomsFromCpuShader) {
-                HandleHighlightAtom(objectId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
+                {
+                    bool objectIdIsAtomId = ElementIdIsAtomid(objectId);
+                    int id = objectIdIsAtomId ? objectId : -1;
+                    std::lock_guard<std::mutex> lock(liveEditCommandsQueueMutex);
+                    liveEditCommandsQueue.push_back(LiveEdit::AtomSelected{ id });
+                }
+
                 HandleGizmo(objectId);
             }
         }

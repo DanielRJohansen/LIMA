@@ -162,8 +162,8 @@ void Display::HandleGizmo(int objectId) {
     if (!activeGizmo.has_value()) {
         activeGizmo = TranslateGizmo{};
     }
-    if (objectId < renderAtomsTemp.size()) {
-        activeGizmo->position = glm::vec3{ renderAtomsTemp[objectId].position.x, renderAtomsTemp[objectId].position.y, renderAtomsTemp[objectId].position.z };
+    if (objectId < renderAtomsHost.size()) {
+        activeGizmo->position = glm::vec3{ renderAtomsHost[objectId].position.x, renderAtomsHost[objectId].position.y, renderAtomsHost[objectId].position.z };
         activeGizmo->idOfAtomAttachedTo = objectId;
     }
 }

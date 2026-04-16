@@ -11,31 +11,149 @@
 #include <cstdio>
 #include <format>
 
-
-void RightAlignedField(const std::string& label,
-    const std::string& value,
-    const std::string& unit,
-    const std::string& maxPattern)
+namespace
 {
-    ImGui::Text("%s", label.c_str());
-    ImGui::SameLine();
+    constexpr ImVec4 kPanelBg = ImVec4(0.10f, 0.11f, 0.13f, 0.78f);
+    constexpr ImVec4 kPanelBgStrong = ImVec4(0.12f, 0.13f, 0.16f, 0.88f);
+    constexpr ImVec4 kPanelBorder = ImVec4(0.28f, 0.34f, 0.40f, 0.30f);
+    constexpr ImVec4 kText = ImVec4(0.88f, 0.92f, 0.96f, 1.00f);
+    constexpr ImVec4 kTextDim = ImVec4(0.60f, 0.67f, 0.74f, 1.00f);
+    constexpr ImVec4 kAccent = ImVec4(0.38f, 0.63f, 0.92f, 1.00f);
+    constexpr ImVec4 kWidget = ImVec4(0.18f, 0.20f, 0.24f, 0.95f);
+    constexpr ImVec4 kWidgetHover = ImVec4(0.23f, 0.26f, 0.31f, 0.95f);
+    constexpr ImVec4 kWidgetActive = ImVec4(0.28f, 0.32f, 0.38f, 0.95f);
 
-    const ImVec2 maxWidth = ImGui::CalcTextSize(maxPattern.c_str());
-    const ImVec2 valWidth = ImGui::CalcTextSize(value.c_str());
+    constexpr float kOuterMargin = 18.0f;
+    constexpr float kPanelRounding = 8.0f;
+    constexpr float kPanelBorderSize = 1.0f;
+    constexpr float kTopBarHeight = 56.0f;
+    constexpr float kBottomBarHeight = 62.0f;
+    constexpr float kConsoleHeight = 128.0f;
 
-    float pad = maxWidth.x - valWidth.x;
-    if (pad < 0.f) pad = 0.f;
+    void PushOverlayTheme()
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
 
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
+        style.WindowRounding = kPanelRounding;
+        style.ChildRounding = 14.0f;
+        style.FrameRounding = 12.0f;
+        style.PopupRounding = 12.0f;
+        style.GrabRounding = 12.0f;
+        style.ScrollbarRounding = 12.0f;
+        style.TabRounding = 12.0f;
 
-    if (unit.empty()) {
-        ImGui::Text("%s ", value.c_str());
+        style.WindowBorderSize = kPanelBorderSize;
+        style.FrameBorderSize = 0.0f;
+        style.PopupBorderSize = 0.0f;
+        style.TabBorderSize = 0.0f;
+
+        style.WindowPadding = ImVec2(16.0f, 12.0f);
+        style.FramePadding = ImVec2(12.0f, 9.0f);
+        style.ItemSpacing = ImVec2(14.0f, 10.0f);
+        style.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
+
+        ImVec4* colors = style.Colors;
+        colors[ImGuiCol_Text] = kText;
+        colors[ImGuiCol_TextDisabled] = kTextDim;
+
+        colors[ImGuiCol_WindowBg] = kPanelBg;
+        colors[ImGuiCol_ChildBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+        colors[ImGuiCol_PopupBg] = kPanelBgStrong;
+        colors[ImGuiCol_Border] = kPanelBorder;
+        colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+
+        colors[ImGuiCol_FrameBg] = kWidget;
+        colors[ImGuiCol_FrameBgHovered] = kWidgetHover;
+        colors[ImGuiCol_FrameBgActive] = kWidgetActive;
+
+        colors[ImGuiCol_TitleBg] = kPanelBgStrong;
+        colors[ImGuiCol_TitleBgActive] = kPanelBgStrong;
+        colors[ImGuiCol_TitleBgCollapsed] = kPanelBg;
+
+        colors[ImGuiCol_Button] = kWidget;
+        colors[ImGuiCol_ButtonHovered] = kWidgetHover;
+        colors[ImGuiCol_ButtonActive] = kWidgetActive;
+
+        colors[ImGuiCol_Header] = kWidget;
+        colors[ImGuiCol_HeaderHovered] = kWidgetHover;
+        colors[ImGuiCol_HeaderActive] = kWidgetActive;
+
+        colors[ImGuiCol_CheckMark] = kAccent;
+        colors[ImGuiCol_SliderGrab] = kAccent;
+        colors[ImGuiCol_SliderGrabActive] = ImVec4(0.88f, 0.79f, 0.67f, 1.00f);
+
+        colors[ImGuiCol_ScrollbarBg] = ImVec4(0.10f, 0.09f, 0.08f, 0.35f);
+        colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.38f, 0.34f, 0.30f, 0.80f);
+        colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.46f, 0.41f, 0.36f, 0.90f);
+        colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.54f, 0.48f, 0.42f, 1.00f);
     }
-    else {
-        ImGui::Text("%s %s ", value.c_str(), unit.c_str());
+
+    void DrawPanelShadow(const ImVec2& min, const ImVec2& max, float rounding)
+    {
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        drawList->AddRectFilled(
+            ImVec2(min.x + 0.0f, min.y + 8.0f),
+            ImVec2(max.x + 0.0f, max.y + 8.0f),
+            IM_COL32(0, 0, 0, 55),
+            rounding
+        );
+        drawList->AddRectFilled(
+            ImVec2(min.x + 0.0f, min.y + 16.0f),
+            ImVec2(max.x + 0.0f, max.y + 16.0f),
+            IM_COL32(0, 0, 0, 20),
+            rounding
+        );
     }
 
-    ImGui::SameLine();
+    void BeginFloatingPanel(const char* name, const ImVec2& pos, const ImVec2& size, ImGuiWindowFlags flags, bool strongBg = false)
+    {
+        DrawPanelShadow(pos, ImVec2(pos.x + size.x, pos.y + size.y), kPanelRounding);
+
+        ImGui::SetNextWindowPos(pos);
+        ImGui::SetNextWindowSize(size);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kPanelRounding);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kPanelBorderSize);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, strongBg ? kPanelBgStrong : kPanelBg);
+        ImGui::PushStyleColor(ImGuiCol_Border, kPanelBorder);
+
+        ImGui::Begin(name, nullptr, flags);
+    }
+
+    void EndFloatingPanel()
+    {
+        ImGui::End();
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar(3);
+    }
+
+    void RightAlignedField(const std::string& label, const std::string& value, const std::string& unit, const std::string& maxPattern)
+    {
+        if (!label.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
+            ImGui::TextUnformatted(label.c_str());
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+        }
+
+        const ImVec2 maxWidth = ImGui::CalcTextSize(maxPattern.c_str());
+        const std::string combined = unit.empty() ? value : std::format("{} {}", value, unit);
+        const ImVec2 valueWidth = ImGui::CalcTextSize(combined.c_str());
+
+        float pad = maxWidth.x - valueWidth.x;
+        if (pad > 0.0f)
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
+
+        if (unit.empty()) {
+            ImGui::TextUnformatted(value.c_str());
+        }
+        else {
+            ImGui::Text("%s %s", value.c_str(), unit.c_str());
+        }
+
+        ImGui::SameLine();
+    }
 }
 
 static std::deque<std::string>& ConsoleLines()
@@ -65,50 +183,62 @@ std::string SubmitConsoleInput()
     lines.emplace_back(std::format("{}{}", ConsolePrompt(), buffer));
     if (lines.size() > 2)
         lines.pop_front();
-	std::string inputText(buffer);
 
-
-    //std::printf("[OverlayConsole] %s\n", buffer);
+    std::string inputText(buffer);
     buffer[0] = '\0';
-	return inputText;
+    return inputText;
 }
 
 int TerminalInputCallback(ImGuiInputTextCallbackData* data)
 {
-    if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory)
         return 0;
-    }
     return 0;
 }
 
-Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir) {
+Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir)
+{
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.Fonts->AddFontFromFileTTF(
-        (limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
-        22.0f
-    );
-    io.IniFilename = nullptr; // disable imgui.ini creation
+    io.IniFilename = nullptr;
 
-    ImGui::StyleColorsDark();
+    // Better default choice than Roboto for this kind of UI.
+    // Put Inter-Medium.ttf in resources/ui if you have it.
+    if (std::filesystem::exists(limaDir / "resources" / "ui" / "Inter-Medium.ttf")) {
+        io.Fonts->AddFontFromFileTTF(
+            (limaDir / "resources" / "ui" / "Inter-Medium.ttf").string().c_str(),
+            24.0f
+        );
+    }
+    else {
+        io.Fonts->AddFontFromFileTTF(
+            (limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
+            24.0f
+        );
+    }
+
+    PushOverlayTheme();
+
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
 }
 
-Overlay::~Overlay() {
+Overlay::~Overlay()
+{
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
 
-void DrawTopBar(const SimStatus& status, int fps) {
-    const float barHeight = 36.0f;
+void DrawTopBar(const SimStatus& status, int fps)
+{
     ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, barHeight));
+    const ImVec2 pos(kOuterMargin, kOuterMargin);
+    const ImVec2 size(io.DisplaySize.x - 2.0f * kOuterMargin, kTopBarHeight);
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar
@@ -119,14 +249,9 @@ void DrawTopBar(const SimStatus& status, int fps) {
         | ImGuiWindowFlags_NoNav
         | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.12f, 0.95f));
+    BeginFloatingPanel("###TopStatusBar", pos, size, flags);
 
-    ImGui::Begin("###TopStatusBar", nullptr, flags);
-
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(14, 0));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 3.0f);
 
     RightAlignedField("Step", std::to_string(status.step), "", "999999999");
 
@@ -135,7 +260,7 @@ void DrawTopBar(const SimStatus& status, int fps) {
             "Temp",
             std::format("{:.2f}", *status.temperature),
             "[K]",
-            "9999.99"
+            "9999.99 [K]"
         );
     }
 
@@ -144,23 +269,23 @@ void DrawTopBar(const SimStatus& status, int fps) {
             "MaxF",
             std::format("{:.2f}", *status.maxForce),
             "[kJ/mol/nm]",
-            "99999999.99"
+            "99999999.99 [kJ/mol/nm]"
         );
     }
 
     RightAlignedField(
-        "Performance",
+        "Steptime",
         std::format("{:.3f}", status.avgStepTime),
-        "[ms/step]",
-        "999.999"
+        "[ms]",
+        "999.999 [ms]"
     );
 
     if (status.simulationPerformance) {
         RightAlignedField(
-            "",
+            "Sim",
             std::format("{:.2f}", *status.simulationPerformance),
             "[ns/day]",
-            "999.99"
+            "999.99 [ns/day]"
         );
     }
 
@@ -168,22 +293,21 @@ void DrawTopBar(const SimStatus& status, int fps) {
     RightAlignedField("FPS", std::to_string(fps), "", "9999");
 #endif
 
-    ImGui::PopStyleVar(2);
-    ImGui::End();
-
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
+    EndFloatingPanel();
 }
 
 void Overlay::HandleConsole()
 {
-    constexpr float bottomBarHeight = 50.0f;
-    constexpr float consoleHeight = 100.0f;
-
     const ImVec2 winSize = ImGui::GetIO().DisplaySize;
 
-    ImGui::SetNextWindowPos(ImVec2(0, winSize.y - bottomBarHeight - consoleHeight));
-    ImGui::SetNextWindowSize(ImVec2(winSize.x, consoleHeight));
+    const ImVec2 pos(
+        kOuterMargin,
+        winSize.y - kOuterMargin - kBottomBarHeight - 10.0f - kConsoleHeight
+    );
+    const ImVec2 size(
+        winSize.x - 2.0f * kOuterMargin,
+        kConsoleHeight
+    );
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar
@@ -194,61 +318,58 @@ void Overlay::HandleConsole()
         | ImGuiWindowFlags_NoBringToFrontOnFocus
         | ImGuiWindowFlags_NoScrollbar;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.05f, 0.05f, 0.06f, 0.97f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.05f, 0.05f, 0.06f, 0.0f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-
-    ImGui::Begin("OverlayConsole", nullptr, flags);
+    BeginFloatingPanel("OverlayConsole", pos, size, flags, true);
 
     auto& lines = ConsoleLines();
     char* inputBuffer = ConsoleInputBuffer();
 
-    for (const std::string& line : lines) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
+    for (const std::string& line : lines)
         ImGui::TextUnformatted(line.c_str());
-    }
+    ImGui::PopStyleColor();
 
+    ImGui::Spacing();
+
+    ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
     ImGui::TextUnformatted(ConsolePrompt());
-    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0.0f, 8.0f);
 
     ImGui::PushItemWidth(-1.0f);
     const bool submitted = ImGui::InputText(
         "##TerminalInput",
         inputBuffer,
         512,
-        ImGuiInputTextFlags_EnterReturnsTrue
-        | ImGuiInputTextFlags_CallbackHistory,
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
         TerminalInputCallback
     );
     ImGui::PopItemWidth();
 
-    if (ImGui::IsWindowAppearing()) {
+    if (ImGui::IsWindowAppearing())
         ImGui::SetKeyboardFocusHere(-1);
-    }
 
     if (submitted) {
         std::string submittedCommand = SubmitConsoleInput();
-		std::lock_guard<std::mutex> lock(consoleMutex);
-		submittedCommands.push_back(submittedCommand);
+        std::lock_guard<std::mutex> lock(consoleMutex);
+        submittedCommands.push_back(submittedCommand);
         ImGui::SetKeyboardFocusHere(-1);
     }
 
-    ImGui::SetScrollHereY(1.0f);
-
-    ImGui::End();
-
-    ImGui::PopStyleColor(3);
-    ImGui::PopStyleVar(3);
+    EndFloatingPanel();
 }
 
-void DrawBottomBar(RenderSettings& renderSettings) {
-    float barHeight = 50.0f;
+void DrawBottomBar(RenderSettings& renderSettings)
+{
     ImVec2 winSize = ImGui::GetIO().DisplaySize;
 
-    ImGui::SetNextWindowPos(ImVec2(0, winSize.y - barHeight));
-    ImGui::SetNextWindowSize(ImVec2(winSize.x, barHeight));
+    const ImVec2 pos(
+        kOuterMargin,
+        winSize.y - kOuterMargin - kBottomBarHeight
+    );
+    const ImVec2 size(
+        winSize.x - 2.0f * kOuterMargin,
+        kBottomBarHeight
+    );
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar
@@ -260,22 +381,22 @@ void DrawBottomBar(RenderSettings& renderSettings) {
         | ImGuiWindowFlags_NoBringToFrontOnFocus
         | ImGuiWindowFlags_NoNav;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.12f, 0.12f, 0.95f));
+    BeginFloatingPanel("BottomBar", pos, size, flags);
 
-    ImGui::Begin("BottomBar", nullptr, flags);
+    //ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+    //ImGui::Checkbox("Show solvents", &renderSettings.showSolvents);
 
+    float widgetHeight = ImGui::GetFrameHeight();
+    float offset = (kBottomBarHeight - widgetHeight) * 0.5f;
+
+    ImGui::SetCursorPosY(offset);
     ImGui::Checkbox("Show solvents", &renderSettings.showSolvents);
-    ImGui::SameLine();
 
-    ImGui::End();
-
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
+    EndFloatingPanel();
 }
 
-void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps) {
+void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps)
+{
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -283,12 +404,15 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
     DrawTopBar(simstatus, fps);
     HandleConsole();
     DrawBottomBar(renderSettings);
+
     didDrawThisFrame = true;
 }
 
-void Overlay::Render() {
+void Overlay::Render()
+{
     if (!didDrawThisFrame)
         return;
+
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     didDrawThisFrame = false;

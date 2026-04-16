@@ -6,6 +6,7 @@
 #include "RenderUtilities.cuh"
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include "SSBO.h"
 
 const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
@@ -170,25 +171,17 @@ void TranslateGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) cons
 
 
 void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
 	const glm::mat4 VP = camera.ViewProjection();
-
-	{
-		drawBoxOutlineShader->Draw(VP, boxSize);
-	}
-
-	/*if (pickingFramebuffer->size != windowSize) {
-		pickingFramebuffer->Resize(windowSize);
-	}*/
 
 	// TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
 	const glm::mat4 view = camera.View();
 	const glm::mat4 projection = camera.Projection();
 
 	if (fromCuda)
-		drawAtomsFromCudaShader->Draw(view, projection, totalParticles);
+		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);
 	else
-		drawAtomsFromCpuShader->Draw(view, projection, totalParticles);
+		drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);
 
 	if (activeGizmo) {
 		activeGizmo->Draw(drawTrianglesShader.get(), VP);		
@@ -200,7 +193,7 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 	auto scopedDrawBinding = renderTargetControl->BindForDraw();
 	renderTargetControl->ClearForPicking();
 
-	drawAtomsFromCpuShader->Draw(camera.View(), camera.Projection());
+	drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, camera.View(), camera.Projection());
 	if (activeGizmo)
 		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
 
@@ -216,7 +209,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(task.boxparams.totalParticles, nullptr);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nullptr);
 	if (!drawTrianglesShader)
 		drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 	if (!renderTargetControl)
@@ -225,7 +218,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
 	// Preprocess the renderAtoms
 	{
-		renderAtomsTemp.resize(task.boxparams.totalParticles, RenderAtom{});
+		renderAtomsHost.resize(task.boxparams.totalParticles, RenderAtom{});
 
 
 		//int index = 0;
@@ -239,33 +232,33 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
 				auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-				renderAtomsTemp[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
-				renderAtomsTemp[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
+				renderAtomsHost[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
+				renderAtomsHost[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
 				if (task.coloringMethod == ColoringMethod::Atomname)
-					renderAtomsTemp[pidGlobal].color = RenderUtilities::getColor(atomType);
+					renderAtomsHost[pidGlobal].color = RenderUtilities::getColor(atomType);
 				else if (task.coloringMethod == ColoringMethod::Charge) {
-					renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
 				}
 				else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
-					renderAtomsTemp[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
 				}
 
 				if (!rendersettings.showSolvents && pcMeta.isSolvent)
-					renderAtomsTemp[pidGlobal].color.w = 0.f;
+					renderAtomsHost[pidGlobal].color.w = 0.f;
 			}
 		}
 	}
 
-	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsTemp.size()) {
+	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsHost.size()) {
 		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
-		if (attachedAtomId < renderAtomsTemp.size()) {
-			activeGizmo->position = glm::vec3(renderAtomsTemp[attachedAtomId].position.x, renderAtomsTemp[attachedAtomId].position.y, renderAtomsTemp[attachedAtomId].position.z);
+		if (attachedAtomId < renderAtomsHost.size()) {
+			activeGizmo->position = glm::vec3(renderAtomsHost[attachedAtomId].position.x, renderAtomsHost[attachedAtomId].position.y, renderAtomsHost[attachedAtomId].position.z);
 		}
 	}
 
 	// Move the renderAtoms to device
-	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+	renderAtomsBuffer->SetData(renderAtomsHost);
 }
 
 void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate& update)
@@ -280,18 +273,18 @@ void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const
 				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 				if (pidGlobal == -1)
 					continue;
-				renderAtomsTemp[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsTemp[pidGlobal].position.w);
+				renderAtomsHost[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsHost[pidGlobal].position.w);
 			}
 		}
 	}
-	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsTemp.size()) {
+	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsHost.size()) {
 		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
-		if (attachedAtomId < renderAtomsTemp.size()) {
-			activeGizmo->position = glm::vec3(renderAtomsTemp[attachedAtomId].position.x, renderAtomsTemp[attachedAtomId].position.y, renderAtomsTemp[attachedAtomId].position.z);
+		if (attachedAtomId < renderAtomsHost.size()) {
+			activeGizmo->position = glm::vec3(renderAtomsHost[attachedAtomId].position.x, renderAtomsHost[attachedAtomId].position.y, renderAtomsHost[attachedAtomId].position.z);
 		}
 	}
 	// Move the renderAtoms to device
-	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+	renderAtomsBuffer->SetData(renderAtomsHost);
 }
 
 
@@ -330,16 +323,13 @@ void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
 
 
 void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSize) {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 	//const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxSize.x);
 	const glm::mat4 V = camera.View();
 	const glm::mat4 P = camera.Projection();
 	const glm::mat4 VP = camera.ViewProjection();
-	drawBoxOutlineShader->Draw(VP, boxSize);
 
 	if (renderAtoms)
-		drawAtomsFromCudaShader->Draw(V, P, molCollection.nParticles);
+		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, V, P, molCollection.nParticles);
 
 	if (renderFacets)
 		drawFacetsShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
@@ -351,6 +341,75 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 	fps.NewFrame();
 	std::string windowText = window_title + "    FPS: " + std::to_string(fps.GetFps());
 	glfwSetWindowTitle(window, windowText.c_str());
+}
+
+void Display::_Render(const Rendering::Task& currentRenderTask) {
+
+	// Check shaders is Init
+	if (!drawBackgroundGradientShader)
+		drawBackgroundGradientShader = std::make_unique<DrawBackgroundGradientShader>();
+
+
+	SimStatus simStatus{};
+	Float3 boxSize{};
+
+	// First extract necessary information from the render task
+	if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
+		std::visit([&](auto& taskPtr) {
+			using T = std::decay_t<decltype(taskPtr)>;
+			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
+				const int nParticles = taskPtr->boxparams.totalParticles;
+				simStatus = taskPtr->simStatus;
+				boxSize = taskPtr->boxparams.BoxSizeFloat();
+				//_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
+			}
+			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
+				//_Render(taskPtr->molCollection, taskPtr->boxSize);
+				boxSize = taskPtr->boxSize;
+			}
+			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
+				//_RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
+				boxSize = taskPtr->grofile.box_size;
+			}
+			}, currentRenderTask);
+	}
+
+	const glm::mat4 VP = camera.ViewProjection();
+
+
+	// START OF RENDERING
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	drawBackgroundGradientShader->Draw(ColorScheme::backgroundBot, ColorScheme::backgroundTop);
+	drawBoxOutlineShader->Draw(VP, boxSize);
+	
+
+	// Then render
+	if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
+		std::visit([&](auto& taskPtr) {
+			using T = std::decay_t<decltype(taskPtr)>;
+			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
+				const int nParticles = taskPtr->boxparams.totalParticles;
+				simStatus = taskPtr->simStatus;
+				boxSize = taskPtr->boxparams.BoxSizeFloat();
+				_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
+			}
+			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
+				_Render(taskPtr->molCollection, taskPtr->boxSize);
+				boxSize = taskPtr->boxSize;
+			}
+			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
+				_RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
+				boxSize = taskPtr->grofile.box_size;
+			}
+			}, currentRenderTask);
+	}
+
+
+	overlay->Draw(rendersettings, simStatus, fps.GetFps());
+	overlay->Render();
+
+	glfwSwapBuffers(window);
 }
 
 
@@ -371,7 +430,7 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nAtoms, &renderAtomsBufferCudaResource);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(&renderAtomsBufferCudaResource);
 
 
 
@@ -379,36 +438,35 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 
 	// Preprocess the renderAtoms
 	{
-		renderAtomsTemp.resize(nAtoms);
+		renderAtomsHost.resize(nAtoms);
 
 		for (int i = 0; i < nAtoms; i++) {
-			renderAtomsTemp[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
+			renderAtomsHost[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
 
 			if (task.highlightedAtoms.contains(i))
-				renderAtomsTemp[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f); // Highlighted atoms are pink
+				renderAtomsHost[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f); // Highlighted atoms are pink
 			else if (task.coloringMethod == GradientFromAtomid)
-				renderAtomsTemp[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
+				renderAtomsHost[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
 			else
-				renderAtomsTemp[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
+				renderAtomsHost[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
 		}
 	}
 
 	// Move the renderAtoms to device
 	{
-		drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
+		renderAtomsBuffer->SetData(renderAtomsHost);
 	}
 
 }
 
 void Display::_UpdateSelection(const std::set<int>& selection) {
 	// This is purposefully done in 2 passes, as the selection is likely MUCH smaller that the renderatoms, and this no point in doing lookings.
-	for (auto& atom : renderAtomsTemp) {
+	for (auto& atom : renderAtomsHost) {
 		atom.HighLight(false);
 	}
 	for (int id : selection) {
-		if (id < renderAtomsTemp.size())
-			renderAtomsTemp[id].HighLight(true);
+		if (id < renderAtomsHost.size())
+			renderAtomsHost[id].HighLight(true);
 	}
-	drawAtomsFromCpuShader->renderAtomsBuffer.SetData(renderAtomsTemp);
-	//renderatomsBuffer.SetData(renderatomsHost);
+	renderAtomsBuffer->SetData(renderAtomsHost);
 }

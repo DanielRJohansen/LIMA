@@ -22,10 +22,12 @@ class DrawFacetsShader;
 template <bool>class DrawAtomsShader;
 class DrawNormalsShader;
 class DrawTrianglesShader;
+class DrawBackgroundGradientShader;
 
 class RenderTargetControl;
 class Camera;
 class GLFWwindow;
+class SSBO;
 
 namespace LimaMoleculeGraph {
 	class MoleculeGraph;
@@ -180,6 +182,7 @@ private:
 
 	void _RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda);
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
+	void _Render(const Rendering::Task& currentRenderTask); // Render all the things
 
 	void PrepareTask(Rendering::Task& task);
 
@@ -226,17 +229,20 @@ private:
 	//
 	
 
-
+	// Shaders
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawFacetsShader> drawFacetsShader;
 	std::unique_ptr<DrawAtomsShader<true>> drawAtomsFromCudaShader;
 	std::unique_ptr<DrawAtomsShader<false>> drawAtomsFromCpuShader;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
+	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
 
+	// Render Data
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
+	std::vector<RenderAtom> renderAtomsHost;
+	std::unique_ptr<SSBO> renderAtomsBuffer;
 
-	std::vector<RenderAtom> renderAtomsTemp;
 
 	std::unique_ptr<RenderTargetControl> renderTargetControl;
 

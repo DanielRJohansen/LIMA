@@ -49,18 +49,18 @@ void LiveEditTest() {
 	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(13.f));
 	env.CreateSimulation(grofile, topfile, simparams);
 
-	// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
+	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
 	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
 	topfile.printToFile();
 	topfile = TopologyFile{ topfile.path };
 
 
-	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
+	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
 	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
 	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
-	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{4.f } });
-	env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
-	env.liveEditCommandsQueue.push_back(LiveEdit::AddForcemaskToSelection{ Float3{1.f, 1.f, 0.f}});
+	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{4.f } });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::AddForcemaskToSelection{ Float3{1.f, 1.f, 0.f}});
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "cholesterol/cholesterol.gro", "cholesterol/cholesterol.itp" });
 	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
@@ -71,7 +71,10 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
+		//TestDisplayT4();
 		LiveEditTest();
+		
+
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
 

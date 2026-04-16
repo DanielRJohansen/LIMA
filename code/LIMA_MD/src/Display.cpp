@@ -8,7 +8,7 @@
 #include "Shaders.h"    
 #include "TimeIt.h"
 #include "MDFiles.h"
-
+#include "SSBO.h"
 
 
 
@@ -155,6 +155,8 @@ void Display::Setup() {
 
     overlay = std::make_unique<Overlay>(window, FileUtils::GetLimaDir());
 
+    renderAtomsBuffer = std::make_unique<SSBO>();
+
     {
         std::lock_guard<std::mutex> lock(mutex_);
         setupCompleted = true; // Set the flag to true after setup is complete
@@ -274,26 +276,8 @@ void Display::Mainloop() {
         bool shouldDraw = newTask || updatedPositions || newInput || frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw) {
-            if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
-                std::visit([&](auto& taskPtr) {
-                    using T = std::decay_t<decltype(taskPtr)>;
-                    if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                        const int nParticles = taskPtr->boxparams.totalParticles;
-                        overlay->Draw(rendersettings, taskPtr->simStatus, fps.GetFps());
-                        _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
-                    }
-                    else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
-                        _Render(taskPtr->molCollection, taskPtr->boxSize);
-                    }
-                    else if constexpr (std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-                        _RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
-                    }
-                    }, currentRenderTask);
-            }
+            _Render(currentRenderTask);
 
-            overlay->Render();
-
-            glfwSwapBuffers(window);
             fps.NewFrame();
             frameTime = TimeIt{};
         }

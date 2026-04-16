@@ -7,6 +7,7 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 #include "RenderCommons.h"
+#include "SSBO.h"
 
 #include <cuda_gl_interop.h>
 
@@ -140,6 +141,76 @@ public:
     }
 };
 
+class DrawBackgroundGradientShader : public Shader {
+    static constexpr const char* vertexShaderSource = R"(
+        #version 430 core
+
+        out vec2 uv;
+
+        void main() {
+            const vec2 positions[3] = vec2[3](
+                vec2(-1.0, -1.0),
+                vec2( 3.0, -1.0),
+                vec2(-1.0,  3.0)
+            );
+
+            vec2 pos = positions[gl_VertexID];
+            gl_Position = vec4(pos, 0.0, 1.0);
+            uv = pos * 0.5 + 0.5;
+        }
+    )";
+
+    static constexpr const char* fragmentShaderSource = R"(
+        #version 430 core
+
+        in vec2 uv;
+
+        uniform vec4 colorBot;
+        uniform vec4 colorTop;
+
+        out vec4 FragColor;
+
+        void main() {
+            float t = clamp(uv.y, 0.0, 1.0);
+            vec4 color = mix(colorBot, colorTop, t);
+            FragColor = color;
+        }
+    )";
+
+    GLuint VAO{};
+
+public:
+    DrawBackgroundGradientShader() : Shader(vertexShaderSource, fragmentShaderSource) {
+        glGenVertexArrays(1, &VAO);
+    }
+
+    ~DrawBackgroundGradientShader() {
+        glDeleteVertexArrays(1, &VAO);
+    }
+
+    void Draw(glm::vec4 colorBot, glm::vec4 colorTop) {
+        use();
+
+        const GLboolean depthTestWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+        GLint previousDepthMask = GL_TRUE;
+        glGetIntegerv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+
+        glBindVertexArray(VAO);
+        SetUniform("colorBot", colorBot);
+        SetUniform("colorTop", colorTop);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindVertexArray(0);
+
+        glDepthMask(previousDepthMask);
+        if (depthTestWasEnabled)
+            glEnable(GL_DEPTH_TEST);
+
+        glUseProgram(0);
+    }
+};
 
 class DrawBoxOutlineShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
@@ -693,25 +764,19 @@ void main() {
     int nAtoms;
 
 public:
-    SSBO renderAtomsBuffer{};
-    // renderTargetControl;
-
-    DrawAtomsShader(int numAtoms, cudaGraphicsResource** renderAtomsBufferCudaResource)
+    DrawAtomsShader(cudaGraphicsResource** renderAtomsBufferCudaResource)
         : Shader(vertexShaderSource, fragmentShaderSource)
     {
         // Minimal VAO: required in core profile even when using only gl_VertexID.
         glGenVertexArrays(1, &vao);
         glBindVertexArray(vao);
         glBindVertexArray(0);
-
-        // Allocate SSBO storage always (CUDA or not)
-        //renderAtomsBuffer.Resize(numAtoms * sizeof(RenderAtom));
-
-        if constexpr (isCUDA) {
-            cudaGraphicsGLRegisterBuffer(renderAtomsBufferCudaResource,
-                renderAtomsBuffer.GetID(),
-                cudaGraphicsMapFlagsWriteDiscard);
-        }
+        
+        //if constexpr (isCUDA) {
+        //    cudaGraphicsGLRegisterBuffer(renderAtomsBufferCudaResource,
+        //        renderAtomsBuffer.GetID(),
+        //        cudaGraphicsMapFlagsWriteDiscard);
+        //}
     }
 
     ~DrawAtomsShader() {
@@ -719,10 +784,8 @@ public:
     }
 
     // Normal render pass: does NOT touch your picking FBO.
-    void Draw(const glm::mat4& view, const glm::mat4& projection, std::optional<int> _nAtoms=std::nullopt) {
+    void Draw(const SSBO& renderAtomsBuffer, const glm::mat4& view, const glm::mat4& projection, std::optional<int> _nAtoms=std::nullopt) {
 		nAtoms = _nAtoms.value_or(nAtoms);
-
-        renderAtomsBuffer.Expand(sizeof(RenderAtom) * nAtoms);
 
         use();
         renderAtomsBuffer.Bind(0);

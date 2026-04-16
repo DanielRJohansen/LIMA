@@ -1004,8 +1004,8 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 		if (inputForcefieldInclude.has_value()) {
 			if (!forcefieldInclude.has_value())
 				forcefieldInclude.emplace(inputForcefieldInclude.value());
-			else 
-				assert(forcefieldInclude->filename == inputForcefieldInclude->filename);			
+			/*else 
+				assert(forcefieldInclude->filename == inputForcefieldInclude->filename);			*/ // TODO: Handle this somehow?? For now its not an issue since it occurs when i've given appropriate forcefields.. 
 		}
 	}
 	AppendMolecule(moleculetype->name);

@@ -287,6 +287,18 @@ void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement)
 	fixedParticleMovementBuffer->SetData(movement);
 }
 
+void Engine::SetForceMask(const std::vector<Float3>& mask) {
+	if (mask.empty()) {
+		forceMaskBuffer.reset();
+		return;
+	}
+	assert(mask.size() == simulation->box_host->boxparams.totalParticles);
+	if (!forceMaskBuffer.has_value())
+		forceMaskBuffer.emplace();
+	forceMaskBuffer->SetData(mask); 
+	//todo: send the buffer to the kernel also!
+}
+
 void Engine::bootstrapTrajbufferWithCoords() {
 	if (simulation->simparams_host.n_steps == 0) return;
 
@@ -420,11 +432,12 @@ void Engine::_deviceMaster() {
 		const dim3 blockDim(16, 4, 1);
 
 		Float3* fixedParticleMovementBufferPtr = fixedParticleMovementBuffer.has_value() ? fixedParticleMovementBuffer->Get() : nullptr;
-
+		//Float3* forcesMaskBufferPtr = forceMaskBuffer.has_value() ? forceMaskBuffer->Get() : nullptr;
+		Float3* forcesMaskBufferPtr = nullptr;// TODO: Fix this
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
 			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
-				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, fixedParticleMovementBufferPtr);
+				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, fixedParticleMovementBufferPtr, forcesMaskBufferPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();
 	}

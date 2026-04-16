@@ -81,6 +81,8 @@ public:
 
 	// Overwrites force in IntegrationKernel during EM if present
 	void SetFixedParticleMovementBuffer(const std::vector<Float3>& velocities);
+	// Is multiplied with forces in integration kernel, for partial fixing of particles
+	void SetForceMask(const std::vector<Float3>& mask); 
 
 private:
 
@@ -163,6 +165,8 @@ private:
 
 	// For EM only, overwrites forces in integration kernel. 
 	std::optional<CudaBuffer<Float3>> fixedParticleMovementBuffer; 
+	std::optional<CudaBuffer<Float3>> forceMaskBuffer;	// Multiplied with forces in integration kernel, for partial fixing of particles
+
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();

@@ -27,12 +27,24 @@ namespace LiveEdit {
 	};
 
 	struct TogglePause {};
-
+	
 	struct AtomSelected {
 		int particleId = -1;// Global id 
 	};
 
-	using Command = std::variant<Invalid, InsertMolecule, DragMolecule, BuildMembrane, TogglePause, AtomSelected>;
+	struct SelectAtomsBasedOnQualifier {
+		enum class Qualifier {
+			All, Solvent, Nonsolvent
+		};		
+		Qualifier qualifier;
+	};
+
+	struct AddForcemaskToSelection {
+		Float3 forcemask{};
+	};
+
+	using Command = std::variant<Invalid, InsertMolecule, DragMolecule, BuildMembrane, 
+		TogglePause, AtomSelected, SelectAtomsBasedOnQualifier, AddForcemaskToSelection>;
 
 
 	Command ParseCommand(const std::string& commandStr);

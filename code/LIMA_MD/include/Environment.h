@@ -63,13 +63,16 @@ public:
 	/// A mode where the user can continously give inputs to the program
 	/// </summary>
 	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
+private:
 	void InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
 	void BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
 	void HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDragCommand, 
 		const LiveEdit::DragMolecule& prevDragCommand, std::vector<int>& affectedParticleIds, std::vector<Float3>& fixedVelocities);
+	void UpdateForcemask(std::vector<Float3>& forceMaskVec, const std::set<int>& activeSelection, const Float3& newForcemask);
+
 
 	////////////////// ////////////////// ////////////////// 
-
+public:
 
 
 

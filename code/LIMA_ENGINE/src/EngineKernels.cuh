@@ -310,7 +310,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, Float3* fixedParticleMovementBuffer /*Only available in EM*/  /*, const ForceEnergy* const nbForceenergy*/) {
+	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer /*Only available in EM*/  /*, const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
 
@@ -389,6 +389,10 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 	}
 	else {
+
+		if (forceMaskBuffer) {
+			fe.force = fe.force * forceMaskBuffer[pidGlobal];
+		}
 
 		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
 		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];

@@ -310,7 +310,7 @@ void DrawSimstatusCard(const SimStatus& status, int fps)
 #endif
     }
 
-    const float cardWidth = 350.0f;
+    const float cardWidth = 380.0f;
     const float lineHeight = ImGui::GetTextLineHeight();
     const float verticalPadding = 10.0f;
     const float rowSpacing = 8.0f;
@@ -359,7 +359,7 @@ void DrawSimstatusCard(const SimStatus& status, int fps)
                 DrawField("Temperature", std::format("{:.2f}", *status.temperature), "[K]");
 
             if (status.maxForce.has_value())
-                DrawField("Max force", std::format("{:.2f}", *status.maxForce), "[kJ/mol/nm]");
+                DrawField("Max force", std::format("{:.2e}", *status.maxForce), "[kJ/mol/nm]");
 
             if (status.expectedTimeToFinish.has_value())
                 DrawField("Remaining time", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2));

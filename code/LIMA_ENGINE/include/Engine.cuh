@@ -110,7 +110,7 @@ private:
 	void BootstrapSolventblockDistributeFromDensity();
 
 	void HandleEarlyStoppingInEM();
-	int64_t stepAtLastEarlystopCheck = 0;
+	int64_t stepAtLastEarlystopCheck = INT_MIN;
 
 	std::unique_ptr<LimaLogger> m_logger;
 
@@ -138,6 +138,7 @@ private:
 	CudaBuffer<ScScTask> scscTasksDevice;
 	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
 	CudaBuffer<SCResult> scResultsDevice;
+	CudaBuffer<float> forcesMagnitudeSquareDevice;
 
 	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
 	std::unique_ptr<TaskBuilderControl> taskbuilderControl;

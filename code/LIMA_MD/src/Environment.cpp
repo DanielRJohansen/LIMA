@@ -407,11 +407,16 @@ void Environment::UpdateSimstatus(bool printToConsole) {
 
 		SimStatus newStatus{};
 		newStatus.step = engine->runstatus.current_step;
-		newStatus.maxForce = simulation->simparams_host.em_variant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
-		newStatus.temperature = !simulation->simparams_host.em_variant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
-		newStatus.simulationPerformance = ns_per_day;
 		newStatus.expectedTimeToFinish = expectedTimeToFinish;
+		if (simulation->simparams_host.em_variant) {
+			newStatus.maxForce = engine->runstatus.greatestForce;
+		}
+		else {
+			if (!std::isnan(engine->runstatus.current_temperature))
+				newStatus.temperature = engine->runstatus.current_temperature;
+			newStatus.simulationPerformance = ns_per_day;
+		}
 
 		simStatus = newStatus;
 	}

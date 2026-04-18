@@ -36,7 +36,7 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc, std::unique_ptr<Lim
 
     verifyEngine();
 
-	const BoxParams boxparams = simulation->box_host->boxparams;
+	const BoxParams& boxparams = simulation->box_host->boxparams;
 
 	dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simulation->box_host->persistentClusters.size(), simulation->simparams_host.data_logging_interval);
 
@@ -46,7 +46,7 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc, std::unique_ptr<Lim
 	pClusterDevice = GenericCopyToDevice(simulation->box_host->persistentClusters);
 	pClusterMetaDevice = GenericCopyToDevice(simulation->box_host->persistentClustersMetadata);
 
-
+	forcesMagnitudeSquareDevice.Expand(boxparams.totalParticles);
 
 
 
@@ -184,10 +184,9 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 
 			if (simulation->simparams_host.apply_thermostat)
 				cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
-		}
-		
-		HandleEarlyStoppingInEM();
+		}		
 	}
+	HandleEarlyStoppingInEM();
 	/*if (simulation->getStep() % simulation->simparams_host.stepsPerNlistupdate == simulation->simparams_host.stepsPerNlistupdate-1)
 		nlistController->UpdateNlist(sim_dev, simulation->box_host->boxparams, simulation->simparams_host.bc_select, cudaStreams);*/
 
@@ -364,7 +363,9 @@ void Engine::HandleEarlyStoppingInEM() {
 	
 	const int minStepsPerCheck = 100;
 	if (simulation->getStep() > stepAtLastEarlystopCheck + minStepsPerCheck) {
-		const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()-1), simulation->forceBuffer->EntriesPerStep());
+		auto forceMagSquared = forcesMagnitudeSquareDevice.GetData(); // [(J/mol/nm)^2]
+		const float greatestForce = std::sqrt(Statistics::Max(forceMagSquared.data(), forceMagSquared.size()));
+		//const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep()-1), simulation->forceBuffer->EntriesPerStep());
 		runstatus.greatestForce = greatestForce / KILO; // Convert [J/mol/nm] to [kJ/mol/nm]
 		simulation->maxForceBuffer.emplace_back(std::pair<int64_t,float>{ simulation->getStep(), runstatus.greatestForce });
 
@@ -447,7 +448,7 @@ void Engine::_deviceMaster() {
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
 			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
-				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, fixedParticleMovementBufferPtr, forcesMaskBufferPtr, fixedParticleRotationBufferPtr);
+				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, forcesMagnitudeSquareDevice.Get(), fixedParticleMovementBufferPtr, forcesMaskBufferPtr, fixedParticleRotationBufferPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();
 	}

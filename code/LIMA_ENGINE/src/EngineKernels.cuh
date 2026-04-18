@@ -310,8 +310,8 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, 
-	Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in EM*/  /*, 
+	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
+	Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in LIVEEDIT*/  /*, 
 const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
@@ -374,6 +374,7 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	// Energy minimize
 	if constexpr (emvariant) {
+		forcesMagnitudeSquaredBuffer[pidGlobal] = fe.force.lenSquared();
 		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
 		AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];

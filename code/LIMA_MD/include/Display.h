@@ -113,6 +113,7 @@ class Overlay {
 public:
 	std::mutex consoleMutex;
 	std::deque<std::string> submittedCommands;// If we ever access from other than renderthread, well need a mutex`
+	bool enableConsole = false;
 
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
@@ -163,6 +164,8 @@ public:
 	volatile int debugValue = 0;
 
 	std::exception_ptr displayThreadException{ nullptr };
+
+	std::atomic_bool allowUserInputs = false;
 
 	static void TestDisplay();
 	static void RenderGrofile(const GroFile& grofile, bool drawSolvent=true) {
@@ -222,7 +225,7 @@ private:
 
 	// Inputs
 	std::mutex incomingRenderTaskMutex;
-	Rendering::Task incomingRenderTask = Rendering::NoTask{};
+	std::deque<Rendering::Task> incomingRenderTasks;
 
 	std::mutex inputMutex;
 	std::optional<std::set<int>> newSelectionInput;

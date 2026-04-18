@@ -12,7 +12,7 @@
 #include <ranges>
 #include <string>
 #include <vector>
-
+#include <chrono>
 
 namespace LIMA_UTILS {
 
@@ -51,6 +51,10 @@ namespace LIMA_UTILS {
             throw std::runtime_error("genericErrorCheck failed");
         }
     }
+}
+
+namespace StringUtils {
+    std::string FormatTime(std::chrono::duration<double> duration, int decimalPlacesBeforePoint, int decimalPlacesAfterPoint); // Formats into "%%.%% [s/min/hr/days/weeks/months/years]
 }
 
 

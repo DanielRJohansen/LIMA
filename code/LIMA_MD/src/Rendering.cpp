@@ -348,7 +348,8 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	// Check shaders is Init
 	if (!drawBackgroundGradientShader)
 		drawBackgroundGradientShader = std::make_unique<DrawBackgroundGradientShader>();
-
+	if (!drawBoxOutlineShader)
+		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	SimStatus simStatus{};
 	Float3 boxSize{};
@@ -406,6 +407,7 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	}
 
 
+	overlay->enableConsole = allowUserInputs;
 	overlay->Draw(rendersettings, simStatus, fps.GetFps());
 	overlay->Render();
 

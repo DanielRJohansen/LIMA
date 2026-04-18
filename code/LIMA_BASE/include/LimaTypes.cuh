@@ -10,7 +10,7 @@
 #include <span>
 #include <optional>
 #include "Constants.h"
-
+#include <chrono>
 #include <array>
 #include <ranges>
 //#include <generator>
@@ -604,9 +604,13 @@ struct RenderAtom {
 };
 
 struct SimStatus {
-	size_t step = 0;
+	// SimulationStatus
+	std::optional<size_t> step = 0;
 	std::optional<float> temperature = std::nullopt;			// [K]
 	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
-	float avgStepTime = NAN;							// [ms]
-	std::optional<float> simulationPerformance = std::nullopt; // [ns/day]
+	std::optional<std::chrono::duration<double>> expectedTimeToFinish = std::nullopt;
+
+	// Engine Performance
+	std::optional<float> avgStepTime = std::nullopt;			// [ms]
+	std::optional<float> simulationPerformance = std::nullopt;  // [ns/day]
 };

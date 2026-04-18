@@ -94,3 +94,69 @@ void LimaLogger::clearLine() {
 //
 //	return maxDiff;
 //}
+
+
+
+std::string StringUtils::FormatTime(
+    std::chrono::duration<double> duration,
+    int decimalPlacesBeforePoint,
+    int decimalPlacesAfterPoint
+) {
+    using Seconds = std::chrono::duration<double>;
+
+    struct Unit {
+        Seconds scale;
+        const char* suffix;
+    };
+
+    static constexpr std::array<Unit, 9> units{
+        Unit{ std::chrono::duration<double, std::micro>{1.0}, "us" },
+        Unit{ std::chrono::duration<double, std::milli>{1.0}, "ms" },
+        Unit{ std::chrono::seconds{1},                         "s" },
+        Unit{ std::chrono::minutes{1},                         "min" },
+        Unit{ std::chrono::hours{1},                           "hr" },
+        Unit{ std::chrono::hours{24},                          "days" },
+        Unit{ std::chrono::hours{24 * 7},                      "weeks" },
+        Unit{ std::chrono::duration<double, std::ratio<2629746>>{1.0}, "months" }, // 30.44 days
+        Unit{ std::chrono::duration<double, std::ratio<31557600>>{1.0}, "years" }   // 365.25 days
+    };
+
+    decimalPlacesBeforePoint = std::max(0, decimalPlacesBeforePoint);
+    decimalPlacesAfterPoint = std::max(0, decimalPlacesAfterPoint);
+
+    const auto absDuration = duration >= Seconds::zero() ? duration : -duration;
+
+    const Unit* selectedUnit = &units.front();
+    for (const auto& unit : units) {
+        if (absDuration >= unit.scale) {
+            selectedUnit = &unit;
+        }
+        else {
+            break;
+        }
+    }
+
+    const double value = (duration / selectedUnit->scale);
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(decimalPlacesAfterPoint) << value;
+
+    std::string formatted = oss.str();
+
+    if (decimalPlacesBeforePoint > 0) {
+        const std::size_t signOffset = !formatted.empty() && formatted[0] == '-' ? 1u : 0u;
+        const std::size_t dotPos = formatted.find('.');
+        const std::size_t integerEnd = dotPos == std::string::npos ? formatted.size() : dotPos;
+        const std::size_t integerDigits = integerEnd - signOffset;
+
+        if (integerDigits < static_cast<std::size_t>(decimalPlacesBeforePoint)) {
+            formatted.insert(
+                signOffset,
+                static_cast<std::size_t>(decimalPlacesBeforePoint) - integerDigits,
+                '0'
+            );
+        }
+    }
+
+    return std::format("{} [{}]", formatted, selectedUnit->suffix);
+}

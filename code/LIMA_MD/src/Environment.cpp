@@ -376,7 +376,7 @@ void Environment::UpdateSimstatus(bool printToConsole) {
 
 	const int64_t step = simulation->getStep();
 	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {		
-		auto duration = std::chrono::steady_clock::now() - time0;
+		auto duration = std::chrono::steady_clock::now() - time0;		
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
 
@@ -395,16 +395,24 @@ void Environment::UpdateSimstatus(bool printToConsole) {
 
 
 
+
+		const int nStepsSinceLast = engine->runstatus.current_step - *simStatus.step;
+		const double totalNsSimulated = nStepsSinceLast * simulation->simparams_host.dt; // [ns]
+		const double wall_time_sec = duration_ms * 1e-3;
+		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
+		const double completionFraction = (double)step / (double)simulation->simparams_host.n_steps;
+		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = simulation->simparams_host.n_steps > 0 && simulationTimer.has_value()
+			? std::optional<std::chrono::duration<double>> {simulationTimer->Elapsed()* (1. / completionFraction * (1.-completionFraction))}
+			: std::nullopt;
+
 		SimStatus newStatus{};
 		newStatus.step = engine->runstatus.current_step;
 		newStatus.maxForce = simulation->simparams_host.em_variant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
 		newStatus.temperature = !simulation->simparams_host.em_variant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
-		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
-		const double totalNsSimulated = nStepsSinceLast * simulation->simparams_host.dt; // [ns]
-		const double wall_time_sec = duration_ms * 1e-3;
-		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		newStatus.simulationPerformance = ns_per_day;
+		newStatus.expectedTimeToFinish = expectedTimeToFinish;
+
 		simStatus = newStatus;
 	}
 }

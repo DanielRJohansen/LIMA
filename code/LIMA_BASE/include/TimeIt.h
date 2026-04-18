@@ -15,6 +15,7 @@ public:
     std::chrono::nanoseconds stop();
 
     std::chrono::milliseconds elapsed() const;
+    std::chrono::duration<double> Elapsed() const;
     std::string ElapsedPretty() const;
 
     ~TimeIt();

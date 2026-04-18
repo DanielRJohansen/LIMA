@@ -167,6 +167,8 @@ void Display::Setup() {
 Display::Display() :
     camera(Float3{ 2.f })
 {
+        // todo: Display needs to know if its in liveedit, so it knows whether to render gizmo and console.
+        // It should also tell Overlay if there is any solvent present, if not dont have the button there..
     renderThread = std::jthread([this] {
         try {
             Setup();
@@ -234,30 +236,35 @@ void Display::Mainloop() {
         bool newTask = false;
         bool updatedPositions = false;
         {
-			std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);            
-            if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
-                if (std::holds_alternative<std::unique_ptr<SimulationTask>>(currentRenderTask)) {
-                    if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
-                        int a = 0;
+			std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);     
+            if (!incomingRenderTasks.empty()) {
+                Rendering::Task incomingRenderTask = std::move(incomingRenderTasks.front());
+                incomingRenderTasks.pop_front();
+
+                if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
+                    if (std::holds_alternative<std::unique_ptr<SimulationTask>>(currentRenderTask)) {
+                        if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
+                            int a = 0;
+                        }
+                        PrepareNewRenderTask(*std::get<std::unique_ptr<SimulationTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
+                        //incomingRenderTask = Rendering::NoTask{};
+                        updatedPositions = true;
                     }
-                    PrepareNewRenderTask(*std::get<std::unique_ptr<SimulationTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
-                    incomingRenderTask = Rendering::NoTask{};
-                    updatedPositions = true;
+                    else {
+                        // This shouldn't happen
+                    }
                 }
-                else {
-                    // This shouldn't happen
+                else if (!std::holds_alternative<Rendering::NoTask>(incomingRenderTask)) {
+                    currentRenderTask = std::move(incomingRenderTask);
+                    //incomingRenderTasks = Rendering::NoTask{};
+                    newTask = true;
                 }
             }
-            else if (!std::holds_alternative<Rendering::NoTask>(incomingRenderTask)) {
-                currentRenderTask = std::move(incomingRenderTask);
-                incomingRenderTask = Rendering::NoTask{};
-                newTask = true;
-            }            
         }
         if (newTask) {
             PrepareTask(currentRenderTask);
         }
-
+        
         // Check for new input
         bool newInput = false;
 		std::optional<std::set<int>> newSelection;
@@ -292,7 +299,9 @@ void Display::Render(Rendering::Task task, bool blocking) {
             }
         }
 		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
-        incomingRenderTask = std::move(task);
+
+        if (incomingRenderTasks.size() < 20) // With too many tasks, drop incoming
+            incomingRenderTasks.push_back(std::move(task));
     }
 
     if (blocking) {

@@ -153,6 +153,9 @@ void Display::OnMouseMove(double xpos, double ypos) {
 }
 
 void Display::HandleGizmo(int objectId) {
+    if (!allowUserInputs)
+        return;
+
     if (objectId == -1) {
         activeGizmo.reset();
         stopMovingLiveeditCmd.store(true);

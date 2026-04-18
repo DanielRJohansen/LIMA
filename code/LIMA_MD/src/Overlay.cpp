@@ -233,12 +233,84 @@ Overlay::~Overlay()
     ImGui::DestroyContext();
 }
 
-void DrawTopBar(const SimStatus& status, int fps)
+void DrawSimstatusCard(const SimStatus& status, int fps)
 {
     ImGuiIO& io = ImGui::GetIO();
 
+    const bool hasSimulationStatus =
+        status.step.has_value()
+        || status.temperature.has_value()
+        || status.maxForce.has_value()
+        || status.expectedTimeToFinish.has_value();
+
+    const bool hasEnginePerformance =
+        status.avgStepTime.has_value()
+        || status.simulationPerformance.has_value()
+#ifdef _DEBUG
+        || true
+#endif
+        ;
+
+    if (!hasSimulationStatus && !hasEnginePerformance)
+        return;
+
+    auto DrawField = [](const char* label, const std::string& value, const char* unit = nullptr)
+        {
+            ImGui::TableNextRow();
+
+            // Left column (label)
+            ImGui::TableSetColumnIndex(0);
+            ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
+            ImGui::TextUnformatted(label);
+            ImGui::PopStyleColor();
+
+            // Right column (value + unit, right aligned)
+            ImGui::TableSetColumnIndex(1);
+
+            std::string text = unit && unit[0] != '\0'
+                ? std::format("{} {}", value, unit)
+                : value;
+
+            const float colWidth = ImGui::GetColumnWidth();
+            const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
+
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + colWidth - textWidth);
+            ImGui::TextUnformatted(text.c_str());
+        };
+
+    int nRows = 0;
+    if (hasSimulationStatus) {
+        nRows += 1;
+        if (status.step.has_value()) ++nRows;
+        if (status.temperature.has_value()) ++nRows;
+        if (status.maxForce.has_value()) ++nRows;
+        if (status.expectedTimeToFinish.has_value()) ++nRows;
+    }
+    if (hasEnginePerformance) {
+        if (nRows > 0)
+            nRows += 1;
+        nRows += 1;
+        if (status.avgStepTime.has_value()) ++nRows;
+        if (status.simulationPerformance.has_value()) ++nRows;
+#ifdef _DEBUG
+        ++nRows;
+#endif
+    }
+
+    const float cardWidth = 350.0f;
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const float verticalPadding = 10.0f;
+    const float rowSpacing = 8.0f;
+    const float titleSpacing = 10.0f;
+    const float sectionSpacing = 12.0f;
+    const float cardHeight =
+        verticalPadding * 2.0f
+        + nRows * lineHeight
+        + (nRows - 1) * rowSpacing
+        + titleSpacing;
+
     const ImVec2 pos(kOuterMargin, kOuterMargin);
-    const ImVec2 size(io.DisplaySize.x - 2.0f * kOuterMargin, kTopBarHeight);
+    const ImVec2 size(cardWidth, cardHeight);
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar
@@ -249,50 +321,69 @@ void DrawTopBar(const SimStatus& status, int fps)
         | ImGuiWindowFlags_NoNav
         | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-    BeginFloatingPanel("###TopStatusBar", pos, size, flags);
+    BeginFloatingPanel("###TopStatusCard", pos, size, flags, true);
 
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 3.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, rowSpacing));
 
-    RightAlignedField("Step", std::to_string(status.step), "", "999999999");
+    if (ImGui::BeginTable("##TopStatusTable", 2, ImGuiTableFlags_SizingStretchProp))
+    {
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-    if (status.temperature) {
-        RightAlignedField(
-            "Temp",
-            std::format("{:.2f}", *status.temperature),
-            "[K]",
-            "9999.99 [K]"
-        );
-    }
+        if (hasSimulationStatus) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
+            ImGui::TextUnformatted("Simulation");
+            ImGui::PopStyleColor();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Dummy(ImVec2(0.0f, 0.0f));
 
-    if (status.maxForce) {
-        RightAlignedField(
-            "MaxF",
-            std::format("{:.2f}", *status.maxForce),
-            "[kJ/mol/nm]",
-            "99999999.99 [kJ/mol/nm]"
-        );
-    }
+            if (status.step.has_value())
+                DrawField("Step", std::to_string(*status.step));
 
-    RightAlignedField(
-        "Steptime",
-        std::format("{:.3f}", status.avgStepTime),
-        "[ms]",
-        "999.999 [ms]"
-    );
+            if (status.temperature.has_value())
+                DrawField("Temperature", std::format("{:.2f}", *status.temperature), "[K]");
 
-    if (status.simulationPerformance) {
-        RightAlignedField(
-            "Sim",
-            std::format("{:.2f}", *status.simulationPerformance),
-            "[ns/day]",
-            "999.99 [ns/day]"
-        );
-    }
+            if (status.maxForce.has_value())
+                DrawField("Max force", std::format("{:.2f}", *status.maxForce), "[kJ/mol/nm]");
+
+            if (status.expectedTimeToFinish.has_value())
+                DrawField("Remaining time", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2));
+        }
+
+        if (hasEnginePerformance) {
+            if (hasSimulationStatus) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Dummy(ImVec2(0.0f, sectionSpacing));
+                ImGui::TableSetColumnIndex(1);
+                ImGui::Dummy(ImVec2(0.0f, sectionSpacing));
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
+            ImGui::TextUnformatted("Performance");
+            ImGui::PopStyleColor();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Dummy(ImVec2(0.0f, 0.0f));
+
+            if (status.avgStepTime.has_value())
+                DrawField("Step time", std::format("{:.3f}", *status.avgStepTime), "[ms]");
+
+            if (status.simulationPerformance.has_value())
+                DrawField("Simulation", std::format("{:.2f}", *status.simulationPerformance), "[ns/day]");
 
 #ifdef _DEBUG
-    RightAlignedField("FPS", std::to_string(fps), "", "9999");
+            DrawField("FPS", std::to_string(fps));
 #endif
+        }
 
+        ImGui::EndTable();
+    }
+
+    ImGui::PopStyleVar();
     EndFloatingPanel();
 }
 
@@ -401,8 +492,10 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    DrawTopBar(simstatus, fps);
-    HandleConsole();
+    DrawSimstatusCard(simstatus, fps);
+    if (enableConsole)
+        HandleConsole();
+
     DrawBottomBar(renderSettings);
 
     didDrawThisFrame = true;

@@ -144,6 +144,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	display->Render(std::make_unique<Rendering::SimulationTask>(
 		simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
 	), false);
+	display->allowUserInputs = true;
 
 
 	bool shouldExit = false;

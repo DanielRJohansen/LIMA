@@ -363,7 +363,9 @@ bool Display::initGLFW() {
     return 1;
 }
 
-
+Float3 Convert(const glm::vec3& v) {
+    return Float3{ v.x, v.y, v.z };
+}
 
 std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
 	std::lock_guard<std::mutex> lock(overlay->consoleMutex);
@@ -373,14 +375,12 @@ std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
         std::optional<LiveEdit::Command> cmd = LiveEdit::ParseCommand(str);
         return cmd;
     }
-    if (activeGizmo && activeGizmo->pullForce) {
-        Float3 draggingForce{ activeGizmo->pullForce->x, activeGizmo->pullForce->y, activeGizmo->pullForce->z };
-		return LiveEdit::DragMolecule{ activeGizmo->idOfAtomAttachedTo, draggingForce };
+    if (activeGizmo && (activeGizmo->pullForce || activeGizmo->rotateForce)) {        
+        return LiveEdit::MoveMolecule(Convert(activeGizmo->pullForce.value_or(glm::vec3{})), Convert(activeGizmo->rotateForce.value_or(glm::vec3{})));
     }
     if (bool stopMove = stopMovingLiveeditCmd.exchange(false)) {
-		return LiveEdit::DragMolecule{ -1, Float3{} };
+		return LiveEdit::MoveMolecule{};
     }
-
     {
         std::lock_guard<std::mutex> lock2(liveEditCommandsQueueMutex);
         if (!liveEditCommandsQueue.empty()) {

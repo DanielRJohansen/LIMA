@@ -52,22 +52,29 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 	}
 }
 
-void Environment::HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDragCommand, const LiveEdit::DragMolecule& prevDragCommand, std::vector<int>& affectedParticleIds, std::vector<Float3>& fixedMovements) {
-
-	if (newDragCommand.particleId == prevDragCommand.particleId && newDragCommand.draggingForce == prevDragCommand.draggingForce) {
+void Environment::HandleMoveMoleculeCommand(const LiveEdit::MoveMolecule& newDragCommand, const LiveEdit::MoveMolecule& prevDragCommand, const std::set<int>& activeSelection, std::vector<Float3>& fixedMovements, std::vector<Rotation>& fixedRotations) {
+	if (newDragCommand.draggingForce == prevDragCommand.draggingForce && newDragCommand.rotation == prevDragCommand.rotation) {
 		return;
 	}
 
-	affectedParticleIds.clear();
 	fixedMovements.clear();
-
-	if (newDragCommand.particleId >= 0 && newDragCommand.draggingForce.len() > 0) {
-		fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0.f });
-		for (const auto& node : boximage->systemGraph->BFS(newDragCommand.particleId)) {
-			affectedParticleIds.push_back(node.atomid);
-			fixedMovements[node.atomid] = newDragCommand.draggingForce * .05f;
+	fixedRotations.clear();
+	if (newDragCommand.draggingForce.len() > 0) {
+		fixedMovements.resize(simulation->box_host->boxparams.totalParticles);
+		for (const auto& id : activeSelection) {
+			fixedMovements[id] = newDragCommand.draggingForce * .05f;
 		}
 	}
+	else if (newDragCommand.rotation.len() > 0) {
+		Float3 rotationCenter = Float3{ 5.f };
+		fixedRotations.resize(simulation->box_host->boxparams.totalParticles);
+		for (const auto& id : activeSelection) {
+			fixedRotations[id] = Rotation{ rotationCenter, newDragCommand.rotation * 0.01f};
+		}
+	}
+
+	engine->SetFixedParticleMovementBuffer(fixedMovements);
+	engine->SetFixedParticleRotationBuffer(fixedRotations);
 }
 
 void UpdateSelection(std::set<int>& selection, LimaMoleculeGraph::MoleculeGraph& molGraph, int pid) {
@@ -153,12 +160,15 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	bool canAcceptNewCommand = true;
 
 	std::set<int> activeSelection{};
+	//std::optional<Float3> centerOfActiveSelection;
 
 	// MoleculeDragging
-	LiveEdit::DragMolecule prevDragmoleculeCmd{};
+	LiveEdit::MoveMolecule prevDragmoleculeCmd{};
 	std::vector<int> affectedParticleIds; // TODO: Remove this
 	std::vector<Float3> fixedMovements;
+	std::vector<Rotation> fixedRotations;
 	std::vector<Float3> forceMask;
+	
 
 	// Control stepping
 	int remainingStepsCount = 0;
@@ -195,17 +205,17 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
 							InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
 							fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
-							prevDragmoleculeCmd = LiveEdit::DragMolecule{};
+							prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
 							forceMask.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f }); // expand the forcemask, leaving the existing mask untouched
 							display->Render(std::make_unique<Rendering::SimulationTask>(
 								simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
 							));
 						}
-						else if constexpr (std::is_same_v<T, LiveEdit::DragMolecule>) {
-							HandleDragMoleculeCommand(cmd, prevDragmoleculeCmd, affectedParticleIds, fixedMovements);
+						else if constexpr (std::is_same_v<T, LiveEdit::MoveMolecule>) {
+							HandleMoveMoleculeCommand(cmd, prevDragmoleculeCmd, activeSelection, fixedMovements, fixedRotations);
 							prevDragmoleculeCmd = cmd;
-							engine->SetFixedParticleMovementBuffer(fixedMovements);
-							if (cmd.draggingForce.len() > 0)
+							
+							if (cmd.draggingForce.len() > 0 || cmd.rotation.len() > 0)
 								remainingStepsCount = 50;
 							simulation->simparams_host.em_variant = false;
 						}

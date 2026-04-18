@@ -70,67 +70,187 @@ bool ClosestPointBetweenLines(
     return true;
 }
 
-void TranslateGizmo::SetActiveAxis(int selectedObjectId) {
-    if (selectedObjectId == arrowX.uniqueId)
-        activeAxis = 0;
-    else if (selectedObjectId == arrowY.uniqueId)
-        activeAxis = 1;
-    else if (selectedObjectId == arrowZ.uniqueId)
-        activeAxis = 2;
-    else
-        activeAxis = std::nullopt;
+bool IntersectRayPlane(
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDir,
+    const glm::vec3& planePoint,
+    const glm::vec3& planeNormal,
+    glm::vec3& hitPoint)
+{
+    const float denom = glm::dot(rayDir, planeNormal);
+    if (std::abs(denom) < 1e-6f)
+        return false;
+
+    const float t = glm::dot(planePoint - rayOrigin, planeNormal) / denom;
+    if (t < 0.f)
+        return false;
+
+    hitPoint = rayOrigin + rayDir * t;
+    return true;
 }
 
-void TranslateGizmo::BeginDragging(glm::vec2 mousePos, const Camera& camera)
+glm::vec3 ProjectOntoPlane(const glm::vec3& v, const glm::vec3& normal)
+{
+    return v - glm::dot(v, normal) * normal;
+}
+
+void TransformGizmo::SetActiveAxis(int selectedObjectId)
+{
+    if (selectedObjectId == arrowX.uniqueId) {
+        activeAxis = 0;
+        activeMode = GizmoMode::Translate;
+    }
+    else if (selectedObjectId == arrowY.uniqueId) {
+        activeAxis = 1;
+        activeMode = GizmoMode::Translate;
+    }
+    else if (selectedObjectId == arrowZ.uniqueId) {
+        activeAxis = 2;
+        activeMode = GizmoMode::Translate;
+    }
+    else if (selectedObjectId == ringX.uniqueId) {
+        activeAxis = 0;
+        activeMode = GizmoMode::Rotate;
+    }
+    else if (selectedObjectId == ringY.uniqueId) {
+        activeAxis = 1;
+        activeMode = GizmoMode::Rotate;
+    }
+    else if (selectedObjectId == ringZ.uniqueId) {
+        activeAxis = 2;
+        activeMode = GizmoMode::Rotate;
+    }
+    else {
+        activeAxis = std::nullopt;
+    }
+}
+
+void TransformGizmo::BeginDragging(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize)
 {
     if (!activeAxis)
         return;
+
     dragStartPosition = position;
     dragStartMousePos = mousePos;
-    pullForce = glm::vec3(0.f);
-}
+    pullForce = std::nullopt;
+    rotateForce = std::nullopt;
+    dragStartRotateVector = glm::vec3(0.f);
 
-void TranslateGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize)
-{
-    if (!activeAxis.has_value()) {
-        pullForce = std::nullopt;
+    if (activeMode == GizmoMode::Translate) {
+        pullForce = glm::vec3(0.f);
         return;
     }
 
     const glm::vec3 axisDir = GetAxisDirection(*activeAxis);
-    const glm::vec3 axisOrigin = dragStartPosition;
+    const glm::mat4 view = camera.View();
+    const glm::mat4 proj = camera.Projection();
+
+    const glm::vec3 rayOrigin = GetCameraWorldPosition(view);
+    const glm::vec3 rayDir = ScreenToWorldRayDirection(mousePos, view, proj, windowSize);
+
+    glm::vec3 hitPoint{};
+    if (!IntersectRayPlane(rayOrigin, rayDir, position, axisDir, hitPoint)) {
+        rotateForce = glm::vec3(0.f);
+        return;
+    }
+
+    glm::vec3 v = hitPoint - position;
+    v = ProjectOntoPlane(v, axisDir);
+    if (glm::length(v) < 1e-4f) {
+        rotateForce = glm::vec3(0.f);
+        return;
+    }
+
+    dragStartRotateVector = glm::normalize(v);
+    rotateForce = glm::vec3(0.f);
+}
+
+void TransformGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize)
+{
+    if (!activeAxis.has_value()) {
+        pullForce = std::nullopt;
+        rotateForce = std::nullopt;
+        return;
+    }
+
+    const glm::vec3 axisDir = GetAxisDirection(*activeAxis);
+
+    if (activeMode == GizmoMode::Translate) {
+        rotateForce = std::nullopt;
+
+        const glm::vec3 axisOrigin = dragStartPosition;
+        const glm::mat4 view = camera.View();
+        const glm::mat4 proj = camera.Projection();
+
+        const glm::vec3 rayOrigin = GetCameraWorldPosition(view);
+        const glm::vec3 rayDirStart = ScreenToWorldRayDirection(dragStartMousePos, view, proj, windowSize);
+        const glm::vec3 rayDirCurrent = ScreenToWorldRayDirection(mousePos, view, proj, windowSize);
+
+        float axisTAtStart = 0.f;
+        float axisTNow = 0.f;
+
+        const bool okStart = ClosestPointBetweenLines(axisOrigin, axisDir, rayOrigin, rayDirStart, axisTAtStart);
+        const bool okNow = ClosestPointBetweenLines(axisOrigin, axisDir, rayOrigin, rayDirCurrent, axisTNow);
+
+        if (!okStart || !okNow) {
+            pullForce = glm::vec3(0.f);
+            return;
+        }
+
+        const float deltaAxis = axisTNow - axisTAtStart;
+        const glm::vec3 targetPosition = dragStartPosition + axisDir * deltaAxis;
+
+        const float axisError = glm::dot(targetPosition - position, axisDir);
+
+        const float stiffness = 1.0f;
+        float scalarForce = axisError * stiffness;
+
+        const float maxForce = 1.0f;
+        scalarForce = std::clamp(scalarForce, -maxForce, maxForce);
+
+        pullForce = axisDir * scalarForce;
+        return;
+    }
+
+    pullForce = std::nullopt;
 
     const glm::mat4 view = camera.View();
     const glm::mat4 proj = camera.Projection();
 
     const glm::vec3 rayOrigin = GetCameraWorldPosition(view);
-    const glm::vec3 rayDirStart = ScreenToWorldRayDirection(dragStartMousePos, view, proj, windowSize);
-    const glm::vec3 rayDirCurrent = ScreenToWorldRayDirection(mousePos, view, proj, windowSize);
+    const glm::vec3 rayDir = ScreenToWorldRayDirection(mousePos, view, proj, windowSize);
 
-    float axisTAtStart = 0.f;
-    float axisTNow = 0.f;
-
-    const bool okStart = ClosestPointBetweenLines(axisOrigin, axisDir, rayOrigin, rayDirStart, axisTAtStart);
-    const bool okNow = ClosestPointBetweenLines(axisOrigin, axisDir, rayOrigin, rayDirCurrent, axisTNow);
-
-    if (!okStart || !okNow) {
-        pullForce = glm::vec3(0.f);
+    glm::vec3 hitPoint{};
+    if (!IntersectRayPlane(rayOrigin, rayDir, dragStartPosition, axisDir, hitPoint)) {
+        rotateForce = glm::vec3(0.f);
         return;
     }
 
-    const float deltaAxis = axisTNow - axisTAtStart;
-    const glm::vec3 targetPosition = dragStartPosition + axisDir * deltaAxis;
+    glm::vec3 currentVector = hitPoint - dragStartPosition;
+    currentVector = ProjectOntoPlane(currentVector, axisDir);
 
-    const float axisError = glm::dot(targetPosition - position, axisDir);
+    if (glm::length(currentVector) < 1e-4f || glm::length(dragStartRotateVector) < 1e-4f) {
+        rotateForce = glm::vec3(0.f);
+        return;
+    }
 
-    const float stiffness = 1.0f;
-    float scalarForce = axisError * stiffness;
+    currentVector = glm::normalize(currentVector);
+
+    const float sinAngle = glm::dot(axisDir, glm::cross(dragStartRotateVector, currentVector));
+    const float cosAngle = glm::clamp(glm::dot(dragStartRotateVector, currentVector), -1.f, 1.f);
+    const float signedAngle = std::atan2(sinAngle, cosAngle);
+
+    const float stiffness = 2.0f;
+    float scalarForce = signedAngle * stiffness;
 
     const float maxForce = 1.0f;
     scalarForce = std::clamp(scalarForce, -maxForce, maxForce);
 
-    pullForce = axisDir * scalarForce;
+    rotateForce = axisDir * scalarForce;
 }
+
+
+
 
 
 
@@ -163,7 +283,7 @@ void Display::HandleGizmo(int objectId) {
     }
 
     if (!activeGizmo.has_value()) {
-        activeGizmo = TranslateGizmo{};
+        activeGizmo = TransformGizmo{};
     }
     if (objectId < renderAtomsHost.size()) {
         activeGizmo->position = glm::vec3{ renderAtomsHost[objectId].position.x, renderAtomsHost[objectId].position.y, renderAtomsHost[objectId].position.z };
@@ -185,7 +305,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
 
             if (activeGizmo) {
 				activeGizmo->SetActiveAxis(objectId);
-                activeGizmo->BeginDragging(mousePos, camera);
+                activeGizmo->BeginDragging(mousePos, camera, windowSize);
             }
 
         }

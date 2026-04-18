@@ -121,6 +121,13 @@ namespace LAL {
         return res;
     }
 
+    constexpr void RotatePoint(Float3& point, const Float3& rotationCenter, const Float3& rotation) {
+        point = point - rotationCenter;
+        point = Float3::rodriguesRotatation(point, Float3(1, 0, 0), rotation.x);
+        point = Float3::rodriguesRotatation(point, Float3(0, 1, 0), rotation.y);
+        point = Float3::rodriguesRotatation(point, Float3(0, 0, 1), rotation.z);
+        point = point + rotationCenter;
+    }
 
 
     //float LargestDiff(const Float3 queryPoint, const std::span<Float3>& points);

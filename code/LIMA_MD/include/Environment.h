@@ -66,8 +66,9 @@ public:
 private:
 	void InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
 	void BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
-	void HandleDragMoleculeCommand(const LiveEdit::DragMolecule& newDragCommand, 
-		const LiveEdit::DragMolecule& prevDragCommand, std::vector<int>& affectedParticleIds, std::vector<Float3>& fixedVelocities);
+	void HandleMoveMoleculeCommand(const LiveEdit::MoveMolecule& newDragCommand,
+		const LiveEdit::MoveMolecule& prevDragCommand, const std::set<int>& activeSelection,
+		std::vector<Float3>& fixedVelocities, std::vector<Rotation>& fixedRotations);
 	void UpdateForcemask(std::vector<Float3>& forceMaskVec, const std::set<int>& activeSelection, const Float3& newForcemask);
 
 

@@ -310,7 +310,9 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer /*Only available in EM*/  /*, const ForceEnergy* const nbForceenergy*/) {
+	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, 
+	Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in EM*/  /*, 
+const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
 
@@ -413,6 +415,15 @@ __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnerg
 				vel_now = Float3{};
 				pos_now = pos + fixedMovement;
 			}				
+		}
+
+		if (fixedParticleRotationBuffer != nullptr) {
+			fe.force = Float3{};
+			vel_now = Float3{}; 			
+			const Rotation& rotation = fixedParticleRotationBuffer[pidGlobal];
+			BoundaryCondition::applyHyperposNM(rotation.center, pos_now);
+			LAL::RotatePoint(pos_now, rotation.center, rotation.rotation);
+			//LAL::RotatePoint(pos_now, Float3{}, Float3{ 0.001f, 0.f, 0.f });
 		}
 	
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends

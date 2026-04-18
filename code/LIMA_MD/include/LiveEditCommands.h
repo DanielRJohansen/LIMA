@@ -16,9 +16,9 @@ namespace LiveEdit {
 		std::optional<Float3> position = std::nullopt;
 	};
 
-	struct DragMolecule {
-		int particleId = -1;// Global id of any particle in the molecule
+	struct MoveMolecule { // TODO: Rename to MoveSelection
 		Float3 draggingForce{};
+		Float3 rotation{};
 	};
 
 	struct BuildMembrane {
@@ -43,7 +43,7 @@ namespace LiveEdit {
 		Float3 forcemask{};
 	};
 
-	using Command = std::variant<Invalid, InsertMolecule, DragMolecule, BuildMembrane, 
+	using Command = std::variant<Invalid, InsertMolecule, MoveMolecule, BuildMembrane,
 		TogglePause, AtomSelected, SelectAtomsBasedOnQualifier, AddForcemaskToSelection>;
 
 

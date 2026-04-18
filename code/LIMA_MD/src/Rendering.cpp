@@ -55,6 +55,23 @@ glm::vec3 AnyPerpendicular(const glm::vec3& dir)
 	return glm::normalize(glm::cross(helper, dir));
 }
 
+glm::mat4 RotationFromZAxisTo(const glm::vec3& direction)
+{
+	const glm::vec3 localAxis(0.f, 0.f, 1.f);
+	const float c = glm::clamp(glm::dot(localAxis, direction), -1.f, 1.f);
+
+	if (c > 0.99999f)
+		return glm::mat4(1.f);
+
+	if (c < -0.99999f) {
+		const glm::vec3 rotAxis = AnyPerpendicular(localAxis);
+		return glm::rotate(glm::mat4(1.f), PI, rotAxis);
+	}
+
+	const glm::vec3 rotAxis = glm::normalize(glm::cross(localAxis, direction));
+	const float angle = std::acos(c);
+	return glm::rotate(glm::mat4(1.f), angle, rotAxis);
+}
 
 Arrow::Arrow(glm::vec3 direction, glm::vec4 color, int id) : direction(glm::normalize(direction)), color(color), uniqueId(id) {
 	constexpr int radialSegments = 64;
@@ -140,16 +157,97 @@ void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::ve
 	shader->Draw(vertices, MVP, model, color, uniqueId);
 };
 
-void TranslateGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
-	std::vector<float> scales = {
-		activeAxis.value_or(-1) == 0 ? 2.2f : 2.f,
-		activeAxis.value_or(-1) == 1 ? 2.2f : 2.f,
-		activeAxis.value_or(-1) == 2 ? 2.2f : 2.f
-	};
+Ring::Ring(glm::vec3 normal, glm::vec4 color, int id)
+	: normal(glm::normalize(normal)), color(color), uniqueId(id)
+{
+	constexpr int majorSegments = 96;
+	constexpr int minorSegments = 12;
+	constexpr float majorRadius = 1.45f;
+	constexpr float tubeRadius = 0.020f;
 
-	arrowX.Draw(shader, VP, position, scales[0]);
-	arrowY.Draw(shader, VP, position, scales[1]);
-	arrowZ.Draw(shader, VP, position, scales[2]);
+	vertices.reserve(majorSegments * minorSegments * 6);
+
+	auto TorusPoint = [&](float u, float v) {
+		const float cu = std::cos(u);
+		const float su = std::sin(u);
+		const float cv = std::cos(v);
+		const float sv = std::sin(v);
+
+		const float r = majorRadius + tubeRadius * cv;
+		return glm::vec3(r * cu, r * su, tubeRadius * sv);
+		};
+
+	auto TorusNormal = [&](float u, float v) {
+		const float cu = std::cos(u);
+		const float su = std::sin(u);
+		const float cv = std::cos(v);
+		const float sv = std::sin(v);
+
+		return glm::normalize(glm::vec3(cv * cu, cv * su, sv));
+		};
+
+	auto AppendTri = [&](const glm::vec3& a, const glm::vec3& na,
+		const glm::vec3& b, const glm::vec3& nb,
+		const glm::vec3& c, const glm::vec3& nc)
+		{
+			vertices.push_back({ a, na });
+			vertices.push_back({ b, nb });
+			vertices.push_back({ c, nc });
+		};
+
+	for (int i = 0; i < majorSegments; ++i) {
+		const float u0 = 2.f * PI * static_cast<float>(i) / static_cast<float>(majorSegments);
+		const float u1 = 2.f * PI * static_cast<float>(i + 1) / static_cast<float>(majorSegments);
+
+		for (int j = 0; j < minorSegments; ++j) {
+			const float v0 = 2.f * PI * static_cast<float>(j) / static_cast<float>(minorSegments);
+			const float v1 = 2.f * PI * static_cast<float>(j + 1) / static_cast<float>(minorSegments);
+
+			const glm::vec3 p00 = TorusPoint(u0, v0);
+			const glm::vec3 p10 = TorusPoint(u1, v0);
+			const glm::vec3 p11 = TorusPoint(u1, v1);
+			const glm::vec3 p01 = TorusPoint(u0, v1);
+
+			const glm::vec3 n00 = TorusNormal(u0, v0);
+			const glm::vec3 n10 = TorusNormal(u1, v0);
+			const glm::vec3 n11 = TorusNormal(u1, v1);
+			const glm::vec3 n01 = TorusNormal(u0, v1);
+
+			AppendTri(p00, n00, p10, n10, p11, n11);
+			AppendTri(p00, n00, p11, n11, p01, n01);
+		}
+	}
+}
+
+void Ring::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const
+{
+	glm::mat4 model(1.f);
+	model = glm::translate(model, pos);
+	model *= RotationFromZAxisTo(normal);
+	model = glm::scale(model, glm::vec3(scale));
+
+	const glm::mat4 MVP = VP * model;
+	shader->Draw(vertices, MVP, model, color, uniqueId);
+}
+
+void TransformGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
+	const int axis = activeAxis.value_or(-1);
+
+	const float translateScaleX = activeMode == GizmoMode::Translate && axis == 0 ? 2.2f : 2.f;
+	const float translateScaleY = activeMode == GizmoMode::Translate && axis == 1 ? 2.2f : 2.f;
+	const float translateScaleZ = activeMode == GizmoMode::Translate && axis == 2 ? 2.2f : 2.f;
+
+	const float rotateScaleX = activeMode == GizmoMode::Rotate && axis == 0 ? 2.2f : 2.f;
+	const float rotateScaleY = activeMode == GizmoMode::Rotate && axis == 1 ? 2.2f : 2.f;
+	const float rotateScaleZ = activeMode == GizmoMode::Rotate && axis == 2 ? 2.2f : 2.f;
+
+	arrowX.Draw(shader, VP, position, translateScaleX);
+	arrowY.Draw(shader, VP, position, translateScaleY);
+	arrowZ.Draw(shader, VP, position, translateScaleZ);
+
+	ringX.Draw(shader, VP, position, rotateScaleX);
+	ringY.Draw(shader, VP, position, rotateScaleY);
+	ringZ.Draw(shader, VP, position, rotateScaleZ);
 }
 
 
@@ -197,7 +295,7 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 	if (activeGizmo)
 		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
 
-	int elementId = renderTargetControl->ReadIdAtPixel(glm::ivec2{ (int)mousePos.x, (int)mousePos.y });
+	int elementId = renderTargetControl->ReadIdAtPixel(pixel);
 	//printf("ElementId %d\n", elementId);
 	return elementId;
 }

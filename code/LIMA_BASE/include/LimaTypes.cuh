@@ -452,7 +452,11 @@ struct Coord {
 	//}
 };
 
-
+struct Rotation {
+	Float3 center{};
+	Float3 rotation{}; // rotX, rotY, rotZ
+	constexpr bool Valid() const { return rotation != Float3{0.f}; }
+};
 
 
 

@@ -11,7 +11,10 @@ struct Vertex {
 enum class UniqueRenderElementIds {
 	gizmoArrowX = 1 << 30 + 0,
 	gizmoArrowY,
-	gizmoArrowZ
+	gizmoArrowZ,
+	gizmoRotateX,
+	gizmoRotateY,
+	gizmoRotateZ
 };
 
 static bool ElementIdIsAtomid(int id) {

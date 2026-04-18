@@ -165,6 +165,7 @@ struct BoxImage {
 	std::vector<PersistentClusterMeta> persistentClustersMetadata;
 	std::vector<std::set<int>> particleBondedToParticle;
 	std::vector<std::set<int>> pclusterBondedToPcluster;
+	std::vector<std::tuple<int, int>> gpidToPcidAndPid;
 	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
 	int totalParticles = 0;
 };

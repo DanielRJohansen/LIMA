@@ -724,6 +724,15 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		}
 	}
 
+	std::vector<std::tuple<int, int>> gpidToPcidAndPid(nParticles);
+	for (int pcid = 0; pcid < pClusterMetas.size(); pcid++) {
+		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
+			int gpid = pClusterMetas[pcid].particleIdsGlobal[pid];
+			if (gpid != -1)
+				gpidToPcidAndPid[gpid] = { pcid, pid };
+		}
+	}
+
 	return std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
@@ -735,6 +744,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		pClusterMetas,
 		particleBondedToParticle,
 		pclusterBondedToPcluster,
+		gpidToPcidAndPid,
 		nParticles
 	);
 

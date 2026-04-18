@@ -279,11 +279,7 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 	if (fromCuda)
 		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);
 	else
-		drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);
-
-	if (activeGizmo) {
-		activeGizmo->Draw(drawTrianglesShader.get(), VP);		
-	}
+		drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);	
 }
 
 int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
@@ -292,9 +288,12 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 	renderTargetControl->ClearForPicking();
 
 	drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, camera.View(), camera.Projection());
-	if (activeGizmo)
-		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
 
+	// Must be done last!
+	if (activeGizmo) {
+		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth
+		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
+	}
 	int elementId = renderTargetControl->ReadIdAtPixel(pixel);
 	//printf("ElementId %d\n", elementId);
 	return elementId;
@@ -489,21 +488,24 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 			using T = std::decay_t<decltype(taskPtr)>;
 			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
 				const int nParticles = taskPtr->boxparams.totalParticles;
-				simStatus = taskPtr->simStatus;
-				boxSize = taskPtr->boxparams.BoxSizeFloat();
 				_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
 				_Render(taskPtr->molCollection, taskPtr->boxSize);
-				boxSize = taskPtr->boxSize;
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
 				_RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
-				boxSize = taskPtr->grofile.box_size;
 			}
 			}, currentRenderTask);
 	}
 
+	
+	if (activeGizmo) {
+		// DO NOT RENDER ANYTHING IN 3D AFTER THIS POINT
+		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth
+		activeGizmo->Draw(drawTrianglesShader.get(), VP);
+		glEnable(GL_DEPTH_TEST);
+	}
 
 	overlay->enableConsole = allowUserInputs;
 	overlay->Draw(rendersettings, simStatus, fps.GetFps());

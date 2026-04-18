@@ -13,7 +13,7 @@
 class Display;
 struct BoxImage;
 class Engine;
-
+struct LiveEditData;
 
 namespace fs = std::filesystem;
 
@@ -64,14 +64,12 @@ public:
 	/// </summary>
 	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
 private:
-	void InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
-	void BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
-	void HandleMoveMoleculeCommand(const LiveEdit::MoveMolecule& newDragCommand,
-		const LiveEdit::MoveMolecule& prevDragCommand, const std::set<int>& activeSelection,
-		std::vector<Float3>& fixedVelocities, std::vector<Rotation>& fixedRotations);
-	void UpdateForcemask(std::vector<Float3>& forceMaskVec, const std::set<int>& activeSelection, const Float3& newForcemask);
-
-
+	void InsertMolecule(LiveEditData*, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
+	void BuildMembrane(LiveEditData*, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
+	void HandleMoveMoleculeCommand(LiveEditData*, const LiveEdit::MoveMolecule& newMoveCommand);
+	void UpdateForcemask(LiveEditData*, const LiveEdit::AddForcemaskToSelection&);
+	void UpdateSelection(LiveEditData*, const LiveEdit::AtomSelected&);
+	void UpdateSelection(LiveEditData*, const LiveEdit::SelectAtomsBasedOnQualifier&);
 	////////////////// ////////////////// ////////////////// 
 public:
 
@@ -118,7 +116,7 @@ public:
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 	std::optional<std::chrono::duration<double>> engineTime;
 
-	std::deque<LiveEdit::Command> liveEditCommandsQueue;
+	std::deque<LiveEdit::Command> liveEditCommandsQueue;	
 
 	SimStatus simStatus{};
 
@@ -152,17 +150,9 @@ private:
 	std::unique_ptr<Display> display = nullptr;
 	std::unique_ptr<Engine> engine = nullptr;
 	std::unique_ptr<Simulation> simulation = nullptr;
-	//std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
+	std::unique_ptr<BoxImage> boximage = nullptr;
 
-	ColoringMethod coloringMethod{};	// Not ideal to have here..
-
-	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
-	//std::vector<Compound> compounds;
-	//BoxParams boxparams;
-	/*std::vector<PersistentCluster> pClusters;
-	std::vector<PersistentClusterMeta> pClusterMeta;*/
-
-	std::unique_ptr<BoxImage> boximage;
+	ColoringMethod coloringMethod{};	// Not ideal to have here..	
 
 	std::optional<SimAnalysis::AnalyzedPackage> postsim_anal_package;
 };

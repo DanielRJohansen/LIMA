@@ -423,6 +423,7 @@ const ForceEnergy* const nbForceenergy*/) {
 			const Rotation& rotation = fixedParticleRotationBuffer[pidGlobal];
 			BoundaryCondition::applyHyperposNM(rotation.center, pos_now);
 			LAL::RotatePoint(pos_now, rotation.center, rotation.rotation);
+			BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos_now);
 			//LAL::RotatePoint(pos_now, Float3{}, Float3{ 0.001f, 0.f, 0.f });
 		}
 	

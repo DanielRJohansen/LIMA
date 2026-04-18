@@ -14,7 +14,28 @@
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
 
-void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams) {
+
+struct LiveEditData {
+	// Selection
+	std::set<int> activeSelection{};
+	std::optional<int> selectedParticleId = std::nullopt;
+
+	// MoleculeDragging
+	LiveEdit::MoveMolecule prevDragmoleculeCmd{};
+	std::vector<Float3> fixedMovements;
+	std::vector<Rotation> fixedRotations;
+	std::vector<Float3> forceMask;
+
+	// etc
+	std::vector<Float3> positionData;
+
+	// Control stepping
+	int remainingStepsCount = 0;
+	bool runContinous = false;
+};
+
+
+void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams) {
 	insertionCmd.groPath = FixPath(insertionCmd.groPath);
 	insertionCmd.topPath = FixPath(insertionCmd.topPath);
 
@@ -36,9 +57,14 @@ void Environment::InsertMolecule(GroFile& grofile, TopologyFile& topfile, LiveEd
 	if (!topfile.forcefieldInclude.has_value())
 		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	CreateSimulation(grofile, topfile, simparams);
-	//SimulationBuilder
-	//FileUtils::mer
-	//MDFiles::
+
+	
+	liveeditData->fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
+	liveeditData->prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
+	liveeditData->forceMask.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f }); // expand the forcemask, leaving the existing mask untouched
+	display->Render(std::make_unique<Rendering::SimulationTask>(
+		simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+	));
 }
 
 void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCluster>& pcBuffer, int nPclusters) {
@@ -52,63 +78,77 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 	}
 }
 
-void Environment::HandleMoveMoleculeCommand(const LiveEdit::MoveMolecule& newDragCommand, const LiveEdit::MoveMolecule& prevDragCommand, const std::set<int>& activeSelection, std::vector<Float3>& fixedMovements, std::vector<Rotation>& fixedRotations) {
-	if (newDragCommand.draggingForce == prevDragCommand.draggingForce && newDragCommand.rotation == prevDragCommand.rotation) {
+void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const LiveEdit::MoveMolecule& cmd) {
+	if (cmd.draggingForce.len() > 0 || cmd.rotation.len() > 0)
+		liveeditData->remainingStepsCount = 50;
+
+	if (cmd.draggingForce == liveeditData->prevDragmoleculeCmd.draggingForce && cmd.rotation == liveeditData->prevDragmoleculeCmd.rotation) {
 		return;
 	}
 
-	fixedMovements.clear();
-	fixedRotations.clear();
-	if (newDragCommand.draggingForce.len() > 0) {
-		fixedMovements.resize(simulation->box_host->boxparams.totalParticles);
-		for (const auto& id : activeSelection) {
-			fixedMovements[id] = newDragCommand.draggingForce * .05f;
+	liveeditData->fixedMovements.clear();
+	liveeditData->fixedRotations.clear();
+	if (cmd.draggingForce.len() > 0) {
+		liveeditData->fixedMovements.resize(simulation->box_host->boxparams.totalParticles);
+		for (const auto& id : liveeditData->activeSelection) {
+			liveeditData->fixedMovements[id] = cmd.draggingForce * .05f;
 		}
 	}
-	else if (newDragCommand.rotation.len() > 0) {
-		Float3 rotationCenter = Float3{ 5.f };
-		fixedRotations.resize(simulation->box_host->boxparams.totalParticles);
-		for (const auto& id : activeSelection) {
-			fixedRotations[id] = Rotation{ rotationCenter, newDragCommand.rotation * 0.01f};
+	else if (cmd.rotation.len() > 0) {
+		Float3 rotationCenter{};
+		const int gpid = liveeditData->selectedParticleId.value_or(-1);
+		if (gpid != -1 && gpid < liveeditData->positionData.size()) {
+			auto [pcid, pid] = boximage->gpidToPcidAndPid[gpid];
+			rotationCenter = liveeditData->positionData[pcid * PersistentCluster::maxParticles + pid];
+		}
+
+		liveeditData->fixedRotations.resize(simulation->box_host->boxparams.totalParticles);
+		for (const auto& id : liveeditData->activeSelection) {
+			liveeditData->fixedRotations[id] = Rotation{ rotationCenter, cmd.rotation * 0.03f};
 		}
 	}
 
-	engine->SetFixedParticleMovementBuffer(fixedMovements);
-	engine->SetFixedParticleRotationBuffer(fixedRotations);
+	simulation->simparams_host.em_variant = false;
+	engine->SetFixedParticleMovementBuffer(liveeditData->fixedMovements);
+	engine->SetFixedParticleRotationBuffer(liveeditData->fixedRotations);
+	liveeditData->prevDragmoleculeCmd = cmd;
 }
 
-void UpdateSelection(std::set<int>& selection, LimaMoleculeGraph::MoleculeGraph& molGraph, int pid) {
-	if (selection.contains(pid)) {
+void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::AtomSelected& cmd) {
+	liveeditData->selectedParticleId = cmd.particleId;
+	if (liveeditData->activeSelection.contains(cmd.particleId)) {
 		return; // This operation will just yield the same set
 	}
 
-	selection.clear();
-	for (const auto& node : molGraph.BFS(pid)) {
-		selection.insert(node.atomid);
+	liveeditData->activeSelection.clear();	
+	for (const auto& node : boximage->systemGraph->BFS(cmd.particleId)) {
+		liveeditData->activeSelection.insert(node.atomid);
 	}
+	display->UpdateSelection(liveeditData->activeSelection);
 }
 
-void UpdateSelection(std::set<int>& selection, const LiveEdit::SelectAtomsBasedOnQualifier& cmd, const Simulation& sim) {
-	selection.clear();
-	for (int pcid = 0; pcid < sim.box_host->boxparams.totalParticles / PersistentCluster::maxParticles; pcid++) {
+void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
+	liveeditData->selectedParticleId = std::nullopt;
+	liveeditData->activeSelection.clear();
+	for (int pcid = 0; pcid < simulation->box_host->boxparams.totalParticles / PersistentCluster::maxParticles; pcid++) {
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
-			const int gpid = sim.box_host->persistentClustersMetadata[pcid].particleIdsGlobal[pid];
+			const int gpid = simulation->box_host->persistentClustersMetadata[pcid].particleIdsGlobal[pid];
 			if (gpid == -1)
 				continue;
 
 			switch (cmd.qualifier)
 			{
 				case LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All:
-					selection.insert(gpid);
+					liveeditData->activeSelection.insert(gpid);
 					break;
 				case LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::Solvent:
-					if (sim.box_host->persistentClustersMetadata[pcid].isSolvent) {
-						selection.insert(gpid);
+					if (simulation->box_host->persistentClustersMetadata[pcid].isSolvent) {
+						liveeditData->activeSelection.insert(gpid);
 					}
 					break;
 				case LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::Nonsolvent:
-					if (!sim.box_host->persistentClustersMetadata[pcid].isSolvent) {
-						selection.insert(gpid);
+					if (!simulation->box_host->persistentClustersMetadata[pcid].isSolvent) {
+						liveeditData->activeSelection.insert(gpid);
 					}
 					break;
 			default:
@@ -116,29 +156,36 @@ void UpdateSelection(std::set<int>& selection, const LiveEdit::SelectAtomsBasedO
 			}
 		}
 	}
+	display->UpdateSelection(liveeditData->activeSelection);
 }
 
-void Environment::BuildMembrane(const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
+void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
 	Lipids::Selection lipidselection;
 	for (const auto [name, percentage] : cmd.lipids) {
 		lipidselection.emplace_back(Lipids::Select(name, work_dir, percentage));
 	}
 	float membraneCenterZ = cmd.membraneCenterZ.value_or(grofile.box_size.z / 2.f);
 	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ);
-	SimParams simparams = simulation->simparams_host;
+	SimParams simparams = simulation->simparams_host;	
 	CreateSimulation(grofile, topfile, simparams);
+
+	simulation->simparams_host.em_variant = true;
+	liveeditData->remainingStepsCount = 4000;
+	display->Render(std::make_unique<Rendering::SimulationTask>(
+		simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+	));
 }
 
-void Environment::UpdateForcemask(std::vector<Float3>& forceMaskVec, const std::set<int>& activeSelection, const Float3& newForcemask) {
-	forceMaskVec.clear();
-	if (newForcemask != Float3{ 0.f } && !activeSelection.empty()) {
-		forceMaskVec.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f });
-		for (const int& pid : activeSelection) {
-			forceMaskVec[pid] = newForcemask;
+void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::AddForcemaskToSelection& cmd) {
+	liveeditData->forceMask.clear();
+	if (cmd.forcemask != Float3{ 0.f } && !liveeditData->activeSelection.empty()) {
+		liveeditData->forceMask.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f });
+		for (const int& pid : liveeditData->activeSelection) {
+			liveeditData->forceMask[pid] = cmd.forcemask;
 		}
 	}
 	
-	engine->SetForceMask(forceMaskVec);
+	engine->SetForceMask(liveeditData->forceMask);
 }
 
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
@@ -153,26 +200,11 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	), false);
 	display->allowUserInputs = true;
 
+	LiveEditData liveeditData{};
 
 	bool shouldExit = false;
-	std::vector<Float3> positionData;
 	bool shouldUpdateRender = true;
 	bool canAcceptNewCommand = true;
-
-	std::set<int> activeSelection{};
-	//std::optional<Float3> centerOfActiveSelection;
-
-	// MoleculeDragging
-	LiveEdit::MoveMolecule prevDragmoleculeCmd{};
-	std::vector<int> affectedParticleIds; // TODO: Remove this
-	std::vector<Float3> fixedMovements;
-	std::vector<Rotation> fixedRotations;
-	std::vector<Float3> forceMask;
-	
-
-	// Control stepping
-	int remainingStepsCount = 0;
-	bool runContinous = false;
 
 	auto GetNextCommand = [&]() -> std::optional<LiveEdit::Command> {
 		if (!liveEditCommandsQueue.empty()) {
@@ -203,45 +235,28 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 							return;
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
-							InsertMolecule(grofile, topfile, cmd, simulation->simparams_host);
-							fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
-							prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
-							forceMask.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f }); // expand the forcemask, leaving the existing mask untouched
-							display->Render(std::make_unique<Rendering::SimulationTask>(
-								simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
-							));
+							InsertMolecule(&liveeditData, grofile, topfile, cmd, simulation->simparams_host);
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::MoveMolecule>) {
-							HandleMoveMoleculeCommand(cmd, prevDragmoleculeCmd, activeSelection, fixedMovements, fixedRotations);
-							prevDragmoleculeCmd = cmd;
-							
-							if (cmd.draggingForce.len() > 0 || cmd.rotation.len() > 0)
-								remainingStepsCount = 50;
-							simulation->simparams_host.em_variant = false;
+							HandleMoveMoleculeCommand(&liveeditData, cmd);
+
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::BuildMembrane>) {
 							assert(simulation->box_host->boxparams.totalParticles == 0); // TODO: Change this to a user warning msg or something, and bail
-							BuildMembrane(cmd, grofile, topfile);
-							simulation->simparams_host.em_variant = true;
-							remainingStepsCount = 4000;
+							BuildMembrane(&liveeditData, cmd, grofile, topfile);
 							canAcceptNewCommand = false;
-							display->Render(std::make_unique<Rendering::SimulationTask>(
-								simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
-							));
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::TogglePause>) {
-							runContinous = !runContinous;
+							liveeditData.runContinous = !liveeditData.runContinous;
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::AtomSelected>) {
-							UpdateSelection(activeSelection, *boximage->systemGraph, cmd.particleId);
-							display->UpdateSelection(activeSelection);
+							UpdateSelection(&liveeditData, cmd);
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::SelectAtomsBasedOnQualifier>) {
-							UpdateSelection(activeSelection, cmd, *simulation);
-							display->UpdateSelection(activeSelection);
+							UpdateSelection(&liveeditData, cmd);
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::AddForcemaskToSelection>) {
-							UpdateForcemask(forceMask, activeSelection, cmd.forcemask);
+							UpdateForcemask(&liveeditData, cmd);
 						}
 						else {
 							//static_assert(always_false<T>, "Non-exhaustive visitor!");
@@ -262,19 +277,19 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
 
 			auto& pcBuffer = engine->OffloadPclusterState();
-			GatherPositionsIntoVector(positionData, pcBuffer, simulation->box_host->persistentClusters.size());
+			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box_host->persistentClusters.size());
 			shouldUpdateRender = true;
 		}
 		//printf("Step count %d\n", remainingStepsCount);
-		if (engine && (remainingStepsCount > 0 || runContinous)) {
+		if (engine && (liveeditData.remainingStepsCount > 0 || liveeditData.runContinous)) {
 			// Add step logic here
 			//shouldUpdateRender = true;
 			engine->step();
 			auto& pcBuffer = engine->OffloadPclusterState();
-			GatherPositionsIntoVector(positionData, pcBuffer, simulation->box_host->persistentClusters.size());
+			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box_host->persistentClusters.size());
 			shouldUpdateRender = true;
-			remainingStepsCount--;
-			if (remainingStepsCount == 0) {
+			liveeditData.remainingStepsCount--;
+			if (liveeditData.remainingStepsCount == 0) {
 				// check engine if we should continue..
 			}
 			UpdateSimstatus(false);
@@ -282,12 +297,12 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 		if (shouldUpdateRender) {
 			display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
-				positionData.data(), simStatus
+				liveeditData.positionData.data(), simStatus
 			), false);
 			shouldUpdateRender = false;
 		}
 
-		if (remainingStepsCount == 0) {
+		if (liveeditData.remainingStepsCount == 0) {
 			canAcceptNewCommand = true;
 		}
 	}

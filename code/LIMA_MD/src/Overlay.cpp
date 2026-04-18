@@ -258,26 +258,39 @@ void DrawSimstatusCard(const SimStatus& status, int fps)
         {
             ImGui::TableNextRow();
 
-            // Left column (label)
             ImGui::TableSetColumnIndex(0);
             ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
             ImGui::TextUnformatted(label);
             ImGui::PopStyleColor();
 
-            // Right column (value + unit, right aligned)
             ImGui::TableSetColumnIndex(1);
 
-            std::string text = unit && unit[0] != '\0'
-                ? std::format("{} {}", value, unit)
-                : value;
-
+            const float startX = ImGui::GetCursorPosX();
             const float colWidth = ImGui::GetColumnWidth();
-            const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
+            const float rightX = startX + colWidth;
 
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + colWidth - textWidth);
-            ImGui::TextUnformatted(text.c_str());
+            if (unit && unit[0] != '\0') {
+                constexpr float gap = 6.0f;
+
+                const float unitWidth = ImGui::CalcTextSize(unit).x;
+                const float valueWidth = ImGui::CalcTextSize(value.c_str()).x;
+
+                const float unitX = rightX - unitWidth;
+                const float valueX = unitX - gap - valueWidth;
+
+                ImGui::SetCursorPosX(valueX);
+                ImGui::TextUnformatted(value.c_str());
+
+                ImGui::SameLine(0.0f, gap);
+                ImGui::SetCursorPosX(unitX);
+                ImGui::TextUnformatted(unit);
+            }
+            else {
+                const float valueWidth = ImGui::CalcTextSize(value.c_str()).x;
+                ImGui::SetCursorPosX(rightX - valueWidth);
+                ImGui::TextUnformatted(value.c_str());
+            }
         };
-
     int nRows = 0;
     if (hasSimulationStatus) {
         nRows += 1;
@@ -327,7 +340,7 @@ void DrawSimstatusCard(const SimStatus& status, int fps)
 
     if (ImGui::BeginTable("##TopStatusTable", 2, ImGuiTableFlags_SizingStretchProp))
     {
-        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
         if (hasSimulationStatus) {

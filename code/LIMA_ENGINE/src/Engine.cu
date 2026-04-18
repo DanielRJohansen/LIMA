@@ -442,8 +442,7 @@ void Engine::_deviceMaster() {
 		const dim3 blockDim(16, 4, 1);
 
 		Float3* fixedParticleMovementBufferPtr = fixedParticleMovementBuffer.has_value() ? fixedParticleMovementBuffer->Get() : nullptr;
-		//Float3* forcesMaskBufferPtr = forceMaskBuffer.has_value() ? forceMaskBuffer->Get() : nullptr;
-		Float3* forcesMaskBufferPtr = nullptr;// TODO: Fix this
+		Float3* forcesMaskBufferPtr = forceMaskBuffer.has_value() ? forceMaskBuffer->Get() : nullptr;
 		Rotation* fixedParticleRotationBufferPtr = fixedParticleRotationBuffer.has_value() ? fixedParticleRotationBuffer->Get() : nullptr;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>

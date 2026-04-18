@@ -130,7 +130,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::At
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
 	liveeditData->selectedParticleId = std::nullopt;
 	liveeditData->activeSelection.clear();
-	for (int pcid = 0; pcid < simulation->box_host->boxparams.totalParticles / PersistentCluster::maxParticles; pcid++) {
+	for (int pcid = 0; pcid < simulation->box_host->persistentClusters.size(); pcid++) {
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			const int gpid = simulation->box_host->persistentClustersMetadata[pcid].particleIdsGlobal[pid];
 			if (gpid == -1)
@@ -275,6 +275,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				simulation.get(),
 				simulation->simparams_host.bc_select,
 				std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
+
+			engine->SetFixedParticleMovementBuffer(liveeditData.fixedMovements);
+			engine->SetFixedParticleRotationBuffer(liveeditData.fixedRotations);
+			engine->SetForceMask(liveeditData.forceMask);
 
 			auto& pcBuffer = engine->OffloadPclusterState();
 			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box_host->persistentClusters.size());

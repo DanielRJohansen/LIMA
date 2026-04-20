@@ -25,6 +25,7 @@ struct LiveEditData {
 	std::vector<Float3> fixedMovements;
 	std::vector<Rotation> fixedRotations;
 	std::vector<Float3> forceMask;
+	std::vector<Float3> elasticPositions; // Atom will experience a SNF force towards the non-nan components of its elastic position
 
 	// etc
 	std::vector<Float3> positionData;
@@ -59,9 +60,17 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	CreateSimulation(grofile, topfile, simparams);
 
 	
-	liveeditData->fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
+	if (!liveeditData->fixedMovements.empty())
+		liveeditData->fixedMovements.resize(simulation->box_host->boxparams.totalParticles, Float3{ 0 });
+	if (!liveeditData->fixedRotations.empty())
+		liveeditData->fixedRotations.resize(simulation->box_host->boxparams.totalParticles, Rotation{});
+	if (!liveeditData->forceMask.empty())
+		liveeditData->forceMask.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f }); // expand the forcemask, leaving the existing mask untouched
+	if (!liveeditData->elasticPositions.empty())
+		liveeditData->elasticPositions.resize(simulation->box_host->boxparams.totalParticles, Float3(NAN));
+
 	liveeditData->prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
-	liveeditData->forceMask.resize(simulation->box_host->boxparams.totalParticles, Float3{ 1.f }); // expand the forcemask, leaving the existing mask untouched
+	
 	display->Render(std::make_unique<Rendering::SimulationTask>(
 		simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
 	));
@@ -174,6 +183,8 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	display->Render(std::make_unique<Rendering::SimulationTask>(
 		simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
 	));
+
+	EM(liveeditData);
 }
 
 void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::AddForcemaskToSelection& cmd) {
@@ -186,6 +197,31 @@ void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::Ad
 	}
 	
 	engine->SetForceMask(liveeditData->forceMask);
+}
+
+void Environment::UpdateElasticPosition(LiveEditData* liveeditData, const LiveEdit::ElasticPosition& cmd) {
+	liveeditData->elasticPositions.clear();
+	simulation->simparams_host.snf_select.erase(SupernaturalForcesSelect::ElasticPosition);
+	const bool anyComponentActive = cmd.x || cmd.y || cmd.z;
+	if (anyComponentActive && !liveeditData->activeSelection.empty()) {
+		liveeditData->elasticPositions.resize(simulation->box_host->boxparams.totalParticles, Float3{ NAN, NAN, NAN});
+		for (const int& pid : liveeditData->activeSelection) {
+			Float3 currentPosition = liveeditData->positionData[pid];
+			liveeditData->elasticPositions[pid] = Float3 {
+				cmd.x ? currentPosition.x : NAN,
+				cmd.y ? currentPosition.y : NAN,
+				cmd.z ? currentPosition.z : NAN
+			};
+		}
+		simulation->simparams_host.snf_select.insert(SupernaturalForcesSelect::ElasticPosition);
+	}
+
+	engine->SetElasticPositions(liveeditData->elasticPositions);
+}
+
+void Environment::EM(LiveEditData* liveeditData) {
+	simulation->simparams_host.em_variant = true;
+	liveeditData->remainingStepsCount = 4000;
 }
 
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
@@ -204,7 +240,12 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 	bool shouldExit = false;
 	bool shouldUpdateRender = true;
-	bool canAcceptNewCommand = true;
+	
+
+	//bool canAcceptNewCommand = true;
+	auto CanAcceptNewCommand = [&]() -> bool {
+		return !(simulation->simparams_host.em_variant && liveeditData.remainingStepsCount > 0);
+		};
 
 	auto GetNextCommand = [&]() -> std::optional<LiveEdit::Command> {
 		if (!liveEditCommandsQueue.empty()) {
@@ -225,7 +266,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		}
 
 		// Poll interface for new commands, and execute if any		
-		if (canAcceptNewCommand) {
+		if (CanAcceptNewCommand()) {
 			if (auto newCmd = GetNextCommand()) {
 				std::visit(
 					[&](auto&& cmd) {
@@ -239,15 +280,14 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::MoveMolecule>) {
 							HandleMoveMoleculeCommand(&liveeditData, cmd);
-
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::BuildMembrane>) {
 							assert(simulation->box_host->boxparams.totalParticles == 0); // TODO: Change this to a user warning msg or something, and bail
 							BuildMembrane(&liveeditData, cmd, grofile, topfile);
-							canAcceptNewCommand = false;
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::TogglePause>) {
 							liveeditData.runContinous = !liveeditData.runContinous;
+							simulation->simparams_host.em_variant = false;
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::AtomSelected>) {
 							UpdateSelection(&liveeditData, cmd);
@@ -257,6 +297,12 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::AddForcemaskToSelection>) {
 							UpdateForcemask(&liveeditData, cmd);
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::ElasticPosition>) {
+							UpdateElasticPosition(&liveeditData, cmd);
+						}
+						else if constexpr (std::is_same_v<T, LiveEdit::EnergyMinimize>) {
+							EM(&liveeditData);
 						}
 						else {
 							//static_assert(always_false<T>, "Non-exhaustive visitor!");
@@ -279,6 +325,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			engine->SetFixedParticleMovementBuffer(liveeditData.fixedMovements);
 			engine->SetFixedParticleRotationBuffer(liveeditData.fixedRotations);
 			engine->SetForceMask(liveeditData.forceMask);
+			engine->SetElasticPositions(liveeditData.elasticPositions);
 
 			auto& pcBuffer = engine->OffloadPclusterState();
 			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box_host->persistentClusters.size());
@@ -289,6 +336,8 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			// Add step logic here
 			//shouldUpdateRender = true;
 			engine->step();
+			UpdateSimstatus(false, true);
+
 			auto& pcBuffer = engine->OffloadPclusterState();
 			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box_host->persistentClusters.size());
 			shouldUpdateRender = true;
@@ -296,7 +345,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			if (liveeditData.remainingStepsCount == 0) {
 				// check engine if we should continue..
 			}
-			UpdateSimstatus(false);
+			if (simulation->simparams_host.em_variant && engine->runstatus.greatestForce < simulation->simparams_host.em_force_tolerance) {
+				simulation->simparams_host.em_variant = false;
+				liveeditData.remainingStepsCount = 0;
+			}
 		}
 
 		if (shouldUpdateRender) {
@@ -304,10 +356,6 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				liveeditData.positionData.data(), simStatus
 			), false);
 			shouldUpdateRender = false;
-		}
-
-		if (liveeditData.remainingStepsCount == 0) {
-			canAcceptNewCommand = true;
 		}
 	}
 }

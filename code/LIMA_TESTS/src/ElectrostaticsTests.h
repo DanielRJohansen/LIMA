@@ -148,7 +148,7 @@ namespace ElectrostaticsTests {
 		simparams.dt = 0.2f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
-		simparams.snf_select = HorizontalChargeField;
+		simparams.snf_select.insert(HorizontalChargeField);
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
 		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f};

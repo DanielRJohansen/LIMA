@@ -172,7 +172,6 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 
 	params.enable_electrostatics = true;
 	params.n_steps = 20000;
-	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 
 	if (mayOverlapEdges && false)

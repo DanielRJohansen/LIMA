@@ -222,7 +222,7 @@ std::chrono::duration<double> Environment::run() {
 		
 		engine->step();
 
-		UpdateSimstatus(true);
+		UpdateSimstatus(true, true);
 		
 		if (engine->runstatus.simulation_finished) {
 			break;
@@ -369,13 +369,13 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
-void Environment::UpdateSimstatus(bool printToConsole) {
+void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 	if (!simulation || !engine) {
 		return;
 	}
 
 	const int64_t step = simulation->getStep();
-	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {		
+	if ((step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1)) {		
 		auto duration = std::chrono::steady_clock::now() - time0;		
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
@@ -410,15 +410,21 @@ void Environment::UpdateSimstatus(bool printToConsole) {
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		newStatus.expectedTimeToFinish = expectedTimeToFinish;
 		if (simulation->simparams_host.em_variant) {
-			newStatus.maxForce = engine->runstatus.greatestForce;
 		}
 		else {
-			if (!std::isnan(engine->runstatus.current_temperature))
-				newStatus.temperature = engine->runstatus.current_temperature;
 			newStatus.simulationPerformance = ns_per_day;
 		}
 
 		simStatus = newStatus;
+	}
+
+	// "Free" updates
+	if (simulation->simparams_host.em_variant) {
+		simStatus.maxForce = engine->runstatus.greatestForce;
+	}
+	else {
+		if (!std::isnan(engine->runstatus.current_temperature))
+			simStatus.temperature = engine->runstatus.current_temperature;
 	}
 }
 

@@ -487,7 +487,7 @@ class UniformElectricField {
 	/// <summary></summary>
 	/// <param name="charge">[kC/mol]</param>
 	/// <returns>[gigaN/mol]</returns>
-	__device__ Float3 GetForce(float charge) const {
+	constexpr Float3 GetForce(float charge) const {
 		return field * charge;
 	}
 };

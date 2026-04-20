@@ -88,10 +88,7 @@ struct SimulationDevice {
 	
 	
 
-	// Module used to move solvents to a new block, in parallel
-	//SolventBlockTransfermodule* transfermodule_array = nullptr;
 
-	const SimParams params;
 	SimSignals* signals = nullptr;
 
 	const BoxConfig boxConfig;

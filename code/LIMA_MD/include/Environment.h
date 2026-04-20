@@ -70,6 +70,8 @@ private:
 	void UpdateForcemask(LiveEditData*, const LiveEdit::AddForcemaskToSelection&);
 	void UpdateSelection(LiveEditData*, const LiveEdit::AtomSelected&);
 	void UpdateSelection(LiveEditData*, const LiveEdit::SelectAtomsBasedOnQualifier&);
+	void UpdateElasticPosition(LiveEditData*, const LiveEdit::ElasticPosition&);
+	void EM(LiveEditData*);
 	////////////////// ////////////////// ////////////////// 
 public:
 
@@ -128,7 +130,7 @@ private:
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
-	void UpdateSimstatus(bool printToConsole);
+	void UpdateSimstatus(bool printToConsole, bool alwaysUpdate/*Performance hit*/);
 
 	// Returns false if display has been closed by user
 	bool handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);

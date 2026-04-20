@@ -82,7 +82,7 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
 	const BoxState& boxState, const DatabuffersDeviceController& databuffers) : 
-	boxConfig(boxConfig), boxState(boxState), params(params_host),
+	boxConfig(boxConfig), boxState(boxState),
 	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
 	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
 {
@@ -98,10 +98,10 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 	vel_buffer = databuffers.vel_buffer;
 	forceBuffer = databuffers.forceBuffer;
 
-	if (params_host.em_variant) {
+	//if (params_host.em_variant) {
 		cudaMalloc(&adamState, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::maxParticles);
 		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::maxParticles);
-	}
+	//}
 
 	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");
 }

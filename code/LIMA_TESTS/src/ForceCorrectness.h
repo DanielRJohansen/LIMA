@@ -662,7 +662,7 @@ namespace VerletintegrationTesting {
 		params.n_steps = 1000;
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
-		params.snf_select = HorizontalChargeField;
+		params.snf_select.insert(HorizontalChargeField);
 
 		const double timeElapsed = params.dt * static_cast<double>(params.n_steps) * NANO; // [s]
 

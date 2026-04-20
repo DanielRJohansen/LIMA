@@ -154,37 +154,18 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, SimParams simparams, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
+	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
 		//if (threadIdx.x >= compound.n_particles) { return; }
 
-		if (simparams.data_logging_interval == 0 || step % simparams.data_logging_interval != 0) { return; }
+		if (data_logging_interval == 0 || step % data_logging_interval != 0) { return; }
 
-		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, simparams.data_logging_interval, totalParticlesUpperbound);
+		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, data_logging_interval, totalParticlesUpperbound);
 		simDev->traj_buffer[index] = position;
 		simDev->potE_buffer[index] = potential;
 		simDev->vel_buffer[index] = speed;
 		simDev->forceBuffer[index] = force;
-
-
-		//EngineUtilsWarnings::logcompoundVerifyVelocity(compound, simparams, simsignals, compound_coords, force, speed);
 	}
 
-	//__device__ inline void LogSolventData(const BoxParams& boxparams, const float& potE, const NodeIndex& origo, int id, const Coord& relPos, bool solvent_active, 
-	//	const Float3& force, const Float3& velocity, uint32_t step, float* poteBuffer, Float3* trajBuffer, float* velBuffer, int loggingInterval)
-	//{
-	//	if (step % loggingInterval != 0) { return; }
-
-	//	if (solvent_active) {
-	//		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(id, boxparams.n_compounds, step, 
-	//			loggingInterval, boxparams.total_particles_upperbound);
-
-	//		//LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos).print('P');
-
-	//		trajBuffer[index] = LIMAPOSITIONSYSTEM::GetAbsolutePositionNM(origo, relPos);
-	//		poteBuffer[index] = potE;
-	//		velBuffer[index] = velocity.len();
-	//	}
-	//}
 
 	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
 		if constexpr (HARD_CUTOFF) {
@@ -238,28 +219,6 @@ namespace EngineUtils {
 
 		return bonds;
 	}
-
-	//template<int maxElements>
-	//__device__ void PrintfInts(int* data, int n) {
-	//	constexpr int maxCharsPerInt = 11;
-	//	constexpr int BufSize = maxElements * maxCharsPerInt;
-
-	//	char buf[BufSize];
-	//	int pos = 0;
-
-	//	pos += snprintf(buf + pos, BufSize - pos, "\n");
-
-	//	const int limit = min(n, maxElements);
-	//	for (int i = 0; i < limit && pos < BufSize; ++i) {
-	//		pos += snprintf(buf + pos, BufSize - pos, "%d ", data[i]);
-	//	}
-
-	//	snprintf(buf + pos, BufSize - pos, "\n");
-	//	
-	//	printf("%s", buf);
-	//}
-
-
 
 };
 

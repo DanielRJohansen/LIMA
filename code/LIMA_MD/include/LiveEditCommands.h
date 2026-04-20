@@ -43,8 +43,18 @@ namespace LiveEdit {
 		Float3 forcemask{};
 	};
 
+	struct ElasticPosition {
+		bool x = false;
+		bool y = false;
+		bool z = false;
+	};
+
+	struct EnergyMinimize {
+		//float targetMaxforce = 1e+3; // [kJ/mol/nm]
+	};
+
 	using Command = std::variant<Invalid, InsertMolecule, MoveMolecule, BuildMembrane,
-		TogglePause, AtomSelected, SelectAtomsBasedOnQualifier, AddForcemaskToSelection>;
+		TogglePause, AtomSelected, SelectAtomsBasedOnQualifier, AddForcemaskToSelection, ElasticPosition, EnergyMinimize>;
 
 
 	Command ParseCommand(const std::string& commandStr);

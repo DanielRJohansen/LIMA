@@ -81,6 +81,8 @@ namespace LiveEdit {
 		if (commandString.starts_with("buildmembrane ")) {
 			return ParseCreateMembrane(commandString);
 		}
+		if (commandString.starts_with("energyminimize") || commandString.starts_with("em"))
+			return EnergyMinimize{};
 
 		return Invalid{};
 	}

@@ -84,6 +84,7 @@ public:
 	void SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotations);
 	// Is multiplied with forces in integration kernel, for partial fixing of particles
 	void SetForceMask(const std::vector<Float3>& mask); 
+	void SetElasticPositions(const std::vector<Float3>& mask);
 
 private:
 
@@ -169,7 +170,7 @@ private:
 	std::optional<CudaBuffer<Float3>> fixedParticleMovementBuffer; 
 	std::optional<CudaBuffer<Rotation>> fixedParticleRotationBuffer;
 	std::optional<CudaBuffer<Float3>> forceMaskBuffer;	// Multiplied with forces in integration kernel, for partial fixing of particles
-
+	std::optional<CudaBuffer<Float3>> elasticPositionsBuffer;
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();

@@ -1,14 +1,14 @@
 #pragma once
 
 #include "LimaTypes.cuh"
-
+#include <set>
 #include <filesystem>
 
 enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
-enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential};
+enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition};
 
 struct SimParams {
     SimParams() {}
@@ -28,7 +28,7 @@ struct SimParams {
     BoundaryConditionSelect bc_select{ PBC };
     bool enable_electrostatics = true;
     float cutoff_nm = 1.2f;                    // Cutoff distance [nm]
-    SupernaturalForcesSelect snf_select{ None }; // (Consider using a bitmask for multiple flags)
+    std::set<SupernaturalForcesSelect> snf_select;
 
     // Thermostat
     int64_t steps_per_temperature_measurement = 200;

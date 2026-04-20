@@ -305,6 +305,17 @@ void Engine::SetForceMask(const std::vector<Float3>& mask) {
 	if (!forceMaskBuffer.has_value())
 		forceMaskBuffer.emplace();
 	forceMaskBuffer->SetData(mask); 
+}
+
+void Engine::SetElasticPositions(const std::vector<Float3>& positions) {
+	if (positions.empty()) {
+		elasticPositionsBuffer.reset();
+		return;
+	}
+	assert(positions.size() == simulation->box_host->boxparams.totalParticles);
+	if (!elasticPositionsBuffer.has_value())
+		elasticPositionsBuffer.emplace();
+	elasticPositionsBuffer->SetData(positions);
 	//todo: send the buffer to the kernel also!
 }
 
@@ -375,6 +386,7 @@ void Engine::HandleEarlyStoppingInEM() {
 
 		stepAtLastEarlystopCheck = simulation->getStep();
 	}
+	LIMA_UTILS::genericErrorCheck("HandleEarlyStoppingInEM");
 }
 
 
@@ -408,7 +420,7 @@ void Engine::_deviceMaster() {
 		//	(superClustersControl->scMeta, scResultsDevice.Get()/*, nbGatherForceenergy.Get()*/);
 		//LIMA_UTILS::genericErrorCheckNoSync("Error after NBGather");
 	}
-	if (simulation->simparams_host.snf_select != None) {
+	if (!simulation->simparams_host.snf_select.empty()) {
 		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
 	}
@@ -447,7 +459,7 @@ void Engine::_deviceMaster() {
 		Rotation* fixedParticleRotationBufferPtr = fixedParticleRotationBuffer.has_value() ? fixedParticleRotationBuffer->Get() : nullptr;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
-			(*forceEnergyInterims, sim_dev, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
+			(*forceEnergyInterims, sim_dev, simulation->simparams_host.data_logging_interval, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice, pClusterMetaDevice, boxStateCopy->pclusterInterimStates,
 				step, simulation->simparams_host.dt, totalParticlesUpperbound, nSuperclusters, forcesMagnitudeSquareDevice.Get(), fixedParticleMovementBufferPtr, forcesMaskBufferPtr, fixedParticleRotationBufferPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();
@@ -512,13 +524,11 @@ void Engine::deviceMaster() {
 // This function must not have changing template or normal arguments for it's kernels, or it will break cudaGraph
 template <typename BoundaryCondition, bool emvariant>
 void Engine::SnfHandler(cudaStream_t& stream) {
-	switch (simulation->simparams_host.snf_select) {
-	case None:
-		break;
-	case HorizontalSqueeze:
+	if (simulation->simparams_host.snf_select.contains(HorizontalSqueeze)) {
 		//SupernaturalForces::ApplyHorizontalSqueeze << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
-		break;
-	case HorizontalChargeField:
+		//break;
+	}
+	if (simulation->simparams_host.snf_select.contains(HorizontalChargeField))
 	{
 		const int nPclusters = simulation->box_host->persistentClusters.size();
 		const int nCudablocks = (nPclusters + 31) / 32;
@@ -526,15 +536,22 @@ void Engine::SnfHandler(cudaStream_t& stream) {
 			<<<nCudablocks, 32, 0, stream >> >
 			(pClusterDevice, pClusterMetaDevice, simulation->box_host->uniformElectricField, forceEnergyInterims->snf, nPclusters);
 	}
+	
+	if (simulation->simparams_host.snf_select.contains(SupernaturalForcesSelect::ElasticPosition) && elasticPositionsBuffer.has_value()) {
+		const int nPclusters = simulation->box_host->persistentClusters.size();
+		const int nCudablocks = (nPclusters + 31) / 32;
+		ElasticPositionsForceKernel << <nCudablocks, 32, 0, stream >> >
+			(pClusterDevice, pClusterMetaDevice, elasticPositionsBuffer->Get(), forceEnergyInterims->snf, nPclusters, simulation->box_host->boxparams.BoxSizeFloat());
+	}
 		
-		break;
+		
 	//case BoxEdgePotential:
 	//	if (simulation->box_host->boxparams.n_compounds > 0)
 	//		SupernaturalForces::BoxEdgeForceCompounds << < simulation->box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simulation->getStep());
 	//	if (simulation->box_host->boxparams.nTinymols > 0)
 	//		SupernaturalForces::BoxEdgeForceSolvents<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simulation->box_host->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream>>>(sim_dev, simulation->getStep());
 	//	break;
-	}
+	
 }
 
 

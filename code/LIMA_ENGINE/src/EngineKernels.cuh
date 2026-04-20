@@ -63,6 +63,46 @@ __global__ void PclusterSnfKernel(const PersistentCluster* const pc, const Persi
 	}
 }
 
+__global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const Float3* const elasticPositions, ForceEnergy* const forceEnergy, int nPclusters, Float3 boxSize) {
+	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (pcId >= nPclusters)
+		return;
+
+
+	for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
+		const int pidGlobal = pcMeta[pcId].particleIdsGlobal[pid];
+		if (pidGlobal == -1)
+			continue;
+
+		const float mass = pcMeta[pcId].mass[pid];
+		const Float3 position = pc[pcId].pqd[pid].position;
+		const Float3 ep = elasticPositions[pidGlobal];
+
+		Float3 elasticPosition{
+			isnan(ep.x) ? position.x : ep.x,
+			isnan(ep.y) ? position.y : ep.y,
+			isnan(ep.z) ? position.z : ep.z
+		};
+		PeriodicBoundaryCondition::applyHyperposNM(position, elasticPosition);
+
+		const Float3 difference = elasticPosition - position;
+		const float distSq = difference.lenSquared();
+		const float dist = difference.len();
+		const Float3 forceDirection = distSq < 0.00001f ? Float3{ 0.f } : difference.norm();
+
+		
+		// Magnitude =  Coeff * (e^(wx^2) - 1) / (e^(wx^2) + 1)  // Coeff controls magnitude, w controls gradient
+		const float coefficient = 1000000.f; // [kJ/mol/nm]
+		const float w = 6;
+		float eTerm = expf(w * dist);
+		const float forceMagnitude = mass * coefficient * (eTerm - 1.0f) / (eTerm + 1.0f); 
+
+		const float potentialEnergy = logf(eTerm + 1.0f) * coefficient;
+
+		forceEnergy[pcId * PersistentCluster::maxParticles + pid] = ForceEnergy{ forceDirection * forceMagnitude, potentialEnergy };
+	}
+}
+
 
 
 
@@ -308,7 +348,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
  
 // blockDim=(16, 4, 1)
 template<typename BoundaryCondition, bool emvariant, bool logData>
-__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, const SCResult* const scResults,
+__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, int data_logging_interval, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
 	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
 	Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in LIVEEDIT*/  /*, 
@@ -443,7 +483,7 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	//BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
 
-	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, simDev->params, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
+	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
 
 	superClusters[scIdGlobal].pData[threadIdx.x].position = pos;
 	pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;

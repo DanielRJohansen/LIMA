@@ -566,9 +566,9 @@ __global__ void CompressSuperclusters(SuperClustersControl scControl, const Supe
 
 
 void Engine::RunClustering(bool getPclusters) {
-	Int3 boxSize = simulation->box_host->boxparams.boxSize;
+	Int3 boxSize = simulation->box->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));
-	const int nPclusters = simulation->box_host->persistentClusters.size();
+	const int nPclusters = simulation->box->persistentClusters.size();
 
 	if (!superclusterStagingControl) {
 		superclusterStagingControl = std::make_unique<SuperclusterStagingControl>(boxSize);
@@ -585,7 +585,7 @@ void Engine::RunClustering(bool getPclusters) {
 			*pclusterTransfermodule,
 			pClusterDevice,
 			nPclusters,
-			simulation->box_host->boxparams.boxSize);
+			simulation->box->boxparams.boxSize);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");	
 
 		//DebugUtils::VerifyIdentical(pclusterTransfermodule->meanPositionOfPClustersPerBlock)
@@ -634,10 +634,10 @@ void Engine::RunClustering(bool getPclusters) {
 }
 
 void Engine::BootstrapClustering() {
-	Int3 boxSize = simulation->box_host->boxparams.boxSize;
+	Int3 boxSize = simulation->box->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));;
 	const Float3 boxSizeF = Float3(boxSize.x, boxSize.y, boxSize.z);
-	const Box& box = *simulation->box_host;
+	const Box& box = *simulation->box;
 	
 	std::vector<Float3> meanPositionsofPclusters(nBlocks * PClusterTransfermodule::maxClustersPerBlock);	
 	std::vector<int> idsOfPclustersInBlocks(nBlocks * PClusterTransfermodule::maxClustersPerBlock);

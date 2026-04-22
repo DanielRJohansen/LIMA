@@ -102,17 +102,17 @@ public:
 	void makeVirtualTrajectory(std::string trj_path, std::string waterforce_path);
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
-	std::unique_ptr<Simulation> getSim();
+	std::unique_ptr<Simulation> GetSim();
 	Simulation* getSimPtr();
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 
-	std::string getWorkdir() { return work_dir.string(); }
+	std::string getWorkdir() { return workDir.string(); }
 
 	void PrintTiming() const;
 
 	std::chrono::steady_clock::time_point time0;
 
-	const fs::path work_dir = "";	// Main dir of the current simulation
+	const fs::path workDir = "";	// Main dir of the current simulation
 
 	std::optional<TimeIt> simulationTimer;
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
@@ -144,8 +144,6 @@ private:
 
 	int64_t step_at_last_render = INT64_MIN;
 
-
-	//std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
 
 

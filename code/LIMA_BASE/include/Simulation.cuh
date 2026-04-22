@@ -12,12 +12,6 @@ namespace MDFiles { struct TrrFile; }
 
 
 
-struct SimSignals {
-	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
-};
-
-
-
 struct BoxParams {
 	Int3 boxSize{};	// [nm]
 	int n_bridges = 0;
@@ -102,14 +96,6 @@ struct Box {
 
 	BoxParams boxparams;
 
-
-	//std::vector<Compound> compounds;
-	////std::vector<CompoundInterimState> compoundInterimStates;
-	
-	//std::vector<CompoundCoords> compoundCoordsBuffer;
-	//std::vector<TinyMolParticleState> tinyMolParticlesState;
-	//std::vector<SolventBlock> solventblockgrid_circularqueue;
-	//std::vector<BondedParticlesLUT> bpLutCollection;
 	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 
 	std::vector<BondGroup> bondgroups;
@@ -158,14 +144,10 @@ public:
 	std::vector<float> loggingdata;
 #endif
 
-	std::unique_ptr<Box> box_host = nullptr;
-
-
-	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
-	SimParams simparams_host;
+	std::unique_ptr<Box> box = nullptr;
+	SimParams simParams;
 
 	ForceField_NB forcefield;
-	//ForcefieldTinymol forcefieldTinymol;
 	std::vector<NonbondedInteractionParams> forcefieldTest;
 
 

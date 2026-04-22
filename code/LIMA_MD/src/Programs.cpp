@@ -175,7 +175,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	params.bc_select = BoundaryConditionSelect::PBC;
 
 	if (mayOverlapEdges && false)
-		env.CreateSimulation(*env.getSim(), params);
+		env.CreateSimulation(*env.GetSim(), params);
 	else
 		env.CreateSimulation(grofile, topfile, params);
 	env.run();
@@ -196,7 +196,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	if (envmode == Full)
 		printf("Min force reached: %f\n", minForce);
 
-	return env.getSim();
+	return env.GetSim();
 }
 
 

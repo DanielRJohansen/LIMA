@@ -245,12 +245,12 @@ void Lipids::_MakeLipid(const std::string& name) {
 		//params.em_variant = true;
 		//env.CreateSimulation(grofile, topfile, params);
 		//env.run();
-		//auto sim = env.getSim();
+		//auto sim = env.GetSim();
 
 		//if (true) {
 		//	std::unique_ptr<Display> display = true ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
 		//	display->Render(
-		//		std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, "", ColoringMethod::GradientFromCompoundId),
+		//		std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box->compounds, sim->box->boxparams, "", ColoringMethod::GradientFromCompoundId),
 		//		true);
 		//}
 	}
@@ -294,12 +294,12 @@ void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
 	//		params.em_variant = true;
 	//		env.CreateSimulation(grofile, topfile, params);
 	//		env.run();
-	//		auto sim = env.getSim();
+	//		auto sim = env.GetSim();
 
 	//		if (displayEachLipidAndHalt) {
 	//			std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
 	//			display->Render(
-	//				std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box_host->compounds, sim->box_host->boxparams, "", ColoringMethod::GradientFromCompoundId),
+	//				std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box->compounds, sim->box->boxparams, "", ColoringMethod::GradientFromCompoundId),
 	//				true);
 	//		}
 	//	}

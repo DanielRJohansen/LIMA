@@ -29,7 +29,7 @@ void TestDisplayT4() {
 	auto env = TestUtils::basicSetup("T4Lysozyme", std::nullopt, EnvMode::Full);
 	Display display{};
 
-	auto& box = env->getSimPtr()->box_host;
+	auto& box = env->getSimPtr()->box;
 
 	std::vector<Float3> positions;
 
@@ -75,7 +75,7 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 
 		//TestDisplayT4();
-		LiveEditTest();
+		//LiveEditTest();
 		
 
 
@@ -84,7 +84,7 @@ int main() {
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
 		//TestLongrangeEsNoLJTwoParticles(envmode);
-		//TestLongrangeEsNoLJManyParticles(envmode);
+		TestLongrangeEsNoLJManyParticles(envmode);
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -123,20 +123,20 @@ int main() {
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 
-		//const fs::path work_dir = simulations_dir / "test";
+		//const fs::path workDir = simulations_dir / "test";
 		//Lipids::Selection lipids;
-		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
-		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
-		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
-		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
+		//lipids.emplace_back(Lipids::Select{ "DPPE", workDir, 30.5 });
+		//lipids.emplace_back(Lipids::Select{ "DMPG", workDir, 39.5 });
+		//lipids.emplace_back(Lipids::Select{ "Cholesterol", workDir, 10 });
+		//lipids.emplace_back(Lipids::Select{ "SM18", workDir, 20 });
 		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
 		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		//Programs::EnergyMinimize(*grofile, *topfile, true, work_dir, envmode, true);
-		//grofile->printToFile(work_dir / "membrane.gro");
-		//topfile->printToFile(work_dir / "membrane.top");
+		//Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true);
+		//grofile->printToFile(workDir / "membrane.gro");
+		//topfile->printToFile(workDir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		TestBuildmembraneSmall(envmode, false);
+		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
 		//Lipids::_MakeLipid("cholesterol");
@@ -191,7 +191,7 @@ int main() {
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
-		//RunAllUnitTests();
+		RunAllUnitTests();
 
 	}
 	catch (std::runtime_error ex) {

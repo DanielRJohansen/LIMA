@@ -47,7 +47,7 @@ namespace ElectrostaticsTests {
 
 	Float3 GetPositionOfParticleRelativeToSelfUsingTheWierdLogicOfTheKernel(const Float3& posOtherAbs, const NodeIndex nodeindexSelf) {
 		// We cant use hyperdist, since the engine will hyperpos the block, and not individual particles
-		//BoundaryConditionPublic::applyHyperposNM(posSelf, posOther, sim->simparams_host.box_size, PBC);
+		//BoundaryConditionPublic::applyHyperposNM(posSelf, posOther, sim->simParams.box_size, PBC);
 		// Instead we do this bullshit. Figure out the relative nodeindex compared to the self nodeindex
 		// 
 		// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
@@ -94,7 +94,7 @@ namespace ElectrostaticsTests {
 
 		// Make the particles attractive
 		// TODO!!
-		//env.getSimPtr()->box_host->compounds[1].atom_charges[0] = -env.getSimPtr()->box_host->compounds[0].atom_charges[0];
+		//env.getSimPtr()->box->compounds[1].atom_charges[0] = -env.getSimPtr()->box->compounds[0].atom_charges[0];
 
 		env.run();
 
@@ -111,25 +111,25 @@ namespace ElectrostaticsTests {
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
 		Environment env(simulations_dir / dirName, EnvMode::Headless);
 
-		env.CreateSimulationFiles(Float3{ boxLen });
+		auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3{ boxLen });
 
-		MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
+		//MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		for (const auto& atom : atomsSelection) {
 			auto moltype = std::make_shared<TopologyFile::Moleculetype>( atom.atomtype.atomname, 3);
 			moltype->atoms.push_back(atom.atomtype);
-			simfiles.topfile->moleculetypes.insert({ atom.atomtype.atomname, moltype });
+			topfile.moleculetypes.insert({ atom.atomtype.atomname, moltype });
 		}
-		simfiles.topfile->SetSystem("ElectroStatic Field Test");
-		SimulationBuilder::DistributeParticlesInBox(*simfiles.grofile, *simfiles.topfile, atomsSelection, 0.24f, particlesPerNm3);
+		//simfiles.topfile->SetSystem("ElectroStatic Field Test");
+		SimulationBuilder::DistributeParticlesInBox(grofile, topfile, atomsSelection, 0.24f, particlesPerNm3);
 
 		// Overwrite the forcefield
-		simfiles.topfile->forcefieldInclude.emplace("lima_custom_forcefield.itp");
-		simfiles.topfile->forcefieldInclude->contents = std::move(GenericItpFile(FileUtils::GetLimaDir() / "resources" / "forcefields" / "lima_custom_forcefield.itp"));
+		topfile.forcefieldInclude.emplace("lima_custom_forcefield.itp");
+		topfile.forcefieldInclude->contents = std::move(GenericItpFile(FileUtils::GetLimaDir() / "resources" / "forcefields" / "lima_custom_forcefield.itp"));
 
-		simfiles.grofile->title = "ElectroStatic Field Test";
-		simfiles.topfile->title = "ElectroStatic Field Test";
-		simfiles.grofile->printToFile();
-		simfiles.topfile->printToFile();
+		grofile.title = "ElectroStatic Field Test";
+		topfile.title = "ElectroStatic Field Test";
+		grofile.printToFile();
+		topfile.printToFile();
 	}
 
 	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
@@ -151,7 +151,7 @@ namespace ElectrostaticsTests {
 		simparams.snf_select.insert(HorizontalChargeField);
 		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
 
-		env->getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f};
+		env->getSimPtr()->box->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f};
 
 		env->run();	
 
@@ -159,22 +159,22 @@ namespace ElectrostaticsTests {
 			TestUtils::CompareForces1To1(simulations_dir / "ElectrostaticField", *env, false);
 
 
-		auto sim = env->getSim();
+		auto sim = env->GetSim();
 
 
 		std::map<float, std::vector<float>> velDistributions;
 
 		// Go through each particle in each compound, and assert that their velocities are as we expect in this horizontal electric field
 		// TODO!!!
-		//for (int cid = 0; cid < sim->box_host->boxparams.n_compounds; cid++) {
-		//	const auto& compound = sim->box_host->compounds[cid];
-		//	const auto& compoundInterimState = sim->box_host->pclusterInterimStates[cid];
-		for (int pcId = 0; pcId < sim->box_host->persistentClusters.size(); pcId++){
+		//for (int cid = 0; cid < sim->box->boxparams.n_compounds; cid++) {
+		//	const auto& compound = sim->box->compounds[cid];
+		//	const auto& compoundInterimState = sim->box->pclusterInterimStates[cid];
+		for (int pcId = 0; pcId < sim->box->persistentClusters.size(); pcId++){
 			for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
-				if (!sim->box_host->persistentClusters[pcId].pqd[pid].Valid())
+				if (!sim->box->persistentClusters[pcId].pqd[pid].Valid())
 					continue;
-				const float charge = sim->box_host->persistentClusters[pcId].pqd[pid].params.charge;
-				const float velHorizontal = sim->box_host->pclusterInterimStates[pcId].vels_prev[pid].x;
+				const float charge = sim->box->persistentClusters[pcId].pqd[pid].params.charge;
+				const float velHorizontal = sim->box->pclusterInterimStates[pcId].vels_prev[pid].x;
 
 				//const float velHorizontal = compoundInterimState.vels_prev[pid].x;
 
@@ -241,7 +241,7 @@ namespace ElectrostaticsTests {
 
 	//	env->run();
 
-	//	auto sim = env->getSim();
+	//	auto sim = env->GetSim();
 
 	//	//LIMA_Print::plotEnergies(env->getAnalyzedPackage()->pot_energy, env->getAnalyzedPackage()->kin_energy, env->getAnalyzedPackage()->total_energy);
 
@@ -250,12 +250,12 @@ namespace ElectrostaticsTests {
 
 	//	// First check that the potential energy is calculated as we would expect if we do it the simple way
 	//	float maxForceError = 0.f;
-	//	for (int cidSelf = 0; cidSelf < sim->box_host->boxparams.n_compounds; cidSelf++) {
+	//	for (int cidSelf = 0; cidSelf < sim->box->boxparams.n_compounds; cidSelf++) {
 	//		double potESum{};
 	//		Float3 forceSum{};
 
-	//		const Compound& compoundSelf = sim->box_host->compounds[cidSelf];
-	//		const CompoundInterimState& compoundInterimSelf = sim->box_host->compoundInterimStates[cidSelf];
+	//		const Compound& compoundSelf = sim->box->compounds[cidSelf];
+	//		const CompoundInterimState& compoundInterimSelf = sim->box->compoundInterimStates[cidSelf];
 	//		const float chargeSelf = compoundSelf.atom_charges[0];
 
 	//		// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
@@ -264,11 +264,11 @@ namespace ElectrostaticsTests {
 	//		const NodeIndex nodeindexSelf = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(posSelfAbs);
 	//		const Float3 posSelfRel = posSelfAbs - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexSelf);
 
-	//		for (int cidOther = 0; cidOther < sim->box_host->boxparams.n_compounds; cidOther++) {
+	//		for (int cidOther = 0; cidOther < sim->box->boxparams.n_compounds; cidOther++) {
 	//			if (cidSelf == cidOther)
 	//				continue;
 	//			
-	//			const auto& compoundOther = sim->box_host->compounds[cidOther];
+	//			const auto& compoundOther = sim->box->compounds[cidOther];
 	//			const float chargeOther = compoundOther.atom_charges[0];
 	//			const Float3 posOtherAbs = sim->traj_buffer->getCompoundparticleDatapointAtIndex(cidOther, 0, simparams.n_steps - 2);
 	//			const Float3 posOtherRelativeToSelf = GetPositionOfParticleRelativeToSelfUsingTheWierdLogicOfTheKernel(posOtherAbs, nodeindexSelf);
@@ -345,8 +345,8 @@ namespace ElectrostaticsTests {
 			grofile.atoms[1].position = setup.p1;
 
 			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box_host->persistentClusters[0].pqd[0].params.charge = c0;
-			env.getSimPtr()->box_host->persistentClusters[1].pqd[0].params.charge = c1;
+			env.getSimPtr()->box->persistentClusters[0].pqd[0].params.charge = c0;
+			env.getSimPtr()->box->persistentClusters[1].pqd[0].params.charge = c1;
 
 
 
@@ -372,7 +372,7 @@ namespace ElectrostaticsTests {
 
 
 			env.run();
-			const auto sim = env.getSim();
+			const auto sim = env.GetSim();
 
 			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
@@ -426,8 +426,8 @@ namespace ElectrostaticsTests {
 			grofile.atoms[1].position = grofile.atoms[0].position - Float3{ dist, 0.f, 0.f };
 
 			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box_host->persistentClusters[0].pqd[0].params.charge = c0;
-			env.getSimPtr()->box_host->persistentClusters[1].pqd[0].params.charge = c1;
+			env.getSimPtr()->box->persistentClusters[0].pqd[0].params.charge = c0;
+			env.getSimPtr()->box->persistentClusters[1].pqd[0].params.charge = c1;
 
 
 			Float3 hyperposOther = grofile.atoms[1].position;
@@ -445,7 +445,7 @@ namespace ElectrostaticsTests {
 			expectedForce.push_back(force + mirrorForce);
 
 			env.run();
-			const auto sim = env.getSim();			
+			const auto sim = env.GetSim();			
 
 			actualPot.push_back(sim->potE_buffer->GetDatapoint(0, 0, 0));
 			actualForce.push_back(sim->forceBuffer->GetDatapoint(0, 0, 0));
@@ -488,11 +488,11 @@ namespace ElectrostaticsTests {
 
 		env.CreateSimulation(grofile, topfile, params);
 		// TODO
-		/*env.getSimPtr()->box_host->compounds[0].atom_charges[0] = c0;
-		env.getSimPtr()->box_host->compounds[1].atom_charges[0] = c1;*/
+		/*env.getSimPtr()->box->compounds[0].atom_charges[0] = c0;
+		env.getSimPtr()->box->compounds[1].atom_charges[0] = c1;*/
 
 
-		//env.getSimPtr()->box_host->compoundInterimStates[0].vels_prev[0] = Float3{ 5000, 0, 0 };
+		//env.getSimPtr()->box->compoundInterimStates[0].vels_prev[0] = Float3{ 5000, 0, 0 };
 
 		Float3 hyperposOther = grofile.atoms[1].position;
 		BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
@@ -546,9 +546,9 @@ namespace ElectrostaticsTests {
 		SimParams params{};
 		params.n_steps = 2;
 		params.data_logging_interval = 1;
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
+		GroFile grofile{ work_folder / "conf.gro" };
 
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+		TopologyFile topfile{ work_folder / "topol.top" };
 		//topfile.GetSystemMutable().molecules.resize(3);
 
 		env.CreateSimulation(grofile, topfile, params);
@@ -581,7 +581,7 @@ namespace ElectrostaticsTests {
 			expectedForces[i] = force;
 		}
 
-		const auto sim = env.getSim();
+		const auto sim = env.GetSim();
 		const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 
 		std::vector<float> potErrors(grofile.atoms.size());

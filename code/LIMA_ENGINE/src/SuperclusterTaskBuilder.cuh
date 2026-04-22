@@ -533,11 +533,11 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	if (nSuperclusters == 0)
 		return true;
 
-	const Box& box = *simulation->box_host;
+	const Box& box = *simulation->box;
 	Int3 boxSize = box.boxparams.boxSize;
-	Float3 boxSizeF = simulation->box_host->boxparams.BoxSizeFloat();
+	Float3 boxSizeF = simulation->box->boxparams.BoxSizeFloat();
 
-	const int nSuperclustersUpperbound = nSuperclusters * 2;// simulation->box_host->persistentClusters.size(); // a little pessimistic
+	const int nSuperclustersUpperbound = nSuperclusters * 2;// simulation->box->persistentClusters.size(); // a little pessimistic
 
 	if (!taskbuilderControl)
 		taskbuilderControl = std::make_unique<TaskBuilderControl>(nSuperclustersUpperbound, box.particlesBondedToParticle, box.pclustersBondedToPcluster);
@@ -557,7 +557,7 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	{
 		dim3 gridDim{ (uint32_t)boxSize.InnerProduct(), (uint32_t)SuperClustersControl::maxClustersPerBlock, 1u };
 		dim3 blockDim{ 3 * 3 * 3 * SuperClustersControl::maxClustersPerBlock, 1, 1 };
-		ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simparams_host.cutoff_nm);
+		ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm);
 		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
 
 		//DebugUtils::VerifyIdentical(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters, "NInteractionsOwned", simulation->getStep());

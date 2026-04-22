@@ -79,7 +79,7 @@ struct DatabuffersDeviceController {
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
+	SimulationDevice(const SimParams& params_host, Box* box, const BoxConfig& boxConfig,
 	const BoxState& boxState, const DatabuffersDeviceController&);
 
 	// Recursively free members. Use cudaFree on *this immediately after
@@ -87,15 +87,10 @@ struct SimulationDevice {
 
 	
 	
-
-
-	SimSignals* signals = nullptr;
-
 	const BoxConfig boxConfig;
 	const BoxState boxState;
 	const BoxParams boxparams;
 
-	uint8_t* nParticlesInCompoundsBuffer = nullptr;
 
 	// Databuffers, NOT owned by this class, so dont free them
 	float* potE_buffer = nullptr;

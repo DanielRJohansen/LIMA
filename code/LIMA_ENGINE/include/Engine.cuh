@@ -49,7 +49,7 @@ struct RunStatus {
 
 class Engine {
 public:
-	Engine(Simulation*, BoundaryConditionSelect, std::unique_ptr<LimaLogger>);
+	Engine(Simulation*, BoundaryConditionSelect);
 	~Engine();
 
 	void step();
@@ -113,7 +113,6 @@ private:
 	void HandleEarlyStoppingInEM();
 	int64_t stepAtLastEarlystopCheck = INT_MIN;
 
-	std::unique_ptr<LimaLogger> m_logger;
 
 	std::array<cudaStream_t, 5> cudaStreams;
 	cudaStream_t pmeStream;
@@ -151,7 +150,7 @@ private:
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 
-	uint8_t* nParticlesInCompoundsBufferPtr = nullptr;// dont own data!
+	//uint8_t* nParticlesInCompoundsBufferPtr = nullptr;// dont own data!
 
 	std::unique_ptr<PME::Controller> pmeController;
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;

@@ -30,9 +30,9 @@ namespace ForceCorrectness {
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
-			Box* box_host = env.getSimPtr()->box_host.get();
-			box_host->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
-			box_host->pclusterInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
+			Box* box = env.getSimPtr()->box.get();
+			box->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+			box->pclusterInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
 
 			env.run();
 
@@ -78,20 +78,20 @@ namespace ForceCorrectness {
 				env.CreateSimulation(grofile, topfile, params);
 
 
-				Box* box_host = env.getSimPtr()->box_host.get();
-				box_host->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
+				Box* box = env.getSimPtr()->box.get();
+				box->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
 			}
 
 			// Give the solvent a velocty
 			// TODO: Impl this!
 			//{
 			//	float solventMass = 0;
-			//	for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
-			//		solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box_host->tinyMolParticlesState[i].tinymolTypeIndex].mass;
+			//	for (int i = 0; i < env.getSimPtr()->box->boxparams.nTinymolParticles; i++) {
+			//		solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box->tinyMolParticlesState[i].tinymolTypeIndex].mass;
 			//	}
 			//	const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
-			//	for (int i = 0; i < env.getSimPtr()->box_host->boxparams.nTinymolParticles; i++) {
-			//		env.getSimPtr()->box_host->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
+			//	for (int i = 0; i < env.getSimPtr()->box->boxparams.nTinymolParticles; i++) {
+			//		env.getSimPtr()->box->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
 			//	}
 			//}
 
@@ -135,15 +135,15 @@ namespace ForceCorrectness {
 		grofile.atoms[1].position = grofile.atoms[0].position + Float3{ bondlenErrorNM + expectedB0, 0.f, 0.f }; // Just so we dont get an 0 dist error as we load the simulation
 		env.CreateSimulation(grofile, topfile, params);
 
-		Box& box_host = *env.getSimPtr()->box_host.get();
+		Box& box = *env.getSimPtr()->box.get();
 
-		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+		const SingleBond::Parameters bondparams = box.bondgroups[0].singlebonds[0].params;
 		assert(bondparams.b0 == expectedB0);
 
 		// Now we have the bond params, set the actual test position
-		/*CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+		/*CompoundCoords* coordarray_ptr = &box.compoundCoordsBuffer[0];
 		coordarray_ptr->rel_positions[1].x = coordarray_ptr->rel_positions[0].x + Coord{ Float3{bondlenErrorNM + bondparams.b0, 0.f, 0.f} }.x;
-		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x + bondlenErrorNM + bondparams.b0;*/
+		box.persistentClusters[0].pqd[1].position.x = box.persistentClusters[0].pqd[0].position.x + bondlenErrorNM + bondparams.b0;*/
 
 		// Now figure the expected force and potential
 		const double kB = bondparams.kb / 2.;									// [J/mol/nm^2]
@@ -155,12 +155,12 @@ namespace ForceCorrectness {
 		env.run();
 		LIMA_UTILS::genericErrorCheck("Error during test");
 
-		const auto sim = env.getSim();
+		const auto sim = env.GetSim();
 		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
 		//const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
 		const float actualPotE = sim->potE_buffer->GetDatapoint(0, 0, 0) + sim->potE_buffer->GetDatapoint(0, 1, 0);
 
-		const Float3 actualForce = sim->box_host->pclusterInterimStates[0].forces_prev[0];
+		const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[0];
 
 
 		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
@@ -200,22 +200,22 @@ namespace ForceCorrectness {
 		TopologyFile topfile{ topol };
 		env.CreateSimulation(grofile, topfile, params);
 
-		Box& box_host = *env.getSimPtr()->box_host.get();
+		Box& box = *env.getSimPtr()->box.get();
 
-		const SingleBond::Parameters bondparams = box_host.bondgroups[0].singlebonds[0].params;
+		const SingleBond::Parameters bondparams = box.bondgroups[0].singlebonds[0].params;
 		assert(bondparams.b0 == expectedB0);
 
-		/*CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+		/*CompoundCoords* coordarray_ptr = &box.compoundCoordsBuffer[0];
 		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x;
-		box_host.persistentClusters[0].pqd[1].position.x = box_host.persistentClusters[0].pqd[0].position.x - bond_len_error - bondparams.b0;*/
+		box.persistentClusters[0].pqd[1].position.x = box.persistentClusters[0].pqd[0].position.x - bond_len_error - bondparams.b0;*/
 
 
 
 		// Now figure out how fast the bond should oscillate
-		const float massA = box_host.persistentClustersMetadata[0].mass[0];
-		const float massB = box_host.persistentClustersMetadata[0].mass[1];
-		//const float massA = box_host.compounds[0].atomMasses[0];
-		//const float massB = box_host.compounds[0].atomMasses[1];
+		const float massA = box.persistentClustersMetadata[0].mass[0];
+		const float massB = box.persistentClustersMetadata[0].mass[1];
+		//const float massA = box.compounds[0].atomMasses[0];
+		//const float massB = box.compounds[0].atomMasses[1];
 		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
 		const double kB = bondparams.kb / NANO / NANO; // [J/(mol m^2)]
 
@@ -224,7 +224,7 @@ namespace ForceCorrectness {
 
 		env.run();
 
-		const auto sim = env.getSim();
+		const auto sim = env.GetSim();
 
 		std::vector<float> bondlenOverTime(params.n_steps);	// [nm]
 		for (int i = 0; i < params.n_steps; i++) {
@@ -266,54 +266,54 @@ namespace ForceCorrectness {
 		// Create the sim twice. First to get the params, so we can overwrite the grofile positions, then again with with the new positions
 		{
 			env.CreateSimulation(grofile, topfile, params);
-			Box& box_host = *env.getSimPtr()->box_host.get();
+			Box& box = *env.getSimPtr()->box.get();
 
-			//box_host.bondgroups[0].anglebonds[0].params.kTheta = 0.f;
-			//box_host.bondgroups[0].anglebonds[0].params.kUB = 0.f;
-			//box_host.bondgroups[0].nSinglebonds = 0; // Shouldn't be necessary..
+			//box.bondgroups[0].anglebonds[0].params.kTheta = 0.f;
+			//box.bondgroups[0].anglebonds[0].params.kUB = 0.f;
+			//box.bondgroups[0].nSinglebonds = 0; // Shouldn't be necessary..
 
 			// First equilibrilize the singlebond
 			{
-				const SingleBond::Parameters bondParams = box_host.bondgroups[0].singlebonds[0].params;
+				const SingleBond::Parameters bondParams = box.bondgroups[0].singlebonds[0].params;
 				grofile.atoms[0].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
 				grofile.atoms[2].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
 
-				//CompoundCoords* coordarray_ptr = &box_host.compoundCoordsBuffer[0];
+				//CompoundCoords* coordarray_ptr = &box.compoundCoordsBuffer[0];
 				/*coordarray_ptr->rel_positions[0] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
 				coordarray_ptr->rel_positions[2] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };*/
-				/*box_host.persistentClusters[0].pqd[0].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
-				box_host.persistentClusters[0].pqd[2].position = box_host.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };*/
+				/*box.persistentClusters[0].pqd[0].position = box.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
+				box.persistentClusters[0].pqd[2].position = box.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };*/
 			}
 
 			// Now set the angle error
 			const float angleErrorRad = 0.1f;    // [radians]
-			const AngleUreyBradleyBond::Parameters angleparams = box_host.bondgroups[0].anglebonds[0].params;
+			const AngleUreyBradleyBond::Parameters angleparams = box.bondgroups[0].anglebonds[0].params;
 			{
 				const Float3 p2Pos = grofile.atoms[2].position;
 				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
 				grofile.atoms[2].position = p2Rotated;
-				/*const Float3 p2Pos = box_host.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();
+				/*const Float3 p2Pos = box.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();
 				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
-				box_host.compoundCoordsBuffer[0].rel_positions[2] = Coord{ p2Rotated };
-				box_host.persistentClusters[0].pqd[2].position = p2Rotated;*/
+				box.compoundCoordsBuffer[0].rel_positions[2] = Coord{ p2Rotated };
+				box.persistentClusters[0].pqd[2].position = p2Rotated;*/
 			}
 		}
 
 		env.CreateSimulation(grofile, topfile, params);
-		Box& box_host = *env.getSimPtr()->box_host.get();
+		Box& box = *env.getSimPtr()->box.get();
 		const float angleErrorRad = 0.1f;    // [radians]
-		const AngleUreyBradleyBond::Parameters angleparams = box_host.bondgroups[0].anglebonds[0].params;
+		const AngleUreyBradleyBond::Parameters angleparams = box.bondgroups[0].anglebonds[0].params;
 		// Now calculate expected forces and potential energy
 
-		const Float3 p0 = box_host.persistentClusters[0].pqd[0].position;
-		const Float3 p1 = box_host.persistentClusters[0].pqd[1].position;
-		const Float3 p2 = box_host.persistentClusters[0].pqd[2].position;
-		/*const Float3 p0 = box_host.compoundCoordsBuffer[0].rel_positions[0].ToRelpos();
-		const Float3 p1 = box_host.compoundCoordsBuffer[0].rel_positions[1].ToRelpos();
-		const Float3 p2 = box_host.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();*/
+		const Float3 p0 = box.persistentClusters[0].pqd[0].position;
+		const Float3 p1 = box.persistentClusters[0].pqd[1].position;
+		const Float3 p2 = box.persistentClusters[0].pqd[2].position;
+		/*const Float3 p0 = box.compoundCoordsBuffer[0].rel_positions[0].ToRelpos();
+		const Float3 p1 = box.compoundCoordsBuffer[0].rel_positions[1].ToRelpos();
+		const Float3 p2 = box.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();*/
 
-		//ASSERT((p1 - p0).len() == box_host.bondgroups[0].singlebonds[0].params.b0, std::format("Singlebondlen not as expected {}/{}", (p1 - p0).len(), box_host.bondgroups[0].singlebonds[0].params.b0));
-		//ASSERT((p2 - p1).len() == box_host.bondgroups[0].singlebonds[0].params.b0, std::format("Anglebondlen not as expected {}/{}", (p2 - p1).len(), box_host.bondgroups[0].singlebonds[0].params.b0));
+		//ASSERT((p1 - p0).len() == box.bondgroups[0].singlebonds[0].params.b0, std::format("Singlebondlen not as expected {}/{}", (p1 - p0).len(), box.bondgroups[0].singlebonds[0].params.b0));
+		//ASSERT((p2 - p1).len() == box.bondgroups[0].singlebonds[0].params.b0, std::format("Anglebondlen not as expected {}/{}", (p2 - p1).len(), box.bondgroups[0].singlebonds[0].params.b0));
 
 		// Angular component
 		const float potAngle = angleparams.kTheta * angleErrorRad * angleErrorRad * 0.5f;		// Energy [J/mol]			
@@ -337,7 +337,7 @@ namespace ForceCorrectness {
 		env.run();
 		LIMA_UTILS::genericErrorCheck("Error during test");
 
-		const auto sim = env.getSim();
+		const auto sim = env.GetSim();
 
 		// Fetch the potential energy from the buffer, summing over all three atoms
 		const float actualPotE =
@@ -346,7 +346,7 @@ namespace ForceCorrectness {
 			sim->potE_buffer->GetDatapoint(0, 2, 0);
 
 		// Fetch the actual force on the middle atom (atom 1)
-		const Float3 actualForce = sim->box_host->pclusterInterimStates[0].forces_prev[0];
+		const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[0];
 
 		// Validate force and potential
 		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
@@ -377,31 +377,31 @@ namespace ForceCorrectness {
 
 		env.CreateSimulation(grofile, topfile, params);
 
-		Box& box_host = *env.getSimPtr()->box_host.get();
+		Box& box = *env.getSimPtr()->box.get();
 
-		ASSERT(box_host.bondgroups[0].nPairbonds == 1, std::format("Expected sim to contain 1 pairbond, found {}", box_host.bondgroups[0].nPairbonds));
+		ASSERT(box.bondgroups[0].nPairbonds == 1, std::format("Expected sim to contain 1 pairbond, found {}", box.bondgroups[0].nPairbonds));
 
 		// Neutralize singlebonds
-		box_host.bondgroups[0].nSinglebonds = 0;
-		ASSERT(box_host.bondgroups[0].nAnglebonds == 0, "Expected 0 anglebonds");
-		box_host.bondgroups[0].nDihedralbonds = 0;
-		ASSERT(box_host.bondgroups[0].nImproperdihedralbonds == 0, "Expected 0 improperdihedralbonds");
+		box.bondgroups[0].nSinglebonds = 0;
+		ASSERT(box.bondgroups[0].nAnglebonds == 0, "Expected 0 anglebonds");
+		box.bondgroups[0].nDihedralbonds = 0;
+		ASSERT(box.bondgroups[0].nImproperdihedralbonds == 0, "Expected 0 improperdihedralbonds");
 
 
 		// Now calculate expected forces and potential energy
-		const int pidInPcluster0 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[0]].pid;
-		const int pidInPcluster1 = box_host.bondgroups[0].particles[box_host.bondgroups[0].pairbonds[0].atom_indexes[1]].pid;
-		/*const int pidGlobal0 = box_host.persistentClustersMetadata[0].particleIdsGlobal[0];
-		const int pidGlobal1 = box_host.persistentClustersMetadata[0].particleIdsGlobal[1];
-		const int pidInCompound0 = box_host.particleToCompoundOrSolventMapping[pidGlobal0].particleId;
-		const int pidInCompound1 = box_host.particleToCompoundOrSolventMapping[pidGlobal1].particleId;*/
+		const int pidInPcluster0 = box.bondgroups[0].particles[box.bondgroups[0].pairbonds[0].atom_indexes[0]].pid;
+		const int pidInPcluster1 = box.bondgroups[0].particles[box.bondgroups[0].pairbonds[0].atom_indexes[1]].pid;
+		/*const int pidGlobal0 = box.persistentClustersMetadata[0].particleIdsGlobal[0];
+		const int pidGlobal1 = box.persistentClustersMetadata[0].particleIdsGlobal[1];
+		const int pidInCompound0 = box.particleToCompoundOrSolventMapping[pidGlobal0].particleId;
+		const int pidInCompound1 = box.particleToCompoundOrSolventMapping[pidGlobal1].particleId;*/
 
 
-		const Float3 pos0 = box_host.persistentClusters[0].pqd[pidInPcluster0].position;
-		const Float3 pos1 = box_host.persistentClusters[0].pqd[pidInPcluster1].position;	
+		const Float3 pos0 = box.persistentClusters[0].pqd[pidInPcluster0].position;
+		const Float3 pos1 = box.persistentClusters[0].pqd[pidInPcluster1].position;	
 		const Float3 diff = pos1 - pos0;
 
-		const PairBond::Parameters bondparams = box_host.bondgroups[0].pairbonds[0].params;
+		const PairBond::Parameters bondparams = box.bondgroups[0].pairbonds[0].params;
 		const float s = std::powf(bondparams.sigma / (diff.len()), 6.f);
 		float force_scalar = 24.f * bondparams.epsilon * s / diff.lenSquared() * (1.f - 2.f * s);
 		const Float3 expectedForce = diff * force_scalar;
@@ -410,12 +410,12 @@ namespace ForceCorrectness {
 		env.run();
 		LIMA_UTILS::genericErrorCheck("Error during test");
 
-		const auto sim = env.getSim();
+		const auto sim = env.GetSim();
 
 		// Fetch the potential energy from the buffer, summing over all three atoms
 		//const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, pidInCompound0, 0);		
 		// Fetch the actual force on the middle atom (atom 1)
-		//const Float3 actualForce = sim->box_host->pclusterInterimStates[0].forces_prev[pidInCompound0];
+		//const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[pidInCompound0];
 
 		const float actualPotE = sim->potE_buffer->GetDatapoint(0, pidInPcluster0, 0);
 		const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, pidInPcluster0, 0);
@@ -463,7 +463,7 @@ namespace ForceCorrectness {
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
-			Box* box_host = env.getSimPtr()->box_host.get();
+			Box* box = env.getSimPtr()->box.get();
 
 			env.run();
 
@@ -585,7 +585,7 @@ namespace ForceCorrectness {
 
 			env.CreateSimulation(grofile, topfile, params);
 
-			Box* box_host = env.getSimPtr()->box_host.get();
+			Box* box = env.getSimPtr()->box.get();
 
 			env.run();
 
@@ -673,11 +673,11 @@ namespace VerletintegrationTesting {
 
 		env.CreateSimulation(grofile, topfile, params);
 		const float electricFieldStrength = .5f ; // [V/nm]
-		env.getSimPtr()->box_host->uniformElectricField = UniformElectricField{ Float3{1.f, 0.f, 0.f }, electricFieldStrength };
+		env.getSimPtr()->box->uniformElectricField = UniformElectricField{ Float3{1.f, 0.f, 0.f }, electricFieldStrength };
 
 
-		const float particleCharge = env.getSimPtr()->box_host->persistentClusters[0].pqd[0].params.charge * KILO; // [C/mol]
-		const float particleMass = env.getSimPtr()->box_host->persistentClustersMetadata[0].mass[0]; // [kg/mol]
+		const float particleCharge = env.getSimPtr()->box->persistentClusters[0].pqd[0].params.charge * KILO; // [C/mol]
+		const float particleMass = env.getSimPtr()->box->persistentClustersMetadata[0].mass[0]; // [kg/mol]
 
 		const float expectedVelocity = particleCharge * electricFieldStrength / NANO * timeElapsed / particleMass; // [m/s]
 		const float expectedKinE = PhysicsUtils::calcKineticEnergy(expectedVelocity, particleMass); // [J/mol]

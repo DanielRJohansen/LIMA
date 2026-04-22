@@ -80,28 +80,19 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 
 
-SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
+SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box, const BoxConfig& boxConfig,
 	const BoxState& boxState, const DatabuffersDeviceController& databuffers) : 
 	boxConfig(boxConfig), boxState(boxState),
-	boxparams(box_host != nullptr ? box_host->boxparams : BoxParams{})
-	//uniformElectricField(box_host != nullptr ? box_host->uniformElectricField : UniformElectricField{})
+	boxparams(box != nullptr ? box->boxparams : BoxParams{})
 {
-	//cudaMallocManaged(&transfermodule_array, sizeof(SolventBlockTransfermodule) * BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(box_host->boxparams.boxSize)));
-
-	{
-		SimSignals temp{};
-		genericCopyToDevice(temp, &signals, 1);
-	}
-
 	potE_buffer = databuffers.potE_buffer;
 	traj_buffer = databuffers.traj_buffer;
 	vel_buffer = databuffers.vel_buffer;
 	forceBuffer = databuffers.forceBuffer;
 
-	//if (params_host.em_variant) {
-		cudaMalloc(&adamState, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::maxParticles);
-		cudaMemset(adamState, 0, sizeof(AdamState) * box_host->persistentClusters.size() * PersistentCluster::maxParticles);
-	//}
+	cudaMalloc(&adamState, sizeof(AdamState) * box->persistentClusters.size() * PersistentCluster::maxParticles);
+	cudaMemset(adamState, 0, sizeof(AdamState) * box->persistentClusters.size() * PersistentCluster::maxParticles);
+
 
 	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");
 }
@@ -109,28 +100,20 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box_host, 
 void SimulationDevice::FreeMembers() {
 	boxConfig.FreeMembers();
 	boxState.FreeMembers();
-
-
-	cudaFree(nParticlesInCompoundsBuffer);
-
-	//cudaFree(transfermodule_array);
-	cudaFree(signals);
-
-
 	if (adamState != nullptr)
 		cudaFree(adamState);
 }
 
 //CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation) {
-//	std::vector<CompoundQuickData> compoundQuickDataHost(simulation.box_host->boxparams.n_compounds, CompoundQuickData{});
+//	std::vector<CompoundQuickData> compoundQuickDataHost(simulation.box->boxparams.n_compounds, CompoundQuickData{});
 //	memset(compoundQuickDataHost.data(), 0, sizeof(CompoundQuickData) * compoundQuickDataHost.size());
 //
-//	for (int cid = 0; cid < simulation.box_host->compounds.size(); cid++) {
-//		const Compound& compound = simulation.box_host->compounds[cid];
+//	for (int cid = 0; cid < simulation.box->compounds.size(); cid++) {
+//		const Compound& compound = simulation.box->compounds[cid];
 //		CompoundQuickData& quickData = compoundQuickDataHost[cid];
 //		for (int pid = 0; pid < MAX_COMPOUND_PARTICLES; pid++) {
 //			if (pid < compound.n_particles) {
-//				quickData.relPos[pid] = simulation.box_host->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
+//				quickData.relPos[pid] = simulation.box->compoundCoordsBuffer[cid].rel_positions[pid].ToRelpos();
 //				quickData.ljParams[pid] = simulation.forcefield.particle_parameters[compound.atom_types[pid]];
 //				quickData.charges[pid] = compound.atom_charges[pid];
 //			}

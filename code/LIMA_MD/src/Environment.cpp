@@ -24,7 +24,7 @@ constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::Environment(const fs::path& workdir, EnvMode mode)
-	: work_dir(workdir)
+	: workDir(workdir)
 	, m_mode(mode)
 	, m_logger{ LimaLogger::compact, m_mode, "environment", workdir.string()}	// .string() is temp
 {
@@ -59,7 +59,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		grofile,
 		topolfile,
 		V1,
-		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
+		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", workDir),
 		IGNORE_HYDROGEN,
 		params
 		);
@@ -71,7 +71,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 
 	if (display) {
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, coloringMethod, simStatus
 		));
 	}
 }
@@ -79,7 +79,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
 
 	simulation.reset(new Simulation(params));
-	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.getStep());
+	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box), simulation_src.getStep());
 
 	simulation->forcefield = simulation_src.forcefield;
 	//simulation->forcefieldTinymol = simulation_src.forcefieldTinymol;
@@ -89,26 +89,26 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 
 std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(Float3 boxlen) {
 	GroFile grofile{};
-	grofile.m_path = work_dir / "conf.gro";
+	grofile.m_path = workDir / "conf.gro";
 	grofile.box_size = Float3{ boxlen };
 	grofile.printToFile();
 
 	TopologyFile topfile{};
 	topfile.SetSystem("MySystem");
-	topfile.path = work_dir / "topol.top";
+	topfile.path = workDir / "topol.top";
 	//topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	topfile.printToFile();
-	topfile = TopologyFile{work_dir / "topol.top"}; // Reload the topfile to parse the ffinclude
+	topfile = TopologyFile{workDir / "topol.top"}; // Reload the topfile to parse the ffinclude
 
 
 	SimParams simparams{};
-	simparams.dumpToFile(work_dir / "sim_params.txt");
+	simparams.dumpToFile(workDir / "sim_params.txt");
 
 	return { grofile, topfile, simparams };
 }
 
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
-	if (simulation->simparams_host.cutoff_nm != 1.2f) {// TODO: DANGER
+	if (simulation->simParams.cutoff_nm != 1.2f) {// TODO: DANGER
 		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
 	}
 }
@@ -116,8 +116,8 @@ void constexpr Environment::verifySimulationParameters() {	// Not yet implemente
 fs::path Environment::FixPath(const fs::path& path) const {
 	if (path.is_absolute())
 		return path;
-	if (fs::exists(work_dir / path))
-		return work_dir / path;
+	if (fs::exists(workDir / path))
+		return workDir / path;
 	if (fs::exists( "./" / path))
 		return "./" / path;
 	return path;
@@ -165,16 +165,15 @@ bool Environment::prepareForRun() {
 	verifyBox();
 	simulation->ready_to_run = true;
 
-	avgStepTimes.reserve((simulation->simparams_host.n_steps + 1) / STEPS_PER_UPDATE);
+	avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 
-	//boxparams = simulation->box_host->boxparams;
-	coloringMethod = simulation->simparams_host.coloring_method;
+	//boxparams = simulation->box->boxparams;
+	coloringMethod = simulation->simParams.coloring_method;
 
 
 	engine = std::make_unique<Engine>(
 		simulation.get(),
-		simulation->simparams_host.bc_select,
-		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
+		simulation->simParams.bc_select);
 
 	return true;
 }
@@ -193,9 +192,9 @@ void Environment::sayHello() {
 }
 
 std::chrono::duration<double> Environment::run() {
-	const bool emVariant = simulation->simparams_host.em_variant;
-	const bool stepwise = simulation->simparams_host.stepwise;
-	//simparamsCopy = simulation->simparams_host;
+	const bool emVariant = simulation->simParams.em_variant;
+	const bool stepwise = simulation->simParams.stepwise;
+	//simparamsCopy = simulation->simParams;
 
     if (!prepareForRun()) { return {}; }
 
@@ -205,7 +204,7 @@ std::chrono::duration<double> Environment::run() {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			simulation->box_host->persistentClusters, simulation->box_host->persistentClustersMetadata, simulation->box_host->boxparams, coloringMethod, simStatus
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, coloringMethod, simStatus
 		), stepwise);
 	}
 
@@ -214,7 +213,7 @@ std::chrono::duration<double> Environment::run() {
     auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(simulation->box_host->boxparams, display.get(), emVariant, stepwise)) {
+		if (!handleDisplay(simulation->box->boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
@@ -261,12 +260,12 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 	// First offload the current state from engine to host - if there is no engine, the state in the current boxhost IS the current state
 	if (engine) {
 		CudaBuffer<PersistentCluster>& pcBuffer = engine->OffloadPclusterState();
-		simulation->box_host->persistentClusters = GenericCopyToHost(pcBuffer.Get(), simulation->box_host->persistentClusters.size()); // TODO: Reuse mem here somehow, this'll be slow..
+		simulation->box->persistentClusters = GenericCopyToHost(pcBuffer.Get(), simulation->box->persistentClusters.size()); // TODO: Reuse mem here somehow, this'll be slow..
 	}
 
-	for (int pcId = 0; pcId < simulation->box_host->persistentClusters.size(); pcId++) {
-		const PersistentClusterMeta& pcMeta = simulation->box_host->persistentClustersMetadata[pcId];
-		const PersistentCluster& pcData = simulation->box_host->persistentClusters[pcId];
+	for (int pcId = 0; pcId < simulation->box->persistentClusters.size(); pcId++) {
+		const PersistentClusterMeta& pcMeta = simulation->box->persistentClustersMetadata[pcId];
+		const PersistentCluster& pcData = simulation->box->persistentClusters[pcId];
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 			if (pidGlobal != -1) {
@@ -284,7 +283,7 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 	GroFile outputfile{ boximage->grofile };
 
 	if (filename.has_value()) {
-		outputfile.m_path = work_dir / "molecule" / (filename.value() + ".gro");
+		outputfile.m_path = workDir / "molecule" / (filename.value() + ".gro");
 	}
 
 	WriteBoxCoordinatesToFile(outputfile);
@@ -305,7 +304,7 @@ std::vector<Float3> Environment::GetForces(int64_t step) const {
 		//	}
 		//}
 
-		//for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
+		//for (int tinymolId = 0; tinymolId < simulation->box->boxparams.nTinymols; tinymolId++) {
 		//	const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 		//	const int nAtomsInTinymol = tinymol.nParticles;
 
@@ -328,10 +327,10 @@ Trajectory Environment::WriteSimToTrajectory() const {
 	const int nSteps = simulation->getStep();
 	const int nAtoms = boximage->grofile.atoms.size();
 
-	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simparams_host.dt);
+	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simParams.dt);
 
 	// TODO!!
-	//for (int step = 0; step < nSteps; step += simulation->simparams_host.data_logging_interval) {
+	//for (int step = 0; step < nSteps; step += simulation->simParams.data_logging_interval) {
 
 	//	for (int cid = 0; cid < boximage->compounds.size(); cid++) {
 	//		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
@@ -340,7 +339,7 @@ Trajectory Environment::WriteSimToTrajectory() const {
 	//		}
 	//	}
 
-	//	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
+	//	for (int tinymolId = 0; tinymolId < simulation->box->boxparams.nTinymols; tinymolId++) {
 	//		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 	//		const int nAtomsInTinymol = tinymol.nParticles;
 
@@ -365,7 +364,7 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	UpgradeableFileFormat file(path);
 
 	file.WriteSection("numAtoms", std::vector{ nAtoms });
-	file.WriteSection("numFrames", std::vector{nSteps / simulation->simparams_host.data_logging_interval});
+	file.WriteSection("numFrames", std::vector{nSteps / simulation->simParams.data_logging_interval});
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
@@ -380,7 +379,7 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
 
-		if (printToConsole) {
+		if (printToConsole && m_mode == Full) {
 			//// First clear the current line
 			//printf("\r\033[K");
 			// Move cursor to the beginning of the line and clear it
@@ -397,11 +396,11 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 
 
 		const int nStepsSinceLast = engine->runstatus.current_step - *simStatus.step;
-		const double totalNsSimulated = nStepsSinceLast * simulation->simparams_host.dt; // [ns]
+		const double totalNsSimulated = nStepsSinceLast * simulation->simParams.dt; // [ns]
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-		const double completionFraction = (double)step / (double)simulation->simparams_host.n_steps;
-		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = simulation->simparams_host.n_steps > 0 && simulationTimer.has_value()
+		const double completionFraction = (double)step / (double)simulation->simParams.n_steps;
+		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = simulation->simParams.n_steps > 0 && simulationTimer.has_value()
 			? std::optional<std::chrono::duration<double>> {simulationTimer->Elapsed()* (1. / completionFraction * (1.-completionFraction))}
 			: std::nullopt;
 
@@ -409,7 +408,7 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 		newStatus.step = engine->runstatus.current_step;
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		newStatus.expectedTimeToFinish = expectedTimeToFinish;
-		if (simulation->simparams_host.em_variant) {
+		if (simulation->simParams.em_variant) {
 		}
 		else {
 			newStatus.simulationPerformance = ns_per_day;
@@ -419,7 +418,7 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 	}
 
 	// "Free" updates
-	if (simulation->simparams_host.em_variant) {
+	if (simulation->simParams.em_variant) {
 		simStatus.maxForce = engine->runstatus.greatestForce;
 	}
 	else {
@@ -461,7 +460,7 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 	return !display->DisplaySelfTerminated();
 }
 
-std::unique_ptr<Simulation> Environment::getSim() {
+std::unique_ptr<Simulation> Environment::GetSim() {
 	engine.reset();
 	return std::move(simulation);
 }
@@ -488,7 +487,7 @@ void Environment::PrintTiming() const {
 		return;
 
 	const double wall_time_sec = engineTime->count();
-	const double totalNsSimulated = static_cast<double>(simulation->getStep()) * simulation->simparams_host.dt;
+	const double totalNsSimulated = static_cast<double>(simulation->getStep()) * simulation->simParams.dt;
 
 	// Calculate performance metrics
 	const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day

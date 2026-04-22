@@ -13,14 +13,14 @@ namespace TestMembraneBuilder {
 	// This test ensures that the membrane is built identical to the reference membrane, NOT considering EM
 	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{		
-		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
-		const fs::path mol_dir = work_dir / "molecule";
+		const fs::path workDir = simulations_dir / "BuildMembraneSmall";
+		const fs::path mol_dir = workDir / "molecule";
 		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
 
 		Lipids::Selection lipidselection;
 		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
 		for (const auto& lipidname : lipids) {
-			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
+			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
 		}
 
 		// Build the membrane, and write it to disk
@@ -68,14 +68,14 @@ namespace TestMembraneBuilder {
 
 		// Finally test if we can stabilize the simulation
 		const float emtol = 200.f;
-		auto sim = Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, emtol);
+		auto sim = Programs::EnergyMinimize(*gro, *top, true, workDir, envmode, true, emtol);
 
 		return LimaUnittestResult{ sim->maxForceBuffer.back().second < emtol, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
 	}
 
 	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
-		const fs::path work_dir = simulations_dir / "BuildMembraneCustom";
-		const fs::path mol_dir = work_dir / "molecule";
+		const fs::path workDir = simulations_dir / "BuildMembraneCustom";
+		const fs::path mol_dir = workDir / "molecule";
 
 		//TestUtils::CleanDirectory(mol_dir);
 		fs::remove_all(mol_dir);
@@ -84,11 +84,11 @@ namespace TestMembraneBuilder {
 		Lipids::Selection lipidselection;
 		const std::vector<std::pair<std::string, double>> lipids = { {"POPC", 70.}, {"CUST" , 30.} };
 		for (const auto& [lipidname, percentage] : lipids) {
-			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, percentage });	// 10% of each lipid, except 50% POPC
+			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, percentage });	// 10% of each lipid, except 50% POPC
 		}
 
 		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimize(*gro, *top, true, work_dir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
+		Programs::EnergyMinimize(*gro, *top, true, workDir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
 
 		gro->printToFile(mol_dir / "membrane.gro");
 		top->printToFile(mol_dir / "membrane.top");
@@ -110,14 +110,14 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment env(work_dir, envmode);
+		Environment env(workDir, envmode);
 		env.CreateSimulation(newGro, newTop, params);
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
 
 	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
-		const fs::path work_dir = simulations_dir / "BuildMembraneSmall";
+		const fs::path workDir = simulations_dir / "BuildMembraneSmall";
 
 		const fs::path path = FileUtils::GetLimaDir() / "resources/Slipids";
 		std::vector<std::string> targets;
@@ -133,7 +133,7 @@ namespace TestMembraneBuilder {
 
 		Lipids::Selection lipidselection;
 		for (const auto& lipidname : targets) {
-			lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
+			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
 		}
 
 		// The first test is pretty much just to see if this function throws
@@ -144,7 +144,7 @@ namespace TestMembraneBuilder {
 
 		// The third test is to see if this function throws
 		const float emtol = 1000.f;
-		auto sim = Programs::EnergyMinimize(*grofile, *topfile, false, work_dir, envmode, true, emtol);
+		auto sim = Programs::EnergyMinimize(*grofile, *topfile, false, workDir, envmode, true, emtol);
 
 		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
 

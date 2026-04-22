@@ -196,7 +196,7 @@ void GroFile::printToFile(const std::filesystem::path& path) const {
 
 
 
-
+// TODO: Remove this
 SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
 	grofile = std::make_unique<GroFile>(workDir / "molecule/conf.gro");
 	topfile = std::make_unique<TopologyFile>(workDir / "molecule/topol.top");

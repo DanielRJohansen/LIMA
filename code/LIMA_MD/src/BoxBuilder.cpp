@@ -138,26 +138,26 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 {
 	if (boxsrc_current_step < 1) { throw std::runtime_error("It is not yet possible to create a new box from an old un-run box"); }
 
-	simulation.box_host = std::move(boxsrc);
+	simulation.box = std::move(boxsrc);
 
 	// Copy current compoundcoord configuration, and put zeroes everywhere else so we can easily spot if something goes wrong
 	{
-		//simulation.box_host->compoundCoordsBuffer = boxsrc->compoundCoordsBuffer;
+		//simulation.box->compoundCoordsBuffer = boxsrc->compoundCoordsBuffer;
 
 		//// Create temporary storage
 		//std::vector<CompoundCoords> coords_t0(MAX_COMPOUNDS);
 		//const size_t bytesize = sizeof(CompoundCoords) * MAX_COMPOUNDS;
 
 		//// Copy only the current step to temporary storage
-		//CompoundCoords* src_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
+		//CompoundCoords* src_t0 = simulation.box->compoundcoordsCircularQueue->getCoordarrayRef(boxsrc_current_step, 0);
 		//memcpy(coords_t0.data(), src_t0, bytesize);
 
 		//// Clear all of the data
-		//simulation.box_host->compoundcoordsCircularQueue->Flush();
+		//simulation.box->compoundcoordsCircularQueue->Flush();
 
 		//// Copy the temporary storage back into the queue
 		//for (int i = 0; i < 3; i++) {
-		//	CompoundCoords* dest_t0 = simulation.box_host->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
+		//	CompoundCoords* dest_t0 = simulation.box->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
 		//	memcpy(dest_t0, coords_t0.data(), bytesize);
 		//}
 
@@ -168,16 +168,16 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 
 bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, bool verbose) {
 //TODO!	
-	//for (int cid = 0; cid < sim.box_host->boxparams.n_compounds; cid++) {
-	//	for (int pid = 0; pid < sim.box_host->compounds[cid].n_particles; pid++) 
+	//for (int cid = 0; cid < sim.box->boxparams.n_compounds; cid++) {
+	//	for (int pid = 0; pid < sim.box->compounds[cid].n_particles; pid++) 
 	//	{
-	//		const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simparams_host.data_logging_interval);
+	//		const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simParams.data_logging_interval);
 
 	//		Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-	//		BoundaryConditionPublic::applyBCNM(pos, sim.box_host->boxparams.BoxSizeFloat(), sim.simparams_host.bc_select);
+	//		BoundaryConditionPublic::applyBCNM(pos, sim.box->boxparams.BoxSizeFloat(), sim.simParams.bc_select);
 
 	//		for (int i = 0; i < 3; i++) {
-	//			if (pos[i] < padding || pos[i] > (sim.box_host->boxparams.BoxSizeFloat()[i] - padding)) {
+	//			if (pos[i] < padding || pos[i] > (sim.box->boxparams.BoxSizeFloat()[i] - padding)) {
 	//				//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
 	//				return false;
 	//			}

@@ -54,7 +54,7 @@ Example:
 
 
     EnvMode envmode = ConsoleOnly;
-    fs::path work_dir{ std::filesystem::current_path() };
+    fs::path workDir{ std::filesystem::current_path() };
 
     std::vector<std::pair<std::string, double>> lipids; // {name, percentage}
     std::optional<float> membraneCenterZ = std::nullopt;
@@ -86,21 +86,21 @@ Example:
     argparser.AddOption({ "-centerz", "-c"}, false, membraneCenterZ);
 	argparser.AddOption({ "-boxsize", "-b" }, true, boxsize, true);
 	argparser.AddOption({ "-emtol", "-tolerance" }, false, emtol);
-    argparser.AddOption({ "-working_dir", "-workdir", "-wd" }, false, work_dir);
+    argparser.AddOption({ "-working_dir", "-workdir", "-wd" }, false, workDir);
 	argparser.AddFlag({ "-display", "-d" }, [&envmode]() { envmode = Full; });
 
     argparser.Parse(argc, argv);
 
 	Lipids::Selection lipidselection;
 	for (const auto& lipid : lipids) {
-		lipidselection.emplace_back(Lipids::Select{ lipid.first, work_dir, lipid.second });
+		lipidselection.emplace_back(Lipids::Select{ lipid.first, workDir, lipid.second });
 	}
     
     auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ boxsize }, membraneCenterZ.value_or(boxsize.z/2.f));
-    auto sim = Programs::EnergyMinimize(*grofile, *topfile, true, work_dir, envmode, true, emtol);
+    auto sim = Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true, emtol);
 
-    grofile->printToFile(work_dir / "membrane.gro");
-    topfile->printToFile(work_dir / "membrane.top");
+    grofile->printToFile(workDir / "membrane.gro");
+    topfile->printToFile(workDir / "membrane.top");
         
     auto [step, force] = *std::min_element(sim->maxForceBuffer.begin(), sim->maxForceBuffer.end(),
         [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {

@@ -1,7 +1,7 @@
 #include "Programs.h"
 
 void SelfTest() {
-	const std::filesystem::path work_dir = std::filesystem::current_path() / "selftest";
+	const std::filesystem::path workDir = std::filesystem::current_path() / "selftest";
 
 	const fs::path slipidsPath = FileUtils::GetLimaDir() / "resources/Slipids";
 	std::vector<std::string> targets;
@@ -16,11 +16,11 @@ void SelfTest() {
 
 	Lipids::Selection lipidselection;
 	for (const auto& lipidname : targets) {
-		lipidselection.emplace_back(Lipids::Select{ lipidname, work_dir, 100. / static_cast<double>(targets.size()) });
+		lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, 100. / static_cast<double>(targets.size()) });
 	}
 
 	auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-	Programs::EnergyMinimize(*gro, *top, false, work_dir, Full, true, 5000.f);
+	Programs::EnergyMinimize(*gro, *top, false, workDir, Full, true, 5000.f);
 
 	printf("Selftest successful"); // Otherwise we'd have thrown by now
 }

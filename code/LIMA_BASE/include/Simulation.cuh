@@ -164,3 +164,14 @@ public:
 };
 
 
+struct SimStatus {
+	// SimulationStatus
+	std::optional<size_t> step = 0;
+	std::optional<float> temperature = std::nullopt;			// [K]
+	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
+	std::optional<std::chrono::duration<double>> expectedTimeToFinish = std::nullopt;
+
+	// Engine Performance
+	std::optional<float> avgStepTime = std::nullopt;			// [ms]
+	std::optional<float> simulationPerformance = std::nullopt;  // [ns/day]
+};

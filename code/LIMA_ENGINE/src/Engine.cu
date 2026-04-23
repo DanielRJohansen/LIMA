@@ -52,8 +52,8 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 	// Create the Sim_dev {
 	{
 		if (sim_dev != nullptr) { throw std::runtime_error("Expected simdev to be null to move sim to device"); }
-		sim_dev = new SimulationDevice(simulation->simParams, simulation->box.get(), BoxConfig::Create(*simulation->box), BoxState::Create(*simulation->box), *dataBuffersDevice);
-		sim_dev = genericMoveToDevice(sim_dev, 1);
+		SimulationDevice simdevTemp(simulation->simParams, simulation->box.get(), BoxConfig::Create(*simulation->box), BoxState::Create(*simulation->box), *dataBuffersDevice);
+		sim_dev = GenericCopyToDevice(&simdevTemp, 1);
 	}
 	setDeviceConstantMemory();
 	boxStateCopy = std::make_unique<BoxState>(); // TODO, just plain copy it now

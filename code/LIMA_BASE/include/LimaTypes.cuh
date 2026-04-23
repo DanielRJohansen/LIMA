@@ -10,7 +10,6 @@
 #include <span>
 #include <optional>
 #include "Constants.h"
-#include <chrono>
 #include <array>
 #include <ranges>
 //#include <generator>
@@ -289,23 +288,6 @@ struct ForceEnergy {
 	}
 };
 
-struct ParticleQuickData {
-	Float3 relPos{};		// [nm]
-	std::array<int8_t, 3> gridIndex;
-	uint8_t atomType=0x0000;		// dont need all 8 bits for this.
-
-	//constexpr Float3 getRelpos(const Int3& toIndex) const {// TODO: unsure of the & here
-	//	Float3 shift{
-	//		static_cast<int>(gridIndex[0]) - toIndex.x,
-	//		static_cast<int>(gridIndex[1]) - toIndex.y,
-	//		static_cast<int>(gridIndex[2]) - toIndex.z
-	//	};
-	//	return relPos + shift;
-	//}
-};
-
-
-
 
 struct Double3 {
 	__host__ __device__ Double3() {}
@@ -504,30 +486,6 @@ struct BoundingBox {
 };
 
 template<typename T>
-T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	if (n_elements == 0) { return nullptr; }
-
-	T* gpu_ptr = nullptr;
-	size_t bytesize = n_elements * sizeof(T);
-
-	cudaMallocManaged(&gpu_ptr, bytesize);
-	auto cuda_status = cudaMemcpy(gpu_ptr, data_ptr, bytesize, cudaMemcpyHostToDevice);
-
-	if (cuda_status != cudaSuccess) {
-		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
-		throw std::runtime_error("Move to device failed");
-	}
-
-	cudaDeviceSynchronize();
-
-	if (n_elements == 1)
-		delete data_ptr;
-	else
-		delete[] data_ptr;
-	return gpu_ptr;
-}
-
-template<typename T>
 void GenericCopyToHost(T* srcDevice, std::vector<T>& destHost, size_t nElements) {
 	destHost.resize(nElements);
 	cudaMemcpy(destHost.data(), srcDevice, nElements * sizeof(T), cudaMemcpyDeviceToHost);
@@ -605,16 +563,4 @@ struct RenderAtom {
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
-};
-
-struct SimStatus {
-	// SimulationStatus
-	std::optional<size_t> step = 0;
-	std::optional<float> temperature = std::nullopt;			// [K]
-	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
-	std::optional<std::chrono::duration<double>> expectedTimeToFinish = std::nullopt;
-
-	// Engine Performance
-	std::optional<float> avgStepTime = std::nullopt;			// [ms]
-	std::optional<float> simulationPerformance = std::nullopt;  // [ns/day]
 };

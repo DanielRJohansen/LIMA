@@ -291,33 +291,17 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 	return outputfile;
 }
 std::vector<Float3> Environment::GetForces(int64_t step) const {
-	int particlesUpdated = 0;
+	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm] ?? 
 
-	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm]
-
-//TODO!!
-
-		//for (int cid = 0; cid < boximage->compounds.size(); cid++) {
-		//	for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
-		//		forces[boximage->compounds[cid].indicesInGrofile[pid]] = simulation->forceBuffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step) / KILO;
-		//		particlesUpdated++;
-		//	}
-		//}
-
-		//for (int tinymolId = 0; tinymolId < simulation->box->boxparams.nTinymols; tinymolId++) {
-		//	const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
-		//	const int nAtomsInTinymol = tinymol.nParticles;
-
-		//	for (int i = 0; i < nAtomsInTinymol; i++) {
-		//		forces[tinymol.firstParticleIdInGrofile + i] = simulation->forceBuffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
-		//		particlesUpdated++;
-		//	}
-		//}
-
-		//if (particlesUpdated != boximage->grofile.atoms.size()) {
-		//	throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, boximage->grofile.atoms.size()));
-		//}
-	
+	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
+		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
+			const int gpid = simulation->box->persistentClustersMetadata[pcid].particleIdsGlobal[pid]; 
+			if (gpid == -1)
+				continue;
+			// TODO: Figure out why the fuck this conversion is here, it doesnt seem right
+			forces[gpid] = simulation->forceBuffer->GetDatapointAtStep(pcid, pid, step) / KILO;// what? convert to mJ? No that makes no sense? Is the forcebuffer actually in J?
+		}
+	}
 
 	return forces;
 }

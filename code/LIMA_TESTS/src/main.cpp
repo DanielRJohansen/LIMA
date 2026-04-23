@@ -84,7 +84,7 @@ int main() {
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
 		//TestLongrangeEsNoLJTwoParticles(envmode);
-		TestLongrangeEsNoLJManyParticles(envmode);
+		//TestLongrangeEsNoLJManyParticles(envmode);
 		//Lipids::_MakeLipids(true, false);
 		//PairbondForceAndPotentialSanityCheck(envmode);
 		//loadAndRunBasicSimulation("DisplayTest", envmode);
@@ -186,6 +186,8 @@ int main() {
 		env.CreateSimulation(grofile, topfile, SimParams{});
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
+		
+		ForceComparisons::DoAllForceComparisons(envmode);
 
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 		//Benchmarks::Psome(envmode);

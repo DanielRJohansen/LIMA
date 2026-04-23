@@ -136,7 +136,7 @@ int main() {
 		//topfile->printToFile(workDir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//TestBuildmembraneSmall(envmode, false);
+		TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
 		//Lipids::_MakeLipid("cholesterol");
@@ -187,7 +187,7 @@ int main() {
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
-		ForceComparisons::DoAllForceComparisons(envmode);
+		//ForceComparisons::DoAllForceComparisons(envmode);
 
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 		//Benchmarks::Psome(envmode);

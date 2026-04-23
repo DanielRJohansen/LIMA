@@ -203,10 +203,6 @@ void Engine::terminateSimulation() {
 
 	sim_dev->boxState.CopyDataToHost(*simulation->box);
 
-	const float greatestForce = Statistics::MaxLen(simulation->forceBuffer->GetBufferAtStep(simulation->getStep() - 1), simulation->forceBuffer->EntriesPerStep());
-	runstatus.greatestForce = greatestForce / KILO; // Convert [J/mol/nm] to [kJ/mol/nm]
-	simulation->maxForceBuffer.emplace_back(std::pair<int64_t, float>{ simulation->getStep(), runstatus.greatestForce });
-
 	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
 }
 

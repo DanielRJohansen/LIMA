@@ -291,15 +291,16 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 	return outputfile;
 }
 std::vector<Float3> Environment::GetForces(int64_t step) const {
-	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm] ?? 
-
+	std::vector<Float3> forces(boximage->grofile.atoms.size());		// [kJ/mol/nm]
+	const auto& forcesBuffer = *simulation->forceBuffer;			// [J/mol/nm]
 	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
-			const int gpid = simulation->box->persistentClustersMetadata[pcid].particleIdsGlobal[pid]; 
+			const int gpid = simulation->box->persistentClustersMetadata[pcid].particleIdsGlobal[pid]; 			
 			if (gpid == -1)
 				continue;
-			// TODO: Figure out why the fuck this conversion is here, it doesnt seem right
-			forces[gpid] = simulation->forceBuffer->GetDatapointAtStep(pcid, pid, step) / KILO;// what? convert to mJ? No that makes no sense? Is the forcebuffer actually in J?
+
+			const Float3 force = forcesBuffer.GetDatapointAtStep(pcid, pid, step);
+			forces[gpid] = force / KILO;
 		}
 	}
 

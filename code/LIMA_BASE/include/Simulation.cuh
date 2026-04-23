@@ -62,11 +62,20 @@ public:
 		return buffer[indexOffset + pcOffset + pid];
 	}
 
+	T GetDatapoint(int pcid, int pid, size_t entryindex) const {
+		const size_t indexOffset = entryindex * nPclusters * PersistentCluster::maxParticles;
+		const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::maxParticles;
+		return buffer[indexOffset + pcOffset + pid];
+	}
+
 	T& GetDatapointAtStep(int pcid, int pid, size_t step) {
 		const size_t entryIndex = step / loggingInterval;
 		return GetDatapoint(pcid, pid, entryIndex);
 	}
-
+	T GetDatapointAtStep(int pcid, int pid, size_t step) const {
+		const size_t entryIndex = step / loggingInterval;
+		return GetDatapoint(pcid, pid, entryIndex);
+	}
 	size_t GetLoggingInterval() const { return loggingInterval; }
 	size_t EntriesPerStep() const { return n_particles_upperbound; }
 	const size_t n_particles_upperbound;

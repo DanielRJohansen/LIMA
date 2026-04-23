@@ -69,8 +69,9 @@ namespace TestMembraneBuilder {
 		// Finally test if we can stabilize the simulation
 		const float emtol = 200.f;
 		auto sim = Programs::EnergyMinimize(*gro, *top, true, workDir, envmode, true, emtol);
+		float finalMaxForce = sim->maxForceBuffer.back().second;
 
-		return LimaUnittestResult{ sim->maxForceBuffer.back().second < emtol, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
+		return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
 	}
 
 	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {

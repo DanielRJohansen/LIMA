@@ -583,7 +583,7 @@ void Engine::RunClustering(bool getPclusters) {
 		int nCudablocks = (nPclusters + 31) / 32;
 		GetPclusterPositions<<<nCudablocks, 32>>>(
 			*pclusterTransfermodule,
-			pClusterDevice,
+			pClusterDevice.Get(),
 			nPclusters,
 			simulation->box->boxparams.boxSize);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");	
@@ -606,7 +606,7 @@ void Engine::RunClustering(bool getPclusters) {
 	
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice, *superclusterStagingControl, pClusterMetaDevice, boxSize);
+	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice.Get(), *superclusterStagingControl, pClusterMetaDevice.Get(), boxSize);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 	//DebugUtils::VerifyIdentical(superclusterStagingControl->scData, nBlocks * SuperClustersControl::maxClustersPerBlock, "RunClustering_SCData", simulation->getStep());
 

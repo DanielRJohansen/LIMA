@@ -1,11 +1,6 @@
 #include "Engine.cuh"
 #include "EngineBodies.cuh"
 
-#include <set>
-#include <execution>
-#include "EngineCore.h"
-#include "Neighborlists.cuh"
-
 
 class InteractionToken {
 	uint32_t data{};
@@ -582,7 +577,7 @@ bool Engine::MakeSuperClusterTasksGPU() {
 
 
 	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scMeta, nSuperclusters, scscTasksDevice.Get());
-	BuildNointeractionMatricesKernel << <nSuperclusters , 16 >> >(superClustersControl->scMeta, pClusterMetaDevice, taskbuilderControl->contents, noInteractionMatricesDevice.Get(), nSuperclusters);
+	BuildNointeractionMatricesKernel << <nSuperclusters , 16 >> >(superClustersControl->scMeta, pClusterMetaDevice.Get(), taskbuilderControl->contents, noInteractionMatricesDevice.Get(), nSuperclusters);
 	cudaDeviceSynchronize();
 
 	//auto resCounts = GenericCopyToHost(taskbuilderControl->contents.nResults, nSuperclustersUpperbound);

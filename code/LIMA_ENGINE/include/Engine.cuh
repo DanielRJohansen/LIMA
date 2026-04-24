@@ -119,20 +119,19 @@ private:
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
 	uint64_t step_at_last_traj_transfer = 0;
-	Simulation* simulation;
+	Simulation* simulation; // nonowning
 
 	// Owned
 	SimulationDevice* sim_dev = nullptr;
-	BondGroup* bondgroups = nullptr;
-
-	//SuperClusterControl// TODO: Handle lifetimes!
+	
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
 
 	size_t nTasks = 0;
 	int nSuperclusters = 0;
-	PersistentCluster* pClusterDevice = nullptr; // TODO: Handle lifetime somethwere
-	PersistentClusterMeta* pClusterMetaDevice = nullptr;
+	CudaBuffer<PersistentCluster> pClusterDevice; // TODO: Handle lifetime somethwere
+	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
+	CudaBuffer<BondGroup> bondgroups;
 	size_t nResults = 0;
 
 	CudaBuffer<ScScTask> scscTasksDevice;
@@ -150,15 +149,10 @@ private:
 	std::unique_ptr<BoxState> boxStateCopy;
 	std::unique_ptr<BoxConfig> boxConfigCopy;
 
-	//uint8_t* nParticlesInCompoundsBufferPtr = nullptr;// dont own data!
-
 	std::unique_ptr<PME::Controller> pmeController;
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
-	std::unique_ptr<NeighborList::Controller> nlistController;
-
-	//CudaBuffer<ForceEnergy> nbGatherForceenergy;
 
 	const BoundaryConditionSelect bc_select;
 

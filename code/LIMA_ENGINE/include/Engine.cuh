@@ -79,6 +79,9 @@ public:
 	// TODO: Make another version of the func above, that does the copy-to-host-part async, and can reuse
 	// the host memory..
 
+	// Similarly to above, returns a ref to a copy buffer
+	CudaBuffer<float>& OffloadForcesMagnitudeBuffer();
+
 	// Overwrites force in IntegrationKernel during EM if present
 	void SetFixedParticleMovementBuffer(const std::vector<Float3>& velocities);
 	void SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotations);
@@ -158,6 +161,7 @@ private:
 
 	// Available to be copied to, while sim is running
 	CudaBuffer<PersistentCluster> pdataCopyBuffer; 
+	CudaBuffer<float> forcesMagnitudeCopyBuffer;
 
 	// For EM only, overwrites forces in integration kernel. 
 	std::optional<CudaBuffer<Float3>> fixedParticleMovementBuffer; 

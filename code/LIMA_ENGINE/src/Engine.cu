@@ -243,6 +243,33 @@ CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState() {
 	return pdataCopyBuffer;
 }
 
+
+__device__ struct SqrtFloat {
+	__device__ float operator()(float x) const
+	{
+		return sqrtf(x);
+	}
+};
+
+CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer() {
+	// Copy to offloading buffer
+	const int nParticles = simulation->box->boxparams.totalParticles;
+	forcesMagnitudeCopyBuffer.Expand(nParticles);
+	cudaMemcpy(forcesMagnitudeCopyBuffer.Get(), forcesMagnitudeSquareDevice.Get(), sizeof(float) * nParticles, cudaMemcpyDeviceToDevice);
+
+	// Apply sqrt 
+	thrust::device_ptr<float> begin(forcesMagnitudeCopyBuffer.Get());
+	thrust::transform(
+		thrust::device,
+		begin,
+		begin + nParticles,
+		begin,
+		SqrtFloat{}
+	);
+
+	return forcesMagnitudeCopyBuffer;
+}
+
 void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement) {
 	if (movement.empty()) {
 		fixedParticleMovementBuffer.reset();

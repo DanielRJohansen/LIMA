@@ -74,7 +74,8 @@ namespace Rendering {
 	};
 	// Sent at each render-step
 	struct SimulationTaskUpdate {
-		const Float3* positions;
+		const Float3* const positions = nullptr;
+		const float* const forceMagnitudes = nullptr;
 		SimStatus simStatus;
 	};
 

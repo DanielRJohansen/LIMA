@@ -433,7 +433,7 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 
 	if (stepForMostRecentData > step_at_last_render) {
 		display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
-			renderPositions, simStatus
+			renderPositions, nullptr, simStatus
 		), stepwise);
 		step_at_last_render = stepForMostRecentData;
 		//engine->runstatus.most_recent_positions = nullptr;

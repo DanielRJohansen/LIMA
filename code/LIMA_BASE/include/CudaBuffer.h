@@ -30,10 +30,14 @@ public:
 		Expand(v.size());
 		cudaMemcpy(devicePtr, v.data(), v.size() * sizeof(T), cudaMemcpyHostToDevice);
 	}
-	std::vector<T> GetData() {
+	std::vector<T> GetData() const { 
 		std::vector<T> hostData(size);
 		cudaMemcpy(hostData.data(), devicePtr, sizeof(T) * size, cudaMemcpyDeviceToHost);
 		return hostData;
+	}
+	void GetData(std::vector<T>& dst) const {
+		dst.resize(size);
+		cudaMemcpy(dst.data(), devicePtr, sizeof(T) * size, cudaMemcpyDeviceToHost);
 	}
 	size_t Size() const {
 		return size;

@@ -555,7 +555,7 @@ struct RenderAtom {
 
 	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
 	float4 color{};					// {r, g, b, a} [0-1]	
-	uint4 flags;
+	uint4 flags{};
 
 	void HighLight(bool highLight) {
 		flags.x = highLight ? 1 : 0;

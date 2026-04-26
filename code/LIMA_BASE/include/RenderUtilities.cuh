@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
-
+#include <glm.hpp>
 
 
 namespace RenderUtilities {
@@ -155,4 +155,19 @@ namespace RenderUtilities {
         return float4(value, 0.f, 1.f - value, 1.f);
     }
 
+    float4 static GetLogColorGradient(double x, double minValue, double mediumValue) {       
+        x = std::max(x, minValue);
+
+        const double logMin = std::log(minValue);
+        const double logMid = std::log(mediumValue);
+        const double logX = std::log(x);
+
+        const float fraction = static_cast<float>(
+            glm::clamp((logX - logMin) / (logMid - logMin), 0.0, 1.0)
+            );
+
+        glm::vec4 col = glm::mix(glm::vec4(0.f, 1.f, 0.f, 1.f), glm::vec4(1.f, 0.f, 0.f, 1.f), fraction);
+        return float4{col.r, col.g, col.b, col.a};
+    }
+    
 }

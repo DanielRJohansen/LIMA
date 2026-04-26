@@ -41,7 +41,7 @@ void TestDisplayT4() {
 
 
 	display.Render(std::make_unique<Rendering::SimulationTask>(box->persistentClusters, box->persistentClustersMetadata, box->boxparams), true);
-	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(positions.data(), SimStatus{}), true);
+	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(positions.data(), nullptr, SimStatus{}), true);
 }
 
 void LiveEditTest() {

@@ -452,5 +452,5 @@ void Display::TestDisplay() {
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
 	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params), true);
-	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), SimStatus{}), true);
+	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), nullptr, SimStatus{}), true);
 }

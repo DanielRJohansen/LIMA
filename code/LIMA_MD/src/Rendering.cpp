@@ -344,7 +344,9 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 				else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid) {					
 					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pidGlobal) / static_cast<float>(task.boxparams.totalParticles));
 				}
-
+				else if (rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e8f);
+				}
 				if (!rendersettings.showSolvents && pcMeta.isSolvent)
 					renderAtomsHost[pidGlobal].color.w = 0.f;
 			}
@@ -375,6 +377,9 @@ void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const
 				if (pidGlobal == -1)
 					continue;
 				renderAtomsHost[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsHost[pidGlobal].position.w);
+				if (update.forceMagnitudes && rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(update.forceMagnitudes[pidGlobal], 1e5f, 1e11f);
+				}
 			}
 		}
 	}

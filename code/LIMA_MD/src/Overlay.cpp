@@ -167,6 +167,7 @@ namespace
         case ColoringMethod::Charge: return "Charge";
         case ColoringMethod::GradientFromAtomid: return "Gradient from atom id";
         case ColoringMethod::PersistentClusterId: return "Gradient from compound id";
+        case ColoringMethod::ForceMagnitude: return "Force magnitude";
         default: return "Unknown";
         }
     }
@@ -511,6 +512,7 @@ void Overlay::HandleContextMenu(RenderSettings& renderSettings, std::optional<gl
         ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Charge);
         ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::GradientFromAtomid);
         ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::PersistentClusterId);
+		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::ForceMagnitude);
 
         ImGui::EndPopup();
     }

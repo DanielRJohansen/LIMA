@@ -404,7 +404,8 @@ const ForceEnergy* const nbForceenergy*/) {
 	fe += forceEnergies.pme[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster]; // TODO: OPTIM: These should follow SC layout, not PC
 
 
-
+	// Write the force to global buffer, only needed to monitor simulations
+	forcesMagnitudeSquaredBuffer[pidGlobal] = fe.force.lenSquared();
 
 	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
 	float speed = 0.f;
@@ -413,7 +414,7 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	// Energy minimize
 	if constexpr (emvariant) {
-		forcesMagnitudeSquaredBuffer[pidGlobal] = fe.force.lenSquared();
+		
 		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
 		AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];

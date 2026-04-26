@@ -29,6 +29,7 @@ struct LiveEditData {
 
 	// etc
 	std::vector<Float3> positionData;
+	std::vector<float> forceMagnitudeData;
 
 	// Control stepping
 	int remainingStepsCount = 0;
@@ -327,10 +328,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			engine->SetElasticPositions(liveeditData.elasticPositions);
 
 			auto& pcBuffer = engine->OffloadPclusterState();
-			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box->persistentClusters.size());
+			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box->persistentClusters.size());			
 			shouldUpdateRender = true;
 		}
-		//printf("Step count %d\n", remainingStepsCount);
+		
 		if (engine && (liveeditData.remainingStepsCount > 0 || liveeditData.runContinous)) {
 			// Add step logic here
 			//shouldUpdateRender = true;
@@ -339,6 +340,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 			auto& pcBuffer = engine->OffloadPclusterState();
 			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box->persistentClusters.size());
+			engine->OffloadForcesMagnitudeBuffer().GetData(liveeditData.forceMagnitudeData);
 			shouldUpdateRender = true;
 			liveeditData.remainingStepsCount--;
 			if (liveeditData.remainingStepsCount == 0) {
@@ -352,7 +354,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 		if (shouldUpdateRender) {
 			display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
-				liveeditData.positionData.data(), simStatus
+				liveeditData.positionData.data(), liveeditData.forceMagnitudeData.data(), simStatus
 			), false);
 			shouldUpdateRender = false;
 		}

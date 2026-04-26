@@ -71,7 +71,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 
 	if (display) {
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, coloringMethod, simStatus
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
 		));
 	}
 }
@@ -167,9 +167,6 @@ bool Environment::prepareForRun() {
 
 	avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 
-	//boxparams = simulation->box->boxparams;
-	coloringMethod = simulation->simParams.coloring_method;
-
 
 	engine = std::make_unique<Engine>(
 		simulation.get(),
@@ -204,7 +201,7 @@ std::chrono::duration<double> Environment::run() {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, coloringMethod, simStatus
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
 		), stepwise);
 	}
 

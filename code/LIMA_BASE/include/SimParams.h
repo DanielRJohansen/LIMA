@@ -4,7 +4,7 @@
 #include <set>
 #include <filesystem>
 
-enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
+enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId };
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
@@ -57,7 +57,7 @@ struct SimParams {
     // Output parameters
     int data_logging_interval = 5;
     bool save_energy = false;
-    ColoringMethod coloring_method = ColoringMethod::Atomname;
+    ColoringMethod coloring_method = ColoringMethod::Atomname;  // TODO: THis is actually being ignored now...
     // int nstxout = 500;                    // Frequency for writing coordinates [steps] (important)
     // int nstvout = 500;                    // Frequency for writing velocities [steps] (unimportant)
     // int nstenergy = 100;                  // Frequency for writing energies [steps] (critical)

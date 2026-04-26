@@ -297,6 +297,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
 	const int objectId = GetObjectIdAtPixel(pixel);
 
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        mousePosAtRightBtnDown = std::nullopt;
         if (action == GLFW_PRESS) {
             glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
             mousePosAtBtnDown = mousePos;
@@ -335,6 +336,12 @@ void Display::OnMouseButton(int button, int action, int mods) {
             }
         }
     }
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+        if (action == GLFW_PRESS) {
+            mousePosAtRightBtnDown.emplace();
+            glfwGetCursorPos(window, &mousePosAtRightBtnDown->x, &mousePosAtRightBtnDown->y);            
+		}
+    }
 }
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
@@ -343,8 +350,31 @@ void Display::OnMouseScroll(double xoffset, double yoffset) {
 // -------------------------------------------------------------------------------------------------- //
 
 
-void Display::ConsumeInputs() {
+void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
+
     if (activeGizmo) {
         activeGizmo->UpdateDraggingForce(mousePos, camera, windowSize);
+    }
+
+
+    while (!overlay->submittedCommands.empty()) {
+        std::visit([&](auto&& cmd) {
+            using T = std::decay_t<decltype(cmd)>;
+            if constexpr (std::is_same_v<T, Overlay::SubmittedCmd>) {
+                std::optional<LiveEdit::Command> liveEditCmd = LiveEdit::ParseCommand(cmd.cmd);
+                if (liveEditCmd.has_value()) {
+                    std::lock_guard<std::mutex> lock(liveEditCommandsQueueMutex);
+                    liveEditCommandsQueue.push_back(*liveEditCmd);
+                }
+            }
+            else if constexpr (std::is_same_v<T, ColoringMethod>) {
+                rendersettings.coloringMethod = cmd;
+                shouldRecolorAtoms |= true;
+            }
+            else {
+                int a = 0;
+            }
+			}, overlay->submittedCommands.front());
+		overlay->submittedCommands.pop_front();
     }
 }

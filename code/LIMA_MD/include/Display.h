@@ -60,7 +60,7 @@ public:
 
 };
 
-
+//enum AtomColoringMethod { Name, Charge, Force, GlobalParticleId, PcId};
 
 namespace Rendering {
 	struct NoTask{};
@@ -69,8 +69,7 @@ namespace Rendering {
 	struct SimulationTask {
 		std::vector<PersistentCluster> pclusters;
 		std::vector<PersistentClusterMeta> pcMeta; // TODO: This could just be a ref, since it remains constant?
-		const BoxParams boxparams;
-		ColoringMethod coloringMethod{};		
+		const BoxParams boxparams;	
 		SimStatus simStatus;
 	};
 	// Sent at each render-step
@@ -87,7 +86,6 @@ namespace Rendering {
 	struct GrofileTask {
 		const GroFile& grofile;
 		bool drawSolvent = true;
-		ColoringMethod coloringMethod = Atomname;
 		int nAtoms;
 		std::set<int> highlightedAtoms;
 	};
@@ -97,22 +95,28 @@ namespace Rendering {
 
 struct RenderSettings {
 	bool showSolvents = true;
+	ColoringMethod coloringMethod{};
 };
 
 class Overlay {
+public:	
+	struct SubmittedCmd { std::string cmd{}; };
+	using Command = std::variant<SubmittedCmd, ColoringMethod>;
+private:
 	bool didDrawThisFrame = false;
 
 	void HandleConsole();
+	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos);
 
 public:
-	std::mutex consoleMutex;
-	std::deque<std::string> submittedCommands;// If we ever access from other than renderthread, well need a mutex`
-	bool enableConsole = false;
+	std::deque<Command> submittedCommands;
+	bool enableConsole = false;	
+
 
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&, const SimStatus&, int fps);
+	void Draw(RenderSettings&, const SimStatus&, int fps, std::optional<glm::dvec2> rightClickedPos);
 	void Render();
 };
 
@@ -206,9 +210,9 @@ private:
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 	void _Render(const Rendering::Task& currentRenderTask); // Render all the things
 
-	void PrepareTask(Rendering::Task& task);
+	void PrepareTask(Rendering::Task& task, bool ignorePosition);
 
-	void PrepareNewRenderTask(const Rendering::SimulationTask&);
+	void PrepareNewRenderTask(const Rendering::SimulationTask&, bool ignorePosition);
 	void PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
 	void PrepareNewRenderTask(Rendering::GrofileTask&);
@@ -219,6 +223,7 @@ private:
 	// Interfacing
 	bool isDragging = false;
 	glm::dvec2 mousePosAtBtnDown{};
+	std::optional<glm::dvec3> mousePosAtRightBtnDown{};
 	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
 	glm::dvec2 mousePos{};
 	int lastSelectedAtomId = -1;
@@ -229,7 +234,7 @@ private:
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
 	int GetObjectIdAtPixel(glm::ivec2);
-	void ConsumeInputs();
+	void ConsumeInputs(bool& shouldRecolorAtoms);
 
 	std::mutex liveEditCommandsQueueMutex;
 	std::deque<LiveEdit::Command> liveEditCommandsQueue;

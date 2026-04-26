@@ -152,7 +152,5 @@ private:
 	std::unique_ptr<Simulation> simulation = nullptr;
 	std::unique_ptr<BoxImage> boximage = nullptr;
 
-	ColoringMethod coloringMethod{};	// Not ideal to have here..	
-
 	std::optional<SimAnalysis::AnalyzedPackage> postsim_anal_package;
 };

@@ -200,11 +200,11 @@ void Display::WaitForDisplayReady() {
 
 
 
-void Display::PrepareTask(Task& task) {
+void Display::PrepareTask(Task& task, bool ignorePosition) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
         if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-            PrepareNewRenderTask(*taskPtr);
+            PrepareNewRenderTask(*taskPtr, ignorePosition);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
             PrepareNewRenderTask(*taskPtr);
@@ -231,6 +231,8 @@ void Display::Mainloop() {
             printf("Window closed");
         }
         
+        bool shouldRecolorAtoms = false;
+        ConsumeInputs(shouldRecolorAtoms);
 
         // Check for new task
         bool newTask = false;
@@ -261,8 +263,9 @@ void Display::Mainloop() {
                 }
             }
         }
-        if (newTask) {
-            PrepareTask(currentRenderTask);
+        if (newTask || shouldRecolorAtoms) {
+            bool ignorePosition = !newTask;
+            PrepareTask(currentRenderTask, ignorePosition);
         }
         
         // Check for new input
@@ -277,7 +280,7 @@ void Display::Mainloop() {
             newInput = true;
 		}
 
-        ConsumeInputs();
+
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
         bool shouldDraw = newTask || updatedPositions || newInput || frameTime.elapsed().count() > msPerFrame;
@@ -368,13 +371,6 @@ Float3 Convert(const glm::vec3& v) {
 }
 
 std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
-	std::lock_guard<std::mutex> lock(overlay->consoleMutex);
-    if (!overlay->submittedCommands.empty()) {
-        std::string str = overlay->submittedCommands.front();
-		overlay->submittedCommands.pop_front();
-        std::optional<LiveEdit::Command> cmd = LiveEdit::ParseCommand(str);
-        return cmd;
-    }
     if (activeGizmo && (activeGizmo->pullForce || activeGizmo->rotateForce)) {        
         return LiveEdit::MoveMolecule(Convert(activeGizmo->pullForce.value_or(glm::vec3{})), Convert(activeGizmo->rotateForce.value_or(glm::vec3{})));
     }
@@ -455,6 +451,6 @@ void Display::TestDisplay() {
     std::vector<PersistentClusterMeta> pcMetas(1);
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
-	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params, Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params), true);
 	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), SimStatus{}), true);
 }

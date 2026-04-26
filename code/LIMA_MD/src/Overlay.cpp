@@ -154,6 +154,38 @@ namespace
 
         ImGui::SameLine();
     }
+
+
+
+
+
+
+    const char* ColoringMethodName(ColoringMethod coloringMethod)
+    {
+        switch (coloringMethod) {
+        case ColoringMethod::Atomname: return "Atom name";
+        case ColoringMethod::Charge: return "Charge";
+        case ColoringMethod::GradientFromAtomid: return "Gradient from atom id";
+        case ColoringMethod::PersistentClusterId: return "Gradient from compound id";
+        default: return "Unknown";
+        }
+    }
+
+    bool ColoringMethodMenuItem(
+        std::deque<Overlay::Command>& submittedCommands,
+        ColoringMethod currentMethod,
+        ColoringMethod method
+    ) {
+        const bool isSelected = currentMethod == method;
+
+        if (ImGui::MenuItem(ColoringMethodName(method), nullptr, isSelected)) {
+            submittedCommands.push_back(method);
+            return true;
+        }
+
+        return false;
+    }
+
 }
 
 static std::deque<std::string>& ConsoleLines()
@@ -453,13 +485,35 @@ void Overlay::HandleConsole()
         ImGui::SetKeyboardFocusHere(-1);
 
     if (submitted) {
-        std::string submittedCommand = SubmitConsoleInput();
-        std::lock_guard<std::mutex> lock(consoleMutex);
+        SubmittedCmd submittedCommand{ SubmitConsoleInput() };
         submittedCommands.push_back(submittedCommand);
         ImGui::SetKeyboardFocusHere(-1);
     }
 
     EndFloatingPanel();
+}
+
+void Overlay::HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos)
+{
+    if (rightClickedPos.has_value()) {
+        ImGui::SetNextWindowPos(ImVec2(
+            static_cast<float>(rightClickedPos->x),
+            static_cast<float>(rightClickedPos->y)
+        ));
+        ImGui::OpenPopup("OverlayContextMenu");
+    }
+
+    if (ImGui::BeginPopup("OverlayContextMenu")) {
+        ImGui::TextUnformatted("Coloring method");
+        ImGui::Separator();
+
+        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Atomname);
+        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Charge);
+        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::GradientFromAtomid);
+        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::PersistentClusterId);
+
+        ImGui::EndPopup();
+    }
 }
 
 void DrawBottomBar(RenderSettings& renderSettings)
@@ -487,9 +541,6 @@ void DrawBottomBar(RenderSettings& renderSettings)
 
     BeginFloatingPanel("BottomBar", pos, size, flags);
 
-    //ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
-    //ImGui::Checkbox("Show solvents", &renderSettings.showSolvents);
-
     float widgetHeight = ImGui::GetFrameHeight();
     float offset = (kBottomBarHeight - widgetHeight) * 0.5f;
 
@@ -499,7 +550,7 @@ void DrawBottomBar(RenderSettings& renderSettings)
     EndFloatingPanel();
 }
 
-void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps)
+void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps, std::optional<glm::dvec2> rightClickedPos)
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -510,6 +561,7 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
         HandleConsole();
 
     DrawBottomBar(renderSettings);
+    HandleContextMenu(renderSettings, rightClickedPos);
 
     didDrawThisFrame = true;
 }

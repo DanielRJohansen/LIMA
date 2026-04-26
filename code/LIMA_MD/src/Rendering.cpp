@@ -297,7 +297,7 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 	return elementId;
 }
 
-void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
+void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool ignorePosition)
 {
 	camera.Update(task.boxparams.BoxSizeFloat());
 
@@ -316,9 +316,6 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 	// Preprocess the renderAtoms
 	{
 		renderAtomsHost.resize(task.boxparams.totalParticles, RenderAtom{});
-
-
-		//int index = 0;
 		for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
 			for (int pid = 0; pid < 4; pid++) {
 				const PersistentClusterMeta& pcMeta = task.pcMeta[pcid];
@@ -329,16 +326,23 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 
 				auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
 				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-				renderAtomsHost[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
+
+				if (!ignorePosition)
+					renderAtomsHost[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
 				renderAtomsHost[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
-				if (task.coloringMethod == ColoringMethod::Atomname)
+				if (rendersettings.coloringMethod == ColoringMethod::Atomname)
 					renderAtomsHost[pidGlobal].color = RenderUtilities::getColor(atomType);
-				else if (task.coloringMethod == ColoringMethod::Charge) {
+				else if (rendersettings.coloringMethod == ColoringMethod::Charge) {
 					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
 				}
-				else if (task.coloringMethod == ColoringMethod::GradientFromCompoundId) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pcid) / task.pcMeta.size());
+				else if (rendersettings.coloringMethod == ColoringMethod::PersistentClusterId) {
+					int nElementsPerRevolution = 12;
+					float fraction = (static_cast<float>(pcid % nElementsPerRevolution) / static_cast<float>(nElementsPerRevolution));
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(fraction);
+				}
+				else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid) {					
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pidGlobal) / static_cast<float>(task.boxparams.totalParticles));
 				}
 
 				if (!rendersettings.showSolvents && pcMeta.isSolvent)
@@ -508,7 +512,8 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	}
 
 	overlay->enableConsole = allowUserInputs;
-	overlay->Draw(rendersettings, simStatus, fps.GetFps());
+	overlay->Draw(rendersettings, simStatus, fps.GetFps(), mousePosAtRightBtnDown);
+	mousePosAtRightBtnDown = std::nullopt;
 	overlay->Render();
 
 	glfwSwapBuffers(window);
@@ -547,7 +552,7 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 
 			if (task.highlightedAtoms.contains(i))
 				renderAtomsHost[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f); // Highlighted atoms are pink
-			else if (task.coloringMethod == GradientFromAtomid)
+			else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid)
 				renderAtomsHost[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
 			else
 				renderAtomsHost[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));

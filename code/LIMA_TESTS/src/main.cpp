@@ -55,17 +55,17 @@ void LiveEditTest() {
 	topfile = TopologyFile{ topfile.path };
 
 
-	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
-	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
-	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
-	env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
-	env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ false, false, true });
-	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
-	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{5.f } });
+	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
+	////std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ false, false, true });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
+	
 
-	/*env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
 	env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
-	env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ true, false, false });*/
+	env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ true, false, false });
 
 	env.LiveEdit(grofile, topfile);
 }
@@ -75,7 +75,7 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 
 		//TestDisplayT4();
-		//LiveEditTest();
+		LiveEditTest();
 		
 
 

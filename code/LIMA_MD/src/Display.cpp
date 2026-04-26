@@ -458,10 +458,3 @@ void Display::TestDisplay() {
 	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params, Atomname), true);
 	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), SimStatus{}), true);
 }
-
-
-
-//void Display::RenderGrofile(const GroFile& grofile) {
-//    Display d;
-//    d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
-//}

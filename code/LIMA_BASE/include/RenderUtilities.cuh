@@ -36,39 +36,65 @@ namespace RenderUtilities {
         }
     }
 
+   // __device__ __host__ inline float4 getColor(ATOM_TYPE atom_type) {
+   //     switch (atom_type)
+   //     {
+   //     case ATOM_TYPE::SOL:
+   //         return float4{ 0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, .50f };
+   //     case ATOM_TYPE::H:
+   //         return float4{ 0xF1 / 255.0f, 0xF1 / 255.0f, 0xF1 / 255.0f, 1.0f };
+   //     case ATOM_TYPE::O:
+   //         return float4{ 0xE0 / 255.0f, 0x20 / 255.0f, 0x20 / 255.0f, 1.0f };
+   //     case ATOM_TYPE::C:
+   //         return float4{ 0x20 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 1.0f };
+   //     case ATOM_TYPE::P:
+   //         return float4{ 0xFC / 255.0f, 0xF7 / 255.0f, 0x5E / 255.0f, 1.0f };
+   //     case ATOM_TYPE::N:
+   //         return float4{ 0x2E / 255.0f, 0x8B / 255.0f, 0x57 / 255.0f, 1.0f };
+   //     case ATOM_TYPE::S:
+   //         return float4{ 0xF4 / 255.0f, 0xC4 / 255.0f, 0x30 / 255.0f, 1.0f };
+   //     case ATOM_TYPE::M:
+			//return float4{ 0xCC / 255.0f, 0xCC / 255.0f, 0xCC / 255.0f, 1.0f };
+   //     case ATOM_TYPE::LIMA_CUSTOM:
+   //     case ATOM_TYPE::NONE:
+   //         return float4{ 0xFF / 255.0f, 0x00 / 255.0f, 0xFF / 255.0f, 1.0f };
+   //     default:
+   //         return float4{ 0.0f, 0.0f, 0.0f, 1.0f };
+   //     }
+   // }
+
     __device__ __host__ inline float4 getColor(ATOM_TYPE atom_type) {
         switch (atom_type)
         {
         case ATOM_TYPE::SOL:
-            return float4{ 0x03 / 255.0f, 0xa9 / 255.0f, 0xf4 / 255.0f, .50f };
+            return float4{ 0x4F / 255.0f, 0xA3 / 255.0f, 0xB8 / 255.0f, 0.34f }; // glassy teal water
         case ATOM_TYPE::H:
-            return float4{ 0xF1 / 255.0f, 0xF1 / 255.0f, 0xF1 / 255.0f, 1.0f };
+            return float4{ 0xF2 / 255.0f, 0xEF / 255.0f, 0xE8 / 255.0f, 1.0f }; // soft ceramic white
         case ATOM_TYPE::O:
-            return float4{ 0xE0 / 255.0f, 0x20 / 255.0f, 0x20 / 255.0f, 1.0f };
+            return float4{ 0xD9 / 255.0f, 0x4A / 255.0f, 0x4A / 255.0f, 1.0f }; // modern coral red
         case ATOM_TYPE::C:
-            return float4{ 0x20 / 255.0f, 0x10 / 255.0f, 0x90 / 255.0f, 1.0f };
+            return float4{ 0x2B / 255.0f, 0x31 / 255.0f, 0x3A / 255.0f, 1.0f }; // deep graphite
         case ATOM_TYPE::P:
-            return float4{ 0xFC / 255.0f, 0xF7 / 255.0f, 0x5E / 255.0f, 1.0f };
+            return float4{ 0xE2 / 255.0f, 0x9F / 255.0f, 0x4A / 255.0f, 1.0f }; // brushed amber
         case ATOM_TYPE::N:
-            return float4{ 0x2E / 255.0f, 0x8B / 255.0f, 0x57 / 255.0f, 1.0f };
+            return float4{ 0x4B / 255.0f, 0x7B / 255.0f, 0xD8 / 255.0f, 1.0f }; // clean electric blue
         case ATOM_TYPE::S:
-            return float4{ 0xF4 / 255.0f, 0xC4 / 255.0f, 0x30 / 255.0f, 1.0f };
+            return float4{ 0xD0 / 255.0f, 0xB4 / 255.0f, 0x4C / 255.0f, 1.0f }; // muted metallic gold
         case ATOM_TYPE::M:
-			return float4{ 0xCC / 255.0f, 0xCC / 255.0f, 0xCC / 255.0f, 1.0f };
+            return float4{ 0xA7 / 255.0f, 0xB0 / 255.0f, 0xBB / 255.0f, 1.0f }; // satin titanium
         case ATOM_TYPE::LIMA_CUSTOM:
         case ATOM_TYPE::NONE:
-            return float4{ 0xFF / 255.0f, 0x00 / 255.0f, 0xFF / 255.0f, 1.0f };
+            return float4{ 0xB8 / 255.0f, 0x4F / 255.0f, 0xD8 / 255.0f, 1.0f }; // premium violet marker
         default:
             return float4{ 0.0f, 0.0f, 0.0f, 1.0f };
         }
     }
-
     // https://en.wikipedia.org/wiki/Van_der_Waals_radius
     __device__ float inline getRadius(ATOM_TYPE atom_type) {
         switch (atom_type)
         {
         case ATOM_TYPE::H:
-            return 0.109f * 0.5f;   // Make smaller for visibility
+            return 0.109f * .6f;   // Make smaller for visibility
         case ATOM_TYPE::C:
             return 0.17f;
         case ATOM_TYPE::N:

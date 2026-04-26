@@ -268,7 +268,7 @@ void TransformGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) cons
 
 
 
-void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
+void Display::_RenderAtoms() {
 	
 	const glm::mat4 VP = camera.ViewProjection();
 
@@ -276,10 +276,8 @@ void Display::_RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda) {
 	const glm::mat4 view = camera.View();
 	const glm::mat4 projection = camera.Projection();
 
-	if (fromCuda)
-		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);
-	else
-		drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, view, projection, totalParticles);	
+	//drawAtomsPrettyShader->Draw(*renderAtomsBuffer, renderAtomsHost.size(), view, projection);	
+	drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, renderAtomsHost.size(), view, projection);
 }
 
 int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
@@ -287,7 +285,7 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 	auto scopedDrawBinding = renderTargetControl->BindForDraw();
 	renderTargetControl->ClearForPicking();
 
-	drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, camera.View(), camera.Projection());
+	_RenderAtoms();
 
 	// Must be done last!
 	if (activeGizmo) {
@@ -306,11 +304,13 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task)
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(nullptr);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader>();
 	if (!drawTrianglesShader)
 		drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 	if (!renderTargetControl)
 		renderTargetControl = std::make_unique<RenderTargetControl>();
+	if (!drawAtomsPrettyShader)
+		drawAtomsPrettyShader = std::make_unique<DrawAtomsPrettyShader>();
 	renderTargetControl->Resize(windowSize);
 
 	// Preprocess the renderAtoms
@@ -425,8 +425,8 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 	const glm::mat4 P = camera.Projection();
 	const glm::mat4 VP = camera.ViewProjection();
 
-	if (renderAtoms)
-		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, V, P, molCollection.nParticles);
+	/*if (renderAtoms)
+		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, V, P, molCollection.nParticles);*/
 
 	if (renderFacets)
 		drawFacetsShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
@@ -488,13 +488,13 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 			using T = std::decay_t<decltype(taskPtr)>;
 			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
 				const int nParticles = taskPtr->boxparams.totalParticles;
-				_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
+				_RenderAtoms();
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
 				_Render(taskPtr->molCollection, taskPtr->boxSize);
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
-				_RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
+				_RenderAtoms();
 			}
 			}, currentRenderTask);
 	}
@@ -532,7 +532,7 @@ void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
 	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader<false>>(&renderAtomsBufferCudaResource);
+		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader>();
 
 
 

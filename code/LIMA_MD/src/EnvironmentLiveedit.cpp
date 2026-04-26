@@ -89,7 +89,7 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 
 void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const LiveEdit::MoveMolecule& cmd) {
 	if (cmd.draggingForce.len() > 0 || cmd.rotation.len() > 0)
-		liveeditData->remainingStepsCount = 50;
+		liveeditData->remainingStepsCount = 1;
 
 	if (cmd.draggingForce == liveeditData->prevDragmoleculeCmd.draggingForce && cmd.rotation == liveeditData->prevDragmoleculeCmd.rotation) {
 		return;

@@ -19,7 +19,8 @@
 
 class DrawBoxOutlineShader;
 class DrawFacetsShader;
-template <bool>class DrawAtomsShader;
+class DrawAtomsShader;
+class DrawAtomsPrettyShader;
 class DrawNormalsShader;
 class DrawTrianglesShader;
 class DrawBackgroundGradientShader;
@@ -201,7 +202,7 @@ private:
 
 	bool initGLFW();
 
-	void _RenderAtoms(Float3 boxSize, int totalParticles, bool fromCuda);
+	void _RenderAtoms();
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
 	void _Render(const Rendering::Task& currentRenderTask); // Render all the things
 
@@ -253,11 +254,11 @@ private:
 	// Shaders
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawFacetsShader> drawFacetsShader;
-	std::unique_ptr<DrawAtomsShader<true>> drawAtomsFromCudaShader;
-	std::unique_ptr<DrawAtomsShader<false>> drawAtomsFromCpuShader;
+	std::unique_ptr<DrawAtomsShader> drawAtomsFromCpuShader;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
+	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader; 
 
 	// Render Data
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;

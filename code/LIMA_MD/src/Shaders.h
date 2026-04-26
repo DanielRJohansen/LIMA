@@ -650,8 +650,6 @@ public:
 
 
 
-
-template <bool isCUDA>
 class DrawAtomsShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
 #version 430 core
@@ -760,44 +758,328 @@ void main() {
 
     static constexpr int numVerticesPerAtom = 24;
 
-    GLuint vao = 0;
-    int nAtoms;
-
 public:
-    DrawAtomsShader(cudaGraphicsResource** renderAtomsBufferCudaResource)
+    DrawAtomsShader()
         : Shader(vertexShaderSource, fragmentShaderSource)
     {
-        // Minimal VAO: required in core profile even when using only gl_VertexID.
-        glGenVertexArrays(1, &vao);
-        glBindVertexArray(vao);
-        glBindVertexArray(0);
-        
-        //if constexpr (isCUDA) {
-        //    cudaGraphicsGLRegisterBuffer(renderAtomsBufferCudaResource,
-        //        renderAtomsBuffer.GetID(),
-        //        cudaGraphicsMapFlagsWriteDiscard);
-        //}
     }
 
     ~DrawAtomsShader() {
-        if (vao) glDeleteVertexArrays(1, &vao);
     }
 
-    // Normal render pass: does NOT touch your picking FBO.
-    void Draw(const SSBO& renderAtomsBuffer, const glm::mat4& view, const glm::mat4& projection, std::optional<int> _nAtoms=std::nullopt) {
-		nAtoms = _nAtoms.value_or(nAtoms);
-
+    void Draw(const SSBO& renderAtomsBuffer, int nAtoms, const glm::mat4& view, const glm::mat4& projection) {
         use();
         renderAtomsBuffer.Bind(0);
-        glBindVertexArray(vao);
 
         SetUniformMat4("View", view);
         SetUniformMat4("Proj", projection);
         SetUniformI("numVerticesPerAtom", numVerticesPerAtom);
 
         glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, numVerticesPerAtom, nAtoms);
+        glUseProgram(0);
+    }
+};
+
+class DrawAtomsPrettyShader : public Shader {
+    struct SphereVertex {
+        glm::vec3 position;
+        glm::vec3 normal;
+    };
+
+    struct Triangle {
+        uint32_t a;
+        uint32_t b;
+        uint32_t c;
+    };
+
+    GLuint vao = 0;
+    GLuint vbo = 0;
+    GLuint ebo = 0;
+    GLsizei indexCount = 0;
+
+    static constexpr const char* vertexShaderSource = R"(
+#version 430 core
+
+struct RenderAtom {
+    vec4 position; // {posX_nm, posY_nm, posZ_nm, radius_nm}
+    vec4 color;    // {r, g, b, a}
+    uvec4 flags;   // {x=highlight}
+};
+
+layout(std430, binding = 0) buffer RenderAtoms {
+    RenderAtom atoms[];
+};
+
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec3 inNormal;
+
+uniform mat4 View;
+uniform mat4 Proj;
+
+out vec3 fragNormalView;
+out vec3 fragPositionView;
+out vec4 vertexColor;
+flat out int atomId;
+flat out uint highlight;
+
+void main() {
+    RenderAtom atom = atoms[gl_InstanceID];
+
+    vec3 worldPos = atom.position.xyz + inPosition * atom.position.w; // nm
+    vec4 viewPos4 = View * vec4(worldPos, 1.0);
+
+    fragPositionView = viewPos4.xyz;
+    fragNormalView = normalize(mat3(View) * inNormal);
+
+    vertexColor = atom.color;
+    atomId = int(atoms[gl_InstanceID].flags.y);
+    highlight = atom.flags.x;
+
+    gl_Position = Proj * viewPos4;
+}
+)";
+
+    static constexpr const char* fragmentShaderSource = R"(
+#version 430 core
+
+in vec3 fragNormalView;
+in vec3 fragPositionView;
+in vec4 vertexColor;
+flat in int atomId;
+flat in uint highlight;
+
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out int fragId;
+
+float Luminance(vec3 color) {
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+void main() {
+    vec3 N = normalize(fragNormalView);
+    vec3 V = normalize(-fragPositionView);
+
+    // Light from above and slightly toward the camera in view space.
+    vec3 L = normalize(vec3(0.18, 0.82, 0.55));
+    vec3 H = normalize(L + V);
+
+    vec3 baseColor = vertexColor.rgb;
+
+    // Slight desaturation for a more muted, publication-like look.
+    baseColor = mix(baseColor, vec3(Luminance(baseColor)), 0.10);
+
+    float diffuse = max(dot(N, L), 0.0);
+    float topBias = smoothstep(-0.15, 0.95, N.y);
+    float bottomShade = smoothstep(0.05, 0.95, -N.y);
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 2.2);
+    float specular = pow(max(dot(N, H), 0.0), 28.0);
+
+    float lighting =
+        0.34
+        + 0.30 * diffuse
+        + 0.34 * topBias;
+
+    lighting *= (1.0 - 0.18 * bottomShade);
+
+    vec3 color = baseColor * lighting;
+
+    // Soft, broad specular. Keep it subtle.
+    color += vec3(1.0) * specular * 0.10;
+
+    // Soft rim/fresnel.
+    color += vec3(1.0) * fresnel * 0.08;
+
+    if (highlight != 0u) {
+        vec3 highlightColor = vec3(1.0, 0.82, 0.32);
+        color += highlightColor * fresnel * 0.45;
+        color += highlightColor * specular * 0.25;
+    }
+
+    fragColor = vec4(color, vertexColor.a);
+    fragId = atomId;
+}
+)";
+
+public:
+    DrawAtomsPrettyShader()
+        : Shader(vertexShaderSource, fragmentShaderSource)
+    {
+        _CreateSphereMesh();
+    }
+
+    ~DrawAtomsPrettyShader() {
+        if (ebo)
+            glDeleteBuffers(1, &ebo);
+        if (vbo)
+            glDeleteBuffers(1, &vbo);
+        if (vao)
+            glDeleteVertexArrays(1, &vao);
+    }
+
+    void Draw(const SSBO& renderAtomsBuffer, int nAtoms, const glm::mat4& View, const glm::mat4& Proj) {
+        if (nAtoms <= 0)
+            return;
+
+        use();
+
+        renderAtomsBuffer.Bind(0);
+
+        SetUniformMat4("View", View);
+        SetUniformMat4("Proj", Proj);
+
+        glBindVertexArray(vao);
+        glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr, nAtoms);
 
         glBindVertexArray(0);
-        glUseProgram(0);
+    }
+
+private:
+    static uint64_t _MakeEdgeKey(uint32_t a, uint32_t b) {
+        const uint32_t lo = std::min(a, b);
+        const uint32_t hi = std::max(a, b);
+        return (static_cast<uint64_t>(lo) << 32) | static_cast<uint64_t>(hi);
+    }
+
+    static uint32_t _GetMidpointIndex(
+        uint32_t a,
+        uint32_t b,
+        std::vector<glm::vec3>& positions,
+        std::unordered_map<uint64_t, uint32_t>& midpointCache
+    ) {
+        const uint64_t key = _MakeEdgeKey(a, b);
+
+        auto it = midpointCache.find(key);
+        if (it != midpointCache.end())
+            return it->second;
+
+        const glm::vec3 midpoint = glm::normalize((positions[a] + positions[b]) * 0.5f);
+        const uint32_t index = static_cast<uint32_t>(positions.size());
+
+        positions.push_back(midpoint);
+        midpointCache.emplace(key, index);
+
+        return index;
+    }
+
+    void _CreateSphereMesh() {
+        std::vector<SphereVertex> vertices;
+        std::vector<uint32_t> indices;
+        _GenerateIcosphere(vertices, indices, 2); // Increase to 3 if you want it prettier/heavier.
+
+        indexCount = static_cast<GLsizei>(indices.size());
+
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ebo);
+
+        glBindVertexArray(vao);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            static_cast<GLsizeiptr>(vertices.size() * sizeof(SphereVertex)),
+            vertices.data(),
+            GL_STATIC_DRAW
+        );
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(
+            GL_ELEMENT_ARRAY_BUFFER,
+            static_cast<GLsizeiptr>(indices.size() * sizeof(uint32_t)),
+            indices.data(),
+            GL_STATIC_DRAW
+        );
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(
+            0,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(SphereVertex),
+            reinterpret_cast<void*>(offsetof(SphereVertex, position))
+        );
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(
+            1,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            sizeof(SphereVertex),
+            reinterpret_cast<void*>(offsetof(SphereVertex, normal))
+        );
+
+        glBindVertexArray(0);
+    }
+
+    static void _GenerateIcosphere(
+        std::vector<SphereVertex>& outVertices,
+        std::vector<uint32_t>& outIndices,
+        int subdivisions
+    ) {
+        const float t = (1.0f + std::sqrt(5.0f)) * 0.5f;
+
+        std::vector<glm::vec3> positions = {
+            glm::normalize(glm::vec3(-1.0f,  t, 0.0f)),
+            glm::normalize(glm::vec3(1.0f,  t, 0.0f)),
+            glm::normalize(glm::vec3(-1.0f, -t, 0.0f)),
+            glm::normalize(glm::vec3(1.0f, -t, 0.0f)),
+
+            glm::normalize(glm::vec3(0.0f, -1.0f,  t)),
+            glm::normalize(glm::vec3(0.0f,  1.0f,  t)),
+            glm::normalize(glm::vec3(0.0f, -1.0f, -t)),
+            glm::normalize(glm::vec3(0.0f,  1.0f, -t)),
+
+            glm::normalize(glm::vec3(t, 0.0f, -1.0f)),
+            glm::normalize(glm::vec3(t, 0.0f,  1.0f)),
+            glm::normalize(glm::vec3(-t, 0.0f, -1.0f)),
+            glm::normalize(glm::vec3(-t, 0.0f,  1.0f))
+        };
+
+        std::vector<Triangle> triangles = {
+            {0, 11, 5}, {0, 5, 1},  {0, 1, 7},  {0, 7, 10}, {0, 10, 11},
+            {1, 5, 9},  {5, 11, 4}, {11, 10, 2},{10, 7, 6}, {7, 1, 8},
+            {3, 9, 4},  {3, 4, 2},  {3, 2, 6},  {3, 6, 8},  {3, 8, 9},
+            {4, 9, 5},  {2, 4, 11}, {6, 2, 10}, {8, 6, 7},  {9, 8, 1}
+        };
+
+        for (int i = 0; i < subdivisions; ++i) {
+            std::unordered_map<uint64_t, uint32_t> midpointCache;
+            std::vector<Triangle> nextTriangles;
+            nextTriangles.reserve(triangles.size() * 4);
+
+            for (const Triangle& tri : triangles) {
+                const uint32_t ab = _GetMidpointIndex(tri.a, tri.b, positions, midpointCache);
+                const uint32_t bc = _GetMidpointIndex(tri.b, tri.c, positions, midpointCache);
+                const uint32_t ca = _GetMidpointIndex(tri.c, tri.a, positions, midpointCache);
+
+                nextTriangles.push_back({ tri.a, ab, ca });
+                nextTriangles.push_back({ tri.b, bc, ab });
+                nextTriangles.push_back({ tri.c, ca, bc });
+                nextTriangles.push_back({ ab, bc, ca });
+            }
+
+            triangles = std::move(nextTriangles);
+        }
+
+        outVertices.clear();
+        outVertices.reserve(positions.size());
+
+        for (const glm::vec3& p : positions) {
+            SphereVertex v;
+            v.position = p; // unit sphere
+            v.normal = p;   // same on a unit sphere
+            outVertices.push_back(v);
+        }
+
+        outIndices.clear();
+        outIndices.reserve(triangles.size() * 3);
+
+        for (const Triangle& tri : triangles) {
+            outIndices.push_back(tri.a);
+            outIndices.push_back(tri.b);
+            outIndices.push_back(tri.c);
+        }
     }
 };

@@ -156,6 +156,8 @@ int main() {
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+		Benchmarks::Psome(envmode);
+		Benchmarks::STMV();
 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		//Benchmarks::Psome(envmode);
@@ -193,7 +195,7 @@ int main() {
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
-		RunAllUnitTests();
+		//RunAllUnitTests();
 
 	}
 	catch (std::runtime_error ex) {

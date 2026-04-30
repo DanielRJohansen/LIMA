@@ -188,7 +188,7 @@ namespace TestUtils {
 	struct LimaUnittestResult {
 		LimaUnittestResult( bool success, const std::string err, const bool print_now) :
 			success(success),
-			error_description(success ? "Success" : !err.empty() ? err : "Fail")
+			error_description(!err.empty() ? err : success ? "Success" : "Fail")
 		{
 			if (print_now) {
 				printStatus();

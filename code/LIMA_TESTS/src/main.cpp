@@ -75,7 +75,7 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 
 		//TestDisplayT4();
-		LiveEditTest();
+		//LiveEditTest();
 		
 
 
@@ -136,7 +136,7 @@ int main() {
 		//topfile->printToFile(workDir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		TestBuildmembraneSmall(envmode, false);
+		//TestBuildmembraneSmall(envmode, false);
 		//TestAllStockholmlipids(envmode);
 
 		//Lipids::_MakeLipid("cholesterol");

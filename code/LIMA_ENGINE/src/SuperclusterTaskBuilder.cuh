@@ -5,12 +5,12 @@
 class InteractionToken {
 	uint32_t data{};
 public:
-	constexpr InteractionToken(){}
+	constexpr InteractionToken() {}
 	constexpr InteractionToken(int queryId, bool useNointeractionMatrix) {
-		data = (uint32_t)queryId & 0x7FFFFFFF | ((uint32_t)useNointeractionMatrix << 31);
+		data = ((uint32_t)queryId << 1) | (uint32_t)useNointeractionMatrix;
 	}
-	constexpr int GetQueryId() const { return (int) (data & 0x7FFFFFFF); }
-	constexpr bool UseNointeractionMatrix() const { return (data >> 31); }
+	constexpr int GetQueryId() const { return (int)(data >> 1); }
+	constexpr bool UseNointeractionMatrix() const { return data & 1; }
 };
 
 
@@ -85,8 +85,9 @@ public:
 	}
 
 	void Reset() {
-		//cudaMemset(contents.interactionsOwned, 0xFF, sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound); 
+		cudaMemset(contents.interactionsOwned, 0xFF, sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound); 
 		//cudaMemset(contents.scIdsQueryNonowned, 0xFF, sizeof(int) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
+		thrust::fill_n(thrust::device, contents.scIdsQueryNonowned, TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound, INT_MAX);
 	}
 
 	~TaskBuilderControl() {
@@ -343,10 +344,6 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 		nNonownedInteractions = 0;
 		nNointeractionMatrices = 0;
 	}
-	if (threadIdx.x < TaskBuilderControlContents::maxTasksPerSc) {
-		tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + threadIdx.x] = InteractionToken(INT_MAX, true);
-		tbContents.scIdsQueryNonowned[scId * TaskBuilderControlContents::maxTasksPerSc + threadIdx.x] = INT_MAX;
-	}
 	__syncthreads();
 
 	NodeIndex targetBlockRelative = BoxGrid::Get3dIndex(threadIdx.x / SuperClustersControl::maxClustersPerBlock, Int3(3, 3, 3)) - Int3(1,1,1);
@@ -376,20 +373,7 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	if constexpr (INDEXING_CHECKS) {
 		if (threadIdx.x == 0 && (nOwnedInteractions + nNonownedInteractions > TaskBuilderControlContents::maxTasksPerSc))
 			printf("Too many interactions for scId %d: %d owned + %d nonowned\n", scId, nOwnedInteractions, nNonownedInteractions);
-	}
-	 
-	// TODO: Move this part into a separate kernel, so this kernel focuses on the DoesSuperclustersInteract hot-path
-	// Now sort the elements to obtain deterministic results
-	if (threadIdx.x < TaskBuilderControlContents::maxTasksPerSc) {
-		LAL::Sort(&tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const InteractionToken& token) {
-			return token.GetQueryId();
-			});
-		LAL::Sort(&tbContents.scIdsQueryNonowned[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const int& id) {
-			return id;
-			});
-	}
-	__syncthreads();
-	//
+	}	 
 
 	if (threadIdx.x == 0) {
 		tbContents.nInteractionsOwned[scId] = nOwnedInteractions;
@@ -399,6 +383,18 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	}
 }
 
+__global__ void SortReserveInteractionsOutput(TaskBuilderControlContents tbContents) {
+	const int scId = blockIdx.x;
+
+	static_assert(sizeof(InteractionToken) == sizeof(uint32_t), "InteractionToken must be 32 bits");
+	uint32_t* intTokenBufferRaw = reinterpret_cast<uint32_t*>(tbContents.interactionsOwned);
+	LAL::Sort(&intTokenBufferRaw[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const uint32_t& token) {
+		return token;
+		});
+	LAL::Sort(&tbContents.scIdsQueryNonowned[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const int& id) {
+		return id;
+		});
+}
 
 constexpr int IndexOfId(int* ids, int nIds, int idToFind) {
 	for (int i = 0; i < nIds; i++) {
@@ -520,10 +516,6 @@ __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const s
 
 
 
-
-
-
-
 bool Engine::MakeSuperClusterTasksGPU() {
 	if (nSuperclusters == 0)
 		return true;
@@ -550,11 +542,17 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	//DebugUtils::VerifyIdentical(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters, "SCPositionSpheres", simulation->getStep());
 
 	{
+		taskbuilderControl->Reset();
+		cudaDeviceSynchronize();
+
 		dim3 gridDim{ (uint32_t)boxSize.InnerProduct(), (uint32_t)SuperClustersControl::maxClustersPerBlock, 1u };
 		dim3 blockDim{ 3 * 3 * 3 * SuperClustersControl::maxClustersPerBlock, 1, 1 };
 		ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm);
 		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
-
+		
+		cudaDeviceSynchronize();
+		SortReserveInteractionsOutput<<<nSuperclusters, TaskBuilderControlContents::maxTasksPerSc >>>(taskbuilderControl->contents);
+		cudaDeviceSynchronize();
 		//DebugUtils::VerifyIdentical(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters, "NInteractionsOwned", simulation->getStep());
 	}
 

@@ -127,8 +127,6 @@ void Engine::step() {
 	LIMA_UTILS::genericErrorCheckNoSync("Error before step!");
 
 	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
-	assert(simulation);
-	assert(sim_dev);
 	simulation->step++;
 
 	hostMaster();

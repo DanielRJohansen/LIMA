@@ -9,6 +9,7 @@
 class TimeIt {
 public:
     TimeIt(const std::string& taskName = "Task", bool printUponDestruction = false);
+    ~TimeIt();
 
     std::chrono::nanoseconds GetTiming() const;
 
@@ -18,7 +19,7 @@ public:
     std::chrono::duration<double> Elapsed() const;
     std::string ElapsedPretty() const;
 
-    ~TimeIt();
+    
 
     static void PrintTaskStats(const std::string& taskName);
 

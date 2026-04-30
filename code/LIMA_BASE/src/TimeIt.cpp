@@ -16,6 +16,23 @@ TimeIt::TimeIt(const std::string& taskName, bool printUponDestruction)
 	end = start;
 }
 
+TimeIt::~TimeIt() {
+	if (!manuallyStopped) {
+		end = std::chrono::high_resolution_clock::now();
+		updateRecord();
+	}
+
+	if (printUponDestruction) {
+		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+		if (elapsed < std::chrono::milliseconds(2)) {
+			std::cout << taskName << " took " << elapsed.count() << " microseconds.\n";
+		}
+		else {
+			std::cout << taskName << " took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " milliseconds.\n";
+		}
+	}
+}
+
 std::chrono::nanoseconds TimeIt::GetTiming() const {
 	return end - start;
 }
@@ -52,22 +69,7 @@ std::string TimeIt::ElapsedPretty() const {
 }
 
 
-TimeIt::~TimeIt() {
-	if (!manuallyStopped) {
-		end = std::chrono::high_resolution_clock::now();
-		updateRecord();
-	}
 
-	if (printUponDestruction) {
-		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-		if (elapsed < std::chrono::milliseconds(2)) {
-			std::cout << taskName << " took " << elapsed.count() << " microseconds.\n";
-		}
-		else {
-			std::cout << taskName << " took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " milliseconds.\n";
-		}
-	}
-}
 
 void TimeIt::PrintTaskStats(const std::string& taskName) {
 	std::lock_guard<std::mutex> lock(mutex_);

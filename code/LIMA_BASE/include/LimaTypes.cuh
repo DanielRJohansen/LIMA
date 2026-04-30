@@ -138,7 +138,7 @@ struct Float3 {
 	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	constexpr Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
 	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
-
+	constexpr Float3 Inv() const { return Float3{ 1.f } / *this; }
 
     constexpr Float3 Floor() const { return Float3(std::floor(x), std::floor(y), std::floor(z));}
 

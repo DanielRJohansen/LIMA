@@ -11,8 +11,9 @@ public:
 	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
 
 	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {}
-
-	__device__ __host__ static NodeIndex applyHyperpos_Return(const NodeIndex& static_index, const NodeIndex& movable_index) { return movable_index; }
+	
+	__device__ static inline void ApplyBC(Float3& currentPosition, const Float3& boxSize, const Float3& boxSizeInv) {}
+	__device__ constexpr static inline void ApplyHyperpos(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize, const Float3& boxSizeInv) {}
 };
 
 class PeriodicBoundaryCondition {
@@ -42,18 +43,6 @@ public:
 		movable_index.z -= DeviceConstants::boxSize.blocksPerDim.z * (difference.z < -(DeviceConstants::boxSize.blocksPerDimHalf.z));
 	}
 
-	__device__ constexpr static NodeIndex applyHyperpos_Return(const NodeIndex& static_index, const NodeIndex& movable_index) {
-		NodeIndex hyperIndex = movable_index;
-        const Int3 halfBox = DeviceConstants::boxSize.blocksPerDimHalf;
-		const NodeIndex difference = static_index - movable_index;
-
-		hyperIndex.x += DeviceConstants::boxSize.blocksPerDim.x * ((difference.x > halfBox.x) - (difference.x < -halfBox.x));
-		hyperIndex.y += DeviceConstants::boxSize.blocksPerDim.y * ((difference.y > halfBox.y) - (difference.y < -halfBox.y));
-		hyperIndex.z += DeviceConstants::boxSize.blocksPerDim.z * ((difference.z > halfBox.z) - (difference.z < -halfBox.z));
-
-		return hyperIndex;
-	}
-
 	__device__ constexpr static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {
 		const Float3 boxlenhalf_nm = DeviceConstants::boxSize.boxSizeNM_f * 0.5f;
 
@@ -64,6 +53,21 @@ public:
 		movable_particle.z += DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) > boxlenhalf_nm.z);
 		movable_particle.z -= DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm.z);
 	}
+
+	__device__  static inline void ApplyHyperpos(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize, const Float3& boxSizeInv) {
+		const Float3 delta = staticParticle - movableParticle;
+
+		movableParticle.x += boxSize.x * float(__float2int_rn(delta.x * boxSizeInv.x));
+		movableParticle.y += boxSize.y * float(__float2int_rn(delta.y * boxSizeInv.y));
+		movableParticle.z += boxSize.z * float(__float2int_rn(delta.z * boxSizeInv.z));
+	}
+
+	__device__ static inline void ApplyBC(Float3& currentPosition, const Float3& boxSize, const Float3& boxSizeInv) {	
+		currentPosition.x -= boxSize.x * floorf(currentPosition.x * boxSizeInv.x);
+		currentPosition.y -= boxSize.y * floorf(currentPosition.y * boxSizeInv.y);
+		currentPosition.z -= boxSize.z * floorf(currentPosition.z * boxSizeInv.z);
+	}
+
 // TODO: CHECK ALL THESE! Most are wrong, its CRITICAL we do >= not just >!!!
 	__device__ constexpr static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		
 		current_position.x += DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x < 0.f);

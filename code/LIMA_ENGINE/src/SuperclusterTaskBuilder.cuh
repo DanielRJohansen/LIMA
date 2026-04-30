@@ -247,12 +247,7 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 	}
 }
 
-__device__ inline bool Warp_DoesSuperclustersInteractFine(
-	const SuperCluster* const scData,
-	int scId0,
-	int scId1,
-	float cutoffDistance
-) {
+__device__ inline bool Warp_DoesSuperclustersInteractFine(const SuperCluster* const scData, int scId0, int scId1, float cutoffDistance, const Float3& boxSize, const Float3& boxSizeInv) {
 	constexpr unsigned int mask = 0xFFFFFFFFu;
 
 	const int lane = threadIdx.x & 31;
@@ -272,6 +267,7 @@ __device__ inline bool Warp_DoesSuperclustersInteractFine(
 			Float3 pos1 = p1.position;
 
 			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
+			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 
 			const Float3 delta = pos0 - pos1;
 			const float distanceSq = delta.dot(delta);
@@ -283,13 +279,7 @@ __device__ inline bool Warp_DoesSuperclustersInteractFine(
 	return __any_sync(mask, interacts);
 }
 
-__device__ inline bool Warp_DoesSuperclustersInteract(
-	const std::array<float4, 4>* const superclusterPositionSpheres,
-	const SuperCluster* const scData,
-	int scId0,
-	int scId1,
-	float cutoffDistance
-) {
+__device__ inline bool Warp_DoesSuperclustersInteract(const std::array<float4, 4>* const superclusterPositionSpheres, const SuperCluster* const scData, int scId0, int scId1, float cutoffDistance, const Float3& boxSize, const Float3& boxSizeInv) {
 	constexpr unsigned int mask = 0xFFFFFFFFu;
 
 	if (scId0 > scId1) {
@@ -314,7 +304,7 @@ __device__ inline bool Warp_DoesSuperclustersInteract(
 			Float3 pos1 = Float3{ p1 };
 
 			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
-
+			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 			const Float3 delta = pos0 - pos1;
 			const float radiusSum = p0.w + p1.w;
 			const float coarseCutoff = cutoffDistance + radiusSum;
@@ -327,14 +317,10 @@ __device__ inline bool Warp_DoesSuperclustersInteract(
 		return false;
 	}
 
-	return Warp_DoesSuperclustersInteractFine(scData, scId0, scId1, cutoffDistance);
+	return Warp_DoesSuperclustersInteractFine(scData, scId0, scId1, cutoffDistance, boxSize, boxSizeInv);
 }
 
-__device__ inline bool Warp_ScAreBonded(
-	const SuperClusterMeta& sc0,
-	const SuperClusterMeta& sc1,
-	const PclustersBondedToPcluster* const pclustersBondedToPcluster
-) {
+__device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const SuperClusterMeta& sc1, const PclustersBondedToPcluster* const pclustersBondedToPcluster) {
 	constexpr unsigned int mask = 0xFFFFFFFFu;
 
 	const int lane = threadIdx.x & 31;
@@ -352,7 +338,7 @@ __device__ inline bool Warp_ScAreBonded(
 	return __any_sync(mask, bonded);
 }
 
-__global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize, TaskBuilderControlContents tbContents, float cutoffNm) {
+__global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize, TaskBuilderControlContents tbContents, float cutoffNm, Float3 boxSizeFloat, Float3 boxSizeFloatInv) {
 
 	NodeIndex nodeIndex = BoxGrid::Get3dIndex(blockIdx.x, boxSize);
 	const int nodeId = BoxGrid::Get1dIndex(nodeIndex, boxSize);
@@ -404,26 +390,17 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 		if (validQuery) {
 			queryScId = scControl.scIdsInBlocks[targetIndex * SuperClustersControl::maxClustersPerBlock + scIndexInQueryblock];
 
-			doesInteract = Warp_DoesSuperclustersInteract(
-				tbContents.superclusterPositionSpheres,
-				scControl.scData,
-				scId,
-				queryScId,
-				cutoffNm
-			);
+			doesInteract = Warp_DoesSuperclustersInteract(tbContents.superclusterPositionSpheres, scControl.scData, scId, queryScId, cutoffNm, boxSizeFloat, boxSizeFloatInv);
 
 			if (doesInteract) {
-				useNointeractionMatrix =
-					scId == queryScId
-					|| Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryScId], tbContents.pclustersBondedToPcluster);
+				useNointeractionMatrix = scId == queryScId || Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryScId], tbContents.pclustersBondedToPcluster);
 			}
 		}
 
 		if (lane == 0 && doesInteract) {
 			if (scId <= queryScId) {
 				int putIndex = atomicAdd(&nOwnedInteractions, 1);
-				tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + putIndex] =
-					InteractionToken(queryScId, useNointeractionMatrix);
+				tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + putIndex] = InteractionToken(queryScId, useNointeractionMatrix);
 
 				if (useNointeractionMatrix) {
 					atomicAdd(&nNointeractionMatrices, 1);
@@ -620,7 +597,7 @@ bool Engine::MakeSuperClusterTasksGPU() {
 		//ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm);
 		ReserveInteractions << <
 			dim3(nGridnodes, SuperClustersControl::maxClustersPerBlock, 1),
-			256 >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm);
+			256 >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm, boxSizeF, Float3{ 1.0f } / boxSizeF);
 		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
 		
 		cudaDeviceSynchronize();

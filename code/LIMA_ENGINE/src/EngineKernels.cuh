@@ -108,7 +108,7 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 
 static const int THREADS_PER_BONDSGROUPSKERNEL = BondGroup::maxParticles;
 template <typename BoundaryCondition, bool emVariant>
-__global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters) {
+__global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv) {
 	__shared__ Float3 positions[BondGroup::maxParticles];
 
 	__shared__ float4 forceEnergyInterrims[BondGroup::maxParticles];
@@ -128,7 +128,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 	}
 	__syncthreads();
 	if (threadIdx.x < bondGroup->nParticles) {
-		BoundaryCondition::applyHyperposNM(positions[0], positions[threadIdx.x]);
+		BoundaryCondition::ApplyHyperpos(positions[0], positions[threadIdx.x], boxSize, boxSizeInv);
 	}
 	__syncthreads();
 
@@ -239,7 +239,7 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 // blockdim=16,4,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step) {
+__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ PData pqd[SuperCluster::maxParticles * 2];
 	__shared__ ScScTask task;	
@@ -266,7 +266,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 		// Load cluster1
 		pqd[SuperCluster::maxParticles + threadIdx.x] = superClusters[task.scIds[1]].pData[threadIdx.x];
-		BoundaryCondition::applyHyperposNM(p0Pos, pqd[SuperCluster::maxParticles + threadIdx.x].position); // optim: This reads from __constant__, consider passing the boxSizeHalf directly to the kernel registers??
+		BoundaryCondition::ApplyHyperpos(p0Pos, pqd[SuperCluster::maxParticles + threadIdx.x].position, boxSize, boxSizeInv);
 	}
 	__syncthreads();
 

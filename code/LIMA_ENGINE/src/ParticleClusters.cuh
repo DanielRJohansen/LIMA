@@ -53,7 +53,7 @@ public:
 
 // nBlocks = nPclusters/32
 // blockdim = (32, 1, 1)
-__global__ void GetPclusterPositions(PClusterTransfermodule transferModule, PersistentCluster* const pClustersData, const int nPclusters, Int3 boxSize) {
+__global__ void GetPclusterPositions(PClusterTransfermodule transferModule, PersistentCluster* const pClustersData, const int nPclusters, Int3 boxSize, const Float3 boxSizeFloat, const Float3 boxSizeFloatInv) {
 	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (pcId >= nPclusters)
 		return;
@@ -63,7 +63,7 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	// First ensure all particles in pcluster are same hyperpos
 	for (int i = 1; i < PersistentCluster::maxParticles; i++) {
 		if (pClustersData[pcId].pqd[i].Valid()) {
-			PeriodicBoundaryCondition::applyHyperposNM(pClustersData[pcId].pqd[0].position, pClustersData[pcId].pqd[i].position);
+			PeriodicBoundaryCondition::ApplyHyperpos(pClustersData[pcId].pqd[0].position, pClustersData[pcId].pqd[i].position, boxSizeFloat, boxSizeFloatInv);
 		}
 	}
 
@@ -87,8 +87,8 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	//const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
 	Float3 temp = meanPos;
 	Float3 gridPosF = meanPos.Floor();
-	PeriodicBoundaryCondition::applyBCNM(gridPosF);
-	PeriodicBoundaryCondition::applyHyperposNM(gridPosF, meanPos);
+	PeriodicBoundaryCondition::ApplyBC(gridPosF, boxSizeFloat, boxSizeFloatInv);
+	PeriodicBoundaryCondition::ApplyHyperpos(gridPosF, meanPos, boxSizeFloat, boxSizeFloatInv);
 
 	NodeIndex blockId = NodeIndex(gridPosF.x, gridPosF.y, gridPosF.z);
 	if constexpr (INDEXING_CHECKS) {
@@ -566,9 +566,12 @@ __global__ void CompressSuperclusters(SuperClustersControl scControl, const Supe
 
 
 void Engine::RunClustering(bool getPclusters) {
-	Int3 boxSize = simulation->box->boxparams.boxSize;
+	const Int3 boxSize = simulation->box->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));
 	const int nPclusters = simulation->box->persistentClusters.size();
+	const Float3 boxSizeF = Float3{ boxSize.x, boxSize.y, boxSize.z };
+	const Float3 boxSizeFInv = boxSizeF.Inv();
+
 
 	if (!superclusterStagingControl) {
 		superclusterStagingControl = std::make_unique<SuperclusterStagingControl>(boxSize);
@@ -585,12 +588,10 @@ void Engine::RunClustering(bool getPclusters) {
 			*pclusterTransfermodule,
 			pClusterDevice.Get(),
 			nPclusters,
-			simulation->box->boxparams.boxSize);
+			boxSize, boxSizeF, boxSizeFInv);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after GetPclusterPositions kernel");	
 
 		//DebugUtils::VerifyIdentical(pclusterTransfermodule->meanPositionOfPClustersPerBlock)
-
-		auto nClusters = GenericCopyToHost(pclusterTransfermodule->nPClustersPerBlock, nBlocks);
 
 		SortPClusterIndicesInBlocks <<<nBlocks, 32>>> (*pclusterTransfermodule);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SortPClusterIndicesInBlocks kernel");

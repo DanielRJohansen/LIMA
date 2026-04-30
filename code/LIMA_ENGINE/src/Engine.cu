@@ -357,6 +357,8 @@ void Engine::_deviceMaster() {
 	
 	const BoxParams& boxparams = simulation->box->boxparams;
 	const int step = simulation->getStep();
+	const Float3 boxSize = boxparams.BoxSizeFloat();
+
 
 	// #### Initial round of force computations
 	//cudaDeviceSynchronize();
@@ -371,7 +373,7 @@ void Engine::_deviceMaster() {
 		dim3 blockDim(SuperCluster::maxParticles, 4, 1);
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
-			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step);
+			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step, boxSize, boxSize.Inv());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
 		//nbGatherForceenergy.Expand(nSuperclusters * SuperCluster::nParticles, 1.2);
@@ -386,7 +388,7 @@ void Engine::_deviceMaster() {
 
 	if (!simulation->box->bondgroups.empty()) {
 		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>
-			(bondgroups.Get(), *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice.Get());
+			(bondgroups.Get(), *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice.Get(), boxSize, boxSize.Inv());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
 
 		// Gather bondgroup ordered forces into particle ordered

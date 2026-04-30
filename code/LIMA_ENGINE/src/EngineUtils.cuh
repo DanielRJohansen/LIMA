@@ -188,37 +188,5 @@ namespace EngineUtils {
         return false;
     }
 
-
-
-	template <typename BoundaryCondition>
-	__device__ inline void getCompoundHyperpositionsAsFloat3(const NodeIndex& origo_self, const NodeIndex& queryOrigo, const Float3* const queryRelpositions,
-		Float3* const output_buffer, Float3& utility_float3, const int n_particles)
-	{
-		if (threadIdx.x == 0) {
-			const NodeIndex querycompound_hyperorigo = BoundaryCondition::applyHyperpos_Return(origo_self, queryOrigo);
-			KernelHelpersWarnings::assertHyperorigoIsValid(querycompound_hyperorigo, origo_self);
-
-			// calc Relative LimaPosition Shift from the origo-shift
-			utility_float3 = LIMAPOSITIONSYSTEM_HACK::GetRelShiftFromOrigoShift_Float3(querycompound_hyperorigo, origo_self);
-		}
-		__syncthreads();
-
-		if (threadIdx.x < n_particles) {
-			output_buffer[threadIdx.x] = queryRelpositions[threadIdx.x] + utility_float3;
-		}
-		__syncthreads();
-	}
-
-	template <typename BondType, int max_bondtype_in_compound>
-	__device__ BondType* LoadBonds(char* utility_buffer, const BondType* const source, int nBondsToLoad) {
-		BondType* bonds = (BondType*)utility_buffer;
-
-		auto block = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(block, bonds, source, sizeof(BondType) * nBondsToLoad);
-		cooperative_groups::wait(block);
-
-		return bonds;
-	}
-
 };
 

@@ -275,6 +275,10 @@ struct ForceEnergy {
 	Float3 force{};	// [J/mol/nm]
 	float potE{};		// [J/mol]
 
+	constexpr ForceEnergy InvertForce(){
+		return ForceEnergy{ -force, potE };
+	}
+
 	constexpr ForceEnergy operator+ (const ForceEnergy& a) const {
 		return ForceEnergy{ force + a.force, potE + a.potE };
 	}		

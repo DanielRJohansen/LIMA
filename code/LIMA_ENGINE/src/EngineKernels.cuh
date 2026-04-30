@@ -237,7 +237,7 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 
-// blockdim=16,4,1
+// blockdim=16,2,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
@@ -245,7 +245,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	__shared__ ScScTask task;	
 	__shared__ Float3 p0Pos; // Used for PBC
 	__shared__ BoolMatrix16x16 nointeractionsMatrix;
-	__shared__ ForceEnergy forceEnergiesShared[SuperCluster::maxParticles * 2];
+	__shared__ ForceEnergy forceEnergiesShared[SuperCluster::maxParticles];
 
 	const bool controlThread = threadIdx.x == 0 && threadIdx.y == 0;
 	uint16_t noInteractions;
@@ -270,42 +270,51 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	}
 	__syncthreads();
 
-	if (threadIdx.y < 2)
-		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetRow(threadIdx.x) : 0;
-	else
-		noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetColumn(threadIdx.x) : 0;
-
-
+	noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix.GetRow(threadIdx.x) : 0;
 	ForceEnergy myForceEnergy{};
 
-	const int myIndex = (threadIdx.y > 1) * SuperCluster::maxParticles + threadIdx.x;
-	const int startQueryIndex = (SuperCluster::maxParticles + threadIdx.y * SuperCluster::maxParticles/2) % (SuperCluster::maxParticles*2);
-	const int queryBase = (threadIdx.y * (SuperCluster::maxParticles / 2)) % SuperCluster::maxParticles;
-	for (int i = 0; i < SuperCluster::maxParticles/2; i++) {
-		const int queryIndexInCluster = queryBase + i;
+	const int queryStart = (SuperCluster::maxParticles / 2) * threadIdx.y;
+	for (int i = 0; i < SuperCluster::maxParticles / 2; i++) {
+		const int queryIndexInSc = queryStart + i;
+
+		ForceEnergy forceEnergy{};
 		bool skip = false;
-		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, queryIndexInCluster)) {
+		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, queryIndexInSc)) {
 			skip = true;
 		}
-
 		if (!skip) {
-			myForceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pqd[myIndex], pqd[startQueryIndex + i], -1, -1);
+			forceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pqd[threadIdx.x], pqd[SuperCluster::maxParticles + queryIndexInSc], -1, -1);
+		}
+
+		myForceEnergy += forceEnergy;
+		forceEnergy = forceEnergy.InvertForce();
+
+		// reduce 2x16 lanes
+		#pragma unroll
+		for (int offset = SuperCluster::maxParticles/2; offset > 0; offset >>= 1)
+		{
+			forceEnergy.force.x += __shfl_down_sync(0xffffffff, forceEnergy.force.x, offset, 16);
+			forceEnergy.force.y += __shfl_down_sync(0xffffffff, forceEnergy.force.y, offset, 16);
+			forceEnergy.force.z += __shfl_down_sync(0xffffffff, forceEnergy.force.z, offset, 16);
+			forceEnergy.potE += __shfl_down_sync(0xffffffff, forceEnergy.potE, offset, 16);
+		}
+
+		if (threadIdx.x == 0) {
+			forceEnergiesShared[queryIndexInSc] = forceEnergy;
 		}
 	}
+	
+	if (threadIdx.y == 0) {
+		if (task.scIds[0] != task.scIds[1]) {
+			results[task.resultIndices[1]].fe[threadIdx.x] = forceEnergiesShared[threadIdx.x];
+		}
 
-	if (threadIdx.y == 0)
 		forceEnergiesShared[threadIdx.x] = myForceEnergy;
-	if (threadIdx.y == 2)
-		forceEnergiesShared[threadIdx.x + 16] = myForceEnergy;
+	}
 	__syncthreads();
 
 	if (threadIdx.y == 1) {
 		results[task.resultIndices[0]].fe[threadIdx.x] = forceEnergiesShared[threadIdx.x] + myForceEnergy;
-	}
-	else if (threadIdx.y == 3) {
-		if (task.scIds[0] != task.scIds[1]) {
-			results[task.resultIndices[1]].fe[threadIdx.x] = forceEnergiesShared[SuperCluster::maxParticles + threadIdx.x] + myForceEnergy;
-		}
 	}
 }
 

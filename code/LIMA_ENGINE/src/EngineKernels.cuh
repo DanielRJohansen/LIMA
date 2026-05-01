@@ -303,7 +303,8 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 			forceEnergiesShared[queryIndexInSc] = forceEnergy;
 		}
 	}
-	
+	__syncthreads();
+
 	if (threadIdx.y == 0) {
 		if (task.scIds[0] != task.scIds[1]) {
 			results[task.resultIndices[1]].fe[threadIdx.x] = forceEnergiesShared[threadIdx.x];

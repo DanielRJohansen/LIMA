@@ -156,7 +156,7 @@ namespace Benchmarks {
 		GroFile grofile{ workDir  / "conf.gro" };
 		TopologyFile topfile{ workDir  / "topol.top" };
 		SimParams ip{ workDir / "sim_params.txt" };
-		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, "STMV", 30);
+		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, "STMV", 3);
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {

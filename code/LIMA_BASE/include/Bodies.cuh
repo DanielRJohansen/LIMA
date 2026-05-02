@@ -386,16 +386,34 @@ struct SuperCluster {
 	//static const int maxPclusters = 4;
 	static const int maxParticles = 16;
 
-	//Float3 positions[nParticles];
-	PData pData[maxParticles];
+	//Float3 positions[maxParticles];
+	float posX[maxParticles];
+	float posY[maxParticles];
+	float posZ[maxParticles];
+	float sigmaHalf[maxParticles];		// [nm]
+	float epsilonSqrt[maxParticles];		// [J/mol/nm]
+	float charge[maxParticles];
 
-	__host__ bool operator!= (const SuperCluster& other) const {
-		for (int i = 0; i < maxParticles; i++) {
-			if (pData[i] != other.pData[i])
-				return true;
-		}
-		return false;
+	__device__ void SetPdata(const PData& pdata, int index) {
+		posX[index] = pdata.position.x;
+		posY[index] = pdata.position.y;
+		posZ[index] = pdata.position.z;
+		sigmaHalf[index] = pdata.params.sigmaHalf;
+		epsilonSqrt[index] = pdata.params.epsilonSqrt;
+		charge[index] = pdata.params.charge;
 	}
+	__device__ Float3 Position(int index) const {
+		return Float3(posX[index], posY[index], posZ[index]);
+	}
+	//PData pData[maxParticles];
+
+	//__host__ bool operator!= (const SuperCluster& other) const {
+	//	for (int i = 0; i < maxParticles; i++) {
+	//		if (pData[i] != other.pData[i])
+	//			return true;
+	//	}
+	//	return false;
+	//}
 };
 
 struct SuperClusterMeta {

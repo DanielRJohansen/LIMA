@@ -180,15 +180,17 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	__shared__ int offsetsInTarget[27];
 	__shared__ int nOutgoingParticles[27];
 
-	NodeIndex nearestGridnode = superclusters[blockIdx.x].pData[0].position.Floor().ToInt3();
+	NodeIndex nearestGridnode = superclusters[blockIdx.x].Position(0).Floor().ToInt3();
 
 	if (threadIdx.x < SuperCluster::maxParticles) {
-		PData pqd = superclusters[blockIdx.x].pData[threadIdx.x];
+		Float3 pos = superclusters[blockIdx.x].Position(threadIdx.x);
+		float charge = superclusters[blockIdx.x].charge[threadIdx.x];
+		float epsSqrt = superclusters[blockIdx.x].epsilonSqrt[threadIdx.x];// TODO OPTIM: Remove this, find another way to determine IsValid!
 
-		if (pqd.Valid()) {
+		if (epsSqrt != -1) {// prev PData.IsValid()
 			Float3 scNodeOrigoPos = nearestGridnode.toFloat3();// superclusters[blockIdx.x].pData[0].position.Floor();
-			relPositions[threadIdx.x] = pqd.position - scNodeOrigoPos;// +Float3{ 0.5, 0.5, 0.5 };
-			charges[threadIdx.x] = pqd.params.charge;
+			relPositions[threadIdx.x] = pos - scNodeOrigoPos;// +Float3{ 0.5, 0.5, 0.5 };
+			charges[threadIdx.x] = charge;
 		}
 		else {
 			relPositions[threadIdx.x] = Float3{ NAN, NAN, NAN };
@@ -516,18 +518,17 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	float selfenergyCorrection			// [J/mol]
 )
 {
-	PData pqd = scData[blockIdx.x].pData[threadIdx.x];
-	if (!pqd.Valid())
+	Float3 pos = scData[blockIdx.x].Position(threadIdx.x);
+	float charge = scData[blockIdx.x].charge[threadIdx.x];
+	float epsSqrt = scData[blockIdx.x].epsilonSqrt[threadIdx.x];
+	//PData pqd = scData[blockIdx.x].pData[threadIdx.x];
+	//if (!pqd.Valid())
+	if (epsSqrt == -1 || charge == 0.f)
 		return;
 
-	const float charge = pqd.params.charge;	// [kC/mol]
-	if (charge == 0.f)
-		return;
+	PeriodicBoundaryCondition::applyBCNM(pos);
 
-	Float3 absPos = pqd.position;
-	PeriodicBoundaryCondition::applyBCNM(absPos);
-
-	const Float3 gridPos = absPos * gridpointsPerNm_f;
+	const Float3 gridPos = pos * gridpointsPerNm_f;
 	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, gridPos, gridDim);
 
 	// Now add self charge to calculations

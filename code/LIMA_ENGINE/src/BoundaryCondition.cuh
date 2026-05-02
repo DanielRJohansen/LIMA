@@ -14,6 +14,7 @@ public:
 	
 	__device__ static inline void ApplyBC(Float3& currentPosition, const Float3& boxSize, const Float3& boxSizeInv) {}
 	__device__ constexpr static inline void ApplyHyperpos(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize, const Float3& boxSizeInv) {}
+	__device__ static inline void ApplyHyperpos(const Float3& staticParticle, float& x, float& y, float& z, const Float3& boxSize, const Float3& boxSizeInv) {}
 };
 
 class PeriodicBoundaryCondition {
@@ -60,6 +61,14 @@ public:
 		movableParticle.x += boxSize.x * float(__float2int_rn(delta.x * boxSizeInv.x));
 		movableParticle.y += boxSize.y * float(__float2int_rn(delta.y * boxSizeInv.y));
 		movableParticle.z += boxSize.z * float(__float2int_rn(delta.z * boxSizeInv.z));
+	}
+
+	__device__ static inline void ApplyHyperpos(const Float3& staticParticle, float& x, float& y, float& z, const Float3& boxSize, const Float3& boxSizeInv) {
+		const Float3 delta = staticParticle - Float3(x, y, z);
+
+		x += boxSize.x * float(__float2int_rn(delta.x * boxSizeInv.x));
+		y += boxSize.y * float(__float2int_rn(delta.y * boxSizeInv.y));
+		z += boxSize.z * float(__float2int_rn(delta.z * boxSizeInv.z));
 	}
 
 	__device__ static inline void ApplyBC(Float3& currentPosition, const Float3& boxSize, const Float3& boxSizeInv) {	

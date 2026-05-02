@@ -450,7 +450,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 				const int indexInSc = scMeta.nParticles + indexInPc;
 				PData pData = pClusters[pcIdGlobal].pqd[indexInPc];
 				PeriodicBoundaryCondition::applyHyperposNM(blockCenter, pData.position);
-				sc.pData[indexInSc] = pData;
+				sc.SetPdata(pData, indexInSc);
 				scMeta._pclusterIds[indexInSc] = pcIdGlobal;
 				scMeta.globalParticleIds[indexInSc] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[indexInPc];
 				scMeta.indexInPcluster[indexInSc] = indexInPc;
@@ -463,7 +463,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 			scMeta.nParticles += nParticles;
 		}
 		for (int i = scMeta.nParticles; i < SuperCluster::maxParticles; i++) {
-			sc.pData[i] = PData{};
+			sc.SetPdata(PData{}, i);
 			scMeta._pclusterIds[i] = -1;
 			scMeta.globalParticleIds[i] = -1;
 			scMeta.indexInPcluster[i] = -1;

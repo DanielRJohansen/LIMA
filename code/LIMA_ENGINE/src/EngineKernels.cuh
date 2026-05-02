@@ -254,7 +254,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 	if (threadIdx.x == 0 && threadIdx.y == 0) {
 		task = tasks[blockIdx.x];
-		p0Pos = superClusters[task.scIds[0]].pData[0].position;
+		p0Pos = superClusters[task.scIds[0]].Position(0);
 		if (hasNoInteractionMatrix) {
 			nointeractionsMatrix = nointeractionMatrices[task.nointeractionMatrixIndex];
 		}
@@ -269,7 +269,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	
 
 	if (threadIdx.y == 0) {
-		BoundaryCondition::ApplyHyperpos(p0Pos, sc1.pData[threadIdx.x].position, boxSize, boxSizeInv);
+		BoundaryCondition::ApplyHyperpos(p0Pos, sc1.posX[threadIdx.x], sc1.posY[threadIdx.x], sc1.posZ[threadIdx.x], boxSize, boxSizeInv);
 	}
 	__syncthreads();
 
@@ -286,7 +286,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 			skip = true;
 		}
 		if (!skip) {
-			forceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0.pData[threadIdx.x], sc1.pData[queryIndexInSc], -1, -1);
+			forceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, sc1, queryIndexInSc, -1, -1);
 		}
 
 		myForceEnergy += forceEnergy;
@@ -379,7 +379,7 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	if (threadIdx.x == 0) {
 		scMetaShared[threadIdx.y] = scIdGlobal == -1 ? SuperClusterMeta{} : scMeta[scIdGlobal];
-		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].pData[0].position;
+		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].Position(0);
 
 		// By applying BC here, we dont need to wait for thread0 later in the kernel
 		BoundaryCondition::applyBCNM(p0s[threadIdx.y]);// TODO: We should use either SC CoM, or a particle close to the middle..		
@@ -401,7 +401,7 @@ const ForceEnergy* const nbForceenergy*/) {
 		}
 	}
 
-	Float3 pos = superClusters[scIdGlobal].pData[threadIdx.x].position;
+	Float3 pos = superClusters[scIdGlobal].Position(threadIdx.x);
 	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
 
 	// Collect ForceEnergy from all sources
@@ -498,7 +498,9 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
 
-	superClusters[scIdGlobal].pData[threadIdx.x].position = pos;
+	superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
+	superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;
+	superClusters[scIdGlobal].posZ[threadIdx.x] = pos.z;
 	pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;
 }
 

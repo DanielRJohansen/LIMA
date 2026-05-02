@@ -199,9 +199,8 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 	
 	for (int i = 0; i < scMeta[scId].nParticles; i++) {
 		const int pcId = scMeta[scId]._pclusterIds[i];
-		const PData& pdata = superclusters[scId].pData[i];
 
-		sum += pdata.position;
+		sum += superclusters[scId].Position(i);
 		cnt++;
 
 		int nextPcId = i == 15 ? -1 : scMeta[scId]._pclusterIds[i + 1];
@@ -209,8 +208,9 @@ __global__ void ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel(co
 			Float3 meanPos = sum * (1.f / static_cast<float>(cnt));
 			float radius = 0;
 			for (int ii = i - cnt + 1; ii <= i; ii++) {
-				const PData& pData = superclusters[scId].pData[ii];
-				radius = std::max(radius, (pData.position - meanPos).len());
+				//const PData& pData = ;
+
+				radius = std::max(radius, (superclusters[scId].Position(ii) - meanPos).len());
 			}
 			//out[scId][positionClusterIndex] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
 			spheres[sphereCount] = float4{ meanPos.x, meanPos.y, meanPos.z, radius };
@@ -259,13 +259,13 @@ __device__ inline bool Warp_DoesSuperclustersInteractFine(const SuperCluster* co
 		const int i = pairId / 16;
 		const int j = pairId % 16;
 
-		const PData& p0 = scData[scId0].pData[i];
-		const PData& p1 = scData[scId1].pData[j];
+		const Float3 pos0 = scData[scId0].Position(i);
+		Float3 pos1 = scData[scId1].Position(j);
+		float eps0 = scData[scId0].epsilonSqrt[i];	// %TODO: OPTIM: pos being nan would mean eps is not needed
+		float eps1 = scData[scId1].epsilonSqrt[j];
 
-		if (p0.Valid() && p1.Valid()) {
-			Float3 pos0 = p0.position;
-			Float3 pos1 = p1.position;
 
+		if (eps0 != -1 && eps1 != -1){//if (p0.Valid() && p1.Valid()) {
 			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
 			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 

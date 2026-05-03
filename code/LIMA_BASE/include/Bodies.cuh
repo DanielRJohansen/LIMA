@@ -460,25 +460,10 @@ struct SCResult {
 };
 
 struct ScScTask {
-	int scIds[2];
-	int resultIndices[2];
-	int nointeractionMatrixIndex = -1;
-
-	//Float3 sc1Translation{}; // [nm] Translation to apply to sc1 before computing interactions. 
-
-	// Optim: consider stuffing hyperposTarget in here, to get to 32 bytes in the struct.
-	// Better yet: precompute the sc1 hyperpostranslation and put that here. Could even squish that into a tinyInt3, 
-	// That would require us to NEVER apply PBC in the integration kernel, and instead apply it when recreating superclusters
-
-	__host__ constexpr bool operator!=(const ScScTask& other) const {
-		for (int i = 0; i < 2; i++) {
-			if (scIds[i] != other.scIds[i])
-				return true;
-			if (resultIndices[i] != other.resultIndices[i])
-				return true;
-		}
-		return false;
-	}
+	// pair0: sc0-sc1 | pair1: sc0-sc2
+	int scIds[3]; // first 2 guaranteed to be valid, third may be -1 meaning noSC
+	int resultIndices[3];
+	int nointeractionMatrixIndex[2];
 };
 
 

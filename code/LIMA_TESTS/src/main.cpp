@@ -120,7 +120,7 @@ int main() {
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
 
 
 		//const fs::path workDir = simulations_dir / "test";

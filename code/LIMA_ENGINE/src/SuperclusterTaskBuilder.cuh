@@ -428,8 +428,11 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 		tbContents.nInteractionsOwned[scId] = nOwnedInteractions;
 		tbContents.nInteractionsNonowned[scId] = nNonownedInteractions;
 		tbContents.nNointeractionmatricesOwned[scId] = nNointeractionMatrices;
-		tbContents.nResults[scId] = nOwnedInteractions + nNonownedInteractions;
-		tbContents.nTasksOwned[scId] = (nOwnedInteractions + 1) / 2;
+
+		const int nOwnedTasks = (nOwnedInteractions + 1) / 2;
+
+		tbContents.nResults[scId] = nOwnedTasks + nNonownedInteractions;
+		tbContents.nTasksOwned[scId] = nOwnedTasks;
 	}
 }
 
@@ -469,8 +472,8 @@ __device__ inline int GetResultIndexOfQuery(TaskBuilderControlContents tbContent
 		return -1;
 	}
 	else {
-		const int queryNumOwnedTasks = tbContents.nInteractionsOwned[scIdQuery];
-		return tbContents.nResultsPrefixsum[scIdQuery] + queryNumOwnedTasks + indexInQuery;
+		const int queryNumOwnedResults = tbContents.nTasksOwned[scIdQuery];
+		return tbContents.nResultsPrefixsum[scIdQuery] + queryNumOwnedResults + indexInQuery;
 	}
 }
 
@@ -486,7 +489,7 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, const SuperClu
 		task.scIds[0] = scId;
 		task.scIds[1] = -1;
 		task.scIds[2] = -1;
-		task.resultIndices[0] = tbContents.nResultsPrefixsum[scId] + i;
+		task.resultIndices[0] = tbContents.nResultsPrefixsum[scId] + i / 2;
 		task.resultIndices[1] = -1;
 		task.resultIndices[2] = -1;
 		task.nointeractionMatrixIndex[0] = -1;
@@ -517,7 +520,7 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, const SuperClu
 			}
 
 			task.scIds[2] = scIdQuery;
-			task.resultIndices[2] = GetResultIndexOfQuery(tbContents, scId, scIdQuery, task.resultIndices[0] + 1);
+			task.resultIndices[2] = GetResultIndexOfQuery(tbContents, scId, scIdQuery, task.resultIndices[0]);
 		}
 
 		/*const Float3 sc0Pos0 = superClusters[scId].Position(0);

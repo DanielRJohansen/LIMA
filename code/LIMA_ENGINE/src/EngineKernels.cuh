@@ -313,8 +313,8 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	}
 	__syncthreads();
 
-	if (validInteraction && threadIdx.y == 0) {
-		if (task.scIds[0] != task.scIds[sc1Index]) {
+	if (threadIdx.y == 0) {
+		if (validInteraction && task.scIds[0] != task.scIds[sc1Index]) {
 			results[task.resultIndices[queryResultIndex]].fe[threadIdx.x] = forceEnergiesShared[interactionIndex][threadIdx.x];
 		}
 
@@ -322,8 +322,13 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	}
 	__syncthreads();
 
-	if (validInteraction && threadIdx.y == 1) {
-		results[sc0ResultIndex].fe[threadIdx.x] = forceEnergiesShared[interactionIndex][threadIdx.x] + myForceEnergy;
+	if (threadIdx.y == 1) {
+		forceEnergiesShared[interactionIndex][threadIdx.x] = validInteraction ? forceEnergiesShared[interactionIndex][threadIdx.x] + myForceEnergy : ForceEnergy{};
+	}
+	__syncthreads();
+
+	if (threadIdx.x < SuperCluster::maxParticles && threadIdx.y == 0 && threadIdx.z == 0) {
+		results[task.resultIndices[0]].fe[threadIdx.x] = forceEnergiesShared[0][threadIdx.x] + forceEnergiesShared[1][threadIdx.x];
 	}
 }
 

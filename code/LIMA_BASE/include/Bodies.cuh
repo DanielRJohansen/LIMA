@@ -463,6 +463,9 @@ struct ScScTask {
 	int scIds[2];
 	int resultIndices[2];
 	int nointeractionMatrixIndex = -1;
+
+	//Float3 sc1Translation{}; // [nm] Translation to apply to sc1 before computing interactions. 
+
 	// Optim: consider stuffing hyperposTarget in here, to get to 32 bytes in the struct.
 	// Better yet: precompute the sc1 hyperpostranslation and put that here. Could even squish that into a tinyInt3, 
 	// That would require us to NEVER apply PBC in the integration kernel, and instead apply it when recreating superclusters

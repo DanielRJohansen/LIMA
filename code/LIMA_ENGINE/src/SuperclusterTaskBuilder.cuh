@@ -450,7 +450,7 @@ constexpr int IndexOfId(int* ids, int nIds, int idToFind) {
 	return -1;
 }
 
-__global__ void BuildTasks(TaskBuilderControlContents tbContents, SuperClusterMeta* const superClusterMeta, int nSuperclusters, ScScTask* const tasks) {
+__global__ void BuildTasks(TaskBuilderControlContents tbContents, const SuperCluster* const superClusters, SuperClusterMeta* const superClusterMeta, int nSuperclusters, ScScTask* const tasks, Float3 boxSize, Float3 boxSizeInv) {
 	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (scId >= nSuperclusters)
 		return;
@@ -490,6 +490,10 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, SuperClusterMe
 				 task.resultIndices[1] = tbContents.nResultsPrefixsum[scIdQuery] + queryNumOwnedTasks + indexInQuery;
 			 }
 		}
+
+		/*const Float3 sc0Pos0 = superClusters[scId].Position(0);
+		const Float3 sc1Pos0 = superClusters[scIdQuery].Position(0);
+		task.sc1Translation = PeriodicBoundaryCondition::GetHyperposTranslation(sc0Pos0, sc1Pos0, boxSize, boxSizeInv);*/
 
 		tasks[tbContents.nTasksPrefixsum[scId] + i] = task;
 	}
@@ -624,7 +628,7 @@ bool Engine::MakeSuperClusterTasksGPU() {
 
 
 
-	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scMeta, nSuperclusters, scscTasksDevice.Get());
+	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, scscTasksDevice.Get(), boxSizeF, boxSizeF.Inv());
 	BuildNointeractionMatricesKernel << <nSuperclusters , 16 >> >(superClustersControl->scMeta, pClusterMetaDevice.Get(), taskbuilderControl->contents, noInteractionMatricesDevice.Get(), nSuperclusters);
 	cudaDeviceSynchronize();
 

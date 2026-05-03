@@ -241,11 +241,9 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
-	//__shared__ PData pqd[SuperCluster::maxParticles * 2];
 	__shared__ SuperCluster sc0;
 	__shared__ SuperCluster sc1;
 	__shared__ ScScTask task;	
-	__shared__ Float3 p0Pos; // Used for PBC
 	__shared__ BoolMatrix16x16 nointeractionsMatrix;
 	__shared__ ForceEnergy forceEnergiesShared[SuperCluster::maxParticles];
 
@@ -254,7 +252,6 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 	if (threadIdx.x == 0 && threadIdx.y == 0) {
 		task = tasks[blockIdx.x];
-		p0Pos = superClusters[task.scIds[0]].Position(0);
 		if (hasNoInteractionMatrix) {
 			nointeractionsMatrix = nointeractionMatrices[task.nointeractionMatrixIndex];
 		}
@@ -268,8 +265,8 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	cooperative_groups::wait(tb);
 	
 
-	if (threadIdx.y == 0) {
-		BoundaryCondition::ApplyHyperpos(p0Pos, sc1.posX[threadIdx.x], sc1.posY[threadIdx.x], sc1.posZ[threadIdx.x], boxSize, boxSizeInv);
+	if (threadIdx.y == 0) {		
+		BoundaryCondition::ApplyHyperpos(Float3{ sc0.posX[0], sc0.posY[0], sc0.posZ[0] }, sc1.posX[threadIdx.x], sc1.posY[threadIdx.x], sc1.posZ[threadIdx.x], boxSize, boxSizeInv);
 	}
 	__syncthreads();
 

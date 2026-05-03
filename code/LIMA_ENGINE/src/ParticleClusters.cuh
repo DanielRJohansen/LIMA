@@ -48,8 +48,21 @@ public:
 
 
 
+// blockDim = (32, 1, 1)
+__global__ void ApplyBoundaryCondition(PersistentCluster* const pClusters, int nPclusters, Float3 boxSize, Float3 boxSizeInv) {
+	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (pcId >= nPclusters)
+		return;
 
+	PersistentCluster pcluster = pClusters[pcId];
+	PeriodicBoundaryCondition::ApplyBC(pcluster.pqd[0].position, boxSize, boxSizeInv); // TODO: Templated BC
 
+	for (int i = 1; i < PersistentCluster::maxParticles; i++) {
+		PeriodicBoundaryCondition::ApplyHyperpos(pcluster.pqd[0].position, pcluster.pqd[i].position, boxSize, boxSizeInv);
+	}
+
+	pClusters[pcId] = pcluster;
+}
 
 // nBlocks = nPclusters/32
 // blockdim = (32, 1, 1)
@@ -57,15 +70,6 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (pcId >= nPclusters)
 		return;
-
-	//ParticleToCompoundOrSolventMapping mapping = mappings[particleId];
-
-	// First ensure all particles in pcluster are same hyperpos
-	for (int i = 1; i < PersistentCluster::maxParticles; i++) {
-		if (pClustersData[pcId].pqd[i].Valid()) {
-			PeriodicBoundaryCondition::ApplyHyperpos(pClustersData[pcId].pqd[0].position, pClustersData[pcId].pqd[i].position, boxSizeFloat, boxSizeFloatInv);
-		}
-	}
 
 	Float3 meanPos{};
 	int count = 0;
@@ -79,7 +83,7 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 
 	for (int i = 0; i < count; i++) {
 		if ((meanPos - pClustersData[pcId].pqd[i].position).len() > 1.f) {
-			printf("meanpos %f %f %f mypos %f %f %f\n", meanPos.x, meanPos.y, meanPos.z, pClustersData[pcId].pqd[i].position.x, pClustersData[pcId].pqd[i].position.y, pClustersData[pcId].pqd[i].position.z);
+			printf("meanpos %f %f %f mypos %f %f %f\n", meanPos.x, meanPos.y, meanPos.z, pClustersData[pcId].pqd[i].position.x, pClustersData[pcId].pqd[i].position.y, pClustersData[pcId].pqd[i].position.z);	// TODO: Put this in constexper
 		}
 	}
 
@@ -580,6 +584,8 @@ void Engine::RunClustering(bool getPclusters) {
 	//auto pClusters = GenericCopyToHost(pClusterDevice, nPclusters);
 	//DebugUtils::VerifyIdentical(pClusters, "PClustersBeforeClustering" + std::to_string(simulation->getStep()));
 	//DebugUtils::VerifyIdentical(pClusterDevice, nPclusters, "PClustersBeforeClustering", simulation->getStep());
+
+	ApplyBoundaryCondition << < (nPclusters + 31) / 32, 32 >> > (pClusterDevice.Get(), nPclusters, boxSizeF, boxSizeFInv);
 
 	if (getPclusters) {
 		

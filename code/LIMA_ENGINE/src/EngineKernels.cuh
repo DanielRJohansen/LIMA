@@ -291,7 +291,16 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 		bool skip = task.scIds[indexInQueryScs+1] == -1;
 		skip |= useNointeractionMatrix && BoolMatrix16x16::Get(noInteractions, threadIdx.y);
-		interactions[threadIdx.y][threadIdx.x] = skip ? ForceEnergy{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, queryScs[indexInQueryScs], threadIdx.y, -1, -1);
+
+		float2 f2 = skip ? float2{0,0} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, queryScs[indexInQueryScs], threadIdx.y, -1, -1);
+		const Float3 diff{
+			queryScs[indexInQueryScs].posX[threadIdx.y] - sc0.posX[threadIdx.x],
+			queryScs[indexInQueryScs].posY[threadIdx.y] - sc0.posY[threadIdx.x],
+			queryScs[indexInQueryScs].posZ[threadIdx.y] - sc0.posZ[threadIdx.x]
+		};
+		interactions[threadIdx.y][threadIdx.x] = skip ? ForceEnergy{} : ForceEnergy{ diff * f2.x, f2.y };
+
+		//interactions[threadIdx.y][threadIdx.x] = skip ? ForceEnergy{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, queryScs[indexInQueryScs], threadIdx.y, -1, -1);
 		__syncthreads();
 
 		// Fetch data and warp-reduce

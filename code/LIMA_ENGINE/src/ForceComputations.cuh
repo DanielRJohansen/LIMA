@@ -336,7 +336,7 @@ __device__ inline void computePairbondForces(const PairBond* const pairbonds, co
 			const Float3 diff = positions[pb->atom_indexes[1]] - positions[pb->atom_indexes[0]];
 			const float distSqReciprocal = 1.f / diff.lenSquared();
 
-			const Float3 forceOnLeft = LJ::calcLJForceOptim<true, false>(diff, distSqReciprocal, potential, pb->params.sigma, pb->params.epsilon, LJ::CalcLJOrigin::Pairbond) * 24.f;
+			const Float3 forceOnLeft = diff * LJ::calcLJForceOptim<true, false>(distSqReciprocal, potential, pb->params.sigma, pb->params.epsilon, LJ::CalcLJOrigin::Pairbond) * 24.f;// TODO: DANGER REINTRODUCE
 			forces[0] = forceOnLeft;
 			forces[1] = -forceOnLeft;
 		}

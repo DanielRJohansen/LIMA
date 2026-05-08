@@ -124,30 +124,31 @@ namespace PhysicsUtilsDevice {
 		}
 	}
 
-	__device__ inline Float3 CalcCoulumbForceTrueImplementation(const float chargeProduct, const Float3& diff, const float distSq)
+	__device__ inline float CalcCoulumbForceTrueImplementation(const float chargeProduct, const float distSq)
 	{
 		const float invLen = rsqrtf(distSq);                  // Computes 1 / sqrt(lenSquared)
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
 
-		Float3 force = diff * chargeProduct * invLenCubed * modifiedCoulombConstant;
+		//Float3 force = diff * chargeProduct * invLenCubed * modifiedCoulombConstant;
+		float forceScalar = chargeProduct * invLenCubed * modifiedCoulombConstant;
 #ifdef FORCE_NAN_CHECK
 		if (force.isNan())
 			force.print('E');
 #endif
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			float len = 1.f / invLen;
-			force *= CalcErfcScalar(len, distSq);
+			forceScalar *= CalcErfcScalar(len, distSq);
 		}
 
-		return force;
+		return forceScalar;
 	}
 
 
-	__device__ inline Float3 CalcCoulumbForceChebyshevPiecewise(
-		const float chargeProduct, const Float3& diff, const float distSq) 
+	__device__ inline float CalcCoulumbForceChebyshevPiecewise(
+		const float chargeProduct, const float distSq) 
 	{
 		if (distSq < 0.1f || distSq > (1.2f*1.2f)) {
-			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq);
+			return CalcCoulumbForceTrueImplementation(chargeProduct, distSq);
 		}
 
 		const float domainCutoff = 0.5f;
@@ -178,20 +179,20 @@ namespace PhysicsUtilsDevice {
 		const auto& a = distSq < domainCutoff ? coeffsNeardomain : coeffsFardomain;
 		const float invLenCubedTimesErfcScalarApprox = LAL::EvalPoly<9>(distSq, a);
 
-		return diff * chargeProduct * invLenCubedTimesErfcScalarApprox;
+		return chargeProduct * invLenCubedTimesErfcScalarApprox;
 	}
 
 	// TODO: Include modified coulumb constant here
-	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, float distSq) {
+	__device__ inline float CalcCoulumbForce(const float chargeProduct, float distSq) {
 		if constexpr (COULUMB_USE_CHEBYSHEV_APPROXIMATION)			
-			return CalcCoulumbForceChebyshevPiecewise(chargeProduct, diff, distSq);
+			return CalcCoulumbForceChebyshevPiecewise(chargeProduct, distSq);
 		else
-			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared());
+			return CalcCoulumbForceTrueImplementation(chargeProduct, distSq);
 	}
 
-	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff) {
-		return CalcCoulumbForce(chargeProduct, diff, diff.lenSquared());
-	}
+	//__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const float distSquared) {
+	//	return CalcCoulumbForce(chargeProduct, distSquared);
+	//}
 
 
 

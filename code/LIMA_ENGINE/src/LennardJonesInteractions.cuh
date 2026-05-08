@@ -51,7 +51,7 @@ namespace LJ {
 	/// <param name="epsilon">[J/mol]</param>
 	/// <returns>Force [1/24 J/mol/nm] on p0. Caller must multiply with scalar 24. to get correct result</returns>
 	template<bool computePotE, bool emvariant>
-	__device__ inline Float3 calcLJForceOptim(const Float3& diff, const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
+	__device__ inline float calcLJForceOptim(const float dist_sq_reciprocal, float& potE, const float sigma, const float epsilon,
 		CalcLJOrigin originSelect, /*For debug only*/
 		int pid0 = -1, int pid1 = -1) {
 
@@ -73,7 +73,7 @@ namespace LJ {
 		if constexpr (emvariant)
 			force_scalar = fmaxf(fminf(force_scalar, 1e+20), -1e+20); // Necessary to avoid inf * 0 = NaN
 
-		const Float3 force = diff * force_scalar;
+		//const Float3 force = diff * force_scalar;
 
 		if constexpr (FORCE_CHECKS) {
 			/*int debugPid = 2251;
@@ -81,42 +81,41 @@ namespace LJ {
 			bool debugThis = false;// (pid0 == debugPid || pid1 == debugPid) && !eitherIsInvalid;
 
 
-			if (force.isNan() || debugThis) {
-					calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
-				/*printf("LJ is nan. diff: %f %f %f dist %f sigma: %f eps: %f s %f emvariant %d forceScalar %f origin %s pIds: %d %d\n",
-					diff.x, diff.y, diff.z, diff.len(), sigma, epsilon, s, emvariant, force_scalar, calcLJOriginString[(int)originSelect], pid0, pid1);*/
-			}
+			//if (force.isNan() || debugThis) {
+			//		calcLJForceOptimLogErrors(diff, sigma, epsilon, s, emvariant, force_scalar, originSelect, pid0, pid1, calcLJOriginString);
+			//	/*printf("LJ is nan. diff: %f %f %f dist %f sigma: %f eps: %f s %f emvariant %d forceScalar %f origin %s pIds: %d %d\n",
+			//		diff.x, diff.y, diff.z, diff.len(), sigma, epsilon, s, emvariant, force_scalar, calcLJOriginString[(int)originSelect], pid0, pid1);*/
+			//}
 		}
 
 		if constexpr (computePotE && ENABLE_POTE) {
 			potE += 4.f * epsilon * s * (s - 1.f) * 0.5f;	// 0.5 to account for splitting the potential between the 2 particles
 		}
 
-		if constexpr (emvariant)
-			return EngineUtils::ForceActivationFunction(force, 100.f);
+		/*if constexpr (emvariant)
+			return EngineUtils::ForceActivationFunction(force, 100.f);*/ // TODO: Reintroduce this somehow..
 
 
-		return force;	// [1/24 J/mol/nm]
+		return force_scalar;
+		//return force;	// [1/24 J/mol/nm]
 	}
 
 	// Returns fe on p0, invert to get fe on p1
 	template<bool computePotE, bool emvariant>
-	__device__ ForceEnergy ComputeParticleParticleNB(const SuperCluster& sc0, int sc0Index, const SuperCluster& sc1, int sc1Index, int p0ParticleGlobalId, int p1ParticleGlobalId) 
+	__device__ float2 ComputeParticleParticleNB(const SuperCluster& sc0, int sc0Index, const SuperCluster& sc1, int sc1Index, int p0ParticleGlobalId, int p1ParticleGlobalId) 
 	{
-		ForceEnergy fe{}; // on p0
 		
-		//const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPosition;
-		//const Float3 diff = sc1.positions[sc1Index] - sc0.positions[sc0Index];
-		const Float3 diff{
-			sc1.posX[sc1Index] - sc0.posX[sc0Index],
-			sc1.posY[sc1Index] - sc0.posY[sc0Index],
-			sc1.posZ[sc1Index] - sc0.posZ[sc0Index]
-		};
+		float forceScalar = 0;
+		float potE = 0;
+		
+		const float distSquared = (sc1.posX[sc1Index] - sc0.posX[sc0Index]) * (sc1.posX[sc1Index] - sc0.posX[sc0Index])
+			+ (sc1.posY[sc1Index] - sc0.posY[sc0Index]) * (sc1.posY[sc1Index] - sc0.posY[sc0Index])
+			+ (sc1.posZ[sc1Index] - sc0.posZ[sc0Index]) * (sc1.posZ[sc1Index] - sc0.posZ[sc0Index]);
 		
 		
 		if (sc0.epsilonSqrt[sc0Index] != -1.f && sc1.epsilonSqrt[sc1Index] != -1.f) {
 			//diff.print('d');
-			fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1. / diff.lenSquared(), fe.potE,
+			forceScalar = calcLJForceOptim<computePotE, emvariant>(1. / distSquared, potE,
 				CalcSigma(sc0.sigmaHalf[sc0Index], sc1.sigmaHalf[sc1Index]),
 				CalcEpsilon(sc0.epsilonSqrt[sc0Index], sc1.epsilonSqrt[sc1Index]),
 				//precomputedOO.sigma, precomputedOO.epsilon,
@@ -145,24 +144,35 @@ namespace LJ {
 				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).z
 				//);
 				//PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).print('C');
-				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff);
+				forceScalar -= PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, distSquared);
 				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared());
+					potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSquared);
 			}
 		}
 
 
-		if constexpr (FORCE_CHECKS) {
-			if (fe.force.isNan() || isnan(fe.potE)) {
-				printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
-					diff.x, diff.y, diff.z,
-					sc0.epsilonSqrt[sc0Index], sc1.epsilonSqrt[sc1Index],
-					sc0.sigmaHalf[sc0Index], sc1.sigmaHalf[sc1Index],
-					sc0.charge[sc0Index], sc1.charge[sc1Index],
-					diff.len());
-			}
-		}
+		//if constexpr (FORCE_CHECKS) {
+		//	if (fe.force.isNan() || isnan(fe.potE)) {
+		//		printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
+		//			diff.x, diff.y, diff.z,
+		//			sc0.epsilonSqrt[sc0Index], sc1.epsilonSqrt[sc1Index],
+		//			sc0.sigmaHalf[sc0Index], sc1.sigmaHalf[sc1Index],
+		//			sc0.charge[sc0Index], sc1.charge[sc1Index],
+		//			diff.len());
+		//	}
+		//}
 
-		return fe;
+		return float2{ forceScalar, potE };
+		//const Float3 diff{
+		//	sc1.posX[sc1Index] - sc0.posX[sc0Index],
+		//	sc1.posY[sc1Index] - sc0.posY[sc0Index],
+		//	sc1.posZ[sc1Index] - sc0.posZ[sc0Index]
+		//};
+
+		//ForceEnergy fe{}; // on p0
+		//fe.force = diff * forceScalar;	// [J/mol/nm]
+		//fe.potE = potE;					// [J/mol]
+
+		//return fe;
 	}
 }

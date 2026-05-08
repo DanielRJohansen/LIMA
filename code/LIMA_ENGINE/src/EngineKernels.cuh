@@ -246,7 +246,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	__shared__ SuperCluster queryScs[2];
 	__shared__ ScScTask task;
 	__shared__ BoolMatrix16x16 nointeractionsMatrix[2];	
-	__shared__ ForceEnergy interactions[16][16];
+	__shared__ float2 interactions[16][16];
 	__shared__ ForceEnergy feAccOther[2][SuperCluster::maxParticles];
 	__shared__ ForceEnergy feAccSelf[SuperCluster::maxParticles];
 
@@ -292,20 +292,33 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		bool skip = task.scIds[indexInQueryScs+1] == -1;
 		skip |= useNointeractionMatrix && BoolMatrix16x16::Get(noInteractions, threadIdx.y);
 
-		float2 f2 = skip ? float2{0,0} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, queryScs[indexInQueryScs], threadIdx.y, -1, -1);
-		const Float3 diff{
-			queryScs[indexInQueryScs].posX[threadIdx.y] - sc0.posX[threadIdx.x],
-			queryScs[indexInQueryScs].posY[threadIdx.y] - sc0.posY[threadIdx.x],
-			queryScs[indexInQueryScs].posZ[threadIdx.y] - sc0.posZ[threadIdx.x]
-		};
-		interactions[threadIdx.y][threadIdx.x] = skip ? ForceEnergy{} : ForceEnergy{ diff * f2.x, f2.y };
-
-		//interactions[threadIdx.y][threadIdx.x] = skip ? ForceEnergy{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, queryScs[indexInQueryScs], threadIdx.y, -1, -1);
+		interactions[threadIdx.y][threadIdx.x] = skip ? float2{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, queryScs[indexInQueryScs], threadIdx.y, -1, -1);
 		__syncthreads();
 
 		// Fetch data and warp-reduce
-		ForceEnergy feSc0 = interactions[threadIdx.x][threadIdx.y];
-		ForceEnergy feSc1 = interactions[threadIdx.y][threadIdx.x].InvertForce();
+		float2 i0 = interactions[threadIdx.x][threadIdx.y];
+		ForceEnergy feSc0 = i0.x == 0 ? ForceEnergy{} :
+			ForceEnergy{
+				Float3{
+					(queryScs[indexInQueryScs].posX[threadIdx.x] - sc0.posX[threadIdx.y]) * i0.x,
+					(queryScs[indexInQueryScs].posY[threadIdx.x] - sc0.posY[threadIdx.y]) * i0.x,
+					(queryScs[indexInQueryScs].posZ[threadIdx.x] - sc0.posZ[threadIdx.y]) * i0.x
+				},
+				i0.y
+		};
+
+		float2 i1 = interactions[threadIdx.y][threadIdx.x];
+		ForceEnergy feSc1 = i1.x == 0 ? ForceEnergy{} :
+			ForceEnergy{
+				Float3{
+					(sc0.posX[threadIdx.x] - queryScs[indexInQueryScs].posX[threadIdx.y]) * i1.x,
+					(sc0.posY[threadIdx.x] - queryScs[indexInQueryScs].posY[threadIdx.y]) * i1.x,
+					(sc0.posZ[threadIdx.x] - queryScs[indexInQueryScs].posZ[threadIdx.y]) * i1.x
+				},
+				i1.y
+		};
+
+
 		#pragma unroll
 		for (int offset = SuperCluster::maxParticles/2; offset > 0; offset >>= 1)
 		{

@@ -396,7 +396,7 @@ std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, P
 
 // returns bondedParticles, bondedPclusters
 std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system) {
-	// First make a particle-2-pcluster map
+	// First make a particle-2-pcluster map	
 	std::vector<int> particleIdToPclusterIdMap(system.particles.size(), -1);
 	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
 		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
@@ -441,7 +441,7 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 	for (const auto& improperdihedralbond : system.improperdihedralbonds)
 		AddBond(improperdihedralbond.global_atom_indexes);
 
-	return { particleBondedToParticle, pclusterBondedToPcluster };
+	return { std::move(particleBondedToParticle), std::move(pclusterBondedToPcluster )};
 }
 
 

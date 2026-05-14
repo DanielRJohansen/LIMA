@@ -135,7 +135,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 					int c = 0;
 				assert(prevLine.length() >= min_chars);
 				atoms.emplace_back(parseGroLine(prevLine));
-				atoms.back().sourceLine = prevLine;
+				//atoms.back().sourceLine = prevLine;
 			}
 			prevLine = line;
 		}

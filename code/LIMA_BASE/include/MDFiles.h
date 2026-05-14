@@ -27,7 +27,7 @@ struct GroRecord {
 	int gro_id{};
 	Float3 position{};
 	std::optional<Float3> velocity{};
-	std::string sourceLine;
+	//std::string sourceLine;
 };
 
 struct GroFile {

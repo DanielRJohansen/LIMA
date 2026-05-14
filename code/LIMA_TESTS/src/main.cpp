@@ -195,7 +195,7 @@ int main() {
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
-		//RunAllUnitTests();
+		RunAllUnitTests();
 
 	}
 	catch (std::runtime_error ex) {

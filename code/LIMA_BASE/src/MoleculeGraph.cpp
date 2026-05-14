@@ -422,7 +422,6 @@ bool MoleculeGraph::GraphIsDisconnected() const {
 }
 
 std::vector<std::vector<int>> MoleculeGraph::GetListOfListsofConnectedNodeids() const {
-	TimeIt timer("GetListOfListsofConnectedNodeids", true);
 	std::vector<vector<int>> subGraphs;
 
 	const size_t largestNode = (--nodes.end())->first;

@@ -245,14 +245,8 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 	persistentClusters.reserve(system.particles.size()); // A bit too big..
 
 
-	
-	auto StoreCurrentCluster = [&](std::array<int, 4>& cluster, int& nextIndex) {
-		persistentClusters.push_back(cluster);
-		cluster = { -1,-1,-1,-1 };
-		nextIndex = 0;
-		};
 
-	auto CanAppendToCluster = [&systemGraph](int particleId, std::array<int, 4>& cluster, int nextIndex) {
+	auto CanAppendToCluster = [&systemGraph](int particleId, const std::array<int, 4>& cluster, int nextIndex) {
 		if (nextIndex == 0)
 			return true;
 
@@ -268,56 +262,93 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 
 	
 
+	std::vector<std::vector<std::array<int, 4>>> clustersPerCollection(particleidCollectionsOfMolecules.size());
 
-	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
+	const int threadCount = std::max(1u, std::thread::hardware_concurrency());
+	std::atomic<int> nextCollectionId = 0;
 
-		// Quick handling of small molecules (water/ions)
-		if (collection.size() <= 4) {
-			auto& cluster = persistentClusters.emplace_back(std::array{ -1, -1, -1, -1 });
-			std::ranges::copy(collection, cluster.begin());
-			continue;
-		}
-		
-
-
-		// Complex compression of larger molecules
-		std::array<int, 4> cluster{ -1,-1,-1,-1 };
+	auto Worker = [&]() {
+		std::vector<std::array<int, 4>> myClusters;
 		std::unordered_set<int> addedByLookahead;
-		addedByLookahead.clear();
-		int nextIndex = 0;
-		for (int i = 0; i < collection.size(); i++) {		
-			const int particleId = collection[i];
-			if (addedByLookahead.contains(particleId))
+
+		while (true) {
+			const int collectionId = nextCollectionId.fetch_add(1, std::memory_order_relaxed);
+			if (collectionId >= particleidCollectionsOfMolecules.size())
+				break;
+
+			const std::vector<int>& collection = particleidCollectionsOfMolecules[collectionId];
+
+			myClusters.clear();
+			addedByLookahead.clear();
+
+			// Quick handling of small molecules (water/ions)
+			if (collection.size() <= 4) {
+				auto& cluster = myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
+				std::ranges::copy(collection, cluster.begin());
+				clustersPerCollection[collectionId] = myClusters;
 				continue;
+			}
 
-			if (nextIndex == 0) {}
-			else {
-				const bool canAppend = CanAppendToCluster(particleId, cluster, nextIndex);
 
-				if (!canAppend) {
-					// Look ahead and add other particles if possible
-					const int lookaheadCnt = 6;
-					for (int lookaheadIndex = i + 1; (lookaheadIndex <= std::min(i + lookaheadCnt, (int)collection.size() - 2)) && nextIndex < 4; lookaheadIndex++) {
-						const int lookaheadId = collection[lookaheadIndex];
-						if (CanAppendToCluster(lookaheadId, cluster, nextIndex)) {
-							addedByLookahead.insert(lookaheadId);
-							cluster[nextIndex++] = lookaheadId;
+			// Complex compression of larger molecules
+			myClusters.reserve(collection.size() / 4 + 2);
+			myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
+
+			int nextIndex = 0;
+			for (int i = 0; i < collection.size(); i++) {
+				const int particleId = collection[i];
+				if (addedByLookahead.contains(particleId))
+					continue;
+
+				if (nextIndex == 0) {}
+				else {
+					const bool canAppend = CanAppendToCluster(particleId, myClusters.back(), nextIndex);
+
+					if (!canAppend) {
+						const int lookaheadCnt = 6;
+						for (int lookaheadIndex = i + 1; (lookaheadIndex <= std::min(i + lookaheadCnt, (int)collection.size() - 2)) && nextIndex < 4; lookaheadIndex++) {
+							const int lookaheadId = collection[lookaheadIndex];
+							if (CanAppendToCluster(lookaheadId, myClusters.back(), nextIndex)) {
+								addedByLookahead.insert(lookaheadId);
+								myClusters.back()[nextIndex++] = lookaheadId;
+							}
+
 						}
 
+						myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
+						nextIndex = 0;
 					}
+				}
 
-					StoreCurrentCluster(cluster, nextIndex);
+				myClusters.back()[nextIndex++] = particleId;
+
+				if (nextIndex == 4 && i != collection.size() - 1) {
+					myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
+					nextIndex = 0;
 				}
 			}
 
-			cluster[nextIndex++] = particleId;
-
-			// If full or finished, push
-			if (i == collection.size() - 1 || nextIndex == 4) {
-				StoreCurrentCluster(cluster, nextIndex);
-			}
+			clustersPerCollection[collectionId] = myClusters;
 		}
-	}
+		};
+
+	std::vector<std::thread> threads;
+	threads.reserve(threadCount);
+
+	for (int i = 0; i < threadCount; i++)
+		threads.emplace_back(Worker);
+
+	for (std::thread& thread : threads)
+		thread.join();
+
+	size_t totalClusterCount = 0;
+	for (const auto& clusters : clustersPerCollection)
+		totalClusterCount += clusters.size();
+
+	persistentClusters.reserve(persistentClusters.size() + totalClusterCount);
+
+	for (const auto& clusters : clustersPerCollection)
+		persistentClusters.insert(persistentClusters.end(), clusters.begin(), clusters.end());
 
 
 	// Compute cluster vacancy
@@ -677,36 +708,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap, pClusters.data());
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
 
-	//std::swap(bondGroups.front().singlebonds[0], bondGroups.front().singlebonds[2]);
-	//bondGroups.front().nSinglebonds = 2;
-	/*bondGroups.front().nAnglebonds = 0;
-	bondGroups.front().nDihedralbonds = 0;*/
-
-	//{
-	//	std::vector<Float3> bgPositions;
-	//	for (int pid = 0; pid < bondGroups.front().nParticles; pid++) {
-	//		auto pref = bondGroups.front().particles[pid];
-	//		bgPositions.push_back(pClusters[pref.pcid].pqd[pref.pid].position);
-	//	}
-
-	//	for (int i = 0; i < bondGroups.front().nSinglebonds; i++) {
-	//		int id0 = bondGroups.front().singlebonds[i].idInBondgroup[0];
-	//		int id1 = bondGroups.front().singlebonds[i].idInBondgroup[1];
-	//		Float3 p0 = bgPositions[id0];
-	//		Float3 p1 = bgPositions[id1];
-	//		float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(p0, p1, grofile.box_size, simparams.bc_select);
-	//		//printf("p0 %d %f %f %f p1 %d %f %f %f dist %f\n", id0, p0.x, p0.y, p0.z, id1, p1.x, p1.y, p1.z, dist);
-	//		int a = 0;
-
-	//		int id0Global = pClusterMetas[bondGroups.front().particles[id0].pcid].particleIdsGlobal[bondGroups.front().particles[id0].pid];
-	//		int id1Global = pClusterMetas[bondGroups.front().particles[id1].pcid].particleIdsGlobal[bondGroups.front().particles[id1].pid];
-	//		int id0Groid = grofile.atoms[superTopology.particles[id0Global].indexInGrofile].gro_id;
-	//		int id1Groid = grofile.atoms[superTopology.particles[id1Global].indexInGrofile].gro_id;
-
-	//		printf("id0Global %d id1Global %d id0Groid %d id1Groid %d dist %f\n", id0Global, id1Global, id0Groid, id1Groid, dist);
-	//	}
-	//}
-
 
 	for (int i = 0; i < particleToPclusterMap.size(); i++) {
 		const auto pcRef = particleToPclusterMap[i];
@@ -742,15 +743,15 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	return std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
-		superTopology,
+		std::move(superTopology),
 		systemGraph,
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
-		pClusters,
-		pClusterMetas,
-		particleBondedToParticle,
-		pclusterBondedToPcluster,
-		gpidToPcidAndPid,
+		std::move(pClusters),
+		std::move(pClusterMetas),
+		std::move(particleBondedToParticle),
+		std::move(pclusterBondedToPcluster),
+		std::move(gpidToPcidAndPid),
 		nParticles
 	);
 

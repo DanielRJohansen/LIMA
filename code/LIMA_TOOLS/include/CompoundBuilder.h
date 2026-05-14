@@ -115,8 +115,10 @@ namespace LIMA_MOLECULEBUILD {
 
 class BondGroupFactory : public BondGroup {
 
-	
+	int FindLocalParticleId(const int globalId) const;
 	void AddBondParticles(const ParticleToPclusterMap&, std::span<const int> globalIds);
+	template <int n>
+	std::array<uint8_t, n> GetLocalIds(const std::array<int, n>& globalIds) const;
 public:
 	BondGroupFactory() {}
 
@@ -131,7 +133,9 @@ public:
 	void AddBond(const ParticleToPclusterMap&, const ImproperDihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
 	
 	std::array<int, maxParticles> particleGlobalIds;
-	std::unordered_map<int, uint8_t> particleGlobalToLocalId;
+	//std::unordered_map<int, uint8_t> particleGlobalToLocalId;
+
+
 
 	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
 		const ParticleToPclusterMap&, const PersistentCluster* pClusters);

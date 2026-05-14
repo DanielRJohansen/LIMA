@@ -1,6 +1,7 @@
 #include "CompoundBuilder.h"
 #include "Forcefield.h"
 #include "MoleculeGraph.h"
+#include "TimeIt.h"
 
 #include <unordered_set>
 #include <format>
@@ -265,18 +266,25 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		};
 
 
+	
+
+
 	for (const std::vector<int>& collection : particleidCollectionsOfMolecules) {
 
-		const bool collectionIsCustomLimaMolecule = system.particles[collection[0]].topologyAtom.residue == "lxx";
-		std::unordered_set<int> addedByLookahead;
-		addedByLookahead.reserve(collection.size());
+		// Quick handling of small molecules (water/ions)
+		if (collection.size() <= 4) {
+			auto& cluster = persistentClusters.emplace_back(std::array{ -1, -1, -1, -1 });
+			std::ranges::copy(collection, cluster.begin());
+			continue;
+		}
+		
 
+
+		// Complex compression of larger molecules
 		std::array<int, 4> cluster{ -1,-1,-1,-1 };
+		std::unordered_set<int> addedByLookahead;
+		addedByLookahead.clear();
 		int nextIndex = 0;
-
-
-
-
 		for (int i = 0; i < collection.size(); i++) {		
 			const int particleId = collection[i];
 			if (addedByLookahead.contains(particleId))
@@ -288,7 +296,7 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 
 				if (!canAppend) {
 					// Look ahead and add other particles if possible
-					int lookaheadCnt = 6;
+					const int lookaheadCnt = 6;
 					for (int lookaheadIndex = i + 1; (lookaheadIndex <= std::min(i + lookaheadCnt, (int)collection.size() - 2)) && nextIndex < 4; lookaheadIndex++) {
 						const int lookaheadId = collection[lookaheadIndex];
 						if (CanAppendToCluster(lookaheadId, cluster, nextIndex)) {
@@ -304,13 +312,10 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 
 			cluster[nextIndex++] = particleId;
 
+			// If full or finished, push
 			if (i == collection.size() - 1 || nextIndex == 4) {
 				StoreCurrentCluster(cluster, nextIndex);
 			}
-		}
-
-		if (nextIndex != 0)	{
-			StoreCurrentCluster(cluster, nextIndex);
 		}
 	}
 
@@ -648,6 +653,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 )
 {
+	TimeIt timer("Build Molecules", true);
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
 
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);

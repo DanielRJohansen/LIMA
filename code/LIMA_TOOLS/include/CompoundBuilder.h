@@ -169,8 +169,6 @@ struct BoxImage {
 
 	std::shared_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
 
-	const std::vector<NonbondedInteractionParams> nonbondedInteractionParams;
-
 	const std::vector<BondGroup> bondgroups;
 
 	// Clusters

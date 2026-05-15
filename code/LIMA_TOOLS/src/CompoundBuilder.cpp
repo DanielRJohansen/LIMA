@@ -759,7 +759,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		forcefield.GetActiveLjParameters(),
 		std::move(superTopology),
 		systemGraph,
-		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
 		std::move(pcFactory.pClusters),
 		std::move(pcFactory.pClusterMetas),

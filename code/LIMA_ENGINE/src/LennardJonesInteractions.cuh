@@ -101,24 +101,24 @@ namespace LJ {
 
 	// Returns fe on p0, invert to get fe on p1
 	template<bool computePotE, bool emvariant>
-	__device__ ForceEnergy ComputeParticleParticleNB(const SuperCluster& sc0, int sc0Index, const SuperCluster& sc1, int sc1Index, int p0ParticleGlobalId, int p1ParticleGlobalId) 
+	__device__ ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId)
 	{
 		ForceEnergy fe{}; // on p0
 		
 		//const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPosition;
 		//const Float3 diff = sc1.positions[sc1Index] - sc0.positions[sc0Index];
 		const Float3 diff{
-			sc1.posX[sc1Index] - sc0.posX[sc0Index],
-			sc1.posY[sc1Index] - sc0.posY[sc0Index],
-			sc1.posZ[sc1Index] - sc0.posZ[sc0Index]
+			sc0.posX[sc0Index] - pdOwned.position.x,
+			sc0.posY[sc0Index] - pdOwned.position.y,
+			sc0.posZ[sc0Index] - pdOwned.position.z
 		};
 		
 		
-		if (sc0.epsilonSqrt[sc0Index] != -1.f && sc1.epsilonSqrt[sc1Index] != -1.f) {
+		if (sc0.epsilonSqrt[sc0Index] != -1.f && pdOwned.params.epsilonSqrt != -1.f) {
 			//diff.print('d');
 			fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1. / diff.lenSquared(), fe.potE,
-				CalcSigma(sc0.sigmaHalf[sc0Index], sc1.sigmaHalf[sc1Index]),
-				CalcEpsilon(sc0.epsilonSqrt[sc0Index], sc1.epsilonSqrt[sc1Index]),
+				CalcSigma(sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf),
+				CalcEpsilon(sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt),
 				//precomputedOO.sigma, precomputedOO.epsilon,
 				CalcLJOrigin::PP,
 				p0ParticleGlobalId, p1ParticleGlobalId
@@ -136,7 +136,7 @@ namespace LJ {
 		}
 
 		if constexpr (ENABLE_ES_SR) {
-			const float chargeProduct = sc0.charge[sc0Index] * sc1.charge[sc1Index];
+			const float chargeProduct = sc0.charge[sc0Index] * pdOwned.params.charge;
 			if (chargeProduct != 0.f) {
 				
 				//printf("PP charproduct %f force %f %f %f\n", chargeProduct,
@@ -156,9 +156,9 @@ namespace LJ {
 			if (fe.force.isNan() || isnan(fe.potE)) {
 				printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
 					diff.x, diff.y, diff.z,
-					sc0.epsilonSqrt[sc0Index], sc1.epsilonSqrt[sc1Index],
-					sc0.sigmaHalf[sc0Index], sc1.sigmaHalf[sc1Index],
-					sc0.charge[sc0Index], sc1.charge[sc1Index],
+					sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt,
+					sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf,
+					sc0.charge[sc0Index], pdOwned.params.charge,
 					diff.len());
 			}
 		}

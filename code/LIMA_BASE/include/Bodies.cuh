@@ -228,7 +228,7 @@ struct ForceField_NB {
 
 struct PData {
 	Float3 position;
-	NBParams params;
+	NBParams params{};
 	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
 
 	__host__ bool operator!=(const PData& other) const {
@@ -398,6 +398,12 @@ struct SuperCluster {
 		sigmaHalf[index] = pdata.params.sigmaHalf;
 		epsilonSqrt[index] = pdata.params.epsilonSqrt;
 		charge[index] = pdata.params.charge;
+	}
+	__device__ void LoadPdata(PData& pdata, int index) const {
+		pdata.position = Float3(posX[index], posY[index], posZ[index]);
+		pdata.params.sigmaHalf = sigmaHalf[index];
+		pdata.params.epsilonSqrt = epsilonSqrt[index];
+		pdata.params.charge = charge[index];
 	}
 	__device__ Float3 Position(int index) const {
 		return Float3(posX[index], posY[index], posZ[index]);

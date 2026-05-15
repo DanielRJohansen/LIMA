@@ -39,9 +39,9 @@ else()
 	#add_compile_options( $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>)
 	#add_compile_options(/std:c++latest /Zc:__cplusplus /W4)
     add_compile_options(
-    $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>
-    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
-)
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>
+    )
 endif()
 
 

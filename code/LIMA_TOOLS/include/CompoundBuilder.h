@@ -121,38 +121,51 @@ namespace LIMA_MOLECULEBUILD {
 
 
 
-class BondGroupFactory : public BondGroup {
+class BondGroupFactory {
 
-	int FindLocalParticleId(const int globalId) const;
-	void AddBondParticles(std::span<const int> globalIds, std::span<const uint8_t> localIds);
+	std::vector<BondGroup> bondgroups;
+	std::vector<std::array<int, BondGroup::maxParticles>> particleGlobalIds;
+
+	int FindLocalParticleId(int bgIndex, const int globalId) const;
+	void AddBondParticles(int bgIndex, std::span<const int> globalIds, std::span<const uint8_t> localIds);
 
 	template <int n>
 	std::array<uint8_t, n> GetLocalIds(const std::array<int, n>& globalIds) const;
+
+	
+	bool AddBond(int bondgroupIndex, const SingleBondFactory&);
+	bool AddBond(int bondgroupIndex, const PairBondFactory&);
+	bool AddBond(int bondgroupIndex, const AngleBondFactory&);
+	bool AddBond(int bondgroupIndex, const DihedralBondFactory&);
+	bool AddBond(int bondgroupIndex, const ImproperDihedralBondFactory&);
+
+	// Add bonds from a specific type to the bond group
+	void AddBondsFromMap(int bgIndex, const auto& bondMap, auto& availableBondIds, const auto& bonds) {
+		//TimeIt timer("addbondsfrommap");
+		for (const int bondId : bondMap) {
+			if (availableBondIds.contains(bondId)) {
+				if (AddBond(bgIndex, bonds[bondId]))
+					availableBondIds.erase(bondId);
+			}
+		}
+	};
+
 public:
-	BondGroupFactory() {}
+	BondGroupFactory(const LIMA_MOLECULEBUILD::SuperTopology& topology);
 	
 	// Returns <nNewParticles, localParticleIds>, where localParticleIds may not be assigned yet..
 	template <int n>
-	std::tuple<int, std::array<uint8_t, n>> TryAssignLocalIds(const std::array<int, n>& particleIds) const;
+	std::tuple<int, std::array<uint8_t, n>> TryAssignLocalIds(int bgIndex, const std::array<int, n>& particleIds) const;
 
 
-	bool AddBond(const SingleBondFactory&);
-	bool AddBond(const PairBondFactory&);
-	bool AddBond(const AngleBondFactory&);
-	bool AddBond(const DihedralBondFactory&);
-	bool AddBond(const ImproperDihedralBondFactory&);
-	
-	std::array<int, maxParticles> particleGlobalIds;
 
 	// Warning: unfinished bondgroups, run the function below before using
-	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&);
-	static void AddPclusterRefs(std::vector<BondGroupFactory>& bondgroups, const ParticleToPclusterMap& particleToPclusterMap);
+	
+	void AddPclusterRefs(const ParticleToPclusterMap& particleToPclusterMap);
+	std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(int nParticlesTotal) const;
+	std::vector<BondGroup> GetBondgroups();
 
-	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
-		const std::vector<BondGroupFactory>&, int nParticlesTotal);
-
-
-	static std::vector<BondGroup> FinishBondgroups(const std::vector<BondGroupFactory>&);
+	//static std::vector<BondGroup> FinishBondgroups(const std::vector<BondGroupFactory>&);
 };
 
 

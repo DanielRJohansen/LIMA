@@ -437,7 +437,6 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 }
 
 PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIMAForcefield& forcefield, std::shared_ptr<MoleculeGraph> systemGraph, Float3 boxSize) {
-	TimeIt timer("MakePersistentClusters");
 	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(system);
 	std::vector<std::array<int, 4>> clustersParticleIds = SplitIntoPersistentClusters(system, *systemGraph, particleBondedToParticlesLookup, boxSize);
 
@@ -697,28 +696,26 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 )
 {
-	TimeIt timer("Build Molecules", true);
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
 
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
 
-	std::future< std::vector<BondGroupFactory>> bondGroupsFuture = std::async(std::launch::async, [&]{ return BondGroupFactory::MakeBondgroups(superTopology); });
+	std::future<BondGroupFactory> bgfFuture = std::async(std::launch::async, [&]{ return BondGroupFactory(superTopology); });
 
 	// Make PersistenClusters
 	std::shared_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
 	std::future<PersistentClusterFactory> pcFactoryFuture = std::async(std::launch::async, [&]{ return MakePersistentClusters(superTopology, forcefield, systemGraph, grofile.box_size); });
 	
-	std::vector<BondGroupFactory> bondGroups = bondGroupsFuture.get();
-	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
+	BondGroupFactory bgFactory = bgfFuture.get();
+	const auto particleToBondgroupMap = bgFactory.MakeParticleToBondgroupsMap(superTopology.particles.size());
 
 
 	PersistentClusterFactory pcFactory = pcFactoryFuture.get();
-	BondGroupFactory::AddPclusterRefs(bondGroups, pcFactory.particleToPclusterMap);
+	bgFactory.AddPclusterRefs(pcFactory.particleToPclusterMap);
 
-	TimeIt timer3("Time After heavy work");
-
+	std::vector<BondGroup> bondGroups = bgFactory.GetBondgroups();
 	
 
 	for (int i = 0; i < pcFactory.particleToPclusterMap.size(); i++) {
@@ -727,7 +724,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 		for (const BondgroupRef& bgRef : bgRefs) {
 			pcFactory.pClusterMetas[pcRef.pcid].bondgroupReferences[pcRef.pid].Add(bgRef);
-			//compounds[pcRef.compoundId].AddBondgroupReference(pcRef.localIdInCompound, bgRef);
 		}
 	}
 
@@ -752,20 +748,12 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		}
 	}
 
-
-	TimeIt timer4("Copy");
-	GroFile grofileCopy = grofile;
-	timer4.stop();
-
-	timer3.stop();
-	TimeIt::PrintAllTaskStats();
-	TimeIt timer2("return", true);
 	return std::make_unique<BoxImage>(
-		grofileCopy,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
+		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
 		std::move(superTopology),
 		systemGraph,
-		BondGroupFactory::FinishBondgroups(bondGroups),
+		std::move(bondGroups),
 		std::move(pcFactory.pClusters),
 		std::move(pcFactory.pClusterMetas),
 		std::move(pcFactory.particleBondedToParticle),

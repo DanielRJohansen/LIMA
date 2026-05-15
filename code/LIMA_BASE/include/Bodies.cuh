@@ -163,11 +163,6 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 
 struct BondGroup {
 	struct ParticleRef {
-		// TODO: REmove these 2!!
-		//int compoundId = 0; // TODO: make uint16_t?
-		//int localIdInCompound = 0; // TODO: make uint16_t?
-
-
 		int pcid;
 		int pid; // local to pcluster
 	};

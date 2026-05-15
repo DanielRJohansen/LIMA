@@ -70,33 +70,41 @@ std::string TimeIt::ElapsedPretty() const {
 
 
 
+void TimeIt::PrintTaskStats(const std::string& taskName, const TaskRecord& record) {
+	double avgTime = static_cast<double>(record.totalTime.count()) / record.count;
+
+	// Convert to milliseconds or microseconds for readability
+	auto totalTimeInMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(record.totalTime);
+	auto totalTimeInMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(record.totalTime);
+
+	if (totalTimeInMilliseconds.count() > 0) {
+		// Use milliseconds if the total time is greater than 1 millisecond
+		std::cout << "Task \"" << taskName << "\" - Total Time: " << totalTimeInMilliseconds.count()
+			<< " milliseconds, Average Time: " << avgTime / 1e6 << " milliseconds.\n";
+	}
+	else {
+		// Otherwise, use microseconds
+		std::cout << "Task \"" << taskName << "\" - Total Time: " << totalTimeInMicroseconds.count()
+			<< " microseconds, Average Time: " << avgTime / 1e3 << " microseconds.\n";
+	}
+}
 
 void TimeIt::PrintTaskStats(const std::string& taskName) {
 	std::lock_guard<std::mutex> lock(mutex_);
 	if (taskRecords.find(taskName) != taskRecords.end()) {
-		auto& record = taskRecords[taskName];
-		double avgTime = static_cast<double>(record.totalTime.count()) / record.count;
-
-		// Convert to milliseconds or microseconds for readability
-		auto totalTimeInMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(record.totalTime);
-		auto totalTimeInMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(record.totalTime);
-
-		if (totalTimeInMilliseconds.count() > 0) {
-			// Use milliseconds if the total time is greater than 1 millisecond
-			std::cout << "Task \"" << taskName << "\" - Total Time: " << totalTimeInMilliseconds.count()
-				<< " milliseconds, Average Time: " << avgTime / 1e6 << " milliseconds.\n";
-		}
-		else {
-			// Otherwise, use microseconds
-			std::cout << "Task \"" << taskName << "\" - Total Time: " << totalTimeInMicroseconds.count()
-				<< " microseconds, Average Time: " << avgTime / 1e3 << " microseconds.\n";
-		}
+		PrintTaskStats(taskName, taskRecords[taskName]);
 	}
 	else {
 		std::cout << "No records found for task \"" << taskName << "\".\n";
 	}
 }
 
+void TimeIt::PrintAllTaskStats() {
+	std::lock_guard<std::mutex> lock(mutex_);
+	for (auto & [taskName, record] : taskRecords) {
+		PrintTaskStats(taskName, record);
+	}
+}
 
 void TimeIt::updateRecord() {
 	auto elapsedTime = end - start;

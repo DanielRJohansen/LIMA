@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <ranges>
 #include <unordered_map>
+#include "TimeIt.h"
 
 using namespace LimaMoleculeGraph;
 using std::string;
@@ -408,7 +409,6 @@ std::optional<int> MoleculeGraph::DistanceBetweenNodes(int id0, int id1, int max
 		if (it.Depth() > maxSearchDepth)
 			return std::nullopt;
 	}
-	int a = 0;
 	return std::nullopt;
 }
 
@@ -423,16 +423,19 @@ bool MoleculeGraph::GraphIsDisconnected() const {
 
 std::vector<std::vector<int>> MoleculeGraph::GetListOfListsofConnectedNodeids() const {
 	std::vector<vector<int>> subGraphs;
-	std::unordered_set<int> visited;
+
+	const size_t largestNode = (--nodes.end())->first;
+	std::vector<bool> visited(largestNode + 1, false);
+
 
 	for (int i = 0; i < nodes.size(); i++) {
-		if (visited.contains(i))
+		if (visited[i])
 			continue;
 		// Start a new empty molecule
 		subGraphs.push_back({});
 		// Fill said molecule
 		for (const auto& node : BFS(i)) {
-			visited.insert(node.atomid);
+			visited[node.atomid] = true;
 			subGraphs.back().emplace_back(node.atomid);
 		}
 	}

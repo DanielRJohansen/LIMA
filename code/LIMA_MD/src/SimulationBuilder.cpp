@@ -213,7 +213,7 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 						const int groId = grofile.atoms.empty() ? 1 : grofile.atoms.back().gro_id + 1;
 						const int resNr = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
 
-						grofile.atoms.emplace_back(GroRecord{ resNr, "XXX", atomtypeselect.atomtype.atomname, groId, position, std::nullopt });
+						grofile.atoms.emplace_back(GroRecord{ resNr, SmallString("XXX"), SmallString(atomtypeselect.atomtype.atomname), groId, position, std::nullopt });
 						topfile.AppendMolecule(atomtypeselect.atomtype.atomname);
 
 						relativeParticleIndex++;
@@ -432,9 +432,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 					Float3 h2Pos = Float3::rodriguesRotatation(_h2Pos, rotVector, rotAngle);
 
 					const Float3 blockOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
-					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, "SOL", "OW",  (atomCount + 1)% 100000, solvent.relPos + blockOffset, std::nullopt});
-					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, "SOL", "HW1", (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
-					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, "SOL", "HW2", (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
+					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("OW"),  (atomCount + 1)% 100000, solvent.relPos + blockOffset, std::nullopt});
+					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("HW1"), (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
+					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("HW2"), (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
 
 					nSolventsInBlock++;
 					atomCount += 3;

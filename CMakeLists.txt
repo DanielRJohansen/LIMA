@@ -10,6 +10,13 @@ set(CMAKE_CUDA_ARCHITECTURES "89")
 
 project(lima LANGUAGES CXX CUDA C)
 
+if (MSVC)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:preprocessor /Zc:__cplusplus")
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Zc:preprocessor")
+
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=/Zc:preprocessor -Xcompiler=/Zc:__cplusplus")
+endif()
+
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 23)

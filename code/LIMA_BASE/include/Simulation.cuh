@@ -157,7 +157,6 @@ public:
 	SimParams simParams;
 
 	ForceField_NB forcefield;
-	std::vector<NonbondedInteractionParams> forcefieldTest;
 
 
 	friend class Engine;

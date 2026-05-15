@@ -15,7 +15,7 @@
 #include "MDFiles.h"
 
 #include "Forcefield.h"
-
+#include <future>
 #include "tuple"
 #include <set>
 struct BoxImage;
@@ -71,6 +71,14 @@ struct ParticleToPclusterMapping {
 };
 using ParticleToPclusterMap = std::vector<ParticleToPclusterMapping>;
 
+struct PersistentClusterFactory {
+	std::vector<PersistentCluster> pClusters;
+	std::vector<PersistentClusterMeta> pClusterMetas;
+	ParticleToPclusterMap particleToPclusterMap;
+	std::vector<std::set<int>>particleBondedToParticle;
+	std::vector<std::set<int>> pclusterBondedToPcluster;
+};
+
 namespace LIMA_MOLECULEBUILD {
 	class SuperTopology {
 
@@ -116,32 +124,33 @@ namespace LIMA_MOLECULEBUILD {
 class BondGroupFactory : public BondGroup {
 
 	int FindLocalParticleId(const int globalId) const;
-	void AddBondParticles(const ParticleToPclusterMap&, std::span<const int> globalIds);
+	void AddBondParticles(std::span<const int> globalIds, std::span<const uint8_t> localIds);
+
 	template <int n>
 	std::array<uint8_t, n> GetLocalIds(const std::array<int, n>& globalIds) const;
 public:
 	BondGroupFactory() {}
+	
+	// Returns <nNewParticles, localParticleIds>, where localParticleIds may not be assigned yet..
+	template <int n>
+	std::tuple<int, std::array<uint8_t, n>> TryAssignLocalIds(const std::array<int, n>& particleIds) const;
 
-	bool HasSpaceForParticlesInBond(const std::span<const int>& particleIds) const;
 
-	//void AddParticles(const std::span<const uint32_t>& particleIds);
-
-	void AddBond(const ParticleToPclusterMap&, const SingleBondFactory&, const PersistentCluster* pClusters = nullptr);
-	void AddBond(const ParticleToPclusterMap&, const PairBondFactory&, const PersistentCluster* pClusters = nullptr);
-	void AddBond(const ParticleToPclusterMap&, const AngleBondFactory&, const PersistentCluster* pClusters = nullptr);
-	void AddBond(const ParticleToPclusterMap&, const DihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
-	void AddBond(const ParticleToPclusterMap&, const ImproperDihedralBondFactory&, const PersistentCluster* pClusters = nullptr);
+	bool AddBond(const SingleBondFactory&);
+	bool AddBond(const PairBondFactory&);
+	bool AddBond(const AngleBondFactory&);
+	bool AddBond(const DihedralBondFactory&);
+	bool AddBond(const ImproperDihedralBondFactory&);
 	
 	std::array<int, maxParticles> particleGlobalIds;
-	//std::unordered_map<int, uint8_t> particleGlobalToLocalId;
 
-
-
-	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&,
-		const ParticleToPclusterMap&, const PersistentCluster* pClusters);
+	// Warning: unfinished bondgroups, run the function below before using
+	static std::vector<BondGroupFactory> MakeBondgroups(const LIMA_MOLECULEBUILD::SuperTopology&);
+	static void AddPclusterRefs(std::vector<BondGroupFactory>& bondgroups, const ParticleToPclusterMap& particleToPclusterMap);
 
 	static std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(
 		const std::vector<BondGroupFactory>&, int nParticlesTotal);
+
 
 	static std::vector<BondGroup> FinishBondgroups(const std::vector<BondGroupFactory>&);
 };

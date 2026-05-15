@@ -48,7 +48,7 @@ void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile
 
 		// In rare cases, the bond parameters are directly in the topology file
 		if (bondTopol.parameters.has_value()) {
-			topology.emplace_back(BondtypeFactory{ globalIds, bondTopol.parameters.value() });
+			topology.emplace_back(BondtypeFactory{ globalIds, bondTopol.parameters.value() });			
 		}
 		else {
 			// A bond may be described as multiple bonds, so this is a vector
@@ -384,51 +384,6 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 
 	return persistentClusters;
 }
-std::tuple<std::vector<PersistentCluster>, std::vector<PersistentClusterMeta>, ParticleToPclusterMap> MakePersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system, LIMAForcefield& forcefield) {
-
-	std::vector<PersistentCluster> pClusters(clustersParticleIds.size());
-	std::vector<PersistentClusterMeta> pClusterMetas(clustersParticleIds.size());
-	ParticleToPclusterMap particleToPclusterMap(system.particles.size());
-
-	std::vector<std::string> solventResNames{ "SOL", "SPC", "SPCE", "TIP3", "TIP3P" };
-
-	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
-		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
-			const int pId = clustersParticleIds[pcId][pidRel];			
-
-			if (pId == -1) {
-				pClusters[pcId].pqd[pidRel] = PData{};
-				pClusterMetas[pcId].particleIdsGlobal[pidRel] = -1;
-				continue;
-			}
-			else {
-				const auto topAtom = system.particles[pId].topologyAtom;
-				const std::string& atomType = topAtom.type;
-				const Float3 pos = system.particles[pId].position;
-				NBParams nbParams = forcefield.GetLjParameters(atomType);
-				if (topAtom.charge.has_value())
-					nbParams.charge = topAtom.charge.value() * elementaryChargeToKiloCoulombPerMole;
-
-				pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
-				pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
-				if (topAtom.mass.has_value())
-					pClusterMetas[pcId].mass[pidRel] = topAtom.mass.value() / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
-				else if (forcefield.GetAtomtype(atomType).has_value())
-					pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
-				pClusterMetas[pcId].atomLetter[pidRel] = !topAtom.atomname.empty() ? topAtom.atomname[0] : ' ';
-				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
-
-				pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), topAtom.residue) != solventResNames.end();
-				pClusterMetas[pcId].nParticles++;
-
-				// Also set mapping
-				particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };
-			}
-		}
-	}
-
-	return { pClusters, pClusterMetas, particleToPclusterMap };
-}
 
 // returns bondedParticles, bondedPclusters
 std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system) {
@@ -477,8 +432,66 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 	for (const auto& improperdihedralbond : system.improperdihedralbonds)
 		AddBond(improperdihedralbond.global_atom_indexes);
 
-	return { std::move(particleBondedToParticle), std::move(pclusterBondedToPcluster )};
+
+	return { std::move(particleBondedToParticle), std::move(pclusterBondedToPcluster) };
 }
+
+PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIMAForcefield& forcefield, std::shared_ptr<MoleculeGraph> systemGraph, Float3 boxSize) {
+	TimeIt timer("MakePersistentClusters");
+	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(system);
+	std::vector<std::array<int, 4>> clustersParticleIds = SplitIntoPersistentClusters(system, *systemGraph, particleBondedToParticlesLookup, boxSize);
+
+
+
+	PersistentClusterFactory pcFactory{};
+	pcFactory.pClusters.resize(clustersParticleIds.size());
+	pcFactory.pClusterMetas.resize(clustersParticleIds.size());
+	pcFactory.particleToPclusterMap.resize(system.particles.size());
+
+	std::vector<std::string> solventResNames{ "SOL", "SPC", "SPCE", "TIP3", "TIP3P" };
+
+	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
+		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
+			const int pId = clustersParticleIds[pcId][pidRel];			
+
+			if (pId == -1) {
+				pcFactory.pClusters[pcId].pqd[pidRel] = PData{};
+				pcFactory.pClusterMetas[pcId].particleIdsGlobal[pidRel] = -1;
+				continue;
+			}
+			else {
+				const auto topAtom = system.particles[pId].topologyAtom;
+				const std::string& atomType = topAtom.type;
+				const Float3 pos = system.particles[pId].position;
+				NBParams nbParams = forcefield.GetLjParameters(atomType);
+				if (topAtom.charge.has_value())
+					nbParams.charge = topAtom.charge.value() * elementaryChargeToKiloCoulombPerMole;
+
+				pcFactory.pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
+				pcFactory.pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
+				if (topAtom.mass.has_value())
+					pcFactory.pClusterMetas[pcId].mass[pidRel] = topAtom.mass.value() / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
+				else if (forcefield.GetAtomtype(atomType).has_value())
+					pcFactory.pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
+				pcFactory.pClusterMetas[pcId].atomLetter[pidRel] = !topAtom.atomname.empty() ? topAtom.atomname[0] : ' ';
+				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
+
+				pcFactory.pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), topAtom.residue) != solventResNames.end();
+				pcFactory.pClusterMetas[pcId].nParticles++;
+
+				// Also set mapping
+				pcFactory.particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };
+			}
+		}
+	}
+
+	auto [particleBondedToParticle, pclusterBondedToPcluster] = GetBondedPersistentClusters(clustersParticleIds, system);
+	pcFactory.particleBondedToParticle = particleBondedToParticle;
+	pcFactory.pclusterBondedToPcluster = pclusterBondedToPcluster;
+	return pcFactory;
+}
+
+
 
 
 
@@ -691,30 +704,29 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
 
-
-
-	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(superTopology);
+	std::future< std::vector<BondGroupFactory>> bondGroupsFuture = std::async(std::launch::async, [&]{ return BondGroupFactory::MakeBondgroups(superTopology); });
 
 	// Make PersistenClusters
 	std::shared_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
-	std::vector<std::array<int,4>> pClustersParticleids = SplitIntoPersistentClusters(superTopology, *systemGraph, particleBondedToParticlesLookup, grofile.box_size);
-
-	auto [pClusters, pClusterMetas, particleToPclusterMap] = MakePersistentClusters(pClustersParticleids, superTopology, forcefield);
-
-	auto [particleBondedToParticle, pclusterBondedToPcluster] = GetBondedPersistentClusters(pClustersParticleids, superTopology);
-
-
-
-	std::vector<BondGroupFactory> bondGroups = BondGroupFactory::MakeBondgroups(superTopology, particleToPclusterMap, pClusters.data());
+	std::future<PersistentClusterFactory> pcFactoryFuture = std::async(std::launch::async, [&]{ return MakePersistentClusters(superTopology, forcefield, systemGraph, grofile.box_size); });
+	
+	std::vector<BondGroupFactory> bondGroups = bondGroupsFuture.get();
 	const auto particleToBondgroupMap = BondGroupFactory::MakeParticleToBondgroupsMap(bondGroups, superTopology.particles.size());
 
 
-	for (int i = 0; i < particleToPclusterMap.size(); i++) {
-		const auto pcRef = particleToPclusterMap[i];
+	PersistentClusterFactory pcFactory = pcFactoryFuture.get();
+	BondGroupFactory::AddPclusterRefs(bondGroups, pcFactory.particleToPclusterMap);
+
+	TimeIt timer3("Time After heavy work");
+
+	
+
+	for (int i = 0; i < pcFactory.particleToPclusterMap.size(); i++) {
+		const auto pcRef = pcFactory.particleToPclusterMap[i];
 		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
 
 		for (const BondgroupRef& bgRef : bgRefs) {
-			pClusterMetas[pcRef.pcid].bondgroupReferences[pcRef.pid].Add(bgRef);
+			pcFactory.pClusterMetas[pcRef.pcid].bondgroupReferences[pcRef.pid].Add(bgRef);
 			//compounds[pcRef.compoundId].AddBondgroupReference(pcRef.localIdInCompound, bgRef);
 		}
 	}
@@ -723,7 +735,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	int nParticles = 0;
 	//int nSolvents = 0;
-	for (const auto& pc : pClusterMetas) {
+	for (const auto& pc : pcFactory.pClusterMetas) {
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			if (pc.particleIdsGlobal[pid] == -1)
 				continue;
@@ -732,14 +744,16 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	}
 
 	std::vector<std::tuple<int, int>> gpidToPcidAndPid(nParticles);
-	for (int pcid = 0; pcid < pClusterMetas.size(); pcid++) {
+	for (int pcid = 0; pcid < pcFactory.pClusterMetas.size(); pcid++) {
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
-			int gpid = pClusterMetas[pcid].particleIdsGlobal[pid];
+			int gpid = pcFactory.pClusterMetas[pcid].particleIdsGlobal[pid];
 			if (gpid != -1)
 				gpidToPcidAndPid[gpid] = { pcid, pid };
 		}
 	}
-
+	timer3.stop();
+	TimeIt::PrintAllTaskStats();
+	TimeIt timer2("return", true);
 	return std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
@@ -747,10 +761,10 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		systemGraph,
 		forcefield.GetNonbondedInteractionParams(),
 		BondGroupFactory::FinishBondgroups(bondGroups),
-		std::move(pClusters),
-		std::move(pClusterMetas),
-		std::move(particleBondedToParticle),
-		std::move(pclusterBondedToPcluster),
+		std::move(pcFactory.pClusters),
+		std::move(pcFactory.pClusterMetas),
+		std::move(pcFactory.particleBondedToParticle),
+		std::move(pcFactory.pclusterBondedToPcluster),
 		std::move(gpidToPcidAndPid),
 		nParticles
 	);

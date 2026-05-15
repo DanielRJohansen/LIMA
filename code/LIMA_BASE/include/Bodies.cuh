@@ -172,7 +172,7 @@ struct BondGroup {
 		int pid; // local to pcluster
 	};
 
-	static const int maxParticles = 64;
+	static const int maxParticles = 64;	
 	static const int maxSinglebonds = 128;
 	static const int maxAnglebonds = 128 + 64;
 	static const int maxDihedralbonds = 256 + 64;
@@ -192,6 +192,8 @@ struct BondGroup {
 	int nAnglebonds = 0;
 	int nDihedralbonds = 0;
 	int nImproperdihedralbonds = 0;
+
+	static_assert(maxParticles < UINT8_MAX, "bonds can't index their particles!");
 };
 
 struct NBParams {

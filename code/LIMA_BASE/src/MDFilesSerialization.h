@@ -29,7 +29,7 @@ inline int64_t TimeSinceEpoch(std::filesystem::file_time_type fileTime) {
 }
 
 inline constexpr uint64_t CacheVersionNumberValue() {
-	const int cacheVersionNumber = 21;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	const int cacheVersionNumber = 23;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 }  
 
@@ -61,8 +61,10 @@ namespace cereal {
 	template <class Archive>
 	void serialize(Archive& archive, GroRecord& f) {
 		archive(f.residue_number);
-		archive(f.residueName);
-		archive(f.atomName);
+		for (char& c : f.residueName.Data())
+			archive(c);
+		for (char& c : f.atomName.Data())
+			archive(c);
 		archive(f.gro_id);
 		archive(f.position);
 		archive(f.velocity);

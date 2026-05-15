@@ -5,6 +5,7 @@
 #include "Bodies.cuh"
 #include "Filehandling.h"
 #include "Trajectory.h"
+#include "SmallString.h"
 
 #include <optional>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include <ranges>
 #include <map>
 
+
 const bool ENABLE_FILE_CACHING = true;
 
 
@@ -22,8 +24,8 @@ namespace fs = std::filesystem;
 
 struct GroRecord {
 	int residue_number{};
-	std::string residueName{};
-	std::string atomName{};
+	SmallString residueName{};
+	SmallString atomName{};
 	int gro_id{};
 	Float3 position{};
 	std::optional<Float3> velocity{};

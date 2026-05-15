@@ -474,7 +474,7 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIM
 				else if (forcefield.GetAtomtype(atomType).has_value())
 					pcFactory.pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
 				pcFactory.pClusterMetas[pcId].atomLetter[pidRel] = !topAtom.atomname.empty() ? topAtom.atomname[0] : ' ';
-				assert(pClusterMetas[pcId].mass[pidRel] > 0.f );
+				assert(pcFactory.pClusterMetas[pcId].mass[pidRel] > 0.f );
 
 				pcFactory.pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), topAtom.residue) != solventResNames.end();
 				pcFactory.pClusterMetas[pcId].nParticles++;
@@ -751,11 +751,17 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 				gpidToPcidAndPid[gpid] = { pcid, pid };
 		}
 	}
+
+
+	TimeIt timer4("Copy");
+	GroFile grofileCopy = grofile;
+	timer4.stop();
+
 	timer3.stop();
 	TimeIt::PrintAllTaskStats();
 	TimeIt timer2("return", true);
 	return std::make_unique<BoxImage>(
-		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
+		grofileCopy,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		forcefield.GetActiveLjParameters(),
 		std::move(superTopology),
 		systemGraph,

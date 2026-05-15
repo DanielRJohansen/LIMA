@@ -562,8 +562,8 @@ __global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const s
 		const int row = threadIdx.x;
 		uint16_t rowData = 0;
 		for (int col = 0; col < 16; ++col) {
-			int pidSelf = superClusterMetas[scId].globalParticleIds[row];
-			int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[col];
+			int pidSelf = superClusterMetas[scId].globalParticleIds[col];
+			int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
 			if (pidSelf == -1 || pidQuery == -1)
 				continue;
 

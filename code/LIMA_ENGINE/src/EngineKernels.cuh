@@ -237,30 +237,27 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 
-// blockdim=16,2,2
+// blockdim=16,2,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
+__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, 
+	const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ SuperCluster sc0;
 	__shared__ SuperCluster sc1[2];
 	__shared__ ScScTask task;
 	__shared__ BoolMatrix16x16 nointeractionsMatrix[2];
-	__shared__ ForceEnergy forceEnergiesShared[2][SuperCluster::maxParticles];
+	__shared__ ForceEnergy forceenergySelfShared[SuperCluster::maxParticles];
 
 	if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
 		task = tasks[blockIdx.x];
 	}
 	__syncthreads();
 
-	const int interactionIndex = threadIdx.z;
-	const int sc1Index = interactionIndex + 1;
-	const int queryResultIndex = interactionIndex + 1;
-	const int sc0ResultIndex = task.resultIndices[0] + interactionIndex;
-	const bool validInteraction = task.scIds[sc1Index] != -1;
-	const bool hasNoInteractionMatrix = validInteraction && task.nointeractionMatrixIndex[interactionIndex] != -1;
+	const bool validInteraction = task.scIds[threadIdx.y+1] != -1;
+	const bool hasNoInteractionMatrix = validInteraction && task.nointeractionMatrixIndex[threadIdx.y] != -1;
 
-	if (threadIdx.x == 0 && threadIdx.y == 0 && hasNoInteractionMatrix) {
-		nointeractionsMatrix[interactionIndex] = nointeractionMatrices[task.nointeractionMatrixIndex[interactionIndex]];
+	if (threadIdx.x == 0 && hasNoInteractionMatrix) {
+		nointeractionsMatrix[threadIdx.y] = nointeractionMatrices[task.nointeractionMatrixIndex[threadIdx.y]];
 	}
 
 
@@ -271,64 +268,49 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		cooperative_groups::memcpy_async(tb, &sc1[1], &superClusters[task.scIds[2]], sizeof(SuperCluster));
 	}
 	cooperative_groups::wait(tb);
-
-
-	if (validInteraction && threadIdx.y == 0) {
-		BoundaryCondition::ApplyHyperpos(Float3{ sc0.posX[0], sc0.posY[0], sc0.posZ[0] }, sc1[interactionIndex].posX[threadIdx.x], sc1[interactionIndex].posY[threadIdx.x], sc1[interactionIndex].posZ[threadIdx.x], boxSize, boxSizeInv);
+	
+	if (validInteraction) {
+		BoundaryCondition::ApplyHyperpos(Float3{ sc0.posX[0], sc0.posY[0], sc0.posZ[0] }, sc1[threadIdx.y].posX[threadIdx.x], sc1[threadIdx.y].posY[threadIdx.x], sc1[threadIdx.y].posZ[threadIdx.x], boxSize, boxSizeInv);
 	}
 	__syncthreads();
 
-	uint16_t noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix[interactionIndex].GetRow(threadIdx.x) : 0;
+	uint16_t noInteractions = hasNoInteractionMatrix ? nointeractionsMatrix[threadIdx.y].GetRow(threadIdx.x) : 0;
 	ForceEnergy myForceEnergy{};
 
-	const int queryStart = (SuperCluster::maxParticles / 2) * threadIdx.y;
-	for (int i = 0; i < SuperCluster::maxParticles / 2; i++) {
-		const int queryIndexInSc = queryStart + i;
-
+	// Each thread is responsible of 1 particle in query
+	for (int indexInSelf = 0; indexInSelf < SuperCluster::maxParticles; indexInSelf++) {
 		ForceEnergy forceEnergy{};
 		bool skip = !validInteraction;
-		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, queryIndexInSc)) {
+		if (hasNoInteractionMatrix && BoolMatrix16x16::Get(noInteractions, indexInSelf)) {
 			skip = true;
 		}
 		if (!skip) {
-			forceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc0, threadIdx.x, sc1[interactionIndex], queryIndexInSc, -1, -1);
+			forceEnergy += LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(sc1[threadIdx.y], threadIdx.x, sc0, indexInSelf, -1, -1);
 		}
 
 		myForceEnergy += forceEnergy;
+
 		forceEnergy = forceEnergy.InvertForce();
-
-		// reduce 2x16 lanes
+		// reduce 32 lanes
 #pragma unroll
-		for (int offset = SuperCluster::maxParticles / 2; offset > 0; offset >>= 1)
+		for (int offset = SuperCluster::maxParticles; offset > 0; offset >>= 1)
 		{
-			forceEnergy.force.x += __shfl_down_sync(0xffffffff, forceEnergy.force.x, offset, 16);
-			forceEnergy.force.y += __shfl_down_sync(0xffffffff, forceEnergy.force.y, offset, 16);
-			forceEnergy.force.z += __shfl_down_sync(0xffffffff, forceEnergy.force.z, offset, 16);
-			forceEnergy.potE += __shfl_down_sync(0xffffffff, forceEnergy.potE, offset, 16);
+			forceEnergy.force.x += __shfl_down_sync(0xffffffff, forceEnergy.force.x, offset, 32);
+			forceEnergy.force.y += __shfl_down_sync(0xffffffff, forceEnergy.force.y, offset, 32);
+			forceEnergy.force.z += __shfl_down_sync(0xffffffff, forceEnergy.force.z, offset, 32);
+			forceEnergy.potE += __shfl_down_sync(0xffffffff, forceEnergy.potE, offset, 32);
 		}
 
-		if (threadIdx.x == 0) {
-			forceEnergiesShared[interactionIndex][queryIndexInSc] = forceEnergy;
+		if (threadIdx.x == 0 && threadIdx.y == 0) {
+			forceenergySelfShared[indexInSelf] = forceEnergy;
 		}
 	}
 	__syncthreads();
 
-	if (threadIdx.y == 0) {
-		if (validInteraction && task.scIds[0] != task.scIds[sc1Index]) {
-			results[task.resultIndices[queryResultIndex]].fe[threadIdx.x] = forceEnergiesShared[interactionIndex][threadIdx.x];
-		}
+	cooperative_groups::memcpy_async(tb, results[task.resultIndices[0]].fe, &forceenergySelfShared[0], sizeof(ForceEnergy) * SuperCluster::maxParticles);
 
-		forceEnergiesShared[interactionIndex][threadIdx.x] = myForceEnergy;
-	}
-	__syncthreads();
-
-	if (threadIdx.y == 1) {
-		forceEnergiesShared[interactionIndex][threadIdx.x] = validInteraction ? forceEnergiesShared[interactionIndex][threadIdx.x] + myForceEnergy : ForceEnergy{};
-	}
-	__syncthreads();
-
-	if (threadIdx.x < SuperCluster::maxParticles && threadIdx.y == 0 && threadIdx.z == 0) {
-		results[task.resultIndices[0]].fe[threadIdx.x] = forceEnergiesShared[0][threadIdx.x] + forceEnergiesShared[1][threadIdx.x];
+	if (validInteraction && task.scIds[threadIdx.y+1] != task.scIds[0]) {
+		results[task.resultIndices[threadIdx.y+1]].fe[threadIdx.x] = myForceEnergy;
 	}
 }
 

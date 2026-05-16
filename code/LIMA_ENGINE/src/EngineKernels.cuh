@@ -237,27 +237,27 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 
-// blockdim=16,2,1
+// blockdim=16,4,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const BoolMatrix16x16* const nointeractionMatrices, 
 	const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ SuperCluster sc0;
 	__shared__ ScScTask task;
-	__shared__ BoolMatrix16x16 nointeractionsMatrix[2];
-	__shared__ ForceEnergy forceenergySelfShared[SuperCluster::maxParticles];
+	__shared__ BoolMatrix16x16 nointeractionsMatrix[4];
+	__shared__ ForceEnergy forceenergySelfShared[SuperCluster::maxParticles*2];
 
 	if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
 		task = tasks[blockIdx.x];
 	}
 	__syncthreads();
 
-	const bool validInteraction = task.scIds[threadIdx.y+1] != -1;
+	const bool validInteraction = task.queryScIds[threadIdx.y] != -1;
 	const bool hasNoInteractionMatrix = validInteraction && task.nointeractionMatrixIndex[threadIdx.y] != -1;
 
 	PData pdataSelf{};
 	if (validInteraction) {
-		superClusters[task.scIds[threadIdx.y+1]].LoadPdata(pdataSelf, threadIdx.x);
+		superClusters[task.queryScIds[threadIdx.y]].LoadPdata(pdataSelf, threadIdx.x);
 	}
 
 	if (threadIdx.x == 0 && hasNoInteractionMatrix) {
@@ -266,7 +266,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 
 	auto tb = cooperative_groups::this_thread_block();
-	cooperative_groups::memcpy_async(tb, &sc0, &superClusters[task.scIds[0]], sizeof(SuperCluster));
+	cooperative_groups::memcpy_async(tb, &sc0, &superClusters[task.sc0Id], sizeof(SuperCluster));
 	cooperative_groups::wait(tb);
 	
 	if (validInteraction) {
@@ -301,16 +301,20 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 			forceEnergy.potE += __shfl_down_sync(0xffffffff, forceEnergy.potE, offset, 32);
 		}
 
-		if (threadIdx.x == 0 && threadIdx.y == 0) {
-			forceenergySelfShared[indexInSc0] = forceEnergy;
+		if (threadIdx.x == 0 && threadIdx.y % 2 == 0) {
+			forceenergySelfShared[indexInSc0 + SuperCluster::maxParticles * (threadIdx.y/2)] = forceEnergy;
 		}
 	}
 	__syncthreads();
 
-	cooperative_groups::memcpy_async(tb, results[task.resultIndices[0]].fe, &forceenergySelfShared[0], sizeof(ForceEnergy) * SuperCluster::maxParticles);
+	if (threadIdx.y == 0) {
+		forceenergySelfShared[threadIdx.x] += forceenergySelfShared[threadIdx.x + SuperCluster::maxParticles];
+	}
+	__syncthreads();
+	cooperative_groups::memcpy_async(tb, results[task.sc0ResultIndex].fe, &forceenergySelfShared[0], sizeof(ForceEnergy) * SuperCluster::maxParticles);
 
-	if (validInteraction && task.scIds[threadIdx.y+1] != task.scIds[0]) {
-		results[task.resultIndices[threadIdx.y+1]].fe[threadIdx.x] = myForceEnergy;
+	if (validInteraction && task.queryScIds[threadIdx.y] != task.sc0Id) {
+		results[task.queryResultIndices[threadIdx.y]].fe[threadIdx.x] = myForceEnergy;
 	}
 }
 

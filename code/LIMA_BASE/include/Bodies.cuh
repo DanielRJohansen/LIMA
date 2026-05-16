@@ -196,7 +196,7 @@ struct NBParams {
 	float epsilonSqrt = -1;		// [J/mol/nm]
 	float charge = 0;		// [kC/mol]
 
-	__host__ bool operator==(const NBParams& other) const = default;
+	//__host__ bool operator==(const NBParams& other) const = default;
 };
 
 // Precomputed values for pairs of atomtypes
@@ -231,9 +231,9 @@ struct PData {
 	NBParams params{};
 	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
 
-	__host__ bool operator!=(const PData& other) const {
+	/*__host__ bool operator!=(const PData& other) const {
 		return position != other.position || params != other.params;
-	}
+	}*/
 };
 
 struct BondgroupRefManager {
@@ -251,13 +251,13 @@ struct PersistentCluster {
 	static const int maxParticles = 4;
 	PData pqd[maxParticles];
 
-	__host__ bool operator!=(const PersistentCluster& other) const {
-		for (int i = 0; i < maxParticles; i++) {
-			if (pqd[i] != other.pqd[i])
-				return true;
-		}
-		return false;
-	}
+	//__host__ bool operator!=(const PersistentCluster& other) const {
+	//	for (int i = 0; i < maxParticles; i++) {
+	//		if (pqd[i] != other.pqd[i])
+	//			return true;
+	//	}
+	//	return false;
+	//}
 };
 struct PersistentClusterMeta {
 	int particleIdsGlobal[PersistentCluster::maxParticles]={ -1, -1, -1, -1 };
@@ -463,10 +463,13 @@ struct SCResult {
 };
 
 struct ScScTask {
-	// pair0: sc0-sc1 | pair1: sc0-sc2
-	int scIds[3]; // first 2 guaranteed to be valid, third may be -1 meaning noSC
-	int resultIndices[3];
-	int nointeractionMatrixIndex[2];
+	static constexpr int nInteractions = 4;
+
+	int sc0Id;
+	int queryScIds[nInteractions];
+	int sc0ResultIndex;
+	int queryResultIndices[nInteractions];
+	int nointeractionMatrixIndex[nInteractions];
 };
 
 

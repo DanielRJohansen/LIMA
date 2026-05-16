@@ -370,7 +370,7 @@ void Engine::_deviceMaster() {
 
 	if (nTasks > 0) {
 		const bool useNointeractionMatrix = true;
-		dim3 blockDim(SuperCluster::maxParticles, 2, 1);
+		dim3 blockDim(SuperCluster::maxParticles, 4, 1);
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, useNointeractionMatrix>
 			<<<nTasks, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step, boxSize, boxSize.Inv());

@@ -12,7 +12,9 @@ using namespace LimaMoleculeGraph;
 using std::string;
 using std::vector;
 
-
+// TODO: I belive this class is majorly wrong for all sets that arent contiguous from 0!!
+// nodeid and atomid is used interchangeedly.
+// also the pointer circus is a mess. Please refactor
 
 MoleculeTree::MoleculeTree(int rootId) {
 	tree.insert({ rootId, {} });
@@ -66,8 +68,6 @@ MoleculeGraph::MoleculeGraph(const TopologyFile::Moleculetype& molecule, std::op
 	}
 	nodes.insert(temp_nodes.begin(), temp_nodes.end());
 	
-	root = &nodes.at(temp_nodes[0].second.atomid);
-
 	for (const auto& bond : molecule.singlebonds) {
 		connectNodes(bond.ids[0], bond.ids[1]);
 	}
@@ -81,8 +81,7 @@ MoleculeGraph::MoleculeGraph(const std::vector<std::pair<int, std::string>>& ato
 	}
 
 	nodes.insert(temp_nodes.begin(), temp_nodes.end());
-	root = temp_nodes.empty() ? nullptr : & nodes.at(temp_nodes[0].first);
-	
+
 	for (const auto& edge : edges) {
 		connectNodes(edge[0], edge[1]);
 	}
@@ -91,11 +90,11 @@ MoleculeGraph::MoleculeGraph(const std::vector<std::pair<int, std::string>>& ato
 
 MoleculeTree MoleculeGraph::ConstructMoleculeTree() const {
 	std::unordered_set<int> visited;
-	MoleculeTree moleculeTree(root->atomid);
+	MoleculeTree moleculeTree(nodes.begin()->second.atomid);
 
 	std::queue<const Node*> nodeQueue;
-	nodeQueue.push(root);
-	visited.insert(root->atomid);
+	nodeQueue.push(&nodes.begin()->second);
+	visited.insert(nodes.begin()->second.atomid);
 	
 
 	while (!nodeQueue.empty()) {
@@ -119,7 +118,7 @@ std::unordered_map<int, int> MoleculeGraph::ComputeNumDownstreamNodes(const Mole
 {
 
 	std::stack<const Node*> processStack; // The order in which to actually process NumDownstreamNodes
-	for (const Node& node : BFS(root->atomid)) {
+	for (const Node& node : BFS(nodes.begin()->second.atomid)) {
 		processStack.push(&node);
 	}
 

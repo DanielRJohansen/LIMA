@@ -163,13 +163,9 @@ namespace LimaMoleculeGraph {
 
 		std::unordered_map<int, int> ComputeNumDownstreamNodes(const MoleculeTree& moleculeTree) const;
 
-	/*	void addNode(int node_id, const std::string& atomname) {
-			nodes.emplace(node_id, Node(node_id, atomname) );
-		}*/
 		void connectNodes(int left_id, int right_id);
 
 		std::map<int, Node> nodes;
-		Node* root = nullptr;
 
 		auto BFS(int start_node_id) const {
 			return BFSRange(&nodes.at(start_node_id));

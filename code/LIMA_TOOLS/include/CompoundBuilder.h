@@ -175,9 +175,6 @@ struct BoxImage {
 
 	GroFile grofile;
 
-	const ForceField_NB forcefield;
-
-
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 
 	std::shared_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;

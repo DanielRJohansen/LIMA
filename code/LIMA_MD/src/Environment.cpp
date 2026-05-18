@@ -65,7 +65,6 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		);
 
 	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
-	simulation->forcefield = boximage->forcefield;
 
 	if (display) {
 		display->Render(std::make_unique<Rendering::SimulationTask>(
@@ -78,8 +77,6 @@ void Environment::CreateSimulation(Simulation& simulation_src, const SimParams p
 
 	simulation.reset(new Simulation(params));
 	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box), simulation_src.getStep());
-
-	simulation->forcefield = simulation_src.forcefield;
 }
 
 

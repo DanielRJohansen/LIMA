@@ -156,7 +156,6 @@ public:
 	std::unique_ptr<Box> box = nullptr;
 	SimParams simParams;
 
-	ForceField_NB forcefield;
 
 
 	friend class Engine;

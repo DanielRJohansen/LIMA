@@ -750,7 +750,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	return std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
-		forcefield.GetActiveLjParameters(),
 		std::move(superTopology),
 		systemGraph,
 		std::move(bondGroups),

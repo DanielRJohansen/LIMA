@@ -88,7 +88,6 @@ Engine::~Engine() {
 
 
 void Engine::setDeviceConstantMemory() {
-	cudaMemcpyToSymbol(DeviceConstants::forcefield, &simulation->forcefield, sizeof(ForceField_NB), 0, cudaMemcpyHostToDevice);	// So there should not be a & before the device __constant__
 
 
 	BoxSize boxSize_host;

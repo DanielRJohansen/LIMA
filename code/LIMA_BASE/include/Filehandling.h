@@ -83,7 +83,7 @@ namespace FileUtils {
 	// Returns true if the caller should move on to the next line
 	bool ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines);
 
-	std::optional<std::string> ChechlineForDefine(const std::string& line);
+	std::optional<std::string> ChechlineForDefine(std::string_view line);
 
 	std::vector<Float3> ReadCsvAsVectorOfFloat3(const fs::path& path);
 

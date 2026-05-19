@@ -103,7 +103,7 @@ int main() {
 		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
 		//doImproperDihedralBenchmark(envmode);
 		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
-		TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6);
+		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6);
 		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
 		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
 		//doPhenylalanineBenchmark(envmode);
@@ -156,8 +156,9 @@ int main() {
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
-		Benchmarks::STMV();
-		Benchmarks::Psome(envmode);
+		Benchmarks::PrepareSimulation_stmv(envmode);
+		//Benchmarks::STMV();
+		//Benchmarks::Psome(envmode);
 		
 
 		//Benchmarks::PrepareSimulation_stmv(envmode);

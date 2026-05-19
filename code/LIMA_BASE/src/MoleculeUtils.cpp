@@ -40,13 +40,14 @@ void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, con
 		const Float3 nodePostion = grofile.atoms[node.atomid].position;
 
 		for (const auto& neighbor : node.getNeighbors()) {
-			if (visited.contains(neighbor->atomid))
+			const int atomId = graph.nodes[neighbor].atomid;
+			if (visited.contains(atomId))
 				continue;
 
-			Float3& neighborPosition = grofile.atoms[neighbor->atomid].position;
+			Float3& neighborPosition = grofile.atoms[atomId].position;
 			BoundaryConditionPublic::applyHyperposNM(nodePostion, neighborPosition, grofile.box_size, BoundaryConditionSelect::PBC);
 
-			visited.insert(neighbor->atomid);
+			visited.insert(atomId);
 		}
 
 		visited.insert(node.atomid);

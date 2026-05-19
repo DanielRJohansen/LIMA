@@ -552,7 +552,6 @@ namespace ElectrostaticsTests {
 		//topfile.GetSystemMutable().molecules.resize(3);
 
 		env.CreateSimulation(grofile, topfile, params);
-		env.getSimPtr()->forcefield.particle_parameters[0].epsilonSqrt = 0.f; // There is only 1 particle type
 		env.run();
 
 

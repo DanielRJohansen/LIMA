@@ -1,23 +1,27 @@
 #pragma once
 
-#include <vector>
-#include <string>
-#include <stdexcept>
-#include <unordered_map>
+#include <array>
+#include <filesystem>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <optional>
+#include <queue>
+#include <ranges>
 #include <set>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "Filehandling.h"
-#include <filesystem>
 #include "MDFiles.h"
 
-#include <ranges>
-#include <iterator>
-#include <unordered_set>
-#include <queue>
-#include <optional>
-#include <type_traits>
-#include <map>
-#include <functional>
+#include <cereal/access.hpp>
+#include <cereal/types/array.hpp>
+#include <cereal/types/vector.hpp>
 
 namespace LimaMoleculeGraph {
 	namespace fs = std::filesystem;
@@ -31,7 +35,6 @@ namespace LimaMoleculeGraph {
 			tree.at(parentId).emplace_back(childId);
 		}
 
-		// Get immediate children
 		const std::vector<int>& GetChildIds(int parentId) const {
 			return tree.at(parentId);
 		}
@@ -40,162 +43,162 @@ namespace LimaMoleculeGraph {
 	};
 
 
-
 	struct MoleculeGraph {
 		struct Node {
 			Node() {}
-			Node(int id, const std::string& atomname) : atomid(id), atomname(atomname) { 
-				if (atomname == "") throw std::runtime_error("Cannot add noname atom to graph"); 
+			Node(int id, const std::string& atomname) : atomid(id), atomname(atomname) {
+				if (atomname == "") throw std::runtime_error("Cannot add noname atom to graph");
 			};
-			void addNeighbor(Node* neighbor);
+
+			void addNeighbor(int neighborId, bool neighborIsHydrogen);
 
 			bool isHydrogen() const { return atomname[0] == 'H'; }
-			int getNNeighbors() const { return neighbors.size(); }
+			int getNNeighbors() const { return nNeighbors; }
 			int getNNonhydrogenNeighbors() const { return n_nonhydrogen_neighbors; }
-			const std::vector<Node*> getNeighbors() const { return neighbors; }
+			const std::span<const int> getNeighbors() const { return std::span( neighborIds.data(), nNeighbors ); }
 
 			bool isConnected(int id) const {
-				for (const auto neighbor : neighbors) {
-					if (neighbor->atomid == id)
+				for (const int neighborId : getNeighbors()) {
+					if (neighborId == id)
 						return true;
 				}
 				return false;
 			}
 
-			int atomid{-1};
+			int atomid{ -1 };
 
 		private:
-			std::string atomname{};
+			SmallString atomname{};
+			
+			static const int maxNeighbors = 8; // for easier serialization
+			std::array<int, maxNeighbors> neighborIds;
+			int nNeighbors;
 			int n_nonhydrogen_neighbors{};
-			std::vector<Node*> neighbors;
+
+
+			// Serialization
+			friend class cereal::access;
+			template <class Archive>
+			void serialize(Archive& archive) {
+				archive(
+					atomid,
+					atomname,
+					neighborIds,
+					nNeighbors,
+					n_nonhydrogen_neighbors
+				);
+			}
+
 		};
 
 
-		template<typename NodePtr>
-		class BFSRange : public std::ranges::view_interface<BFSRange<NodePtr>> {
-			using NodeType = std::remove_pointer_t<NodePtr>;
+		template<typename GraphType>
+		class BFSRange : public std::ranges::view_interface<BFSRange<GraphType>> {
+			using GraphNoRef = std::remove_reference_t<GraphType>;
+			using NodeType = std::conditional_t<std::is_const_v<GraphNoRef>, const Node, Node>;
+
 		public:
-			explicit BFSRange(NodePtr start_node) {
-				if (start_node) {
-					node_queue.push({start_node, 0});
-					visited.insert(start_node->atomid);
+			BFSRange() = default;
+
+			BFSRange(GraphType* graph, int startNodeId) : graph(graph) {
+				if (graph && graph->nodes.contains(startNodeId)) {
+					node_queue.push({ startNodeId, 0 });
+					visited.insert(startNodeId);
 				}
 			}
 
-			// Iterator class for BFS traversal
 			class Iterator {
 			public:
 				Iterator() = default;
 
-				// Constructor that initializes from a BFSRange instance
 				explicit Iterator(BFSRange* range) : range(range) {
-					std::tie(current, depth) = range->next_node();
+					current = range->next_node();
 				}
 
-				NodeType& operator*() const { return *current; }
-				int Depth() const { return depth; }
+				NodeType& operator*() const {
+					return range->graph->nodes.at(current->first);
+				}
+
+				int Depth() const {
+					return current->second;
+				}
 
 				Iterator& operator++() {
-					std::tie(current, depth) = range->next_node();
+					current = range->next_node();
 					return *this;
 				}
 
-				bool operator==(std::default_sentinel_t) const { return !current; }
+				bool operator==(std::default_sentinel_t) const {
+					return !current.has_value();
+				}
 
 			private:
 				BFSRange* range = nullptr;
-				NodePtr current = nullptr;
-				int depth = 0;
+				std::optional<std::pair<int, int>> current;
 			};
 
-			// Begin and end for range-based for-loop support
 			Iterator begin() { return Iterator(this); }
 			std::default_sentinel_t end() const { return std::default_sentinel; }
 
 		private:
+			GraphType* graph = nullptr;
 			std::unordered_set<int> visited;
-			std::queue<std::tuple<NodePtr, int>> node_queue;	// Stores {node, depth}
+			std::queue<std::pair<int, int>> node_queue;
 
-			// Generates the next node in BFS order
-			std::tuple<NodePtr, int> next_node() {
+			std::optional<std::pair<int, int>> next_node() {
 				if (node_queue.empty())
-					return { nullptr, 0 };
+					return std::nullopt;
 
-				auto [current, currentDepth] = node_queue.front();
+				const auto [currentNodeId, currentDepth] = node_queue.front();
 				node_queue.pop();
 
-				for (Node* neighbor : current->getNeighbors()) {
-					NodePtr neighbor_ptr = neighbor;
-					if (visited.insert(neighbor->atomid).second) {
-						node_queue.emplace(neighbor_ptr, currentDepth + 1);
+				const Node& currentNode = graph->nodes.at(currentNodeId);
+				for (const int neighborId : currentNode.getNeighbors()) {
+					if (!graph->nodes.contains(neighborId))
+						continue;
+
+					if (visited.insert(neighborId).second) {
+						node_queue.push({ neighborId, currentDepth + 1 });
 					}
 				}
 
-				return { current, currentDepth };
+				return { { currentNodeId, currentDepth } };
 			}
 		};
 
 
-
-
-
-
-
-
-
-
-
-
-		// Create a (possibly disconnected) graph from a MolType
 		MoleculeGraph(const TopologyFile::Moleculetype&, std::optional<const std::unordered_set<int>> allowedIds = std::nullopt);
 
-		// Create a graph with 0-indexed consequtive nodes
-		MoleculeGraph(const std::vector<std::pair<int, std::string>>& atoms, 
-			const std::vector<std::array<int, 2>>& edges);
+		MoleculeGraph(
+			const std::vector<std::pair<int, std::string>>& atoms,
+			const std::vector<std::array<int, 2>>& edges
+		);
+
 		MoleculeGraph() {};
 
 
-		// Create a connected graph from a node, and all nodes it is connected to
-		//MoleculeGraph(const Node* root);
-
-		// Uses a BFS approach to construct a molecule without cycles
 		MoleculeTree ConstructMoleculeTree() const;
 
 		std::unordered_map<int, int> ComputeNumDownstreamNodes(const MoleculeTree& moleculeTree) const;
 
-	/*	void addNode(int node_id, const std::string& atomname) {
-			nodes.emplace(node_id, Node(node_id, atomname) );
-		}*/
 		void connectNodes(int left_id, int right_id);
 
 		std::map<int, Node> nodes;
-		Node* root = nullptr;
 
 		auto BFS(int start_node_id) const {
-			return BFSRange(&nodes.at(start_node_id));
+			return BFSRange<const MoleculeGraph>(this, start_node_id);
 		}
 
 		auto BFS(int start_node_id) {
-			if (!nodes.contains(start_node_id)) 
-				return BFSRange<Node*>(nullptr);
-			return BFSRange(&nodes.at(start_node_id));
+			return BFSRange<MoleculeGraph>(this, start_node_id);
 		}
 
-		std::optional<int> DistanceBetweenNodes(int id0, int id1, int maxSearchDepth=8) const;
+		std::optional<int> DistanceBetweenNodes(int id0, int id1, int maxSearchDepth = 8) const;
 
 		bool GraphIsDisconnected() const;
 
-		// A moleculeggraph may be disconnected. This function returns all subgraphs that are connected.
-		// This is not cheap..
-		//std::vector<MoleculeGraph> GetListOfConnectedGraphs() const;
 		std::vector<std::vector<int>> GetListOfListsofConnectedNodeids() const;
-
-
 	};
 
-	//MoleculeGraph createGraph(const TopologyFile::Moleculetype&);
-
 	void reorderoleculeParticlesAccoringingToSubchains(GroFile&, TopologyFile::Moleculetype&);
-
 };
-

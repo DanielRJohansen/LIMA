@@ -72,7 +72,7 @@ public:
 	}
 };
 
-constexpr std::string_view extractSectionName(const std::string& line) {
+constexpr std::string_view extractSectionName(std::string line) {
 	size_t start = line.find('[');
 	size_t end = line.find(']', start);
 	if (start != std::string::npos && end != std::string::npos) {
@@ -123,20 +123,20 @@ constexpr bool VerifyAllParticlesInBondExists(const std::unordered_map<int, int>
 }
 
 /// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>
-constexpr bool HandleTopologySectionStartAndStop(const std::string& line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
+constexpr bool HandleTopologySectionStartAndStop(std::string_view line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
 
 	if (line.empty() && currentSection == TopologySection::title) {
 		currentSection = no_section;
 		return true;
 	}
 	else if (!line.empty() && line[0] == '[') {
-		currentSection = sectionGetter(extractSectionName(line));
+		currentSection = sectionGetter(extractSectionName(std::string{ line }));
 		return true;
 	}
 
 	return false; // We did not change section, and should continue parsing the current line
 }
-constexpr bool isOnlySpacesAndTabs(const std::string& str) {
+constexpr bool isOnlySpacesAndTabs(std::string_view str) {
 	return std::all_of(str.begin(), str.end(), [](char c) {
 		return c == ' ' || c == '\t' || c == '\r';
 		});
@@ -451,6 +451,23 @@ void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::st
 	}
 }
 
+std::string ReadWholeFile(const fs::path& path) {
+	std::ifstream file(path, std::ios::binary | std::ios::ate);
+	if (!file)
+		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
+
+	const std::streamsize size = file.tellg();
+	std::string contents(static_cast<size_t>(size), '\0');
+
+	file.seekg(0);
+	file.read(contents.data(), size);
+
+	if (!file)
+		throw std::runtime_error(std::format("Failed to read file {}\n", path.string()));
+
+	return contents;
+}
+
 void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path& path, std::optional<fs::path> includefileName) {
 	std::ifstream file;
 	file.open(path);
@@ -468,16 +485,29 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 
 
 	// Data for processing
-	/*std::string superbuffer;
-	std::vector<std::string_view> singlebondStrings;*/
-	std::vector<::std::string> atomStrings;
-	std::vector<std::string> singlebondStrings;
-	std::vector<std::string> pairbondStrings;
-	std::vector<std::string> anglebondStrings;
-	std::vector<std::string> dihedralbondStrings;
-	std::vector<std::string> improperbondStrings;
+	std::vector<::std::string_view> atomStrings;
+	std::vector<std::string_view> singlebondStrings;
+	std::vector<std::string_view> pairbondStrings;
+	std::vector<std::string_view> anglebondStrings;
+	std::vector<std::string_view> dihedralbondStrings;
+	std::vector<std::string_view> improperbondStrings;
 
-	while (getline(file, line)) {
+
+	const std::string fileContents = ReadWholeFile(path);
+
+	for (size_t lineStart = 0; lineStart < fileContents.size();) {
+		const size_t lineEnd = fileContents.find('\n', lineStart);
+
+		std::string_view line{
+			fileContents.data() + lineStart,
+			(lineEnd == std::string::npos ? fileContents.size() : lineEnd) - lineStart
+		};
+
+		if (!line.empty() && line.back() == '\r')
+			line.remove_suffix(1);
+
+		lineStart = lineEnd == std::string::npos ? fileContents.size() : lineEnd + 1;
+
 		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
 
 			// Directives where the directive itself is enough
@@ -495,7 +525,6 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			continue;
 
 		// Check if current line is commented
-		//if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) {	
 		if (firstNonspaceCharIs(line, commentChar) && current_section != TopologySection::title) {// Currently skipping these lines from topologiues: ; residue   1 MET rtp MET  q +1.0 
 			continue;
 		}	// Only title-sections + atoms reads the comments
@@ -506,16 +535,16 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 				continue;
 			}
 
-			if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, line, topology.defines))
+			if (FileUtils::ChecklineForIfdefAndSkipIfFound(file, std::string{ line }, topology.defines))
 				continue;
 
 			if (line.size() > 8 && line.substr(0, 8) == "#include") {
 				// take second word, remove "
-				std::istringstream iss(line);
+				std::istringstream iss(std::string{ line });
 				std::string _, pathWithQuotes;
 				iss >> _ >> pathWithQuotes;
 				if (pathWithQuotes.size() < 3)
-					throw std::runtime_error("Include is not formatted as expected: " + line);
+					throw std::runtime_error("Include is not formatted as expected: " + std::string{ line });
 
 				std::string filename = pathWithQuotes.substr(1, pathWithQuotes.size() - 2);
 
@@ -543,11 +572,11 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		{
 		case TopologySection::title:
 			if (!includefileName.has_value())	// Only use main top title
-				topology.title.append(line + "\n");	// +\n because getline implicitly strips it away.
+				topology.title.append(std::string{ line } + "\n");	// +\n because getline implicitly strips it away.
 			break;
 		case TopologySection::moleculetype:
 		{
-			std::istringstream iss(line);
+			std::istringstream iss(std::string{ line });
 			std::string moleculetypename;
 			int nrexcl;
 			iss >> moleculetypename >> nrexcl;
@@ -567,12 +596,11 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			break;
 		}		
 		case TopologySection::_system: {
-			topology.SetSystem(line);
+			topology.SetSystem(std::string{ line });
 			break;
 		}
 		case TopologySection::molecules: {
-			std::istringstream iss(line);
-
+			std::istringstream iss(std::string{ line });
 			std::string molname;
 			int cnt = 0;
 			iss >> molname >> cnt;
@@ -586,7 +614,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			break;
 		}
 		case TopologySection::atoms:
-			atomStrings.push_back(std::move(line));
+			atomStrings.push_back(line);
 			break;
 		/*{
 			TimeIt time("entry");
@@ -597,19 +625,19 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 			break;
 		}*/
 		case TopologySection::bonds:
-			singlebondStrings.push_back(std::move(line));
+			singlebondStrings.push_back(line);
 			break;
 		case TopologySection::pairs:
-			pairbondStrings.push_back(std::move(line));
+			pairbondStrings.push_back(line);
 			break;
 		case TopologySection::angles:
-			anglebondStrings.push_back(std::move(line));
+			anglebondStrings.push_back(line);
 			break;
 		case TopologySection::dihedrals:
-			dihedralbondStrings.push_back(std::move(line));
+			dihedralbondStrings.push_back(line);
 			break;
 		case TopologySection::impropers:
-			improperbondStrings.push_back(std::move(line));
+			improperbondStrings.push_back(line);
 			break;
 		case TopologySection::defaults:
 		case TopologySection::atomtypes:
@@ -619,7 +647,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		case TopologySection::angletypes:
 		case TopologySection::dihedraltypes:
 		case TopologySection::impropertypes:
-			topology.forcefieldInclude->AddEntry(current_section, line);
+			topology.forcefieldInclude->AddEntry(current_section, std::string{ line });
 			break;
 		default:
 			// Do nothing
@@ -905,7 +933,7 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 			continue;
 		}
 
-		if (HandleTopologySectionStartAndStop(line, current_section, getTopolSection)) {
+		if (HandleTopologySectionStartAndStop(std::string_view( line ), current_section, getTopolSection)) {
 			newSection = true;
 			continue;
 		}

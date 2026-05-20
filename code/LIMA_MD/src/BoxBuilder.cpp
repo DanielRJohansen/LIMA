@@ -103,8 +103,9 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 
 	//box->bpLutCollection = std::move(boxImage.bpLutCollection);
 
-	box->bondgroups = boxImage.bondgroups;// Honestly maybe have these as smart ptrs to avoid copy?
-	
+	// This is a bit dirty, consider having it as a shared_ptr instead.
+	box->bondgroups = std::move(boxImage.bondgroups);// Honestly maybe have these as smart ptrs to avoid copy?
+	boxImage.bondgroups.clear();
 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
 	box->boxparams.degreesOfFreedom = box->boxparams.totalParticles * 3 - 0 - 3;

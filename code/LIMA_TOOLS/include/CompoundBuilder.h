@@ -179,7 +179,7 @@ struct BoxImage {
 
 	std::shared_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
 
-	const std::vector<BondGroup> bondgroups;
+	std::vector<BondGroup> bondgroups;
 
 	// Clusters
 	std::vector<PersistentCluster> persistentClusters;

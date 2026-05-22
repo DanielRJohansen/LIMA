@@ -72,12 +72,12 @@ public:
 	}
 };
 
-constexpr std::string_view extractSectionName(std::string line) {
+constexpr std::string extractSectionName(std::string line) {
 	size_t start = line.find('[');
 	size_t end = line.find(']', start);
 	if (start != std::string::npos && end != std::string::npos) {
 		// Extract the view of the text between '[' and ']'
-		std::string_view sectionView(line.c_str() + start + 1, end - start - 1);
+		std::string sectionView(line.c_str() + start + 1, end - start - 1);
 
 		// Remove whitespace
 		size_t firstNonWhitespace = sectionView.find_first_not_of(" \t\n\r");

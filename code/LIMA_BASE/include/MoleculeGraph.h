@@ -72,7 +72,7 @@ namespace LimaMoleculeGraph {
 			
 			static const int maxNeighbors = 8; // for easier serialization
 			std::array<int, maxNeighbors> neighborIds;
-			int nNeighbors;
+			int nNeighbors=0;
 			int n_nonhydrogen_neighbors{};
 
 

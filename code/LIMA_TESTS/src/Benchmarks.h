@@ -151,12 +151,12 @@ namespace Benchmarks {
 		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4000 }, "Psome", 30);
 	}
 
-	static LimaUnittestResult STMV() {
+	static LimaUnittestResult STMV(int nSteps) {
 		const fs::path workDir = simulations_dir / "benchmarking" / "stmv";
 		GroFile grofile{ workDir  / "conf.gro" };
 		TopologyFile topfile{ workDir  / "topol.top" };
 		SimParams ip{ workDir / "sim_params.txt" };
-		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, "STMV", 3);
+		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, "STMV", nSteps);
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {

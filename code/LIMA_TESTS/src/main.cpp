@@ -156,9 +156,9 @@ int main() {
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
-		for (int i = 0; i < 10; i++)
-			Benchmarks::PrepareSimulation_stmv(envmode);
-		//Benchmarks::STMV();
+		/*for (int i = 0; i < 10; i++)
+			Benchmarks::PrepareSimulation_stmv(envmode);*/
+		Benchmarks::STMV(100);
 		//Benchmarks::Psome(envmode);
 		
 

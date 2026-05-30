@@ -130,7 +130,7 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", workDir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", workDir, 20 });
 		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
-		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
+		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);'
 		//Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true);
 		//grofile->printToFile(workDir / "membrane.gro");
 		//topfile->printToFile(workDir / "membrane.top");
@@ -158,7 +158,7 @@ int main() {
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
 		/*for (int i = 0; i < 10; i++)
 			Benchmarks::PrepareSimulation_stmv(envmode);*/
-		Benchmarks::STMV(100);
+		Benchmarks::STMV(500);
 		//Benchmarks::Psome(envmode);
 		
 

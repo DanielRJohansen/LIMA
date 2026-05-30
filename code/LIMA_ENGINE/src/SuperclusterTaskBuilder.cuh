@@ -16,30 +16,21 @@ public:
 
 // Pass to GPU
 struct TaskBuilderControlContents {
-	static const int maxTasksPerSc = 256;// Need this as a powerof2 to be sort-able.. 8 * 27; // 8 sc/node 3^3 nodes..
+	static const int maxTasksPerSc = 256;
 
 	std::array<float4, 4>* superclusterPositionSpheres;
 
-	// Static, made at creation
 	ParticlesBondedToParticle* particlesBondedToParticle;
 	PclustersBondedToPcluster* pclustersBondedToPcluster;
 
-	// Written in reserve pass
-	int* nInteractionsOwned;				// 1 per sc
-	InteractionToken* interactionsOwned;	// maxTasksPerSc per sc
-	int* nInteractionsNonowned;				// 1 per sc
-	int* scIdsQueryNonowned;				// maxTasksPerSc per sc1
-	int* nResults;							// 1 per sc, is simply nInteractionsOwned+nInteractionsNonowned
-	int* nTasksOwned;						// 1 per sc, is simply ceil(nInteractionsOwned / 2)
-	int* nNointeractionmatricesOwned;		// 1 per sc
+	int* nInteractionsOwned;
+	InteractionToken* interactionsOwned;
+	int* nInteractionsNonowned;
+	int* scIdsQueryNonowned;
+	int* nResults;
 
-	// Written in second pass
-	int* nTasksPrefixsum;
 	int* nResultsPrefixsum;
-	int* nNointeractionmatricesPrefixsum;
-
-	// Written in buildTasks pass
-	//ScScTask* tasks;
+	int* nQueryBuffersPrefixsum;
 };
 
 // Keep on CPU
@@ -58,32 +49,15 @@ public:
 		contents.pclustersBondedToPcluster = GenericCopyToDevice(pclustersBondedToPcluster);
 
 		cudaMalloc(&contents.superclusterPositionSpheres, sizeof(std::array<float4, 4>) * nSuperclustersUpperbound);
-		cudaMalloc(&contents.nInteractionsOwned, sizeof(int) * nSuperclustersUpperbound);
+		cudaMalloc(&contents.nInteractionsOwned, sizeof(int) * (nSuperclustersUpperbound + 1));
 		cudaMalloc(&contents.interactionsOwned, sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
 		cudaMalloc(&contents.nInteractionsNonowned, sizeof(int) * nSuperclustersUpperbound);
 		cudaMalloc(&contents.scIdsQueryNonowned, sizeof(int) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
-		cudaMalloc(&contents.nResults, sizeof(int) * nSuperclustersUpperbound);
-		cudaMalloc(&contents.nTasksOwned, sizeof(int) * nSuperclustersUpperbound);
-		cudaMalloc(&contents.nNointeractionmatricesOwned, sizeof(int) * nSuperclustersUpperbound);
+		cudaMalloc(&contents.nResults, sizeof(int) * (nSuperclustersUpperbound + 1));
 
 		cudaMalloc(&contents.nResultsPrefixsum, sizeof(int) * (nSuperclustersUpperbound + 1));
-		cudaMalloc(&contents.nNointeractionmatricesPrefixsum, sizeof(int) * (nSuperclustersUpperbound + 1));
-		cudaMalloc(&contents.nTasksPrefixsum, sizeof(int) * (nSuperclustersUpperbound + 1));
+		cudaMalloc(&contents.nQueryBuffersPrefixsum, sizeof(int) * (nSuperclustersUpperbound + 1));
 
-		const size_t totalMemUsageMB = (sizeof(std::array<float4, 4>) * nSuperclustersUpperbound
-			+ sizeof(int) * nSuperclustersUpperbound
-			+ sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound
-			+ sizeof(int) * nSuperclustersUpperbound
-			+ sizeof(int) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound
-			+ sizeof(int) * nSuperclustersUpperbound
-			+ sizeof(int) * nSuperclustersUpperbound
-			+ sizeof(int) * nSuperclustersUpperbound
-			+ sizeof(int) * (nSuperclustersUpperbound + 1)
-			+ sizeof(int) * (nSuperclustersUpperbound + 1)
-			+ sizeof(int) * (nSuperclustersUpperbound + 1)) / (1024.0f * 1024.0f);
-
-		//cudaMalloc(&contents.tasks, sizeof(ScScTask) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
-		//Reset(nSuperclustersUpperbound);
 		Reset();
 	}
 
@@ -100,14 +74,9 @@ public:
 		cudaFree(contents.nInteractionsNonowned);
 		cudaFree(contents.scIdsQueryNonowned);
 		cudaFree(contents.nResults);
-		cudaFree(contents.nTasksOwned);
-		cudaFree(contents.nNointeractionmatricesOwned);
 
 		cudaFree(contents.nResultsPrefixsum);
-		cudaFree(contents.nNointeractionmatricesPrefixsum);
-		cudaFree(contents.nTasksPrefixsum);
-
-		//cudaFree(contents.tasks);
+		cudaFree(contents.nQueryBuffersPrefixsum);
 	}
 };
 
@@ -427,12 +396,8 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	if (threadIdx.x == 0) {
 		tbContents.nInteractionsOwned[scId] = nOwnedInteractions;
 		tbContents.nInteractionsNonowned[scId] = nNonownedInteractions;
-		tbContents.nNointeractionmatricesOwned[scId] = nNointeractionMatrices;
 
-		const int nOwnedTasks = (nOwnedInteractions + ScScTask::nInteractions - 1) / ScScTask::nInteractions;
-
-		tbContents.nResults[scId] = nOwnedTasks + nNonownedInteractions;
-		tbContents.nTasksOwned[scId] = nOwnedTasks;
+		tbContents.nResults[scId] = 1 + nNonownedInteractions; // 1 for the sum of all owned interactions, 1 result per unowned interaction
 	}
 }
 
@@ -459,62 +424,53 @@ constexpr int IndexOfId(int* ids, int nIds, int idToFind) {
 }
 
 __device__ inline int GetResultIndexOfQuery(TaskBuilderControlContents tbContents, int scId, int scIdQuery, int selfResultIndex) {
-	//int searchStartIndex = //
-	int indexInQuery = scId != scIdQuery
-		? IndexOfId(&tbContents.scIdsQueryNonowned[scIdQuery * TaskBuilderControlContents::maxTasksPerSc], tbContents.nInteractionsNonowned[scIdQuery], scId)
-		: selfResultIndex - tbContents.nResultsPrefixsum[scId];
+	if (scId == scIdQuery)
+		return selfResultIndex;
+
+	const int indexInQuery = IndexOfId(
+		&tbContents.scIdsQueryNonowned[scIdQuery * TaskBuilderControlContents::maxTasksPerSc],
+		tbContents.nInteractionsNonowned[scIdQuery],
+		scId
+	);
 
 	if (indexInQuery == -1) {
-		// This means that the query sc does not have an interaction with the sc of this task. This can only happen if the query sc has less interactions than the sc of this task, 
-		// and thus we can be sure that the result index of the query sc is after the result index of this task, and thus we can safely set it to -1 to indicate that it should be ignored.
 		printf("Illegal query index for scId %d querying scId %d. Check %d ids\n", scId, scIdQuery, tbContents.nInteractionsNonowned[scIdQuery]);
-		//printf("Something went very wrong!\n");
 		return -1;
 	}
-	else {
-		const int queryNumOwnedResults = tbContents.nTasksOwned[scIdQuery];
-		return tbContents.nResultsPrefixsum[scIdQuery] + queryNumOwnedResults + indexInQuery;
-	}
+
+	const int queryHasOwnedResult = tbContents.nInteractionsOwned[scIdQuery] > 0 ? 1 : 0;
+	return tbContents.nResultsPrefixsum[scIdQuery] + queryHasOwnedResult + indexInQuery;
 }
 
-__global__ void BuildTasks(TaskBuilderControlContents tbContents, const SuperCluster* const superClusters, SuperClusterMeta* const superClusterMeta, int nSuperclusters, ScScTask* const tasks, Float3 boxSize, Float3 boxSizeInv) {
+__global__ void BuildTasks(
+	TaskBuilderControlContents tbContents,
+	SuperClusterMeta* const superClusterMeta,
+	int nSuperclusters,
+	ScScTask* const tasks,
+	int* const idsOfQuerySuperclusters,
+	int* const resultIndices
+) {
 	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (scId >= nSuperclusters)
 		return;
 
-	int nMatricesUsed = 0;
+	const int nOwnedInteractions = tbContents.nInteractionsOwned[scId];
+	const int queryBufferStart = tbContents.nQueryBuffersPrefixsum[scId];
+	const int selfResultIndex = tbContents.nResultsPrefixsum[scId];
 
-	for (int i = 0; i < tbContents.nInteractionsOwned[scId]; i += ScScTask::nInteractions) {
-		ScScTask task;
-		task.sc0Id = scId;
-		task.sc0ResultIndex = tbContents.nResultsPrefixsum[scId] + i / ScScTask::nInteractions;
+	ScScTask task;
+	task.startIndexInQueriesBuffers = queryBufferStart;
+	task.nQueryScs = nOwnedInteractions;
 
-		for (int interactionId = 0; interactionId < ScScTask::nInteractions; interactionId++) {
-			task.queryScIds[interactionId] = -1;
-			task.queryResultIndices[interactionId] = -1;
-			task.nointeractionMatrixIndex[interactionId] = -1;
-		}
+	for (int i = 0; i < nOwnedInteractions; i++) {
+		const InteractionToken token = tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + i];
+		const int scIdQuery = token.GetQueryId();
 
-		for (int interactionId = 0; interactionId < ScScTask::nInteractions; interactionId++) {
-			const int interactionIndex = i + interactionId;
-			if (interactionIndex >= tbContents.nInteractionsOwned[scId])
-				break;
-
-			InteractionToken token = tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + interactionIndex];
-			const int scIdQuery = token.GetQueryId();
-
-			if (token.UseNointeractionMatrix()) {
-				const int nointeractionMatrixIdGlobal = tbContents.nNointeractionmatricesPrefixsum[scId] + nMatricesUsed;
-				task.nointeractionMatrixIndex[interactionId] = nointeractionMatrixIdGlobal;
-				nMatricesUsed++;
-			}
-
-			task.queryScIds[interactionId] = scIdQuery;
-			task.queryResultIndices[interactionId] = GetResultIndexOfQuery(tbContents, scId, scIdQuery, task.sc0ResultIndex);
-		}
-
-		tasks[tbContents.nTasksPrefixsum[scId] + i / ScScTask::nInteractions] = task;
+		idsOfQuerySuperclusters[queryBufferStart + i] = scIdQuery;
+		resultIndices[queryBufferStart + i] = GetResultIndexOfQuery(tbContents, scId, scIdQuery, selfResultIndex);
 	}
+
+	tasks[scId] = task;
 
 	superClusterMeta[scId].resultsStartIndex = tbContents.nResultsPrefixsum[scId];
 	superClusterMeta[scId].nResults = tbContents.nResults[scId];
@@ -524,48 +480,47 @@ __global__ void BuildTasks(TaskBuilderControlContents tbContents, const SuperClu
 
 //// gridDim = (nSuperclusters, 1, 1)
 //// blockDim = (16, 1, 1)
-__global__ void BuildNointeractionMatricesKernel(const SuperClusterMeta* const superClusterMetas, const PersistentClusterMeta* const pClustersMeta,
-	TaskBuilderControlContents tbContents, BoolMatrix16x16* const nointeractionMatrices, int nSuperclusters) {
-
+__global__ void BuildNointeractionMatricesKernel(
+	const SuperClusterMeta* const superClusterMetas,
+	const PersistentClusterMeta* const pClustersMeta,
+	TaskBuilderControlContents tbContents,
+	BoolMatrix16x16* const nointeractionMatrices,
+	int nSuperclusters
+) {
 	const int scId = blockIdx.x;
+	const int row = threadIdx.x;
 
-	//std::array<int, 16> particleIdsSelf = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scId]);
-	int matrixCount = 0;
+	const int nOwnedInteractions = tbContents.nInteractionsOwned[scId];
+	const int queryBufferStart = tbContents.nQueryBuffersPrefixsum[scId];
 
-	for (int i = 0; i < tbContents.nInteractionsOwned[scId]; i++) {
-		InteractionToken token = tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + i];
+	for (int i = 0; i < nOwnedInteractions; i++) {
+		const InteractionToken token = tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + i];
+		const int matrixIndex = queryBufferStart + i;
 
-		if (!token.UseNointeractionMatrix()) {
-			continue;
-		}
-
-		const int scIdQuery = token.GetQueryId();
-
-		//std::array<int, 16> particleIdsQuery = GetParticleIdsOfSuperCluster(pClustersMeta, superClusterMetas[scIdQuery]);
-		const bool isSelfInteractionTask = scId == scIdQuery;
-
-		const int row = threadIdx.x;
 		uint16_t rowData = 0;
-		for (int col = 0; col < 16; ++col) {
-			int pidSelf = superClusterMetas[scId].globalParticleIds[col];
-			int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
-			if (pidSelf == -1 || pidQuery == -1)
-				continue;
 
-			bool noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery);
-			if (isSelfInteractionTask && row == col) {
-				noInteraction = true;
+		if (token.UseNointeractionMatrix()) {
+			const int scIdQuery = token.GetQueryId();
+			const bool isSelfInteractionTask = scId == scIdQuery;
+
+			for (int col = 0; col < 16; ++col) {
+				const int pidSelf = superClusterMetas[scId].globalParticleIds[col];
+				const int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
+
+				if (pidSelf == -1 || pidQuery == -1)
+					continue;
+
+				bool noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery);
+
+				if (isSelfInteractionTask && row == col)
+					noInteraction = true;
+
+				if (noInteraction)
+					BoolMatrix16x16::SetValueInRow(col, rowData);
 			}
-			if (noInteraction)
-				BoolMatrix16x16::SetValueInRow(col, rowData);
 		}
 
-
-
-
-		const int matrixIndex = tbContents.nNointeractionmatricesPrefixsum[scId] + matrixCount;
 		nointeractionMatrices[matrixIndex].SetRow(row, rowData);
-		matrixCount++;
 	}
 }
 
@@ -591,79 +546,101 @@ bool Engine::MakeSuperClusterTasksGPU() {
 	Int3 boxSize = box.boxparams.boxSize;
 	Float3 boxSizeF = simulation->box->boxparams.BoxSizeFloat();
 
-	const int nSuperclustersUpperbound = nSuperclusters * 2;// simulation->box->persistentClusters.size(); // a little pessimistic
+	const int nSuperclustersUpperbound = nSuperclusters * 2;
 
 	if (!taskbuilderControl)
 		taskbuilderControl = std::make_unique<TaskBuilderControl>(nSuperclustersUpperbound, box.particlesBondedToParticle, box.pclustersBondedToPcluster);
 
 	cudaDeviceSynchronize();
 
-	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel << <(nSuperclusters + 31) / 32, 32 >> > (superClustersControl->scData, superClustersControl->scMeta, taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
+	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel << <(nSuperclusters + 31) / 32, 32 >> > (
+		superClustersControl->scData,
+		superClustersControl->scMeta,
+		taskbuilderControl->contents.superclusterPositionSpheres,
+		nSuperclusters
+		);
 	cudaDeviceSynchronize();
-
-	/*std::vector<std::array<float4, 4>> scps = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
-	std::vector<float> scpsFlat(reinterpret_cast<float*>(scps.data()), reinterpret_cast<float*>(scps.data()) + scps.size() * 4 * 4);
-	DebugUtils::VerifyIdentical(scpsFlat, "scPositionsSpheres_" + std::to_string(simulation->getStep()));*/
-
-	//auto iSpheres = GenericCopyToHost(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters);
-	//DebugUtils::VerifyIdentical(taskbuilderControl->contents.superclusterPositionSpheres, nSuperclusters, "SCPositionSpheres", simulation->getStep());
 
 	{
 		taskbuilderControl->Reset();
 		cudaDeviceSynchronize();
 
-		dim3 gridDim{ (uint32_t)boxSize.InnerProduct(), (uint32_t)SuperClustersControl::maxClustersPerBlock, 1u };
-		dim3 blockDim{ 3 * 3 * 3 * SuperClustersControl::maxClustersPerBlock, 1, 1 };
-		uint32_t nGridnodes = boxSize.InnerProduct();
-		//ReserveInteractions << <gridDim, blockDim >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm);
+		const uint32_t nGridnodes = boxSize.InnerProduct();
+
 		ReserveInteractions << <
 			dim3(nGridnodes, SuperClustersControl::maxClustersPerBlock, 1),
-			256 >> > (*superClustersControl, boxSize, taskbuilderControl->contents, simulation->simParams.cutoff_nm, boxSizeF, Float3{ 1.0f } / boxSizeF);
+			256 >> > (
+				*superClustersControl,
+				boxSize,
+				taskbuilderControl->contents,
+				simulation->simParams.cutoff_nm,
+				boxSizeF,
+				Float3{ 1.0f } / boxSizeF
+				);
+
 		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
 
 		cudaDeviceSynchronize();
-		SortReserveInteractionsOutput << <nSuperclusters, TaskBuilderControlContents::maxTasksPerSc >> > (taskbuilderControl->contents);
+
+		SortReserveInteractionsOutput << <nSuperclusters, TaskBuilderControlContents::maxTasksPerSc >> > (
+			taskbuilderControl->contents
+			);
+
 		cudaDeviceSynchronize();
-		//DebugUtils::VerifyIdentical(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters, "NInteractionsOwned", simulation->getStep());
 	}
 
-	/*auto ninteractionsOwnedHost = GenericCopyToHost(taskbuilderControl->contents.nInteractionsOwned, nSuperclusters);
-	auto nSuperclusterPerNode = GenericCopyToHost(superClustersControl->nSuperclustersInBlocks, boxSize.InnerProduct());*/
+	cudaMemset(taskbuilderControl->contents.nResults + nSuperclusters, 0, sizeof(int));
+	cudaMemset(taskbuilderControl->contents.nInteractionsOwned + nSuperclusters, 0, sizeof(int));
 
+	thrust::exclusive_scan(
+		thrust::device,
+		taskbuilderControl->contents.nResults,
+		taskbuilderControl->contents.nResults + nSuperclusters + 1,
+		taskbuilderControl->contents.nResultsPrefixsum
+	);
 
+	thrust::exclusive_scan(
+		thrust::device,
+		taskbuilderControl->contents.nInteractionsOwned,
+		taskbuilderControl->contents.nInteractionsOwned + nSuperclusters + 1,
+		taskbuilderControl->contents.nQueryBuffersPrefixsum
+	);
 
-	thrust::exclusive_scan(thrust::device, taskbuilderControl->contents.nResults, taskbuilderControl->contents.nResults + nSuperclusters + 1, taskbuilderControl->contents.nResultsPrefixsum);
-	thrust::exclusive_scan(thrust::device, taskbuilderControl->contents.nTasksOwned, taskbuilderControl->contents.nTasksOwned + nSuperclusters + 1, taskbuilderControl->contents.nTasksPrefixsum);
-	thrust::exclusive_scan(thrust::device, taskbuilderControl->contents.nNointeractionmatricesOwned, taskbuilderControl->contents.nNointeractionmatricesOwned + nSuperclusters + 1, taskbuilderControl->contents.nNointeractionmatricesPrefixsum);
 	cudaDeviceSynchronize();
+
 	nResults = GenericCopyToHost(taskbuilderControl->contents.nResultsPrefixsum + nSuperclusters);
-	nTasks = GenericCopyToHost(taskbuilderControl->contents.nTasksPrefixsum + nSuperclusters);
-	const int nNointeractionMatrices = GenericCopyToHost(taskbuilderControl->contents.nNointeractionmatricesPrefixsum + nSuperclusters);
+	int nTasks = nSuperclusters;
+
+	const int nQueryBufferEntries = GenericCopyToHost(taskbuilderControl->contents.nQueryBuffersPrefixsum + nSuperclusters);
 
 	scscTasksDevice.Expand(nTasks, 1.2);
-	noInteractionMatricesDevice.Expand(nNointeractionMatrices, 1.2);
+	idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
+	resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
+	noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
 	scResultsDevice.Expand(nResults, 1.2);
 
+	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (
+		taskbuilderControl->contents,
+		superClustersControl->scMeta,
+		nSuperclusters,
+		scscTasksDevice.Get(),
+		idsOfQuerySuperclustersDevice.Get(),
+		resultIndicesDevice.Get()
+		);
 
+	LIMA_UTILS::genericErrorCheck("BuildTasks");
 
-	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (taskbuilderControl->contents, superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, scscTasksDevice.Get(), boxSizeF, boxSizeF.Inv());
-	BuildNointeractionMatricesKernel << <nSuperclusters, 16 >> > (superClustersControl->scMeta, pClusterMetaDevice.Get(), taskbuilderControl->contents, noInteractionMatricesDevice.Get(), nSuperclusters);
+	BuildNointeractionMatricesKernel << <nSuperclusters, 16 >> > (
+		superClustersControl->scMeta,
+		pClusterMetaDevice.Get(),
+		taskbuilderControl->contents,
+		noInteractionMatricesDevice.Get(),
+		nSuperclusters
+		);
+
+	LIMA_UTILS::genericErrorCheck("BuildNointeractionMatricesKernel");
+
 	cudaDeviceSynchronize();
-
-
-	auto tasks = scscTasksDevice.GetData();
-
-	//auto resCounts = GenericCopyToHost(taskbuilderControl->contents.nResults, nSuperclustersUpperbound);
-
-	//DebugUtils::VerifyIdentical(scscTasksDevice.Get(), nTasks, "SCSCTasks", simulation->getStep());
-
-	cudaDeviceSynchronize();
-
-	//auto tasksHost = GenericCopyToHost(scscTasksDevice, nSuperclustersUpperbound * TaskBuilderControlContents::maxTasksPerSc);
-	//auto 
-
-
-	//taskbuilderControl->Reset();
 
 	return true;
 }

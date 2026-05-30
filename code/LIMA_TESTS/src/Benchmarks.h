@@ -88,7 +88,7 @@ namespace Benchmarks {
 		EnvMode envmode = ConsoleOnly;
 
 		ip.data_logging_interval = 20;
-		ip.dt = 0.5f * FEMTO_TO_NANO;
+		//ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
 		if (nSteps)
 			ip.n_steps = nSteps.value();
@@ -100,7 +100,7 @@ namespace Benchmarks {
 
 		auto duration = env.simulationTimer->GetTiming();
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
-
+		env.PrintTiming();
 		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("{} - Time per step: {} [us] Allowed: {} [us]", name, timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
 	}
 

@@ -22,7 +22,7 @@ struct SimParams {
     float dt = 2.f * FEMTO_TO_NANO;           // Time step [ns]
     bool em_variant = false;
     float em_force_tolerance = 1000;           // [kJ/mol/nm]
-    int stepsPerNlistupdate = 5;
+    int stepsPerNlistupdate = 20;
 
     // Physics parameters
     BoundaryConditionSelect bc_select{ PBC };

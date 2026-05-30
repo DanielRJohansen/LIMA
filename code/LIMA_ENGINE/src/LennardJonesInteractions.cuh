@@ -101,7 +101,7 @@ namespace LJ {
 
 	// Returns fe on p0, invert to get fe on p1
 	template<bool computePotE, bool emvariant>
-	__device__ ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId)
+	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId)
 	{
 		ForceEnergy fe{}; // on p0
 		

@@ -130,7 +130,7 @@ private:
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
 
-	size_t nTasks = 0;
+	//size_t nTasks = 0;
 	int nSuperclusters = 0;
 	CudaBuffer<PersistentCluster> pClusterDevice; // TODO: Handle lifetime somethwere
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
@@ -138,6 +138,8 @@ private:
 	size_t nResults = 0;
 
 	CudaBuffer<ScScTask> scscTasksDevice;
+	CudaBuffer<int> idsOfQuerySuperclustersDevice;
+	CudaBuffer<int> resultIndicesDevice;
 	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
 	CudaBuffer<SCResult> scResultsDevice;
 	CudaBuffer<float> forcesMagnitudeSquareDevice;

@@ -462,17 +462,21 @@ struct SCResult {
 	}
 };
 
+//struct ScScTask {
+//	static constexpr int nInteractions = 4;
+//
+//	int sc0Id;
+//	int queryScIds[nInteractions];
+//	int sc0ResultIndex;
+//	int queryResultIndices[nInteractions];
+//	int nointeractionMatrixIndex[nInteractions];
+//};
+
 struct ScScTask {
-	static constexpr int nInteractions = 4;
-
-	int sc0Id;
-	int queryScIds[nInteractions];
-	int sc0ResultIndex;
-	int queryResultIndices[nInteractions];
-	int nointeractionMatrixIndex[nInteractions];
+//	int sc0Id; // implicitly the index of this task	
+	int startIndexInQueriesBuffers = 0;
+	int nQueryScs = 0;
 };
-
-
 
 
 

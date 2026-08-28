@@ -345,7 +345,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pidGlobal) / static_cast<float>(task.boxparams.totalParticles));
 				}
 				else if (rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e8f);
+					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e6f);
 				}
 				if (!rendersettings.showSolvents && pcMeta.isSolvent)
 					renderAtomsHost[pidGlobal].color.w = 0.f;

@@ -121,6 +121,7 @@ public:
 	std::deque<LiveEdit::Command> liveEditCommandsQueue;	
 
 	SimStatus simStatus{};
+	bool forceWriteSimstatusToDisplay = false;
 
 	bool prepareForRun();
 private:

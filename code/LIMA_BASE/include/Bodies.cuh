@@ -170,7 +170,7 @@ struct BondGroup {
 	static const int maxParticles = 64;	
 	static const int maxSinglebonds = 128;
 	static const int maxAnglebonds = 128 + 64;
-	static const int maxDihedralbonds = 256 + 64;
+	static const int maxDihedralbonds = 256 + 64 + 64;
 	static const int maxPairbonds = maxDihedralbonds;
 	static const int maxImproperdihedralbonds = 32;
 

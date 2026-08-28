@@ -166,7 +166,7 @@ namespace RenderUtilities {
             glm::clamp((logX - logMin) / (logMid - logMin), 0.0, 1.0)
             );
 
-        glm::vec4 col = glm::mix(glm::vec4(0.f, 1.f, 0.f, 1.f), glm::vec4(1.f, 0.f, 0.f, 1.f), fraction);
+        glm::vec4 col = glm::mix(glm::vec4(0.f, 1.f, 0.f, .1f), glm::vec4(1.f, 0.f, 0.f, 1.f), fraction);
         return float4{col.r, col.g, col.b, col.a};
     }
     

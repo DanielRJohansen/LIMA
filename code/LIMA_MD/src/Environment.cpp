@@ -354,7 +354,8 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 	}
 
 	const int64_t step = simulation->getStep();
-	if ((step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1)) {		
+	if ((step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) || forceWriteSimstatusToDisplay) {		
+		forceWriteSimstatusToDisplay = false;
 		auto duration = std::chrono::steady_clock::now() - time0;		
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;

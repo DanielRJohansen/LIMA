@@ -70,13 +70,31 @@ void LiveEditTest() {
 	env.LiveEdit(grofile, topfile);
 }
 
+void BuildCellTest() {
+	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(20.f));
+	env.CreateSimulation(grofile, topfile, simparams);
+
+	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
+	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
+	topfile.printToFile();
+	topfile = TopologyFile{ topfile.path };
+
+
+	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
+	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
+	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 4.f });
+
+	env.LiveEdit(grofile, topfile);
+}
+
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 
 		//TestDisplayT4();
 		//LiveEditTest();
-		
+		BuildCellTest();
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
@@ -158,7 +176,7 @@ int main() {
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
 		/*for (int i = 0; i < 10; i++)
 			Benchmarks::PrepareSimulation_stmv(envmode);*/
-		Benchmarks::STMV(500);
+		//Benchmarks::STMV(500);
 		//Benchmarks::Psome(envmode);
 		
 

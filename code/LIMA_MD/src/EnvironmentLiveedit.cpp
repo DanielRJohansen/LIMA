@@ -305,6 +305,12 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						else if constexpr (std::is_same_v<T, LiveEdit::EnergyMinimize>) {
 							EM(&liveeditData);
 						}
+						else if constexpr (std::is_same_v<T, LiveEdit::StepOnce>) {
+							if (liveeditData.remainingStepsCount == 0 && !liveeditData.runContinous) {
+								liveeditData.remainingStepsCount = 1;
+								forceWriteSimstatusToDisplay = true;
+							}
+						}
 						else {
 							//static_assert(always_false<T>, "Non-exhaustive visitor!");
 						}
@@ -344,6 +350,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			shouldUpdateRender = true;
 			liveeditData.remainingStepsCount--;
 			if (liveeditData.remainingStepsCount == 0) {
+				//forceWriteSimstatusToDisplay = false;
 				// check engine if we should continue..
 			}
 			if (simulation->simParams.em_variant && engine->runstatus.greatestForce < simulation->simParams.em_force_tolerance) {

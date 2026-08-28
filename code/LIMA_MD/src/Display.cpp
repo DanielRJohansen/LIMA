@@ -97,6 +97,11 @@ void Display::SetupCallbacks() {
                     display->liveEditCommandsQueue.push_back(LiveEdit::TogglePause{});
                     break;
                 }
+                case GLFW_KEY_S: {
+                    std::lock_guard<std::mutex> lock2(display->liveEditCommandsQueueMutex);
+                    display->liveEditCommandsQueue.push_back(LiveEdit::StepOnce{});
+					break;
+                }
                 case GLFW_KEY_1:
                     display->renderAtoms = !display->renderAtoms;
                     break;

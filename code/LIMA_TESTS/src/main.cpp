@@ -95,7 +95,7 @@ int main() {
 
 		//TestDisplayT4();
 		//LiveEditTest();
-		BuildCellTest();
+		//BuildCellTest();
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
@@ -148,8 +148,12 @@ int main() {
 		//lipids.emplace_back(Lipids::Select{ "DMPG", workDir, 39.5 });
 		//lipids.emplace_back(Lipids::Select{ "Cholesterol", workDir, 10 });
 		//lipids.emplace_back(Lipids::Select{ "SM18", workDir, 20 });
-		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
-		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);'
+		//GroFile grofile;
+		//grofile.box_size = Float3{ 20.f };
+		//TopologyFile topfile;
+		//topfile.SetSystem("Membrane");
+		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 5.f);
+		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 15.f);
 		//Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true);
 		//grofile->printToFile(workDir / "membrane.gro");
 		//topfile->printToFile(workDir / "membrane.top");
@@ -217,7 +221,7 @@ int main() {
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
-		//RunAllUnitTests();
+		RunAllUnitTests();
 
 	}
 	catch (std::runtime_error ex) {

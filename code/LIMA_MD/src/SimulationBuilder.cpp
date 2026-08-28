@@ -604,28 +604,6 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 
-MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize,
-	const MembraneGeometry::Figure& geometry) {
-	auto outputgrofile = std::make_unique<GroFile>();
-	outputgrofile->box_size = boxSize;
-	outputgrofile->title = "Membrane consisting of ";
-	for (const auto& lipid : lipidselection) {
-		outputgrofile->title += lipid.lipidname + " (" + std::to_string(lipid.percentage) + "%)    ";
-	}
-	auto outputtopologyfile = std::make_unique<TopologyFile>();
-	outputtopologyfile->SetSystem("Membrane");
-
-	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, geometry);
-
-	return { std::move(outputgrofile), std::move(outputtopologyfile) };
-}
-
-MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize,
-	float membraneCenter) {
-	return CreateMembrane(lipidselection, boxSize, MembraneGeometry::Plane{ membraneCenter });
-}
-
-
 struct QueuedInsertion {
 	GroFile& grofile;
 	std::function<void(Float3&)> positionTransform;

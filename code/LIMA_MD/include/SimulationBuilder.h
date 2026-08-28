@@ -43,10 +43,6 @@ namespace SimulationBuilder {
 	);
 
 
-	// TODO: Remove these FilePair overloads, require instead an empty box as input
-	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize,
-		const MembraneGeometry::Figure& geometry);
-	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter);
 	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection,
 		const MembraneGeometry::Figure& geometry);
 	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, 

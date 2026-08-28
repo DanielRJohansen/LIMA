@@ -19,7 +19,11 @@ namespace TestMembraneBuilder {
 		const float minimumRadius = SimulationBuilder::MinimumSphereRadius(lipids);
 		bool rejectedSmallSphere = false;
 		try {
-			SimulationBuilder::CreateMembrane(lipids, Float3{ 16.f },
+			GroFile tooSmallGrofile;
+			tooSmallGrofile.box_size = Float3{ 16.f };
+			TopologyFile tooSmallTopfile;
+			tooSmallTopfile.SetSystem("Membrane");
+			SimulationBuilder::CreateMembrane(tooSmallGrofile, tooSmallTopfile, lipids,
 				MembraneGeometry::Sphere{ Float3{ 8.f }, minimumRadius - 0.01f });
 		}
 		catch (const std::invalid_argument&) {
@@ -27,11 +31,16 @@ namespace TestMembraneBuilder {
 		}
 		ASSERT(rejectedSmallSphere, "A sphere below the lipid-dependent minimum radius was accepted");
 
-		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 16.f },
+		GroFile grofile;
+		grofile.box_size = Float3{ 16.f };
+		grofile.title = "Spherical membrane";
+		TopologyFile topfile;
+		topfile.SetSystem("Membrane");
+		SimulationBuilder::CreateMembrane(grofile, topfile, lipids,
 			MembraneGeometry::Sphere{ Float3{ 8.f }, minimumRadius + 1.f });
-		ASSERT(!grofile->atoms.empty(), "Spherical membrane did not contain any atoms");
-		ASSERT(!topfile->GetSystem().molecules.empty(), "Spherical membrane topology did not contain any molecules");
-		for (const auto& atom : grofile->atoms) {
+		ASSERT(!grofile.atoms.empty(), "Spherical membrane did not contain any atoms");
+		ASSERT(!topfile.GetSystem().molecules.empty(), "Spherical membrane topology did not contain any molecules");
+		for (const auto& atom : grofile.atoms) {
 			ASSERT(std::isfinite(atom.position.x) && std::isfinite(atom.position.y) && std::isfinite(atom.position.z),
 				"Spherical membrane contained a non-finite atom position");
 		}
@@ -61,9 +70,14 @@ namespace TestMembraneBuilder {
 		}
 
 		// Build the membrane, and write it to disk
-		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		gro->printToFile(mol_dir / "membrane.gro");
-		top->printToFile(mol_dir / "membrane.top");
+		GroFile gro;
+		gro.box_size = Float3{ 7.f };
+		gro.title = "Membrane";
+		TopologyFile top;
+		top.SetSystem("Membrane");
+		SimulationBuilder::CreateMembrane(gro, top, lipidselection, 3.5f);
+		gro.printToFile(mol_dir / "membrane.gro");
+		top.printToFile(mol_dir / "membrane.top");
 
 		// Test the topology is identical to reference
 		TopologyFile newTop{ mol_dir / "membrane.top" };
@@ -105,7 +119,7 @@ namespace TestMembraneBuilder {
 
 		// Finally test if we can stabilize the simulation
 		const float emtol = 200.f;
-		auto sim = Programs::EnergyMinimize(*gro, *top, true, workDir, envmode, true, emtol);
+		auto sim = Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, emtol);
 		float finalMaxForce = sim->maxForceBuffer.back().second;
 
 		return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
@@ -125,25 +139,30 @@ namespace TestMembraneBuilder {
 			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, percentage });	// 10% of each lipid, except 50% POPC
 		}
 
-		auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 7.f }, 3.5f);
-		Programs::EnergyMinimize(*gro, *top, true, workDir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
+		GroFile gro;
+		gro.box_size = Float3{ 7.f };
+		gro.title = "Membrane";
+		TopologyFile top;
+		top.SetSystem("Membrane");
+		SimulationBuilder::CreateMembrane(gro, top, lipidselection, 3.5f);
+		Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
 
-		gro->printToFile(mol_dir / "membrane.gro");
-		top->printToFile(mol_dir / "membrane.top");
+		gro.printToFile(mol_dir / "membrane.gro");
+		top.printToFile(mol_dir / "membrane.top");
 
 		TopologyFile newTop{ mol_dir / "membrane.top" };
 		GroFile newGro{ mol_dir / "membrane.gro" };
 
 		//std::ostringstream oss;
 		//const auto& newAtoms = newTop.GetAllElements<TopologyFile::AtomsEntry>();
-		//const auto& refAtoms = top->GetAllElements<TopologyFile::AtomsEntry>();
+		//const auto& refAtoms = top.GetAllElements<TopologyFile::AtomsEntry>();
 		//if (auto [a, b] = std::ranges::mismatch(newAtoms, refAtoms);
 		//	a != newAtoms.end() || b != refAtoms.end()) {
 		//	a->composeString(oss); b->composeString(oss);
 		//	std::string str = oss.str();
 		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
 		//}
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top->GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 
 
 		SimParams params{};
@@ -175,14 +194,19 @@ namespace TestMembraneBuilder {
 		}
 
 		// The first test is pretty much just to see if this function throws
-		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-		/*for (const auto& molecule : topfile->GetSystem().molecules) {
+		GroFile grofile;
+		grofile.box_size = Float3{ 10.f };
+		grofile.title = "Membrane";
+		TopologyFile topfile;
+		topfile.SetSystem("Membrane");
+		SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, 5.f);
+		/*for (const auto& molecule : topfile.GetSystem().molecules) {
 			ASSERT(molecule.moleculetype->readFromCache, "This lipid top should have been read from a cached file");
 		}*/
 
 		// The third test is to see if this function throws
 		const float emtol = 1000.f;
-		auto sim = Programs::EnergyMinimize(*grofile, *topfile, false, workDir, envmode, true, emtol);
+		auto sim = Programs::EnergyMinimize(grofile, topfile, false, workDir, envmode, true, emtol);
 
 		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
 

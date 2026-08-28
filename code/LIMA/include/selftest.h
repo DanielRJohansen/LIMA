@@ -19,8 +19,13 @@ void SelfTest() {
 		lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, 100. / static_cast<double>(targets.size()) });
 	}
 
-	auto [gro, top] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ 10.f }, 5.f);
-	Programs::EnergyMinimize(*gro, *top, false, workDir, Full, true, 5000.f);
+	GroFile gro;
+	gro.box_size = Float3{ 10.f };
+	gro.title = "Membrane";
+	TopologyFile top;
+	top.SetSystem("Membrane");
+	SimulationBuilder::CreateMembrane(gro, top, lipidselection, 5.f);
+	Programs::EnergyMinimize(gro, top, false, workDir, Full, true, 5000.f);
 
 	printf("Selftest successful"); // Otherwise we'd have thrown by now
 }

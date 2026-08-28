@@ -96,11 +96,16 @@ Example:
 		lipidselection.emplace_back(Lipids::Select{ lipid.first, workDir, lipid.second });
 	}
     
-    auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipidselection, Float3{ boxsize }, membraneCenterZ.value_or(boxsize.z/2.f));
-    auto sim = Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true, emtol);
+    GroFile grofile;
+    grofile.box_size = boxsize;
+    grofile.title = "Membrane";
+    TopologyFile topfile;
+    topfile.SetSystem("Membrane");
+    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ.value_or(boxsize.z/2.f));
+    auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, true, emtol);
 
-    grofile->printToFile(workDir / "membrane.gro");
-    topfile->printToFile(workDir / "membrane.top");
+    grofile.printToFile(workDir / "membrane.gro");
+    topfile.printToFile(workDir / "membrane.top");
         
     auto [step, force] = *std::min_element(sim->maxForceBuffer.begin(), sim->maxForceBuffer.end(),
         [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {

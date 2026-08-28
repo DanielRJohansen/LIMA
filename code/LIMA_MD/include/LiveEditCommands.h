@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LimaTypes.cuh"
+#include "MembraneGeometry.h"
 #include <filesystem>
 #include <optional>
 #include <variant>
@@ -23,7 +24,7 @@ namespace LiveEdit {
 
 	struct BuildMembrane {
 		std::vector<std::tuple<std::string, double>> lipids; // {name, percentage}
-		std::optional<float> membraneCenterZ = std::nullopt;
+		std::optional<MembraneGeometry::Figure> geometry = std::nullopt;
 	};
 
 	struct TogglePause {};

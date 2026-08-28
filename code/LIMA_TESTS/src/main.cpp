@@ -57,7 +57,7 @@ void LiveEditTest() {
 
 	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
 	////std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
-	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 3.f });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 3.f } });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ false, false, true });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
@@ -72,7 +72,7 @@ void LiveEditTest() {
 
 void BuildCellTest() {
 	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(20.f));
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(40.f));
 	env.CreateSimulation(grofile, topfile, simparams);
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
@@ -83,7 +83,8 @@ void BuildCellTest() {
 
 	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
 	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
-	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, 4.f });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 4.f } });
+	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Sphere{Float3{20,20,20  }, 15.f }});
 
 	env.LiveEdit(grofile, topfile);
 }
@@ -289,6 +290,7 @@ void RunAllUnitTests() {
 
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
+	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 

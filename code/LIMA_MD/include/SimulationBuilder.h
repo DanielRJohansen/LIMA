@@ -5,6 +5,7 @@
 #include "MDFiles.h"
 #include "Geometry.cuh"
 #include "Lipids.h"
+#include "MembraneGeometry.h"
 
 #include <algorithm>
 
@@ -17,8 +18,6 @@ using AtomsSelection = std::vector<AtomtypeSelect>;
 
 namespace SimulationBuilder {
 	using namespace MDFiles;
-	using Geometry::Plane;
-
 	void DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles,
 		float minDistBetweenAnyParticle=0.1f, float particlesPerNm3=32.f);
 
@@ -44,8 +43,16 @@ namespace SimulationBuilder {
 	);
 
 
-	// TODO: Remove this one, require instead an empty box as input
+	// TODO: Remove these FilePair overloads, require instead an empty box as input
+	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize,
+		const MembraneGeometry::Figure& geometry);
 	FilePair CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter);
+	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection,
+		const MembraneGeometry::Figure& geometry);
 	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, 
 		float membraneCenter);
+
+	// The minimum is derived from the lipid length and enough inner-leaflet area
+	// to pack a small, but meaningful, closed surface.
+	float MinimumSphereRadius(const Lipids::Selection& lipidselection);
 };

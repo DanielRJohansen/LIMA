@@ -5,10 +5,47 @@
 #include "TestUtils.h"
 #include "Programs.h"
 #include "MoleculeHull.cuh"
+#include "LiveEditCommands.h"
 
 namespace TestMembraneBuilder {
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
+
+	static LimaUnittestResult TestSphericalMembraneBuilder(EnvMode envmode) {
+		const fs::path workDir = simulations_dir / "BuildMembraneSphere";
+		Lipids::Selection lipids;
+		lipids.emplace_back(Lipids::Select{ "DMPC", workDir, 100. });
+
+		const float minimumRadius = SimulationBuilder::MinimumSphereRadius(lipids);
+		bool rejectedSmallSphere = false;
+		try {
+			SimulationBuilder::CreateMembrane(lipids, Float3{ 16.f },
+				MembraneGeometry::Sphere{ Float3{ 8.f }, minimumRadius - 0.01f });
+		}
+		catch (const std::invalid_argument&) {
+			rejectedSmallSphere = true;
+		}
+		ASSERT(rejectedSmallSphere, "A sphere below the lipid-dependent minimum radius was accepted");
+
+		auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 16.f },
+			MembraneGeometry::Sphere{ Float3{ 8.f }, minimumRadius + 1.f });
+		ASSERT(!grofile->atoms.empty(), "Spherical membrane did not contain any atoms");
+		ASSERT(!topfile->GetSystem().molecules.empty(), "Spherical membrane topology did not contain any molecules");
+		for (const auto& atom : grofile->atoms) {
+			ASSERT(std::isfinite(atom.position.x) && std::isfinite(atom.position.y) && std::isfinite(atom.position.z),
+				"Spherical membrane contained a non-finite atom position");
+		}
+
+		const auto command = LiveEdit::ParseCommand(
+			"buildmembrane -lipids DMPC 100 -sphere 8 8 8 4");
+		const auto& buildCommand = std::get<LiveEdit::BuildMembrane>(command);
+		ASSERT(buildCommand.geometry.has_value(), "Live-edit sphere geometry was not parsed");
+		const auto& parsedSphere = std::get<MembraneGeometry::Sphere>(*buildCommand.geometry);
+		ASSERT(parsedSphere.center == Float3{ 8.f } && parsedSphere.radius == 4.f,
+			"Live-edit sphere geometry had incorrect values");
+
+		return LimaUnittestResult{ true, "", envmode == Full };
+	}
 
 	// This test ensures that the membrane is built identical to the reference membrane, NOT considering EM
 	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)

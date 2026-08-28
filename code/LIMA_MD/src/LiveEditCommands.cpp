@@ -46,6 +46,7 @@ namespace LiveEdit {
 		ArgParser parser{ "" };
 		std::vector<std::tuple<std::string, double>> lipids; // {name, percentage}
 		std::optional<float> membraneCenterZ = std::nullopt;
+		std::optional<MembraneGeometry::Sphere> sphere = std::nullopt;
 		parser.AddOption({ "-lipids" }, true,
 			[&lipids](const std::vector<std::string>& args) {
 				if (args.size() % 2 != 0) {
@@ -65,9 +66,36 @@ namespace LiveEdit {
 				}
 			}
 		);
-		parser.AddOption({ "-centerz", "-c" }, false, membraneCenterZ);
+		parser.AddOption({ "-centerz", "-c", "-plane" }, false, membraneCenterZ);
+		parser.AddOption({ "-sphere" }, false,
+			[&sphere](const std::vector<std::string>& args) {
+				if (args.size() != 4) {
+					throw std::runtime_error("Invalid -sphere argument. Expected: center-x center-y center-z radius.");
+				}
+				try {
+					sphere = MembraneGeometry::Sphere{
+						Float3{ std::stof(args[0]), std::stof(args[1]), std::stof(args[2]) },
+						std::stof(args[3])
+					};
+				}
+				catch (...) {
+					throw std::runtime_error("Invalid -sphere argument. All four values must be floating-point numbers.");
+				}
+			}
+		);
 		parser.Parse(args);
-		return BuildMembrane{ lipids, membraneCenterZ };
+
+		if (sphere && membraneCenterZ) {
+			throw std::runtime_error("Specify either -centerz/-plane or -sphere, not both.");
+		}
+
+		std::optional<MembraneGeometry::Figure> geometry;
+		if (sphere)
+			geometry = *sphere;
+		else if (membraneCenterZ)
+			geometry = MembraneGeometry::Plane{ *membraneCenterZ };
+
+		return BuildMembrane{ lipids, geometry };
 	}
 
 

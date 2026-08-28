@@ -12,6 +12,7 @@
 #include <random>
 #include <numeric>
 #include <cfloat>
+#include <numbers>
 
 
 
@@ -164,6 +165,11 @@ private:
 
 using GetNextRandomLipid = SampleSelectionRandomly<Lipids::Selection>;
 using GetNextRandomParticle = SampleSelectionRandomly<AtomsSelection>;
+
+namespace {
+	constexpr float lipidDensity = 1.f / 0.59f; // [lipids/nm^2]
+	constexpr int minimumInnerLeafletLipids = 12;
+}
 
 void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile& topfile, const AtomsSelection& particles, float minDistBetweenAnyParticle, float particlesPerNm3) 
 {
@@ -598,7 +604,8 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 
 
 
-MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize, float membraneCenter) {
+MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize,
+	const MembraneGeometry::Figure& geometry) {
 	auto outputgrofile = std::make_unique<GroFile>();
 	outputgrofile->box_size = boxSize;
 	outputgrofile->title = "Membrane consisting of ";
@@ -608,9 +615,14 @@ MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lip
 	auto outputtopologyfile = std::make_unique<TopologyFile>();
 	outputtopologyfile->SetSystem("Membrane");
 
-	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, membraneCenter);
+	CreateMembrane(*outputgrofile, *outputtopologyfile, lipidselection, geometry);
 
 	return { std::move(outputgrofile), std::move(outputtopologyfile) };
+}
+
+MDFiles::FilePair SimulationBuilder::CreateMembrane(const Lipids::Selection& lipidselection, Float3 boxSize,
+	float membraneCenter) {
+	return CreateMembrane(lipidselection, boxSize, MembraneGeometry::Plane{ membraneCenter });
 }
 
 
@@ -620,17 +632,11 @@ struct QueuedInsertion {
 	std::shared_ptr<TopologyFile> topfile;
 };
 
-void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, float membraneCenter) {
+static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, float membraneCenter) {
 
-	validateLipidselection(lipidselection);
-
-	for (auto& lipid : lipidselection) {
-		centerMoleculeAroundOrigo(*lipid.grofile);
-	}
-
-	const float lipid_density = 1.f / 0.59f;                        // [lipids/nm^2] - Referring to Fig. 6, for DMPC in excess water at 30°C, we find an average cross-sectional area per lipid of A = 59.5 Å2 | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4241443/
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
-	const float n_lipids_total = lipid_density * grofile.box_size.x * grofile.box_size.y; // (per side)
+	const float n_lipids_total = lipidDensity * grofile.box_size.x * grofile.box_size.y; // (per side)
 	const int lipidsPerDimx = static_cast<int>(std::ceil(sqrtf(n_lipids_total)));
 	const int lipidsPerDimy = static_cast<int>(std::ceil(n_lipids_total / static_cast<float>(lipidsPerDimx)));
 
@@ -716,6 +722,8 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 		return sum + nLipids*atomsPerLipid;
 		});*/
 	const int totalIncoming = std::accumulate(queuedInsertions.begin(), queuedInsertions.end(), 0, [](int sum, const auto& pair) {
+		if (pair.second.empty())
+			return sum;
 		const int atomsPerLipid = pair.second.front().grofile.atoms.size();
 		const int nLipids = pair.second.size();
     return sum + nLipids * atomsPerLipid;
@@ -729,4 +737,150 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile, 
 		}
 	}
 
+}
+
+float SimulationBuilder::MinimumSphereRadius(const Lipids::Selection& lipidselection) {
+	if (lipidselection.empty())
+		throw std::invalid_argument("Cannot determine a membrane sphere radius without lipids.");
+
+	float leafletHalfThickness = 0.f;
+	for (const auto& lipid : lipidselection) {
+		if (lipid.grofile->atoms.empty())
+			throw std::invalid_argument("Cannot build a membrane from an empty lipid structure.");
+
+		Float3 center{};
+		for (const auto& atom : lipid.grofile->atoms)
+			center += atom.position;
+		center = center / static_cast<float>(lipid.grofile->atoms.size());
+		for (const auto& atom : lipid.grofile->atoms)
+			leafletHalfThickness = std::max(leafletHalfThickness, center.z - atom.position.z);
+	}
+
+	const float minimumInnerRadius = std::sqrt(
+		static_cast<float>(minimumInnerLeafletLipids) /
+		(4.f * std::numbers::pi_v<float> * lipidDensity));
+	return leafletHalfThickness + minimumInnerRadius;
+}
+
+static std::pair<Float3, float> RotationFromZAxisTo(const Float3& targetDirection) {
+	const Float3 zAxis{ 0.f, 0.f, 1.f };
+	const Float3 target = targetDirection.norm();
+	const float cosine = std::clamp(zAxis.dot(target), -1.f, 1.f);
+	if (cosine < -1.f + 1e-6f)
+		return { Float3{ 1.f, 0.f, 0.f }, PI };
+
+	Float3 axis = zAxis.cross(target);
+	if (axis.lenSquared() < 1e-8f)
+		axis = Float3{ 1.f, 0.f, 0.f };
+	else
+		axis = axis.norm();
+	return { axis, std::acos(cosine) };
+}
+
+static void QueueSphericalLeaflet(
+	std::map<std::string, std::vector<QueuedInsertion>>& queuedInsertions,
+	const Lipids::Selection& lipidselection,
+	const Float3& sphereCenter,
+	float lipidCenterRadius,
+	int lipidCount,
+	bool pointOutwards,
+	int randomSeedOffset)
+{
+	GetNextRandomLipid getNextRandomLipid{ lipidselection, randomSeedOffset };
+	RandomUniformGenerator randomRotation(-PI, PI, 1238971 + randomSeedOffset);
+	RandomUniformGenerator radialNoise(-0.05f, 0.05f, 2348971 + randomSeedOffset);
+	const float goldenAngle = std::numbers::pi_v<float> * (3.f - std::sqrt(5.f));
+
+	for (int i = 0; i < lipidCount; ++i) {
+		const float z = 1.f - 2.f * (static_cast<float>(i) + 0.5f) / static_cast<float>(lipidCount);
+		const float xyRadius = std::sqrt(std::max(0.f, 1.f - z * z));
+		const float theta = goldenAngle * static_cast<float>(i);
+		const Float3 radialDirection{
+			xyRadius * std::cos(theta),
+			xyRadius * std::sin(theta),
+			z
+		};
+
+		const Float3 lipidCenter = sphereCenter
+			+ radialDirection * (lipidCenterRadius + radialNoise());
+		const Float3 lipidDirection = pointOutwards ? radialDirection : -radialDirection;
+		const auto [rotationAxis, rotationAngle] = RotationFromZAxisTo(lipidDirection);
+		const float selfRotation = randomRotation();
+		const Lipids::Select& lipid = getNextRandomLipid();
+
+		std::function<void(Float3&)> transform =
+			[lipidCenter, rotationAxis, rotationAngle, selfRotation](Float3& position) {
+				position = Float3::rodriguesRotatation(position, Float3{ 0.f, 0.f, 1.f }, selfRotation);
+				position = Float3::rodriguesRotatation(position, rotationAxis, rotationAngle);
+				position += lipidCenter;
+			};
+		queuedInsertions.at(lipid.lipidname).emplace_back(
+			QueuedInsertion{ *lipid.grofile, std::move(transform), lipid.topfile });
+	}
+}
+
+static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere) {
+	if (!std::isfinite(sphere.radius) || sphere.radius <= 0.f)
+		throw std::invalid_argument("Membrane sphere radius must be a positive, finite number.");
+	if (!std::isfinite(sphere.center.x) || !std::isfinite(sphere.center.y) || !std::isfinite(sphere.center.z))
+		throw std::invalid_argument("Membrane sphere center must contain finite coordinates.");
+
+	const float minimumRadius = SimulationBuilder::MinimumSphereRadius(lipidselection);
+	if (sphere.radius < minimumRadius) {
+		throw std::invalid_argument(std::format(
+			"Membrane sphere radius {:.3f} nm is too small for the selected lipids; minimum is {:.3f} nm.",
+			sphere.radius, minimumRadius));
+	}
+
+	const float leafletHalfThickness = std::abs(MinParticlePosInDimension(lipidselection, 2));
+	const float outerLipidCenterRadius = sphere.radius + leafletHalfThickness;
+	const float innerLipidCenterRadius = sphere.radius - leafletHalfThickness;
+	const int outerLipidCount = std::max(1, static_cast<int>(std::lround(
+		4.f * std::numbers::pi_v<float> * outerLipidCenterRadius * outerLipidCenterRadius * lipidDensity)));
+	const int innerLipidCount = std::max(1, static_cast<int>(std::lround(
+		4.f * std::numbers::pi_v<float> * innerLipidCenterRadius * innerLipidCenterRadius * lipidDensity)));
+
+	std::map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
+	for (const auto& lipid : lipidselection)
+		queuedInsertions.try_emplace(lipid.lipidname);
+
+	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center,
+		outerLipidCenterRadius, outerLipidCount, true, 0);
+	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center,
+		innerLipidCenterRadius, innerLipidCount, false, 1);
+
+	int totalIncoming = 0;
+	for (const auto& [_, insertions] : queuedInsertions) {
+		if (!insertions.empty())
+			totalIncoming += static_cast<int>(insertions.front().grofile.atoms.size() * insertions.size());
+	}
+	grofile.atoms.reserve(grofile.atoms.size() + totalIncoming);
+
+	for (const auto& [_, insertions] : queuedInsertions) {
+		for (const QueuedInsertion& insertion : insertions) {
+			AddGroAndTopToGroAndTopfile(grofile, insertion.grofile, insertion.positionTransform,
+				topfile, insertion.topfile);
+		}
+	}
+}
+
+void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry) {
+	validateLipidselection(lipidselection);
+	for (const auto& lipid : lipidselection)
+		centerMoleculeAroundOrigo(*lipid.grofile);
+
+	std::visit([&](const auto& figure) {
+		using FigureType = std::decay_t<decltype(figure)>;
+		if constexpr (std::is_same_v<FigureType, MembraneGeometry::Plane>)
+			CreatePlanarMembrane(grofile, topfile, lipidselection, figure.z);
+		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Sphere>)
+			CreateSphericalMembrane(grofile, topfile, lipidselection, figure);
+	}, geometry);
+}
+
+void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, float membraneCenter) {
+	CreateMembrane(grofile, topfile, lipidselection, MembraneGeometry::Plane{ membraneCenter });
 }

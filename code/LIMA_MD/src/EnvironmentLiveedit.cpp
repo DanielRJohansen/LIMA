@@ -174,8 +174,9 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	for (const auto [name, percentage] : cmd.lipids) {
 		lipidselection.emplace_back(Lipids::Select(name, workDir, percentage));
 	}
-	float membraneCenterZ = cmd.membraneCenterZ.value_or(grofile.box_size.z / 2.f);
-	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ);
+	const MembraneGeometry::Figure geometry = cmd.geometry.value_or(
+		MembraneGeometry::Plane{ grofile.box_size.z / 2.f });
+	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry);
 	SimParams simparams = simulation->simParams;	
 	CreateSimulation(grofile, topfile, simparams);
 

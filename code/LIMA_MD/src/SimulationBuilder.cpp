@@ -610,6 +610,32 @@ struct QueuedInsertion {
 	std::shared_ptr<TopologyFile> topfile;
 };
 
+static std::pair<Float3, float> RotationFromZAxisTo(const Float3& targetDirection);
+
+// Thermal membrane roughness is spatially correlated. Independent large
+// displacements would create holes and unrealistic bilayer-thickness changes.
+// These periodic low-frequency modes give a nanoscale patch sub-nanometre
+// undulations while remaining continuous across periodic box boundaries.
+static float PlanarMidplaneDisplacement(float x, float y, const Float3& boxSize) {
+	const float shortestSide = std::min(boxSize.x, boxSize.y);
+	const float amplitude = std::clamp(shortestSide * 0.025f, 0.10f, 0.7f); // [nm]
+	const float xPhase = 2.f * std::numbers::pi_v<float> * x / boxSize.x;
+	const float yPhase = 2.f * std::numbers::pi_v<float> * y / boxSize.y;
+	return amplitude * (
+		0.55f * std::sin(xPhase + 0.37f) * std::cos(yPhase - 0.61f)
+		+ 0.30f * std::cos(2.f * xPhase - 0.83f) * std::sin(yPhase + 0.29f)
+		+ 0.15f * std::sin(xPhase + yPhase + 1.17f));
+}
+
+static Float3 PlanarSurfaceNormal(float x, float y, const Float3& boxSize) {
+	constexpr float sampleDistance = 0.01f; // [nm]
+	const float dhdx = (PlanarMidplaneDisplacement(x + sampleDistance, y, boxSize)
+		- PlanarMidplaneDisplacement(x - sampleDistance, y, boxSize)) / (2.f * sampleDistance);
+	const float dhdy = (PlanarMidplaneDisplacement(x, y + sampleDistance, boxSize)
+		- PlanarMidplaneDisplacement(x, y - sampleDistance, boxSize)) / (2.f * sampleDistance);
+	return Float3{ -dhdx, -dhdy, 1.f }.norm();
+}
+
 static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, float membraneCenter) {
 
@@ -626,7 +652,10 @@ static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
 
 	RandomUniformGenerator genRandomAngle(-PI, PI);
 	GetNextRandomLipid getNextRandomLipid{ lipidselection };
-	RandomUniformGenerator genRandomUpDownTranslation(-0.05f, 0.05f);
+	// Small independent protrusions are layered on top of the shared mid-plane
+	// undulation. Keeping these below 0.04 nm avoids tearing the initial bilayer.
+	RandomUniformGenerator topLeafletProtrusion(-0.035f, 0.035f, 571923);
+	RandomUniformGenerator bottomLeafletProtrusion(-0.035f, 0.035f, 927531);
 
 	std::map<std::string, std::vector<QueuedInsertion>> queuedInsertions; // Must be ordered, so we get the same sequence each time
 	for (auto& lipid : lipidselection) {
@@ -643,24 +672,29 @@ static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
 				break;
 
 
-			const Float3 randomTopDownTranslation{ 0.f,0.f,genRandomUpDownTranslation()};
+			const float centerX = static_cast<float>(x) * distPerX + distPerX / 2.f;
+			const float centerY = static_cast<float>(y) * distPerY + distPerY / 4.f + packingOffset;
+			const float midplaneDisplacement = PlanarMidplaneDisplacement(centerX, centerY, grofile.box_size);
+			const Float3 surfaceNormal = PlanarSurfaceNormal(centerX, centerY, grofile.box_size);
 
 			// Insert top lipid
 			{
 				const Lipids::Select& inputlipid = getNextRandomLipid();
 
 				const Float3 lipidCenter = Float3{
-					static_cast<float>(x) * distPerX + distPerX / 2.f,
-					static_cast<float>(y) * distPerY + distPerY / 4.f + packingOffset,
-					membraneCenter + std::abs(lowestZpos) + interLipidLayerSpaceHalf
+					centerX,
+					centerY,
+					membraneCenter + midplaneDisplacement + std::abs(lowestZpos)
+						+ interLipidLayerSpaceHalf + topLeafletProtrusion()
 				};
 
-
 				const float randomRot = genRandomAngle();
-				std::function<void(Float3&)> position_transform = [lipidCenter, randomRot, randomTopDownTranslation](Float3& pos) {
+				const auto [normalRotationAxis, normalRotationAngle] = RotationFromZAxisTo(surfaceNormal);
+				std::function<void(Float3&)> position_transform =
+					[lipidCenter, randomRot, normalRotationAxis, normalRotationAngle](Float3& pos) {
 					pos = Float3::rodriguesRotatation(pos, Float3{ 0,0,1 }, randomRot);
+					pos = Float3::rodriguesRotatation(pos, normalRotationAxis, normalRotationAngle);
 					pos += lipidCenter;
-					pos += randomTopDownTranslation;
 					};
 
 				queuedInsertions.at(inputlipid.lipidname).emplace_back(QueuedInsertion{ *inputlipid.grofile, position_transform, inputlipid.topfile });
@@ -671,17 +705,19 @@ static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
 				const Lipids::Select& inputlipid = getNextRandomLipid();
 
 				const Float3 lipidCenter = Float3{
-					static_cast<float>(x) * distPerX + distPerX / 2.f,
-					static_cast<float>(y) * distPerY + distPerY / 4.f + packingOffset,
-					membraneCenter - std::abs(lowestZpos) - interLipidLayerSpaceHalf
+					centerX,
+					centerY,
+					membraneCenter + midplaneDisplacement - std::abs(lowestZpos)
+						- interLipidLayerSpaceHalf + bottomLeafletProtrusion()
 				};
 
 				const float randomRot = genRandomAngle();
-				std::function<void(Float3&)> position_transform = [lipidCenter, randomRot, randomTopDownTranslation](Float3& pos) {
+				const auto [normalRotationAxis, normalRotationAngle] = RotationFromZAxisTo(-surfaceNormal);
+				std::function<void(Float3&)> position_transform =
+					[lipidCenter, randomRot, normalRotationAxis, normalRotationAngle](Float3& pos) {
 					pos = Float3::rodriguesRotatation(pos, Float3{ 0,0,1 }, randomRot);
-					pos = Float3::rodriguesRotatation(pos, Float3{ 1,0,0 }, PI); // Rotate 180 degrees around x-axis
+					pos = Float3::rodriguesRotatation(pos, normalRotationAxis, normalRotationAngle);
 					pos += lipidCenter;
-					pos += randomTopDownTranslation;
 					};
 
 				//AddGroAndTopToGroAndTopfile(grofile, *inputlipid.grofile, position_transform,
@@ -755,10 +791,23 @@ static std::pair<Float3, float> RotationFromZAxisTo(const Float3& targetDirectio
 	return { axis, std::acos(cosine) };
 }
 
+// A sum of low-order, zero-mean spherical modes approximates the correlated
+// thermal shape fluctuations of a vesicle without changing its mean radius.
+static float SphericalMidSurfaceDisplacement(const Float3& direction, float sphereRadius) {
+	const float amplitude = std::clamp(sphereRadius * 0.035f, 0.10f, 0.60f); // [nm]
+	const float quadrupole = 0.5f * (3.f * direction.z * direction.z - 1.f);
+	return amplitude * (
+		0.50f * quadrupole
+		+ 0.28f * (direction.x * direction.x - direction.y * direction.y)
+		+ 0.14f * (2.f * direction.x * direction.y)
+		+ 0.08f * (2.f * direction.y * direction.z));
+}
+
 static void QueueSphericalLeaflet(
 	std::map<std::string, std::vector<QueuedInsertion>>& queuedInsertions,
 	const Lipids::Selection& lipidselection,
 	const Float3& sphereCenter,
+	float sphereMidSurfaceRadius,
 	float lipidCenterRadius,
 	int lipidCount,
 	bool pointOutwards,
@@ -766,7 +815,7 @@ static void QueueSphericalLeaflet(
 {
 	GetNextRandomLipid getNextRandomLipid{ lipidselection, randomSeedOffset };
 	RandomUniformGenerator randomRotation(-PI, PI, 1238971 + randomSeedOffset);
-	RandomUniformGenerator radialNoise(-0.05f, 0.05f, 2348971 + randomSeedOffset);
+	RandomUniformGenerator lipidProtrusion(-0.035f, 0.035f, 2348971 + randomSeedOffset);
 	const float goldenAngle = std::numbers::pi_v<float> * (3.f - std::sqrt(5.f));
 
 	for (int i = 0; i < lipidCount; ++i) {
@@ -779,8 +828,10 @@ static void QueueSphericalLeaflet(
 			z
 		};
 
-		const Float3 lipidCenter = sphereCenter
-			+ radialDirection * (lipidCenterRadius + radialNoise());
+		const float correlatedDisplacement =
+			SphericalMidSurfaceDisplacement(radialDirection, sphereMidSurfaceRadius);
+		const Float3 lipidCenter = sphereCenter + radialDirection
+			* (lipidCenterRadius + correlatedDisplacement + lipidProtrusion());
 		const Float3 lipidDirection = pointOutwards ? radialDirection : -radialDirection;
 		const auto [rotationAxis, rotationAngle] = RotationFromZAxisTo(lipidDirection);
 		const float selfRotation = randomRotation();
@@ -823,9 +874,9 @@ static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
 	for (const auto& lipid : lipidselection)
 		queuedInsertions.try_emplace(lipid.lipidname);
 
-	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center,
+	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center, sphere.radius,
 		outerLipidCenterRadius, outerLipidCount, true, 0);
-	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center,
+	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center, sphere.radius,
 		innerLipidCenterRadius, innerLipidCount, false, 1);
 
 	int totalIncoming = 0;

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <numeric>
 
+#include "Statistics.h"
 #include "TestUtils.h"
 #include "Programs.h"
 #include "MoleculeHull.cuh"
@@ -10,6 +12,21 @@
 namespace TestMembraneBuilder {
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
+
+	static std::vector<Float3> ResidueCenters(const GroFile& grofile) {
+		std::map<int, std::pair<Float3, int>> accumulators;
+		for (const auto& atom : grofile.atoms) {
+			auto& [sum, count] = accumulators[atom.residue_number];
+			sum += atom.position;
+			++count;
+		}
+
+		std::vector<Float3> centers;
+		centers.reserve(accumulators.size());
+		for (const auto& [_, value] : accumulators)
+			centers.push_back(value.first / static_cast<float>(value.second));
+		return centers;
+	}
 
 	static LimaUnittestResult TestSphericalMembraneBuilder(EnvMode envmode) {
 		const fs::path workDir = simulations_dir / "BuildMembraneSphere";
@@ -44,6 +61,37 @@ namespace TestMembraneBuilder {
 			ASSERT(std::isfinite(atom.position.x) && std::isfinite(atom.position.y) && std::isfinite(atom.position.z),
 				"Spherical membrane contained a non-finite atom position");
 		}
+		std::vector<float> outerRadii;
+		std::vector<float> innerRadii;
+		for (const Float3& center : ResidueCenters(grofile)) {
+			const float radius = (center - Float3{ 8.f }).len();
+			(radius > minimumRadius + 1.f ? outerRadii : innerRadii).push_back(radius);
+		}
+
+		
+		ASSERT(outerRadii.size() > 2 && innerRadii.size() > 2,
+			"Could not identify both spherical membrane leaflets");
+		ASSERT(Statistics::StdDev(outerRadii) > 0.02f && Statistics::StdDev(innerRadii) > 0.02f,
+			"Spherical membrane radial roughness was too small");
+		ASSERT(Statistics::StdDev(outerRadii) < 0.30f && Statistics::StdDev(innerRadii) < 0.30f,
+			"Spherical membrane radial roughness was unreasonably large");
+
+		GroFile planarGrofile;
+		planarGrofile.box_size = Float3{ 8.f };
+		TopologyFile planarTopfile;
+		planarTopfile.SetSystem("Membrane");
+		SimulationBuilder::CreateMembrane(planarGrofile, planarTopfile, lipids,
+			MembraneGeometry::Plane{ 4.f });
+		std::vector<float> topHeights;
+		std::vector<float> bottomHeights;
+		for (const Float3& center : ResidueCenters(planarGrofile))
+			(center.z > 4.f ? topHeights : bottomHeights).push_back(center.z);
+		ASSERT(topHeights.size() > 2 && bottomHeights.size() > 2,
+			"Could not identify both planar membrane leaflets");
+		ASSERT(Statistics::StdDev(topHeights) > 0.03f && Statistics::StdDev(bottomHeights) > 0.03f,
+			"Planar membrane height roughness was too small");
+		ASSERT(Statistics::StdDev(topHeights) < 0.30f && Statistics::StdDev(bottomHeights) < 0.30f,
+			"Planar membrane height roughness was unreasonably large");
 
 		const auto command = LiveEdit::ParseCommand(
 			"buildmembrane -lipids DMPC 100 -sphere 8 8 8 4");
@@ -56,7 +104,7 @@ namespace TestMembraneBuilder {
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
-	// This test ensures that the membrane is built identical to the reference membrane, NOT considering EM
+	// This test checks topology compatibility and physically bounded coordinate generation, NOT considering EM.
 	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{		
 		const fs::path workDir = simulations_dir / "BuildMembraneSmall";
@@ -104,18 +152,20 @@ namespace TestMembraneBuilder {
 		GroFile refGro{ mol_dir / "membrane_reference.gro" };
 		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
 		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
-		for (int i = 0; i < newGro.atoms.size(); i++) {
-			auto b = (newGro.atoms[i].position - refGro.atoms[i].position).len();
-			if (newGro.atoms[i].position != refGro.atoms[i].position)
-				int a=0;
-
-			std::string errStr = std::format("Atom position mismatch at atom {}: got ({:.5f},{:.5f},{:.5f}), expected ({:.5f},{:.5f},{:.5f}), diff len {:.5f}", 
-				i,
-				newGro.atoms[i].position.x, newGro.atoms[i].position.y, newGro.atoms[i].position.z,
-				refGro.atoms[i].position.x, refGro.atoms[i].position.y, refGro.atoms[i].position.z,
-				b);
-			ASSERT(newGro.atoms[i].position == refGro.atoms[i].position, errStr);
+		for (const auto& atom : newGro.atoms) {
+			ASSERT(std::isfinite(atom.position.x) && std::isfinite(atom.position.y) && std::isfinite(atom.position.z),
+				"Planar membrane contained a non-finite atom position");
 		}
+		std::vector<float> topLeafletHeights;
+		std::vector<float> bottomLeafletHeights;
+		for (const Float3& center : ResidueCenters(newGro))
+			(center.z > 3.5f ? topLeafletHeights : bottomLeafletHeights).push_back(center.z);
+		ASSERT(topLeafletHeights.size() > 2 && bottomLeafletHeights.size() > 2,
+			"Could not identify both planar membrane leaflets");
+		ASSERT(Statistics::StdDev(topLeafletHeights) > 0.03f && Statistics::StdDev(bottomLeafletHeights) > 0.03f,
+			"Planar membrane height roughness was too small");
+		ASSERT(Statistics::StdDev(topLeafletHeights) < 0.30f && Statistics::StdDev(bottomLeafletHeights) < 0.30f,
+			"Planar membrane height roughness was unreasonably large");
 
 		// Finally test if we can stabilize the simulation
 		const float emtol = 200.f;

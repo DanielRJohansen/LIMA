@@ -83,7 +83,7 @@ void BuildCellTest() {
 
 	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
 	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
-	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 4.f } });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 5.f } });
 	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Sphere{Float3{20,20,20  }, 15.f }});
 
 	env.LiveEdit(grofile, topfile);
@@ -95,7 +95,7 @@ int main() {
 
 		//TestDisplayT4();
 		//LiveEditTest();
-		//BuildCellTest();
+		BuildCellTest();
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);

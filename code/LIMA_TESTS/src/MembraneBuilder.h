@@ -28,6 +28,29 @@ namespace TestMembraneBuilder {
 		return centers;
 	}
 
+	static float NearestNeighborSpacingVariation(const std::vector<Float3>& directions) {
+		std::vector<float> nearestDistances;
+		nearestDistances.reserve(directions.size());
+		for (size_t i = 0; i < directions.size(); ++i) {
+			float nearestDistance = FLT_MAX;
+			for (size_t j = 0; j < directions.size(); ++j) {
+				if (i != j)
+					nearestDistance = std::min(nearestDistance, (directions[i] - directions[j]).len());
+			}
+			nearestDistances.push_back(nearestDistance);
+		}
+		return Statistics::StdDev(nearestDistances) / Statistics::Mean(nearestDistances);
+	}
+
+	static float MinimumNearestNeighborSpacing(const std::vector<Float3>& points) {
+		float minimumSpacing = FLT_MAX;
+		for (size_t i = 0; i < points.size(); ++i) {
+			for (size_t j = i + 1; j < points.size(); ++j)
+				minimumSpacing = std::min(minimumSpacing, (points[i] - points[j]).len());
+		}
+		return minimumSpacing;
+	}
+
 	static LimaUnittestResult TestSphericalMembraneBuilder(EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "BuildMembraneSphere";
 		Lipids::Selection lipids;
@@ -75,6 +98,71 @@ namespace TestMembraneBuilder {
 			"Spherical membrane radial roughness was too small");
 		ASSERT(Statistics::StdDev(outerRadii) < 0.30f && Statistics::StdDev(innerRadii) < 0.30f,
 			"Spherical membrane radial roughness was unreasonably large");
+		std::vector<Float3> outerDirections;
+		std::vector<Float3> innerDirections;
+		for (const Float3& center : ResidueCenters(grofile)) {
+			const Float3 offset = center - Float3{ 8.f };
+			(offset.len() > minimumRadius + 1.f ? outerDirections : innerDirections)
+				.push_back(offset.norm());
+		}
+		ASSERT(NearestNeighborSpacingVariation(outerDirections) < 0.20f
+			&& NearestNeighborSpacingVariation(innerDirections) < 0.20f,
+			"Equal-radius closed membrane did not preserve uniform spherical spacing");
+
+		GroFile ellipsoidGrofile;
+		ellipsoidGrofile.box_size = Float3{ 20.f };
+		TopologyFile ellipsoidTopfile;
+		ellipsoidTopfile.SetSystem("Membrane");
+		const Float3 ellipsoidCenter{ 10.f };
+		const Float3 ellipsoidRadii{ 5.f, 6.f, 7.f };
+		SimulationBuilder::CreateMembrane(ellipsoidGrofile, ellipsoidTopfile, lipids,
+			MembraneGeometry::Ellipsoid{ ellipsoidCenter, ellipsoidRadii });
+		ASSERT(!ellipsoidGrofile.atoms.empty(), "Ellipsoid membrane did not contain any atoms");
+		int outerEllipsoidLipids = 0;
+		int innerEllipsoidLipids = 0;
+		std::vector<Float3> outerEllipsoidCenters;
+		std::vector<Float3> innerEllipsoidCenters;
+		Float3 maximumCenterExtent{};
+		for (const Float3& center : ResidueCenters(ellipsoidGrofile)) {
+			const Float3 offset = center - ellipsoidCenter;
+			const float implicitSurfaceValue =
+				offset.x * offset.x / (ellipsoidRadii.x * ellipsoidRadii.x)
+				+ offset.y * offset.y / (ellipsoidRadii.y * ellipsoidRadii.y)
+				+ offset.z * offset.z / (ellipsoidRadii.z * ellipsoidRadii.z);
+			if (implicitSurfaceValue > 1.f) {
+				++outerEllipsoidLipids;
+				outerEllipsoidCenters.push_back(center);
+			}
+			else {
+				++innerEllipsoidLipids;
+				innerEllipsoidCenters.push_back(center);
+			}
+			maximumCenterExtent = Float3::ElementwiseMax(maximumCenterExtent, offset.abs());
+		}
+		ASSERT(outerEllipsoidLipids > 2 && innerEllipsoidLipids > 2,
+			"Could not identify both ellipsoid membrane leaflets");
+		ASSERT(maximumCenterExtent.z > maximumCenterExtent.y
+			&& maximumCenterExtent.y > maximumCenterExtent.x,
+			"Ellipsoid membrane did not preserve its unequal axis radii");
+		ASSERT(MinimumNearestNeighborSpacing(outerEllipsoidCenters) > 0.35f
+			&& MinimumNearestNeighborSpacing(innerEllipsoidCenters) > 0.35f,
+			"Ellipsoid membrane placement produced overlapping or clustered lipids");
+
+		bool rejectedTightlyCurvedEllipsoid = false;
+		try {
+			GroFile invalidGrofile;
+			invalidGrofile.box_size = Float3{ 20.f };
+			TopologyFile invalidTopfile;
+			invalidTopfile.SetSystem("Membrane");
+			SimulationBuilder::CreateMembrane(invalidGrofile, invalidTopfile, lipids,
+				MembraneGeometry::Ellipsoid{
+					Float3{ 10.f }, Float3{ minimumRadius, minimumRadius, minimumRadius * 2.f } });
+		}
+		catch (const std::invalid_argument&) {
+			rejectedTightlyCurvedEllipsoid = true;
+		}
+		ASSERT(rejectedTightlyCurvedEllipsoid,
+			"An ellipsoid with an unreasonably small local curvature radius was accepted");
 
 		GroFile planarGrofile;
 		planarGrofile.box_size = Float3{ 8.f };
@@ -100,6 +188,14 @@ namespace TestMembraneBuilder {
 		const auto& parsedSphere = std::get<MembraneGeometry::Sphere>(*buildCommand.geometry);
 		ASSERT(parsedSphere.center == Float3{ 8.f } && parsedSphere.radius == 4.f,
 			"Live-edit sphere geometry had incorrect values");
+		const auto ellipsoidCommand = LiveEdit::ParseCommand(
+			"buildmembrane -lipids DMPC 100 -ellipsoid 8 9 10 4 5 6");
+		const auto& parsedBuildCommand = std::get<LiveEdit::BuildMembrane>(ellipsoidCommand);
+		ASSERT(parsedBuildCommand.geometry.has_value(), "Live-edit ellipsoid geometry was not parsed");
+		const auto& parsedEllipsoid = std::get<MembraneGeometry::Ellipsoid>(*parsedBuildCommand.geometry);
+		ASSERT((parsedEllipsoid.center == Float3{ 8.f, 9.f, 10.f }
+			&& parsedEllipsoid.radii == Float3{ 4.f, 5.f, 6.f }),
+			"Live-edit ellipsoid geometry had incorrect values");
 
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}

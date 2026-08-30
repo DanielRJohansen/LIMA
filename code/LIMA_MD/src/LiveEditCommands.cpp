@@ -47,6 +47,7 @@ namespace LiveEdit {
 		std::vector<std::tuple<std::string, double>> lipids; // {name, percentage}
 		std::optional<float> membraneCenterZ = std::nullopt;
 		std::optional<MembraneGeometry::Sphere> sphere = std::nullopt;
+		std::optional<MembraneGeometry::Ellipsoid> ellipsoid = std::nullopt;
 		parser.AddOption({ "-lipids" }, true,
 			[&lipids](const std::vector<std::string>& args) {
 				if (args.size() % 2 != 0) {
@@ -83,15 +84,36 @@ namespace LiveEdit {
 				}
 			}
 		);
+		parser.AddOption({ "-ellipsoid" }, false,
+			[&ellipsoid](const std::vector<std::string>& args) {
+				if (args.size() != 6) {
+					throw std::runtime_error(
+						"Invalid -ellipsoid argument. Expected: center-x center-y center-z radius-x radius-y radius-z.");
+				}
+				try {
+					ellipsoid = MembraneGeometry::Ellipsoid{
+						Float3{ std::stof(args[0]), std::stof(args[1]), std::stof(args[2]) },
+						Float3{ std::stof(args[3]), std::stof(args[4]), std::stof(args[5]) }
+					};
+				}
+				catch (...) {
+					throw std::runtime_error(
+						"Invalid -ellipsoid argument. All six values must be floating-point numbers.");
+				}
+			}
+		);
 		parser.Parse(args);
 
-		if (sphere && membraneCenterZ) {
-			throw std::runtime_error("Specify either -centerz/-plane or -sphere, not both.");
+		if (static_cast<int>(membraneCenterZ.has_value()) + static_cast<int>(sphere.has_value())
+			+ static_cast<int>(ellipsoid.has_value()) > 1) {
+			throw std::runtime_error("Specify exactly one membrane geometry: -centerz/-plane, -sphere, or -ellipsoid.");
 		}
 
 		std::optional<MembraneGeometry::Figure> geometry;
 		if (sphere)
 			geometry = *sphere;
+		else if (ellipsoid)
+			geometry = *ellipsoid;
 		else if (membraneCenterZ)
 			geometry = MembraneGeometry::Plane{ *membraneCenterZ };
 

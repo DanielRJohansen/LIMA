@@ -17,5 +17,11 @@ namespace MembraneGeometry {
 		float radius;
 	};
 
-	using Figure = std::variant<Plane, Sphere>;
+	// The three radii describe the bilayer mid-surface along x, y, and z.
+	struct Ellipsoid {
+		Float3 center;
+		Float3 radii;
+	};
+
+	using Figure = std::variant<Plane, Sphere, Ellipsoid>;
 }

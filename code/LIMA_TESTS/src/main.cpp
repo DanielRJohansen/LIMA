@@ -72,7 +72,7 @@ void LiveEditTest() {
 
 void BuildCellTest() {
 	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(40.f));
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(30, 30, 40));
 	env.CreateSimulation(grofile, topfile, simparams);
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
@@ -84,7 +84,7 @@ void BuildCellTest() {
 	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
 	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
 	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 5.f } });
-	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Sphere{Float3{20,20,20  }, 15.f }});
+	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Ellipsoid{Float3{15,15,20  }, Float3{12, 12, 18 }} });
 
 	env.LiveEdit(grofile, topfile);
 }

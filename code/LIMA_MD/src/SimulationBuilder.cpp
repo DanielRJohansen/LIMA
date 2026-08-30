@@ -793,8 +793,8 @@ static std::pair<Float3, float> RotationFromZAxisTo(const Float3& targetDirectio
 
 // A sum of low-order, zero-mean spherical modes approximates the correlated
 // thermal shape fluctuations of a vesicle without changing its mean radius.
-static float SphericalMidSurfaceDisplacement(const Float3& direction, float sphereRadius) {
-	const float amplitude = std::clamp(sphereRadius * 0.035f, 0.10f, 0.60f); // [nm]
+static float ClosedSurfaceDisplacement(const Float3& direction, float characteristicRadius) {
+	const float amplitude = std::clamp(characteristicRadius * 0.035f, 0.10f, 0.60f); // [nm]
 	const float quadrupole = 0.5f * (3.f * direction.z * direction.z - 1.f);
 	return amplitude * (
 		0.50f * quadrupole
@@ -803,12 +803,153 @@ static float SphericalMidSurfaceDisplacement(const Float3& direction, float sphe
 		+ 0.08f * (2.f * direction.y * direction.z));
 }
 
-static void QueueSphericalLeaflet(
+static Float3 FibonacciDirection(float index, int count) {
+	const float goldenAngle = std::numbers::pi_v<float> * (3.f - std::sqrt(5.f));
+	const float z = 1.f - 2.f * (index + 0.5f) / static_cast<float>(count);
+	const float xyRadius = std::sqrt(std::max(0.f, 1.f - z * z));
+	const float theta = goldenAngle * index;
+	return Float3{ xyRadius * std::cos(theta), xyRadius * std::sin(theta), z };
+}
+
+// Surface-area Jacobian for the parameterization
+// (a sqrt(1-u^2) cos(theta), b sqrt(1-u^2) sin(theta), c u).
+static double EllipsoidSurfaceJacobian(double u, double theta, const Float3& radii) {
+	const double a = radii.x;
+	const double b = radii.y;
+	const double c = radii.z;
+	const double oneMinusUSquared = std::max(0.0, 1.0 - u * u);
+	const double cosine = std::cos(theta);
+	const double sine = std::sin(theta);
+	return std::sqrt(
+		b * b * c * c * oneMinusUSquared * cosine * cosine
+		+ a * a * c * c * oneMinusUSquared * sine * sine
+		+ a * a * b * b * u * u);
+}
+
+// Generate a deterministic equal-area point set. The old implementation
+// resampled a continuous Fibonacci spiral at fractional indices. Even a small
+// departure from a sphere then produced adjacent angles much closer than the
+// golden angle, creating bands and sometimes overlapping lipids.
+//
+// Here each integer Fibonacci index selects one equal-area meridional band and
+// one golden-angle azimuthal quantile. Both quantiles are transformed through
+// the ellipsoid's surface-area Jacobian, so triaxial ellipsoids remain uniform
+// without sacrificing the separation properties of the integer lattice.
+static std::vector<Float3> EllipsoidSurfaceDirections(int count, const Float3& radii) {
+	const float longestAxis = std::max({ radii.x, radii.y, radii.z });
+	const float shortestAxis = std::min({ radii.x, radii.y, radii.z });
+	if (longestAxis - shortestAxis <= longestAxis * 1e-6f) {
+		std::vector<Float3> directions;
+		directions.reserve(count);
+		for (int i = 0; i < count; ++i)
+			directions.push_back(FibonacciDirection(static_cast<float>(i), count));
+		return directions;
+	}
+
+	constexpr int meridionalIntervals = 2048;
+	constexpr int azimuthalIntervals = 256;
+	constexpr double twoPi = 2.0 * std::numbers::pi_v<double>;
+	const double goldenAngle = std::numbers::pi_v<double> * (3.0 - std::sqrt(5.0));
+
+	// Integrate out theta to obtain the marginal surface-area CDF for u.
+	std::vector<double> meridionalCdf(meridionalIntervals + 1, 0.0);
+	auto marginalAreaDensity = [&radii](double u) {
+		double sum = 0.0;
+		for (int j = 0; j < azimuthalIntervals; ++j) {
+			const double theta = twoPi * (static_cast<double>(j) + 0.5)
+				/ static_cast<double>(azimuthalIntervals);
+			sum += EllipsoidSurfaceJacobian(u, theta, radii);
+		}
+		return sum / static_cast<double>(azimuthalIntervals);
+	};
+
+	double previousDensity = marginalAreaDensity(-1.0);
+	for (int j = 1; j <= meridionalIntervals; ++j) {
+		const double u = -1.0 + 2.0 * static_cast<double>(j)
+			/ static_cast<double>(meridionalIntervals);
+		const double density = marginalAreaDensity(u);
+		meridionalCdf[j] = meridionalCdf[j - 1] + previousDensity + density;
+		previousDensity = density;
+	}
+	const double totalMeridionalWeight = meridionalCdf.back();
+
+	std::vector<Float3> directions;
+	directions.reserve(count);
+	for (int i = 0; i < count; ++i) {
+		// Descending u matches the pole ordering of FibonacciDirection.
+		const double meridionalTarget = totalMeridionalWeight
+			* (1.0 - (static_cast<double>(i) + 0.5) / static_cast<double>(count));
+		const auto upper = std::lower_bound(
+			meridionalCdf.begin() + 1, meridionalCdf.end(), meridionalTarget);
+		const int upperIndex = static_cast<int>(upper - meridionalCdf.begin());
+		const int lowerIndex = upperIndex - 1;
+		const double intervalWeight = meridionalCdf[upperIndex] - meridionalCdf[lowerIndex];
+		const double fraction = intervalWeight > 0.0
+			? (meridionalTarget - meridionalCdf[lowerIndex]) / intervalWeight : 0.5;
+		const double u = -1.0 + 2.0
+			* (static_cast<double>(lowerIndex) + fraction)
+			/ static_cast<double>(meridionalIntervals);
+
+		// Convert the integer golden-angle phase to the conditional equal-area
+		// azimuth at this u. Midpoint quadrature avoids bias at bin boundaries.
+		double azimuthalWeight = 0.0;
+		for (int j = 0; j < azimuthalIntervals; ++j) {
+			const double theta = twoPi * (static_cast<double>(j) + 0.5)
+				/ static_cast<double>(azimuthalIntervals);
+			azimuthalWeight += EllipsoidSurfaceJacobian(u, theta, radii);
+		}
+		const double phase = std::fmod(goldenAngle * static_cast<double>(i), twoPi) / twoPi;
+		const double azimuthalTarget = phase * azimuthalWeight;
+		double cumulativeWeight = 0.0;
+		double theta = 0.0;
+		for (int j = 0; j < azimuthalIntervals; ++j) {
+			const double midpoint = twoPi * (static_cast<double>(j) + 0.5)
+				/ static_cast<double>(azimuthalIntervals);
+			const double weight = EllipsoidSurfaceJacobian(u, midpoint, radii);
+			if (cumulativeWeight + weight >= azimuthalTarget) {
+				const double withinBin = weight > 0.0
+					? (azimuthalTarget - cumulativeWeight) / weight : 0.5;
+				theta = twoPi * (static_cast<double>(j) + withinBin)
+					/ static_cast<double>(azimuthalIntervals);
+				break;
+			}
+			cumulativeWeight += weight;
+		}
+
+		const double xyRadius = std::sqrt(std::max(0.0, 1.0 - u * u));
+		directions.emplace_back(
+			static_cast<float>(xyRadius * std::cos(theta)),
+			static_cast<float>(xyRadius * std::sin(theta)),
+			static_cast<float>(u));
+	}
+	return directions;
+}
+
+static Float3 EllipsoidNormal(const Float3& direction, const Float3& radii) {
+	return Float3{
+		direction.x / radii.x,
+		direction.y / radii.y,
+		direction.z / radii.z
+	}.norm();
+}
+
+static float EllipsoidSurfaceArea(const Float3& radii) {
+	// Knud Thomsen's approximation is well below the uncertainty in the target
+	// lipid area and is exact for spheres.
+	constexpr float p = 1.6075f;
+	const float mean = (
+		std::pow(radii.x * radii.y, p)
+		+ std::pow(radii.x * radii.z, p)
+		+ std::pow(radii.y * radii.z, p)) / 3.f;
+	return 4.f * std::numbers::pi_v<float> * std::pow(mean, 1.f / p);
+}
+
+static void QueueEllipsoidalLeaflet(
 	std::map<std::string, std::vector<QueuedInsertion>>& queuedInsertions,
 	const Lipids::Selection& lipidselection,
-	const Float3& sphereCenter,
-	float sphereMidSurfaceRadius,
-	float lipidCenterRadius,
+	const Float3& center,
+	const Float3& midSurfaceRadii,
+	float normalOffset,
 	int lipidCount,
 	bool pointOutwards,
 	int randomSeedOffset)
@@ -816,23 +957,19 @@ static void QueueSphericalLeaflet(
 	GetNextRandomLipid getNextRandomLipid{ lipidselection, randomSeedOffset };
 	RandomUniformGenerator randomRotation(-PI, PI, 1238971 + randomSeedOffset);
 	RandomUniformGenerator lipidProtrusion(-0.035f, 0.035f, 2348971 + randomSeedOffset);
-	const float goldenAngle = std::numbers::pi_v<float> * (3.f - std::sqrt(5.f));
+	const float characteristicRadius = std::cbrt(
+		midSurfaceRadii.x * midSurfaceRadii.y * midSurfaceRadii.z);
+	const std::vector<Float3> surfaceDirections =
+		EllipsoidSurfaceDirections(lipidCount, midSurfaceRadii);
 
-	for (int i = 0; i < lipidCount; ++i) {
-		const float z = 1.f - 2.f * (static_cast<float>(i) + 0.5f) / static_cast<float>(lipidCount);
-		const float xyRadius = std::sqrt(std::max(0.f, 1.f - z * z));
-		const float theta = goldenAngle * static_cast<float>(i);
-		const Float3 radialDirection{
-			xyRadius * std::cos(theta),
-			xyRadius * std::sin(theta),
-			z
-		};
-
-		const float correlatedDisplacement =
-			SphericalMidSurfaceDisplacement(radialDirection, sphereMidSurfaceRadius);
-		const Float3 lipidCenter = sphereCenter + radialDirection
-			* (lipidCenterRadius + correlatedDisplacement + lipidProtrusion());
-		const Float3 lipidDirection = pointOutwards ? radialDirection : -radialDirection;
+	for (const Float3& surfaceDirection : surfaceDirections) {
+		const Float3 normal = EllipsoidNormal(surfaceDirection, midSurfaceRadii);
+		const Float3 midSurfacePoint = center + surfaceDirection * midSurfaceRadii;
+		const float surfaceDisplacement =
+			ClosedSurfaceDisplacement(surfaceDirection, characteristicRadius);
+		const Float3 lipidCenter = midSurfacePoint + normal
+			* (normalOffset + surfaceDisplacement + lipidProtrusion());
+		const Float3 lipidDirection = pointOutwards ? normal : -normal;
 		const auto [rotationAxis, rotationAngle] = RotationFromZAxisTo(lipidDirection);
 		const float selfRotation = randomRotation();
 		const Lipids::Select& lipid = getNextRandomLipid();
@@ -848,36 +985,44 @@ static void QueueSphericalLeaflet(
 	}
 }
 
-static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere) {
-	if (!std::isfinite(sphere.radius) || sphere.radius <= 0.f)
-		throw std::invalid_argument("Membrane sphere radius must be a positive, finite number.");
-	if (!std::isfinite(sphere.center.x) || !std::isfinite(sphere.center.y) || !std::isfinite(sphere.center.z))
-		throw std::invalid_argument("Membrane sphere center must contain finite coordinates.");
+static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, const Float3& center, const Float3& radii,
+	const std::string& shapeName) {
+	if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z))
+		throw std::invalid_argument(std::format("Membrane {} center must contain finite coordinates.", shapeName));
+	if (!std::isfinite(radii.x) || !std::isfinite(radii.y) || !std::isfinite(radii.z)
+		|| radii.x <= 0.f || radii.y <= 0.f || radii.z <= 0.f) {
+		throw std::invalid_argument(std::format(
+			"Membrane {} radii must be positive, finite numbers.", shapeName));
+	}
 
 	const float minimumRadius = SimulationBuilder::MinimumSphereRadius(lipidselection);
-	if (sphere.radius < minimumRadius) {
+	const float shortestAxis = std::min({ radii.x, radii.y, radii.z });
+	const float longestAxis = std::max({ radii.x, radii.y, radii.z });
+	const float minimumCurvatureRadius = shortestAxis * shortestAxis / longestAxis;
+	if (minimumCurvatureRadius < minimumRadius) {
 		throw std::invalid_argument(std::format(
-			"Membrane sphere radius {:.3f} nm is too small for the selected lipids; minimum is {:.3f} nm.",
-			sphere.radius, minimumRadius));
+			"Membrane {} is too tightly curved for the selected lipids; minimum local curvature radius "
+			"is {:.3f} nm, but {:.3f} nm is required.",
+			shapeName, minimumCurvatureRadius, minimumRadius));
 	}
 
 	const float leafletHalfThickness = std::abs(MinParticlePosInDimension(lipidselection, 2));
-	const float outerLipidCenterRadius = sphere.radius + leafletHalfThickness;
-	const float innerLipidCenterRadius = sphere.radius - leafletHalfThickness;
+	const Float3 outerRadii = radii + Float3{ leafletHalfThickness };
+	const Float3 innerRadii = radii - Float3{ leafletHalfThickness };
 	const int outerLipidCount = std::max(1, static_cast<int>(std::lround(
-		4.f * std::numbers::pi_v<float> * outerLipidCenterRadius * outerLipidCenterRadius * lipidDensity)));
+		EllipsoidSurfaceArea(outerRadii) * lipidDensity)));
 	const int innerLipidCount = std::max(1, static_cast<int>(std::lround(
-		4.f * std::numbers::pi_v<float> * innerLipidCenterRadius * innerLipidCenterRadius * lipidDensity)));
+		EllipsoidSurfaceArea(innerRadii) * lipidDensity)));
 
 	std::map<std::string, std::vector<QueuedInsertion>> queuedInsertions;
 	for (const auto& lipid : lipidselection)
 		queuedInsertions.try_emplace(lipid.lipidname);
 
-	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center, sphere.radius,
-		outerLipidCenterRadius, outerLipidCount, true, 0);
-	QueueSphericalLeaflet(queuedInsertions, lipidselection, sphere.center, sphere.radius,
-		innerLipidCenterRadius, innerLipidCount, false, 1);
+	QueueEllipsoidalLeaflet(queuedInsertions, lipidselection, center, radii,
+		leafletHalfThickness, outerLipidCount, true, 0);
+	QueueEllipsoidalLeaflet(queuedInsertions, lipidselection, center, radii,
+		-leafletHalfThickness, innerLipidCount, false, 1);
 
 	int totalIncoming = 0;
 	for (const auto& [_, insertions] : queuedInsertions) {
@@ -894,6 +1039,18 @@ static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
 	}
 }
 
+static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere) {
+	CreateEllipsoidalMembrane(grofile, topfile, lipidselection, sphere.center,
+		Float3{ sphere.radius }, "sphere");
+}
+
+static void CreateEllipsoidMembrane(GroFile& grofile, TopologyFile& topfile,
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Ellipsoid& ellipsoid) {
+	CreateEllipsoidalMembrane(grofile, topfile, lipidselection, ellipsoid.center,
+		ellipsoid.radii, "ellipsoid");
+}
+
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry) {
 	validateLipidselection(lipidselection);
@@ -906,6 +1063,8 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
 			CreatePlanarMembrane(grofile, topfile, lipidselection, figure.z);
 		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Sphere>)
 			CreateSphericalMembrane(grofile, topfile, lipidselection, figure);
+		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Ellipsoid>)
+			CreateEllipsoidMembrane(grofile, topfile, lipidselection, figure);
 	}, geometry);
 }
 

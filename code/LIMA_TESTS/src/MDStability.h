@@ -12,7 +12,10 @@
 namespace TestMDStability {
 	using namespace TestUtils;
 
-	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
+	static LimaUnittestResult loadAndEMAndRunBasicSimulation(
+		const string& folder_name,
+		EnvMode envmode,
+		const std::string& test_name) {
 		const fs::path workDir= AutomatedTestsDir() / folder_name; // TODO: folder name isnt even, should call with full path..
 
 		GroFile grofile{ workDir / "molecule"/"conf.gro" };
@@ -42,13 +45,13 @@ namespace TestMDStability {
 		//LIMA_Print::printPythonVec("totE", analytics.total_energy);
 		//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 
-		const auto result = evaluateTest({ analytics.variance_coefficient }, max_vc, { analytics.energy_gradient }, max_gradient);
+		const auto result = evaluateTest(test_name, { analytics.variance_coefficient }, { analytics.energy_gradient });
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		return loadAndRunBasicSimulation("8ResNoSol", envmode, 1.477e-3, 2e-5);
+		return loadAndRunBasicSimulation("8ResNoSol", envmode, "doEightResiduesNoSolvent");
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

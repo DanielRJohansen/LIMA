@@ -11,7 +11,7 @@ namespace ForceCorrectness {
 	const fs::path TestsDir() { return AutomatedTestsDir(); }
 
 	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 1.e-4) {
+	LimaUnittestResult doPoolBenchmark(EnvMode envmode) {
 		const fs::path work_folder = TestsDir() / "Pool/";
 		Environment env{ work_folder, envmode};
 
@@ -50,12 +50,12 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, target_vc, energy_gradients, 2e-7);
+		const auto result = evaluateTest("doPoolBenchmark", varcoffs, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full};
 	}
 
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 3.148e-2) {
+	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode) {
 		const fs::path work_folder = TestsDir() / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
@@ -114,7 +114,7 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
 		}	
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, 4.6e-7);
+		const auto result = evaluateTest("doPoolCompSolBenchmark", varcoffs, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
@@ -444,7 +444,7 @@ namespace ForceCorrectness {
 
 
 
-	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.00746) {
+	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode) {
 		const fs::path work_folder = TestsDir() / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
@@ -487,13 +487,13 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_dev, energy_gradients);
+		const auto result = evaluateTest("doSinglebondBenchmark", varcoffs, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	// Benchmarks anglebonds + singlebonds (for stability)
-	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 4.7e-3) {
+	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode) {
 		const fs::path work_folder = TestsDir() / "Anglebond/";
 
 		Environment env{ work_folder, envmode};
@@ -531,16 +531,16 @@ namespace ForceCorrectness {
 			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients);
+		const auto result = evaluateTest("doAnglebondBenchmark", varcoffs, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, 6.28e-4, 2.9e-7);
+		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, "doDihedralbondBenchmark");
 	}
 
-	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.7e-3, float max_eg=6.037) {
+	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode) {
 		const fs::path work_folder = TestsDir() / "Improperbond/";
 
 		Environment env{ work_folder, envmode};
@@ -609,7 +609,7 @@ namespace ForceCorrectness {
 			//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
 		}
 
-		const auto result = evaluateTest(varcoffs, max_vc, energy_gradients, max_eg);
+		const auto result = evaluateTest("doImproperDihedralBenchmark", varcoffs, energy_gradients);
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}
@@ -643,7 +643,7 @@ namespace StressTesting {
 		params.n_steps = 100;
 
 		auto func = [&]() {
-			TestUtils::loadAndRunBasicSimulation("Pool", envmode, 0.0001f, 1e-7, params);
+			TestUtils::loadAndRunBasicSimulation("Pool", envmode, "doPoolBenchmark", params);
 		};
 		TestUtils::stressTest(func, 50);
 		return true;

@@ -271,13 +271,13 @@ void RunAllUnitTests() {
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", loadAndRunBasicSimulation("Met", envmode, 1.199e-3, 2e-6));
+	ADD_TEST("doMethionineBenchmark", loadAndRunBasicSimulation("Met", envmode, "doMethionineBenchmark"));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 3.22e-7, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.757e-3, 5e-4));
-	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, "SolventBenchmark"));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, "T4Lysozyme"));
+	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, "Deterministic Simulations"); }, 2, envmode));
 
 
 	// Electrostatics

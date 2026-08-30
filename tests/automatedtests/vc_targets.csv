@@ -1,0 +1,12 @@
+test,max_vc,max_gradient
+doPoolBenchmark,1e-4,2e-7
+doPoolCompSolBenchmark,3.148e-2,4.6e-7
+doSinglebondBenchmark,0.00746,1e-6
+doAnglebondBenchmark,4.7e-3,1e-6
+doDihedralbondBenchmark,6.28e-4,2.9e-7
+doImproperDihedralBenchmark,9.7e-3,6.037
+doMethionineBenchmark,1.199e-3,2e-6
+doEightResiduesNoSolvent,1.477e-3,2e-5
+SolventBenchmark,3.22e-7,1.1e-7
+T4Lysozyme,1.757e-3,5e-4
+Deterministic Simulations,2.8e-2,5e-4

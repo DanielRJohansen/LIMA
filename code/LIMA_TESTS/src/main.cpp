@@ -94,7 +94,7 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 
 		//TestDisplayT4();
-		//LiveEditTest();
+		LiveEditTest();
 		BuildCellTest();
 
 

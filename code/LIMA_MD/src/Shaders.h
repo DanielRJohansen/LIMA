@@ -57,6 +57,11 @@ public:
     }
 
     void Resize(glm::ivec2 newSize) {
+		if (newSize.x <= 0 || newSize.y <= 0)
+			return;
+		if (framebuffer && size == newSize)
+			return;
+
         size = newSize;
         Destroy();
 

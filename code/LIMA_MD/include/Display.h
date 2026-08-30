@@ -48,11 +48,13 @@ class Camera {
 	float dist = -2.f;
 	float yaw = 0;
 	float pitch = 0;
+	float aspectRatio = 1.f;
 
 public:
 	Camera(Float3 boxSize);
 	void Update(float deltaYaw, float deltaPitch, float deltaDist);
 	void Update(Float3 boxSize);
+	void UpdateViewport(glm::ivec2 viewportSize);
 
 	glm::mat4 View() const;
 	glm::mat4 Projection() const;
@@ -204,6 +206,7 @@ private:
 
 	void Setup();
 	void SetupCallbacks();
+	bool ApplyPendingFramebufferResize();
 
 	bool initGLFW();
 
@@ -286,7 +289,11 @@ private:
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 
 	GLFWwindow* window = nullptr;
+	// Cursor positions use logical window coordinates, while OpenGL resources
+	// use framebuffer pixels (which can differ on high-DPI displays).
 	glm::ivec2 windowSize{};
+	glm::ivec2 framebufferSize{};
+	bool framebufferResizePending = false;
 
 	const float PI = 3.1415f;
 

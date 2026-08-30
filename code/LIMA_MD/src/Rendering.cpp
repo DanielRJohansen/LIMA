@@ -32,8 +32,6 @@ glm::mat4 Camera::View() const {
 }
 
 glm::mat4 Camera::Projection() const {
-	//double aspectRatio = static_cast<double>(screenWidth) / static_cast<double>(screenHeight);
-	double aspectRatio = 1.f;
 	double fovY = 45.0;
 	double nearPlane = 0.1;
 	double farPlane = 1000.0;
@@ -282,6 +280,17 @@ void Display::_RenderAtoms() {
 
 int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 {
+	if (!renderTargetControl || windowSize.x <= 0 || windowSize.y <= 0
+		|| framebufferSize.x <= 0 || framebufferSize.y <= 0)
+		return -1;
+
+	// GLFW cursor positions are logical window coordinates; the picking
+	// attachment uses framebuffer pixels.
+	pixel.x = static_cast<int>(static_cast<double>(pixel.x) * framebufferSize.x / windowSize.x);
+	pixel.y = static_cast<int>(static_cast<double>(pixel.y) * framebufferSize.y / windowSize.y);
+	pixel.x = std::clamp(pixel.x, 0, framebufferSize.x - 1);
+	pixel.y = std::clamp(pixel.y, 0, framebufferSize.y - 1);
+
 	auto scopedDrawBinding = renderTargetControl->BindForDraw();
 	renderTargetControl->ClearForPicking();
 
@@ -311,7 +320,7 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 		renderTargetControl = std::make_unique<RenderTargetControl>();
 	if (!drawAtomsPrettyShader)
 		drawAtomsPrettyShader = std::make_unique<DrawAtomsPrettyShader>();
-	renderTargetControl->Resize(windowSize);
+	renderTargetControl->Resize(framebufferSize);
 
 	// Preprocess the renderAtoms
 	{
@@ -450,6 +459,7 @@ void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSiz
 }
 
 void Display::_Render(const Rendering::Task& currentRenderTask) {
+	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
 
 	// Check shaders is Init
 	if (!drawBackgroundGradientShader)

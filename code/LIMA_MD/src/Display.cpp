@@ -63,6 +63,19 @@ void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
 }
 
 void Display::SetupCallbacks() {
+	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+		if (display)
+			display->windowSize = glm::ivec2{ width, height };
+	});
+
+	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+		if (display) {
+			display->framebufferSize = glm::ivec2{ width, height };
+			display->framebufferResizePending = true;
+		}
+	});
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
         if (action == GLFW_PRESS) {
@@ -157,6 +170,10 @@ void Display::Setup() {
     glfwSetWindowUserPointer(window, this);
 
     SetupCallbacks();
+	glfwGetWindowSize(window, &windowSize.x, &windowSize.y);
+	glfwGetFramebufferSize(window, &framebufferSize.x, &framebufferSize.y);
+	framebufferResizePending = true;
+	ApplyPendingFramebufferResize();
 
     overlay = std::make_unique<Overlay>(window, FileUtils::GetLimaDir());
 
@@ -231,6 +248,7 @@ void Display::Mainloop() {
     while (!kill) {
         // Update camera, check if window is closed
         glfwPollEvents();
+		const bool framebufferWasResized = ApplyPendingFramebufferResize();
         if (glfwWindowShouldClose(window)) {
             break;
             printf("Window closed");
@@ -288,15 +306,28 @@ void Display::Mainloop() {
 
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newTask || updatedPositions || newInput || frameTime.elapsed().count() > msPerFrame;
+        bool shouldDraw = newTask || updatedPositions || newInput || framebufferWasResized
+			|| frameTime.elapsed().count() > msPerFrame;
 
-        if (shouldDraw) {
+        if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
             _Render(currentRenderTask);
 
             fps.NewFrame();
             frameTime = TimeIt{};
         }
     }
+}
+
+bool Display::ApplyPendingFramebufferResize() {
+	if (!framebufferResizePending || framebufferSize.x <= 0 || framebufferSize.y <= 0)
+		return false;
+
+	framebufferResizePending = false;
+	camera.UpdateViewport(framebufferSize);
+	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+	if (renderTargetControl)
+		renderTargetControl->Resize(framebufferSize);
+	return true;
 }
 
 void Display::Render(Rendering::Task task, bool blocking) {
@@ -409,8 +440,15 @@ void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
     dist += deltaDist + deltaDist * -std::min(dist, 0.f) * 0.5f;
 }
 void Camera::Update(Float3 boxSize) {
-    if (center != boxSize / 2.f)
-        *this = Camera(boxSize);
+	if (center != boxSize / 2.f) {
+		const float currentAspectRatio = aspectRatio;
+		*this = Camera(boxSize);
+		aspectRatio = currentAspectRatio;
+	}
+}
+void Camera::UpdateViewport(glm::ivec2 viewportSize) {
+	if (viewportSize.x > 0 && viewportSize.y > 0)
+		aspectRatio = static_cast<float>(viewportSize.x) / static_cast<float>(viewportSize.y);
 }
 
 

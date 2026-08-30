@@ -119,7 +119,8 @@ public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&, const SimStatus&, int fps, std::optional<glm::dvec2> rightClickedPos);
+	void Draw(RenderSettings&, const SimStatus&, int fps,
+		std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible);
 	void Render();
 };
 
@@ -186,6 +187,9 @@ public:
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
 	void UpdateSelection(const std::set<int>& particleIds);
+	void SetSpinnerVisible(bool visible) {
+		spinnerVisible.store(visible);
+	}
 
 	volatile int debugValue = 0;
 
@@ -299,6 +303,7 @@ private:
 
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
+	std::atomic_bool spinnerVisible = false;
 };
 
 

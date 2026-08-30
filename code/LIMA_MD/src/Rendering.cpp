@@ -527,7 +527,8 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	}
 
 	overlay->enableConsole = allowUserInputs;
-	overlay->Draw(rendersettings, simStatus, fps.GetFps(), mousePosAtRightBtnDown);
+	overlay->Draw(rendersettings, simStatus, fps.GetFps(), mousePosAtRightBtnDown,
+		spinnerVisible.load());
 	mousePosAtRightBtnDown = std::nullopt;
 	overlay->Render();
 

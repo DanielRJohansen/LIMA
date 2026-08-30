@@ -170,6 +170,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::Se
 }
 
 void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
+	display->SetSpinnerVisible(true);
 	Lipids::Selection lipidselection;
 	for (const auto [name, percentage] : cmd.lipids) {
 		lipidselection.emplace_back(Lipids::Select(name, workDir, percentage));
@@ -177,15 +178,17 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	const MembraneGeometry::Figure geometry = cmd.geometry.value_or(
 		MembraneGeometry::Plane{ grofile.box_size.z / 2.f });
 	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry);
-	SimParams simparams = simulation->simParams;	
+	SimParams simparams = simulation->simParams;
 	CreateSimulation(grofile, topfile, simparams);
 
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;
 	display->Render(std::make_unique<Rendering::SimulationTask>(
-		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
+		simulation->box->boxparams, simStatus
 	));
 
+	display->SetSpinnerVisible(false);
 	EM(liveeditData);
 }
 

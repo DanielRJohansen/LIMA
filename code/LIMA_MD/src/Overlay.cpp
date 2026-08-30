@@ -552,7 +552,23 @@ void DrawBottomBar(RenderSettings& renderSettings)
     EndFloatingPanel();
 }
 
-void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps, std::optional<glm::dvec2> rightClickedPos)
+void DrawSpinner()
+{
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    constexpr float radius = 18.0f;
+	const ImVec2 center{ displaySize.x - radius * 2.f, radius * 2.f };
+	
+	const float startAngle = static_cast<float>(ImGui::GetTime() * 4.5);
+	const float endAngle = startAngle + 3.14159265f * 1.55f;
+
+	ImDrawList* drawList = ImGui::GetForegroundDrawList();
+	drawList->AddCircle(center, radius, ImGui::GetColorU32(kPanelBorder), 32, 3.0f);
+	drawList->PathArcTo(center, radius, startAngle, endAngle, 28);
+	drawList->PathStroke(ImGui::GetColorU32(kAccent), 0, 3.5f);
+}
+
+void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps,
+	std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible)
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -564,6 +580,8 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
 
     DrawBottomBar(renderSettings);
     HandleContextMenu(renderSettings, rightClickedPos);
+	if (spinnerVisible)
+		DrawSpinner();
 
     didDrawThisFrame = true;
 }

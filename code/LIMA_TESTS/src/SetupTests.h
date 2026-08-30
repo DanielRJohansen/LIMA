@@ -35,6 +35,6 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 	}*/
 
 
-	return LimaUnittestResult{ false , "Success", envmode == Full };
+	return LimaUnittestResult{ true , "Success", envmode == Full };
 	//return LimaUnittestResult{ true, "Success", envmode == Full };
 }

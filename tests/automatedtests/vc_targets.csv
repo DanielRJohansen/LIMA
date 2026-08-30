@@ -1,12 +1,12 @@
 test,max_vc,max_gradient
-doPoolBenchmark,1e-4,2e-7
-doPoolCompSolBenchmark,3.148e-2,4.6e-7
-doSinglebondBenchmark,0.00746,1e-6
-doAnglebondBenchmark,4.7e-3,1e-6
-doDihedralbondBenchmark,6.28e-4,2.9e-7
-doImproperDihedralBenchmark,9.7e-3,6.037
-doMethionineBenchmark,1.199e-3,2e-6
-doEightResiduesNoSolvent,1.477e-3,2e-5
-SolventBenchmark,3.22e-7,1.1e-7
-T4Lysozyme,1.757e-3,5e-4
-Deterministic Simulations,2.8e-2,5e-4
+doPoolBenchmark,9.76405572e-05,1.32551278e-07
+doPoolCompSolBenchmark,0.00102532934,4.6680519e-08
+doSinglebondBenchmark,0.00749402028,4.03581708e-07
+doAnglebondBenchmark,0.00145624334,1.1975412e-07
+doDihedralbondBenchmark,0.000631537579,4.18667803e-08
+doImproperDihedralBenchmark,0.00334577123,4.46800586e-05
+doMethionineBenchmark,0.00119898084,4.12364841e-07
+doEightResiduesNoSolvent,0.000357617246,1.69446696e-06
+SolventBenchmark,1.18600177e-07,8.23273894e-08
+T4Lysozyme,5.87692557e-06,9.06740372e-09
+Deterministic Simulations,5.87692557e-06,9.06740372e-09

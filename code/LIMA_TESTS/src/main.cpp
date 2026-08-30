@@ -95,7 +95,7 @@ int main() {
 
 		//TestDisplayT4();
 		//LiveEditTest();
-		//BuildCellTest();
+		BuildCellTest();
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
@@ -222,7 +222,7 @@ int main() {
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
 		//TestBuildmembraneSmall(envmode, false);
-		RunAllUnitTests();
+		//RunAllUnitTests();
 
 	}
 	catch (std::runtime_error ex) {

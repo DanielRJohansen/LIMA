@@ -1,7 +1,7 @@
 #LIMA_TOOLS
 
 add_library(LIMA_TOOLS STATIC
-    src/CompoundBuilder.cpp
+    "src/BoxImageBuilder.cpp"
     src/BondgroupFactory.cpp
     src/CompoundFactory.cpp
 )

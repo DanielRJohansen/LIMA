@@ -6,7 +6,7 @@
 #include "Environment.h"
 #include "Forcefield.h"
 #include "ConvexHullEngine.cuh"
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 
 #include <glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL

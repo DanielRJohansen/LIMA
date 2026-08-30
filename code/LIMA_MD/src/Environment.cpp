@@ -6,7 +6,7 @@
 
 #include "Environment.h"
 #include "MDFiles.h"
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"

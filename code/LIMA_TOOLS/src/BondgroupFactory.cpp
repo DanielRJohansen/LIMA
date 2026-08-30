@@ -1,4 +1,4 @@
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 
 #include "map"
 #include "queue"

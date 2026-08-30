@@ -1,4 +1,4 @@
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 #include "Forcefield.h"
 #include "MoleculeGraph.h"
 #include "TimeIt.h"

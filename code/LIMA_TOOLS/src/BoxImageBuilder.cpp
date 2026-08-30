@@ -237,7 +237,7 @@ std::shared_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
 	return systemGraph;
 }
 
-std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const MoleculeGraph& systemGraph, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup, Float3 box_size) {
+std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const MoleculeGraph& systemGraph, Float3 box_size) {
 
 	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph.GetListOfListsofConnectedNodeids();
 
@@ -351,15 +351,15 @@ std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology&
 		persistentClusters.insert(persistentClusters.end(), clusters.begin(), clusters.end());
 
 
-	// Compute cluster vacancy
-	int vacantCount = 0;
-	for (auto& cluster : persistentClusters) {
-		for (int i = 0; i < PersistentCluster::maxParticles; i++) {
-			if (cluster[i] == -1)
-				vacantCount++;
-		}
-	}
-	double vacancyFraction = static_cast<double>(vacantCount) / (double)(persistentClusters.size() * PersistentCluster::maxParticles);
+	//// Compute cluster vacancy
+	//int vacantCount = 0;
+	//for (auto& cluster : persistentClusters) {
+	//	for (int i = 0; i < PersistentCluster::maxParticles; i++) {
+	//		if (cluster[i] == -1)
+	//			vacantCount++;
+	//	}
+	//}
+	//double vacancyFraction = static_cast<double>(vacantCount) / (double)(persistentClusters.size() * PersistentCluster::maxParticles);
 
 	float largestDistInsidePcluster = 0.f;
 	for (auto& cluster : persistentClusters) {
@@ -437,10 +437,7 @@ std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersi
 }
 
 PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIMAForcefield& forcefield, std::shared_ptr<MoleculeGraph> systemGraph, Float3 boxSize) {
-	const ParticleBondedToParticlesLookup particleBondedToParticlesLookup(system);
-	std::vector<std::array<int, 4>> clustersParticleIds = SplitIntoPersistentClusters(system, *systemGraph, particleBondedToParticlesLookup, boxSize);
-
-
+	std::vector<std::array<int, 4>> clustersParticleIds = SplitIntoPersistentClusters(system, *systemGraph, boxSize);
 
 	PersistentClusterFactory pcFactory{};
 	pcFactory.pClusters.resize(clustersParticleIds.size());
@@ -696,6 +693,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 )
 {
+	TimeIt timer("buildMolecules", true);
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
 
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);

@@ -4,6 +4,7 @@
 #include "TimeIt.h"
 
 #include <unordered_set>
+#include <unordered_map>
 #include <format>
 #include <array>
 #include <numeric>
@@ -65,6 +66,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 	int nextUniqueParticleId = 0;
 	int indexInGrofile = 0;
+	moleculeInstances.reserve(system.molecules.size());
 
 
 
@@ -82,6 +84,8 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 		if (molType.atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
+
+		moleculeInstances.push_back(MoleculeInstance{ &molType, particleIdOffset });
 
 		for (int localId = 0; localId < molType.atoms.size(); localId++) {
 
@@ -135,91 +139,6 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
 
 
-struct ParticleBondedToParticlesLookup {
-	ParticleBondedToParticlesLookup(const SuperTopology& system) {
-		particleBondedToParticle.resize(system.particles.size());
-
-
-
-		// Then go through all bonds to make the particle nointeraction matrix
-		for (const auto& singlebond : system.singlebonds)
-			AddBond(singlebond.global_atom_indexes);
-		for (const auto& anglebond : system.anglebonds)
-			AddBond(anglebond.global_atom_indexes);
-		for (const auto& dihedralbond : system.dihedralbonds)
-			AddBond(dihedralbond.global_atom_indexes);
-		for (const auto& improperdihedralbond : system.improperdihedralbonds)
-			AddBond(improperdihedralbond.global_atom_indexes);
-	}
-
-	bool AreAllBonded(std::span<int>ids) const {
-		std::vector<bool> bonded(ids.size(), false);
-
-		for (int i = 0; i < ids.size(); i++) {
-			const int pid_self = ids[i];
-			for (int j = i + 1; j < ids.size(); j++) {
-				const int pid_other = ids[j];
-
-				if (particleBondedToParticle[pid_self].find(pid_other) != particleBondedToParticle[pid_self].end()) {
-					bonded[i] = true;
-					bonded[j] = true;
-					break;
-				}
-			}
-		}
-		return std::any_of(bonded.begin(), bonded.end(), [](bool v) { return v; });
-	}
-
-	std::vector<bool> BondedToFirst(std::span<int> ids) const {
-		std::vector<bool> bonded(ids.size(), false);
-		bonded[0] = true;
-		const int pid_self = ids[0];
-		for (int j = 1; j < ids.size(); j++) {
-			const int pid_other = ids[j];
-			if (particleBondedToParticle[pid_self].find(pid_other) != particleBondedToParticle[pid_self].end()) {
-				bonded[j] = true;
-			}
-		}
-		return bonded;
-	}
-
-private:
-
-	void AddBond(std::span<const int> particleIdsInBond) {
-		for (int i = 0; i < particleIdsInBond.size(); i++) {
-			const int pid_self = particleIdsInBond[i];
-
-			for (int j = i + 1; j < particleIdsInBond.size(); j++) {
-				const int pid_other = particleIdsInBond[j];
-
-				particleBondedToParticle[pid_self].insert(pid_other);
-				particleBondedToParticle[pid_other].insert(pid_self);
-			}
-		}
-	}
-	std::vector<std::set<int>> particleBondedToParticle;
-};
-
-void SplitClusters(std::span<int> ids, const ParticleBondedToParticlesLookup& particleBondedToParticlesLookup, std::vector<std::array<int, 4>>& outClusters) 
-{
-	std::vector<bool> bondedToFirst = particleBondedToParticlesLookup.BondedToFirst(ids);
-
-	std::array<int, 4> thisCluster{ -1, -1, -1, -1 };
-	std::vector<int> remainingIds;
-
-	for (int i = 0; i < ids.size(); i++) {
-		if (bondedToFirst[i])
-			thisCluster[i] = ids[i];
-		else
-			remainingIds.push_back(ids[i]);
-	}
-
-	outClusters.push_back(thisCluster);
-
-	if (!remainingIds.empty())
-		SplitClusters(std::span<int>(remainingIds), particleBondedToParticlesLookup, outClusters);
-}
-
 std::shared_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
 	std::vector<std::pair<int, std::string>> atoms;
 	atoms.reserve(system.particles.size());
@@ -237,253 +156,234 @@ std::shared_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
 	return systemGraph;
 }
 
-std::vector<std::array<int, 4>> SplitIntoPersistentClusters(const SuperTopology& system, const MoleculeGraph& systemGraph, Float3 box_size) {
+namespace {
+	struct PersistentParticleTemplate {
+		NBParams nbParams{};
+		float mass = 0.f;
+		char atomLetter = ' ';
+		bool isSolvent = false;
+	};
 
-	const std::vector<std::vector<int>> particleidCollectionsOfMolecules = systemGraph.GetListOfListsofConnectedNodeids();
+	struct PersistentClusterTemplate {
+		std::vector<std::array<int, PersistentCluster::maxParticles>> clusters;
+		std::vector<int> particleToPcluster;
+		std::vector<std::set<int>> particleBondedToParticle;
+		std::vector<std::set<int>> pclusterBondedToPcluster;
+		std::vector<PersistentParticleTemplate> particles;
+	};
 
-	std::vector<std::array<int, 4>> persistentClusters;
-	persistentClusters.reserve(system.particles.size()); // A bit too big..
+	bool IsSolventResidue(const std::string& residue) {
+		return residue == "SOL" || residue == "SPC" || residue == "SPCE" || residue == "TIP3" || residue == "TIP3P";
+	}
 
+	std::vector<std::array<int, PersistentCluster::maxParticles>> MakeLocalPersistentClusters(
+		const TopologyFile::Moleculetype& molecule
+	) {
+		const MoleculeGraph moleculeGraph(molecule);
+		const std::vector<std::vector<int>> connectedComponents = moleculeGraph.GetListOfListsofConnectedNodeids();
 
+		std::vector<std::array<int, PersistentCluster::maxParticles>> clusters;
+		clusters.reserve((molecule.atoms.size() + PersistentCluster::maxParticles - 1) / PersistentCluster::maxParticles);
 
-	auto CanAppendToCluster = [&systemGraph](int particleId, const std::array<int, 4>& cluster, int nextIndex) {
-		if (nextIndex == 0)
-			return true;
+		auto CanAppendToCluster = [&moleculeGraph](int particleId, const auto& cluster, int nextIndex) {
+			if (nextIndex == 0)
+				return true;
 
-		std::optional<int> distanceToPreviousNode = systemGraph.DistanceBetweenNodes(cluster[nextIndex - 1], particleId, 5);
-		std::optional<int> distanceToFirstNode = systemGraph.DistanceBetweenNodes(cluster[0], particleId, 5);
+			const std::optional<int> distanceToPreviousNode = moleculeGraph.DistanceBetweenNodes(cluster[nextIndex - 1], particleId, 5);
+			const std::optional<int> distanceToFirstNode = moleculeGraph.DistanceBetweenNodes(cluster[0], particleId, 5);
 
-		const bool canAppend = distanceToFirstNode.value_or(INT_MAX) < 3 ||
-			distanceToFirstNode.value_or(INT_MAX) <= 4 && distanceToPreviousNode.value_or(INT_MAX) <= 2;
-
-		return canAppend;
+			return distanceToFirstNode.value_or(INT_MAX) < 3 ||
+				distanceToFirstNode.value_or(INT_MAX) <= 4 && distanceToPreviousNode.value_or(INT_MAX) <= 2;
 		};
 
-
-	
-
-	std::vector<std::vector<std::array<int, 4>>> clustersPerCollection(particleidCollectionsOfMolecules.size());
-
-	const int threadCount = std::max(1u, std::thread::hardware_concurrency());
-	std::atomic<int> nextCollectionId = 0;
-
-	auto Worker = [&]() {
-		std::vector<std::array<int, 4>> myClusters;
 		std::unordered_set<int> addedByLookahead;
-
-		while (true) {
-			const int collectionId = nextCollectionId.fetch_add(1, std::memory_order_relaxed);
-			if (collectionId >= particleidCollectionsOfMolecules.size())
-				break;
-
-			const std::vector<int>& collection = particleidCollectionsOfMolecules[collectionId];
-
-			myClusters.clear();
-			addedByLookahead.clear();
-
-			// Quick handling of small molecules (water/ions)
-			if (collection.size() <= 4) {
-				auto& cluster = myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
-				std::ranges::copy(collection, cluster.begin());
-				clustersPerCollection[collectionId] = myClusters;
+		for (const std::vector<int>& component : connectedComponents) {
+			if (component.size() <= PersistentCluster::maxParticles) {
+				auto& cluster = clusters.emplace_back(std::array{ -1, -1, -1, -1 });
+				std::ranges::copy(component, cluster.begin());
 				continue;
 			}
 
-
-			// Complex compression of larger molecules
-			myClusters.reserve(collection.size() / 4 + 2);
-			myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
-
+			addedByLookahead.clear();
+			clusters.emplace_back(std::array{ -1, -1, -1, -1 });
 			int nextIndex = 0;
-			for (int i = 0; i < collection.size(); i++) {
-				const int particleId = collection[i];
+
+			for (int i = 0; i < component.size(); i++) {
+				const int particleId = component[i];
 				if (addedByLookahead.contains(particleId))
 					continue;
 
-				if (nextIndex == 0) {}
-				else {
-					const bool canAppend = CanAppendToCluster(particleId, myClusters.back(), nextIndex);
-
-					if (!canAppend) {
-						const int lookaheadCnt = 6;
-						for (int lookaheadIndex = i + 1; (lookaheadIndex <= std::min(i + lookaheadCnt, (int)collection.size() - 2)) && nextIndex < 4; lookaheadIndex++) {
-							const int lookaheadId = collection[lookaheadIndex];
-							if (CanAppendToCluster(lookaheadId, myClusters.back(), nextIndex)) {
-								addedByLookahead.insert(lookaheadId);
-								myClusters.back()[nextIndex++] = lookaheadId;
-							}
-
+				if (nextIndex != 0 && !CanAppendToCluster(particleId, clusters.back(), nextIndex)) {
+					constexpr int lookaheadCount = 6;
+					const int lastLookaheadIndex = std::min(i + lookaheadCount, static_cast<int>(component.size()) - 2);
+					for (int lookaheadIndex = i + 1; lookaheadIndex <= lastLookaheadIndex && nextIndex < PersistentCluster::maxParticles; lookaheadIndex++) {
+						const int lookaheadId = component[lookaheadIndex];
+						if (CanAppendToCluster(lookaheadId, clusters.back(), nextIndex)) {
+							addedByLookahead.insert(lookaheadId);
+							clusters.back()[nextIndex++] = lookaheadId;
 						}
-
-						myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
-						nextIndex = 0;
 					}
+
+					clusters.emplace_back(std::array{ -1, -1, -1, -1 });
+					nextIndex = 0;
 				}
 
-				myClusters.back()[nextIndex++] = particleId;
-
-				if (nextIndex == 4 && i != collection.size() - 1) {
-					myClusters.emplace_back(std::array{ -1, -1, -1, -1 });
+				clusters.back()[nextIndex++] = particleId;
+				if (nextIndex == PersistentCluster::maxParticles && i != component.size() - 1) {
+					clusters.emplace_back(std::array{ -1, -1, -1, -1 });
 					nextIndex = 0;
 				}
 			}
-
-			clustersPerCollection[collectionId] = myClusters;
 		}
-		};
 
-	std::vector<std::thread> threads;
-	threads.reserve(threadCount);
-
-	for (int i = 0; i < threadCount; i++)
-		threads.emplace_back(Worker);
-
-	for (std::thread& thread : threads)
-		thread.join();
-
-	size_t totalClusterCount = 0;
-	for (const auto& clusters : clustersPerCollection)
-		totalClusterCount += clusters.size();
-
-	persistentClusters.reserve(persistentClusters.size() + totalClusterCount);
-
-	for (const auto& clusters : clustersPerCollection)
-		persistentClusters.insert(persistentClusters.end(), clusters.begin(), clusters.end());
-
-
-	//// Compute cluster vacancy
-	//int vacantCount = 0;
-	//for (auto& cluster : persistentClusters) {
-	//	for (int i = 0; i < PersistentCluster::maxParticles; i++) {
-	//		if (cluster[i] == -1)
-	//			vacantCount++;
-	//	}
-	//}
-	//double vacancyFraction = static_cast<double>(vacantCount) / (double)(persistentClusters.size() * PersistentCluster::maxParticles);
-
-	float largestDistInsidePcluster = 0.f;
-	for (auto& cluster : persistentClusters) {
-		std::vector<Float3> positions;
-		for (int i = 0; i < PersistentCluster::maxParticles; i++) {
-			if (cluster[i] != -1) {
-				positions.push_back(system.particles[cluster[i]].position);
-			}
-		}
-		for (int i = 0; i < positions.size(); i++) {
-			for (int j = i + 1; j < positions.size(); j++) {
-				const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], positions[j],  box_size, BoundaryConditionSelect::PBC);
-				if (dist > largestDistInsidePcluster)
-					largestDistInsidePcluster = dist;
-			}
-		}
-	}
-	// Next compute the largest distances inside clusters
-	
-	//either the pclusters are made with particles far from eachother??
-
-
-	return persistentClusters;
-}
-
-// returns bondedParticles, bondedPclusters
-std::pair<std::vector<std::set<int>>, std::vector<std::set<int>>> GetBondedPersistentClusters(const std::vector<std::array<int, 4>>& clustersParticleIds, const SuperTopology& system) {
-	// First make a particle-2-pcluster map	
-	std::vector<int> particleIdToPclusterIdMap(system.particles.size(), -1);
-	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
-		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
-			const int pId = clustersParticleIds[pcId][pidRel];
-			if (pId == -1) { continue; }
-			particleIdToPclusterIdMap[pId] = pcId;
-		}
+		return clusters;
 	}
 
-	std::vector<std::set<int>> particleBondedToParticle(system.particles.size());
-	std::vector<std::set<int>> pclusterBondedToPcluster(clustersParticleIds.size());
+	PersistentClusterTemplate BuildPersistentClusterTemplate(
+		const TopologyFile::Moleculetype& molecule,
+		LIMAForcefield& forcefield
+	) {
+		PersistentClusterTemplate result;
+		result.clusters = MakeLocalPersistentClusters(molecule);
+		result.particleToPcluster.resize(molecule.atoms.size(), -1);
+		result.particleBondedToParticle.resize(molecule.atoms.size());
+		result.pclusterBondedToPcluster.resize(result.clusters.size());
+		result.particles.resize(molecule.atoms.size());
 
-
-
-	auto AddBond = [&](const auto& particleIdsInBond) {
-		for (int i = 0; i < particleIdsInBond.size(); i++) {
-			const int pid_self = particleIdsInBond[i];
-			const int pcid_self = particleIdToPclusterIdMap[pid_self];
-			//if (pcid_self == -1) { continue; }
-			assert(pcid_self != -1);
-
-			for (int j = i + 1; j < particleIdsInBond.size(); j++) {
-				const int pid_other = particleIdsInBond[j];
-				const int pcid_other = particleIdToPclusterIdMap[pid_other];
-				assert(pcid_other != -1);
-
-				particleBondedToParticle[pid_self].insert(pid_other);
-				particleBondedToParticle[pid_other].insert(pid_self);
-				pclusterBondedToPcluster[pcid_self].insert(pcid_other);
-				pclusterBondedToPcluster[pcid_other].insert(pcid_self);
+		for (int pcid = 0; pcid < result.clusters.size(); pcid++) {
+			for (const int particleId : result.clusters[pcid]) {
+				if (particleId != -1)
+					result.particleToPcluster[particleId] = pcid;
 			}
 		}
+
+		auto AddBond = [&](const auto& bond) {
+			const auto& ids = bond.ids;
+			for (const int id : ids) {
+				if (id < 0 || id >= result.particleToPcluster.size())
+					return;
+			}
+
+			for (int i = 0; i < ids.size(); i++) {
+				const int pidSelf = ids[i];
+				const int pcidSelf = result.particleToPcluster[pidSelf];
+				assert(pcidSelf != -1);
+
+				for (int j = i + 1; j < ids.size(); j++) {
+					const int pidOther = ids[j];
+					const int pcidOther = result.particleToPcluster[pidOther];
+					assert(pcidOther != -1);
+
+					result.particleBondedToParticle[pidSelf].insert(pidOther);
+					result.particleBondedToParticle[pidOther].insert(pidSelf);
+					result.pclusterBondedToPcluster[pcidSelf].insert(pcidOther);
+					result.pclusterBondedToPcluster[pcidOther].insert(pcidSelf);
+				}
+			}
 		};
 
-	// Then go through all bonds to make the particle nointeraction matrix
-	for (const auto& singlebond : system.singlebonds)
-		AddBond(singlebond.global_atom_indexes);
-	for (const auto& anglebond : system.anglebonds)
-		AddBond(anglebond.global_atom_indexes);
-	for (const auto& dihedralbond : system.dihedralbonds)
-		AddBond(dihedralbond.global_atom_indexes);
-	for (const auto& improperdihedralbond : system.improperdihedralbonds)
-		AddBond(improperdihedralbond.global_atom_indexes);
+		for (const auto& bond : molecule.singlebonds)
+			AddBond(bond);
+		for (const auto& bond : molecule.anglebonds)
+			AddBond(bond);
+		for (const auto& bond : molecule.dihedralbonds)
+			AddBond(bond);
+		for (const auto& bond : molecule.improperdihedralbonds)
+			AddBond(bond);
 
+		for (int particleId = 0; particleId < molecule.atoms.size(); particleId++) {
+			const TopologyFile::AtomsEntry& atom = molecule.atoms[particleId];
+			PersistentParticleTemplate& particle = result.particles[particleId];
 
-	return { std::move(particleBondedToParticle), std::move(pclusterBondedToPcluster) };
-}
+			particle.nbParams = forcefield.GetLjParameters(atom.type);
+			if (atom.charge.has_value())
+				particle.nbParams.charge = atom.charge.value() * elementaryChargeToKiloCoulombPerMole;
 
-PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIMAForcefield& forcefield, std::shared_ptr<MoleculeGraph> systemGraph, Float3 boxSize) {
-	std::vector<std::array<int, 4>> clustersParticleIds = SplitIntoPersistentClusters(system, *systemGraph, boxSize);
-
-	PersistentClusterFactory pcFactory{};
-	pcFactory.pClusters.resize(clustersParticleIds.size());
-	pcFactory.pClusterMetas.resize(clustersParticleIds.size());
-	pcFactory.particleToPclusterMap.resize(system.particles.size());
-
-	std::vector<std::string> solventResNames{ "SOL", "SPC", "SPCE", "TIP3", "TIP3P" };
-
-	for (int pcId = 0; pcId < clustersParticleIds.size(); pcId++) {
-		for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
-			const int pId = clustersParticleIds[pcId][pidRel];			
-
-			if (pId == -1) {
-				pcFactory.pClusters[pcId].pqd[pidRel] = PData{};
-				pcFactory.pClusterMetas[pcId].particleIdsGlobal[pidRel] = -1;
-				continue;
+			if (atom.mass.has_value()) {
+				particle.mass = atom.mass.value() / KILO;
 			}
 			else {
-				const auto topAtom = system.particles[pId].topologyAtom;
-				const std::string& atomType = topAtom.type;
-				const Float3 pos = system.particles[pId].position;
-				NBParams nbParams = forcefield.GetLjParameters(atomType);
-				if (topAtom.charge.has_value())
-					nbParams.charge = topAtom.charge.value() * elementaryChargeToKiloCoulombPerMole;
-
-				pcFactory.pClusters[pcId].pqd[pidRel] = PData{ pos,  nbParams };
-				pcFactory.pClusterMetas[pcId].particleIdsGlobal[pidRel] = pId;
-				if (topAtom.mass.has_value())
-					pcFactory.pClusterMetas[pcId].mass[pidRel] = topAtom.mass.value() / KILO;	// TODO: I dont like this conversion here. Actually we should get the mass from the forcefield, which already does the conversion??
-				else if (forcefield.GetAtomtype(atomType).has_value())
-					pcFactory.pClusterMetas[pcId].mass[pidRel] = forcefield.GetAtomtype(atomType)->mass;
-				pcFactory.pClusterMetas[pcId].atomLetter[pidRel] = !topAtom.atomname.empty() ? topAtom.atomname[0] : ' ';
-				assert(pcFactory.pClusterMetas[pcId].mass[pidRel] > 0.f );
-
-				pcFactory.pClusterMetas[pcId].isSolvent = std::find(solventResNames.begin(), solventResNames.end(), topAtom.residue) != solventResNames.end();
-				pcFactory.pClusterMetas[pcId].nParticles++;
-
-				// Also set mapping
-				pcFactory.particleToPclusterMap[pId] = ParticleToPclusterMapping{ pcId, pidRel };
+				const std::optional<AtomType> atomType = forcefield.GetAtomtype(atom.type);
+				if (atomType.has_value())
+					particle.mass = atomType->mass;
 			}
+
+			particle.atomLetter = !atom.atomname.empty() ? atom.atomname[0] : ' ';
+			particle.isSolvent = IsSolventResidue(atom.residue);
+			assert(particle.mass > 0.f);
 		}
+
+		return result;
+	}
+}
+
+PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIMAForcefield& forcefield) {
+	std::unordered_map<const TopologyFile::Moleculetype*, PersistentClusterTemplate> templates;
+	std::vector<const PersistentClusterTemplate*> instanceTemplates;
+	instanceTemplates.reserve(system.moleculeInstances.size());
+
+	size_t totalClusterCount = 0;
+	for (const SuperTopology::MoleculeInstance& instance : system.moleculeInstances) {
+		auto templateIt = templates.find(instance.type);
+		if (templateIt == templates.end())
+			templateIt = templates.emplace(instance.type, BuildPersistentClusterTemplate(*instance.type, forcefield)).first;
+
+		instanceTemplates.push_back(&templateIt->second);
+		totalClusterCount += templateIt->second.clusters.size();
 	}
 
-	auto [particleBondedToParticle, pclusterBondedToPcluster] = GetBondedPersistentClusters(clustersParticleIds, system);
-	pcFactory.particleBondedToParticle = particleBondedToParticle;
-	pcFactory.pclusterBondedToPcluster = pclusterBondedToPcluster;
+	PersistentClusterFactory pcFactory{};
+	pcFactory.pClusters.resize(totalClusterCount);
+	pcFactory.pClusterMetas.resize(totalClusterCount);
+	pcFactory.particleToPclusterMap.resize(system.particles.size());
+	pcFactory.particleBondedToParticle.resize(system.particles.size());
+	pcFactory.pclusterBondedToPcluster.resize(totalClusterCount);
+
+	int pclusterOffset = 0;
+	for (int instanceId = 0; instanceId < system.moleculeInstances.size(); instanceId++) {
+		const SuperTopology::MoleculeInstance& instance = system.moleculeInstances[instanceId];
+		const PersistentClusterTemplate& persistentTemplate = *instanceTemplates[instanceId];
+
+		for (int localPcid = 0; localPcid < persistentTemplate.clusters.size(); localPcid++) {
+			const int globalPcid = pclusterOffset + localPcid;
+			const auto& localCluster = persistentTemplate.clusters[localPcid];
+
+			for (int pidRel = 0; pidRel < PersistentCluster::maxParticles; pidRel++) {
+				const int localParticleId = localCluster[pidRel];
+				if (localParticleId == -1) {
+					pcFactory.pClusters[globalPcid].pqd[pidRel] = PData{};
+					continue;
+				}
+
+				const int globalParticleId = instance.particleOffset + localParticleId;
+				const PersistentParticleTemplate& particle = persistentTemplate.particles[localParticleId];
+				PersistentClusterMeta& meta = pcFactory.pClusterMetas[globalPcid];
+
+				pcFactory.pClusters[globalPcid].pqd[pidRel] = PData{ system.particles[globalParticleId].position, particle.nbParams };
+				meta.particleIdsGlobal[pidRel] = globalParticleId;
+				meta.mass[pidRel] = particle.mass;
+				meta.atomLetter[pidRel] = particle.atomLetter;
+				meta.isSolvent = particle.isSolvent;
+				meta.nParticles++;
+
+				pcFactory.particleToPclusterMap[globalParticleId] = ParticleToPclusterMapping{ globalPcid, pidRel };
+			}
+		}
+
+		for (int localParticleId = 0; localParticleId < persistentTemplate.particleBondedToParticle.size(); localParticleId++) {
+			pcFactory.particleBondedToParticle[instance.particleOffset + localParticleId] =
+				ParticlesBondedToParticle::Create(persistentTemplate.particleBondedToParticle[localParticleId], instance.particleOffset);
+		}
+
+		for (int localPcid = 0; localPcid < persistentTemplate.pclusterBondedToPcluster.size(); localPcid++) {
+			pcFactory.pclusterBondedToPcluster[pclusterOffset + localPcid] =
+				PclustersBondedToPcluster::Create(persistentTemplate.pclusterBondedToPcluster[localPcid], pclusterOffset);
+		}
+
+		pclusterOffset += static_cast<int>(persistentTemplate.clusters.size());
+	}
+
+	assert(pclusterOffset == totalClusterCount);
 	return pcFactory;
 }
 
@@ -704,7 +604,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	// Make PersistenClusters
 	std::shared_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
-	std::future<PersistentClusterFactory> pcFactoryFuture = std::async(std::launch::async, [&]{ return MakePersistentClusters(superTopology, forcefield, systemGraph, grofile.box_size); });
+	std::future<PersistentClusterFactory> pcFactoryFuture = std::async(std::launch::async, [&]{ return MakePersistentClusters(superTopology, forcefield); });
 	
 	BondGroupFactory bgFactory = bgfFuture.get();
 	const auto particleToBondgroupMap = bgFactory.MakeParticleToBondgroupsMap(superTopology.particles.size());

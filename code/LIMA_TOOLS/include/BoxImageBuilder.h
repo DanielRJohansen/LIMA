@@ -75,8 +75,8 @@ struct PersistentClusterFactory {
 	std::vector<PersistentCluster> pClusters;
 	std::vector<PersistentClusterMeta> pClusterMetas;
 	ParticleToPclusterMap particleToPclusterMap;
-	std::vector<std::set<int>>particleBondedToParticle;
-	std::vector<std::set<int>> pclusterBondedToPcluster;
+	std::vector<ParticlesBondedToParticle> particleBondedToParticle;
+	std::vector<PclustersBondedToPcluster> pclusterBondedToPcluster;
 };
 
 namespace LIMA_MOLECULEBUILD {
@@ -87,6 +87,11 @@ namespace LIMA_MOLECULEBUILD {
 			int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology);
 
 	public:
+		struct MoleculeInstance {
+			const TopologyFile::Moleculetype* type = nullptr;
+			int particleOffset = 0;
+		};
+
 		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
 
 
@@ -102,6 +107,7 @@ namespace LIMA_MOLECULEBUILD {
 		std::vector<AngleBondFactory> anglebonds;
 		std::vector<DihedralBondFactory> dihedralbonds;
 		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
+		std::vector<MoleculeInstance> moleculeInstances;
 	};
 
 
@@ -184,8 +190,8 @@ struct BoxImage {
 	// Clusters
 	std::vector<PersistentCluster> persistentClusters;
 	std::vector<PersistentClusterMeta> persistentClustersMetadata;
-	std::vector<std::set<int>> particleBondedToParticle;
-	std::vector<std::set<int>> pclusterBondedToPcluster;
+	std::vector<ParticlesBondedToParticle> particleBondedToParticle;
+	std::vector<PclustersBondedToPcluster> pclusterBondedToPcluster;
 	std::vector<std::tuple<int, int>> gpidToPcidAndPid;
 	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
 	int totalParticles = 0;

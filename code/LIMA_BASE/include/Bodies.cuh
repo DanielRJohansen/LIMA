@@ -283,6 +283,11 @@ class StaticSet {
 	int data[size]; // is sorted
 	static const int noVal = INT_MIN;
 public:
+	constexpr StaticSet() {
+		for (int& value : data)
+			value = noVal;
+	}
+
 	constexpr bool Contains(int value) const {
 		for (int i = 0; i < size; i++) {
 			if (data[i] == value)
@@ -296,14 +301,18 @@ public:
 	static std::vector<StaticSet> Create(const std::vector<std::set<int>>& sets) {
 		std::vector<StaticSet> result(sets.size());
 		for (int i= 0; i < sets.size(); i++) {
-			int j = 0;
-			for (int val : sets[i]) {
-				if (j >= size)
-					throw std::runtime_error("Too many values in set, increase size or check your clustering");
-				result[i].data[j++] = val;
-			}
-			for (; j < size; j++)
-				result[i].data[j] = noVal;
+			result[i] = Create(sets[i]);
+		}
+		return result;
+	}
+
+	static StaticSet Create(const std::set<int>& values, int offset = 0) {
+		StaticSet result;
+		int index = 0;
+		for (const int value : values) {
+			if (index >= size)
+				throw std::runtime_error("Too many values in set, increase size or check your clustering");
+			result.data[index++] = value + offset;
 		}
 		return result;
 	}

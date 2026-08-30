@@ -221,6 +221,7 @@ int main() {
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
+		//TestBuildmembraneSmall(envmode, false);
 		RunAllUnitTests();
 
 	}

@@ -47,7 +47,8 @@ namespace TestUtils {
 	}
 
 	void CleanDirIfNotContains(const fs::path& dir, const std::string& except) {
-		if (dir.string().find("LIMA_data") == std::string::npos) {
+		// must contain LIMA_data or automatedtests
+		if (dir.string().find("LIMA_data") == std::string::npos && dir.string().find("automatedtests") == std::string::npos) {
 			throw std::runtime_error("LIMA is not allowed to clean this directory");
 		}
 

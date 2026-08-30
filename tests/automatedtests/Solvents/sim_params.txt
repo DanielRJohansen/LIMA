@@ -1,0 +1,6 @@
+dt=1
+n_steps = 10000
+data_logging_interval=5
+stepwise=false
+steps_per_temperature_measurement=100
+stepsPerNlistupdate=10

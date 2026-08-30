@@ -13,7 +13,7 @@ namespace TestMDStability {
 	using namespace TestUtils;
 
 	static LimaUnittestResult loadAndEMAndRunBasicSimulation(const string& folder_name, EnvMode envmode, float max_vc = 0.05, float max_gradient=1e-5) {
-		const fs::path workDir= simulations_dir / folder_name;
+		const fs::path workDir= AutomatedTestsDir() / folder_name; // TODO: folder name isnt even, should call with full path..
 
 		GroFile grofile{ workDir / "molecule"/"conf.gro" };
 		TopologyFile topfile{ workDir / "molecule" / "topol.top" };

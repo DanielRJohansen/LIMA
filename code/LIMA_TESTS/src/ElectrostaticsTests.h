@@ -68,7 +68,7 @@ namespace ElectrostaticsTests {
 
 
 	LimaUnittestResult TestAttractiveParticlesInteractingWithESandLJ(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Pool/";
+		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 		Environment env{ work_folder, envmode};
 
 
@@ -109,7 +109,7 @@ namespace ElectrostaticsTests {
 	}
 
 	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
-		Environment env(simulations_dir / dirName, EnvMode::Headless);
+		Environment env(AutomatedTestsDir() / dirName, EnvMode::Headless);
 
 		auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3{ boxLen });
 
@@ -156,7 +156,7 @@ namespace ElectrostaticsTests {
 		env->run();	
 
 		if (envmode == Full)
-			TestUtils::CompareForces1To1(simulations_dir / "ElectrostaticField", *env, false);
+			TestUtils::CompareForces1To1(AutomatedTestsDir() / "ElectrostaticField", *env, false);
 
 
 		auto sim = env->GetSim();
@@ -305,7 +305,7 @@ namespace ElectrostaticsTests {
 
 
 	LimaUnittestResult TestLongrangeEsNoLJTwoParticles(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Pool/";
+		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 		Environment env{ work_folder, envmode};
 
 		struct TestSetup {
@@ -403,7 +403,7 @@ namespace ElectrostaticsTests {
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Pool/";
+		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 		Environment env{ work_folder, envmode };
 
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
@@ -467,7 +467,7 @@ namespace ElectrostaticsTests {
 	}
 
 	LimaUnittestResult TestConsistentEnergyWhenGoingFromLresToSres(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Pool/";
+		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 		Environment env{ work_folder, envmode };
 
 
@@ -538,7 +538,7 @@ namespace ElectrostaticsTests {
 			1.f
 			);
 
-		const fs::path work_folder = simulations_dir / "ShortrangeElectrostaticsCompoundOnly/";
+		const fs::path work_folder = HeavyTestsDir() / "ShortrangeElectrostaticsCompoundOnly/";
 		Environment env{ work_folder, envmode };
 
 		

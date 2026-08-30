@@ -29,7 +29,7 @@ namespace TestMembraneBuilder {
 	}
 
 	static LimaUnittestResult TestSphericalMembraneBuilder(EnvMode envmode) {
-		const fs::path workDir = simulations_dir / "BuildMembraneSphere";
+		const fs::path workDir = HeavyTestsDir() / "BuildMembraneSphere";
 		Lipids::Selection lipids;
 		lipids.emplace_back(Lipids::Select{ "DMPC", workDir, 100. });
 
@@ -107,7 +107,7 @@ namespace TestMembraneBuilder {
 	// This test checks topology compatibility and physically bounded coordinate generation, NOT considering EM.
 	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)
 	{		
-		const fs::path workDir = simulations_dir / "BuildMembraneSmall";
+		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 		const fs::path mol_dir = workDir / "molecule";
 		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
 
@@ -176,7 +176,7 @@ namespace TestMembraneBuilder {
 	}
 
 	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
-		const fs::path workDir = simulations_dir / "BuildMembraneCustom";
+		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneCustom";
 		const fs::path mol_dir = workDir / "molecule";
 
 		//TestUtils::CleanDirectory(mol_dir);
@@ -224,7 +224,7 @@ namespace TestMembraneBuilder {
 	}
 
 	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
-		const fs::path workDir = simulations_dir / "BuildMembraneSmall";
+		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 
 		const fs::path path = FileUtils::GetLimaDir() / "resources/Slipids";
 		std::vector<std::string> targets;
@@ -267,7 +267,7 @@ namespace TestMembraneBuilder {
 		GroFile grofile;
 		grofile.box_size = Float3{ 5.f };
 		TopologyFile topfile;
-		const fs::path workDir = TestUtils::simulations_dir / "etc";
+		const fs::path workDir = TestUtils::HeavyTestsDir() / "etc";
 		MoleculeHullCollection mhCol = Programs::MakeLipidVesicle(grofile, topfile, { {"POPC", workDir , 10}, {"Cholesterol", workDir , 30}, {"DMPC", workDir , 60} }, 0.5, grofile.box_size/2.f, 3);
 
 		const bool overwriteData = false;
@@ -283,7 +283,7 @@ namespace TestMembraneBuilder {
 				}
 			}
 
-			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::simulations_dir / fs::path{ "etc" } / "buildvesicle.bin", 0.01, overwriteData))
+			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::HeavyTestsDir() / fs::path{ "etc" } / "buildvesicle.bin", 0.01, overwriteData))
 				return LimaUnittestResult{ false , "Before relaxation mismatch", envmode == Full };
 		}
 
@@ -302,7 +302,7 @@ namespace TestMembraneBuilder {
 				}
 			}
 			
-			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::simulations_dir / fs::path{ "etc" } / "relaxedvesicle.bin", 0.01, overwriteData))
+			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::HeavyTestsDir() / fs::path{ "etc" } / "relaxedvesicle.bin", 0.01, overwriteData))
 				return LimaUnittestResult{ false , "After relaxation mismatch", envmode == Full };
 		}
 

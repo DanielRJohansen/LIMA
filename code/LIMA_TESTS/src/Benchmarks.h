@@ -9,10 +9,14 @@ namespace Benchmarks {
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
 	
+	const fs::path TestsDir() {
+		return HeavyTestsDir();
+	}
+
 	static void ReadGroFile(EnvMode mode) {
 		assert(ENABLE_FILE_CACHING == false);
 		TimeIt timer("ReadGroFile", true);
-		const fs::path workDir = simulations_dir / "MembraneAndPsome";
+		const fs::path workDir = TestsDir() / "MembraneAndPsome";
 		GroFile psomeGrofile{ workDir / "molecule/membrane_with_psome.gro" };
 		printf("N atoms: %d\n", psomeGrofile.atoms.size());
 	}
@@ -144,7 +148,7 @@ namespace Benchmarks {
 
 		//return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
 
-		const fs::path workDir = simulations_dir / "psome";
+		const fs::path workDir = TestsDir() / "psome";
 		GroFile grofile{ workDir / "molecule" / "conf.gro"};
 		TopologyFile topfile{ workDir / "molecule" / "topol.top"};
 		SimParams ip{ workDir / "sim_params.txt" };
@@ -152,7 +156,7 @@ namespace Benchmarks {
 	}
 
 	static LimaUnittestResult STMV(int nSteps) {
-		const fs::path workDir = simulations_dir / "benchmarking" / "stmv";
+		const fs::path workDir = TestsDir() / "benchmarking" / "stmv";
 		GroFile grofile{ workDir  / "conf.gro" };
 		TopologyFile topfile{ workDir  / "topol.top" };
 		SimParams ip{ workDir / "sim_params.txt" };
@@ -163,7 +167,7 @@ namespace Benchmarks {
 		if (envmode== Full)
 		    envmode = ConsoleOnly;	// Cant go fast in Full
 
-		const fs::path workDir  = simulations_dir / "manyt4";		
+		const fs::path workDir  = TestsDir() / "manyt4";		
 		TopologyFile topfile(workDir / "t4_many.top");
 		GroFile grofile(workDir / "t4_many_em.gro");
 
@@ -212,7 +216,7 @@ namespace Benchmarks {
 		}
 
 
-		const fs::path workDir = simulations_dir / "benchmarking"/dir;
+		const fs::path workDir = TestsDir() / "benchmarking"/dir;
 		fs::path topPath, groPath;
 
 		if (name) {
@@ -280,7 +284,7 @@ namespace Benchmarks {
 
 	static LimaUnittestResult PrepareSimulation_stmv(EnvMode envmode) {
 		TimeIt timer("Load Sim");
-		const fs::path workDir = simulations_dir / "benchmarking"/"stmv";
+		const fs::path workDir = TestsDir() / "benchmarking"/"stmv";
 
 		GroFile grofile{ workDir / "conf.gro" };
 		TopologyFile topfile{ workDir /  "topol.top" };

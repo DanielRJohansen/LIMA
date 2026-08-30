@@ -1,0 +1,18 @@
+lxx
+
+[ moleculetype ]
+;      name    nrexcl
+       lxx         3
+[ atoms ]
+;        nr      type     resnr   residue      atom      cgnr    charge      mass
+;residue_X
+         1       lt2         0       XXX       lxx         0     -1.00    10.000[ bonds ]
+;        ai        aj     funct        c0        c1        c2        c3
+[ pairs ]
+;        ai        aj     funct        c0        c1        c2        c3
+[ angles ]
+;        ai        aj        ak     funct        c0        c1        c2        c3
+[ dihedrals ]
+;        ai        aj        ak        al     funct        c0        c1        c2        c3        c4        c5
+[ dihedrals ]
+;        ai        aj        ak        al     funct        c0        c1        c2        c3

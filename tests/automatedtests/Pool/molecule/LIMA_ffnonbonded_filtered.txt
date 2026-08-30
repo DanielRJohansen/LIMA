@@ -1,0 +1,18 @@
+#pragma once
+// ----------------################ Forcefield Non-bonded ################---------------- //
+
+// ---------------- Mappings ---------------- //
+# mappings
+
+
+
+
+// ---------------- Non-bonded parameters ---------------- //
+// {atom_type 	 type_id 	 mass [g/mol] 	 sigma [nm] 	 epsilon [J/mol]} //
+# ff_nonbonded
+WATER;0;18.014999;0.382908;887.000000
+C;1;12.011000;0.400000;460.239990
+
+
+
+

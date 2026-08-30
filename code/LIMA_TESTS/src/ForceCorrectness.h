@@ -8,9 +8,11 @@
 namespace ForceCorrectness {
 	using namespace TestUtils;
 
+	const fs::path TestsDir() { return AutomatedTestsDir(); }
+
 	//Test assumes two carbons particles in conf
 	LimaUnittestResult doPoolBenchmark(EnvMode envmode, float target_vc = 1.e-4) {
-		const fs::path work_folder = simulations_dir / "Pool/";
+		const fs::path work_folder = TestsDir() / "Pool/";
 		Environment env{ work_folder, envmode};
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
@@ -54,7 +56,7 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode, float max_vc = 3.148e-2) {
-		const fs::path work_folder = simulations_dir / "PoolCompSol/";
+		const fs::path work_folder = TestsDir() / "PoolCompSol/";
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt"};
 		const float dt = params.dt;
@@ -120,7 +122,7 @@ namespace ForceCorrectness {
 
 
 	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {		
-		const fs::path work_folder = simulations_dir / "Singlebond/";
+		const fs::path work_folder = TestsDir() / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
 		SimParams params{ work_folder / "sim_params.txt" };
@@ -177,7 +179,7 @@ namespace ForceCorrectness {
 
 	// Test that a singlebond oscillates at the correct frequency
 	LimaUnittestResult SinglebondOscillationTest(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Singlebond/";
+		const fs::path work_folder = TestsDir() / "Singlebond/";
 		const fs::path conf = work_folder / "molecule/conf.gro";
 		const fs::path topol = work_folder / "molecule/topol.top";
 		const fs::path simpar = work_folder / "sim_params.txt";
@@ -244,7 +246,7 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult UreyBradleyForceAndPotentialSanityCheck(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Anglebond/";
+		const fs::path work_folder = TestsDir() / "Anglebond/";
 		Environment env{ work_folder, envmode };
 
 		SimParams params{ work_folder / "sim_params.txt" };
@@ -365,7 +367,7 @@ namespace ForceCorrectness {
 
 
 	LimaUnittestResult PairbondForceAndPotentialSanityCheck(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Pairbond/";
+		const fs::path work_folder = TestsDir() / "Pairbond/";
 		Environment env{ work_folder, envmode };
 
 		SimParams params{ work_folder / "sim_params.txt" };
@@ -443,7 +445,7 @@ namespace ForceCorrectness {
 
 
 	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode, float max_dev = 0.00746) {
-		const fs::path work_folder = simulations_dir / "Singlebond/";
+		const fs::path work_folder = TestsDir() / "Singlebond/";
 		Environment env{ work_folder, envmode};
 
 		SimParams params{ work_folder / "sim_params.txt" };
@@ -492,7 +494,7 @@ namespace ForceCorrectness {
 
 	// Benchmarks anglebonds + singlebonds (for stability)
 	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode, float max_vc = 4.7e-3) {
-		const fs::path work_folder = simulations_dir / "Anglebond/";
+		const fs::path work_folder = TestsDir() / "Anglebond/";
 
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
@@ -539,7 +541,7 @@ namespace ForceCorrectness {
 	}
 
 	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode, float max_vc=9.7e-3, float max_eg=6.037) {
-		const fs::path work_folder = simulations_dir / "Improperbond/";
+		const fs::path work_folder = TestsDir() / "Improperbond/";
 
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
@@ -616,7 +618,7 @@ namespace ForceCorrectness {
 
 
 	void TestForces1To1(EnvMode envmode) {
-		const fs::path workDir = simulations_dir / "T4Lysozyme";
+		const fs::path workDir = TestsDir() / "T4Lysozyme";
 		GroFile grofile{ workDir / "molecule" / "conf.gro" };
 		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
 		SimParams params{ workDir / "sim_params.txt" };
@@ -654,7 +656,7 @@ namespace VerletintegrationTesting {
 
 	// Apply a constant force on a particle, and check that the particles achieves the expected kinetic energy
 	LimaUnittestResult TestIntegration(EnvMode envmode) {
-		const fs::path work_folder = simulations_dir / "Pool/";
+		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 
 		Environment env{ work_folder, envmode};
 

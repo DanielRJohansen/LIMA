@@ -1,0 +1,3 @@
+dt=1
+n_steps = 1000
+enable_electrostatics=false

@@ -95,7 +95,7 @@ int main() {
 
 		//TestDisplayT4();
 		//LiveEditTest();
-		BuildCellTest();
+		//BuildCellTest();
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);

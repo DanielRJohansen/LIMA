@@ -1,0 +1,39 @@
+// ----------------################ Forcefield Non-bonded ################---------------- //
+
+// Atoms {particle id [simulation specific]	atomtype_id [simulation specific]} //
+# atoms
+1;1
+2;1
+3;1
+
+
+
+
+// ---------------- Bonds ---------------- //
+// {ID_p1 	 ID_p2 	 Atomtype 	 Atomtype 	 b_0 [nm] 	 k_b [J/(mol * nm^2)]} //
+# bonds
+
+
+
+
+// ---------------- Angles ---------------- //
+// {Atom-IDs 	 Atomtypes 	 theta_0 [rad] 	 k_theta [J/(mol * rad^2)} //
+# angles
+
+
+
+
+// ---------------- Dihedrals ---------------- //
+// {Atom IDs 	 Atomtypes 	 phi_0 [rad] 	 k_phi [J/(mol * rad^2)] 	 n} //
+# dihedrals
+
+
+
+
+// ---------------- ImproperDihedrals ---------------- //
+// {Atom IDs 	 Atomtypes 	 psi_0 [rad] 	 k_psi [J/(mol * rad^2)]} //
+# improperdihedrals
+
+
+
+

@@ -19,6 +19,8 @@ add_library(LIMA_MD STATIC
     src/Interface.cpp
     src/Programs.cpp
     src/Rendering.cpp
+    src/BackboneStructureInterpreter.cpp
+    src/NewCartoonRenderer.cpp
     src/Lipids.cpp
     src/Overlay.cpp
     src/SimulationBuilder.cpp

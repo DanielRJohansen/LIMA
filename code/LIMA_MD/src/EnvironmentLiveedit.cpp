@@ -73,7 +73,8 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	liveeditData->prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
 	
 	display->Render(std::make_unique<Rendering::SimulationTask>(
-		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains
 	));
 }
 
@@ -185,7 +186,7 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	liveeditData->remainingStepsCount = 4000;
 	display->Render(std::make_unique<Rendering::SimulationTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains
 	));
 
 	display->SetSpinnerVisible(false);
@@ -237,7 +238,8 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	display = std::make_unique<Display>();
 	display->WaitForDisplayReady();
 	display->Render(std::make_unique<Rendering::SimulationTask>(
-		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains
 	), false);
 	display->allowUserInputs = true;
 

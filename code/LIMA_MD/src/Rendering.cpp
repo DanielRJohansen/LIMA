@@ -4,6 +4,7 @@
 #include "MDFiles.h"
 
 #include "RenderUtilities.cuh"
+#include "NewCartoonRenderer.h"
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "SSBO.h"
@@ -269,6 +270,11 @@ void TransformGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) cons
 void Display::_RenderAtoms() {
 	
 	const glm::mat4 VP = camera.ViewProjection();
+	if (rendersettings.coloringMethod == ColoringMethod::NewCartoon
+		&& newCartoonRenderer && newCartoonRenderer->HasGeometry()) {
+		newCartoonRenderer->Draw(*drawTrianglesShader, VP);
+		return;
+	}
 
 	// TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
 	const glm::mat4 view = camera.View();
@@ -308,6 +314,16 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 
 void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool ignorePosition)
 {
+	if (rendersettings.coloringMethod == ColoringMethod::NewCartoon) {
+		if (!newCartoonRenderer)
+			newCartoonRenderer = std::make_unique<NewCartoon::Renderer>();
+		newCartoonRenderer->Prepare(
+			task.backboneChains, task.pclusters, task.pcMeta, task.boxparams.BoxSizeFloat());
+	}
+	else if (newCartoonRenderer) {
+		newCartoonRenderer->Clear();
+	}
+
 	camera.Update(task.boxparams.BoxSizeFloat());
 
 	if (!drawBoxOutlineShader)
@@ -340,7 +356,8 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 					renderAtomsHost[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
 				renderAtomsHost[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
 
-				if (rendersettings.coloringMethod == ColoringMethod::Atomname)
+				if (rendersettings.coloringMethod == ColoringMethod::Atomname
+					|| rendersettings.coloringMethod == ColoringMethod::NewCartoon)
 					renderAtomsHost[pidGlobal].color = RenderUtilities::getColor(atomType);
 				else if (rendersettings.coloringMethod == ColoringMethod::Charge) {
 					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
@@ -386,12 +403,15 @@ void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const
 				if (pidGlobal == -1)
 					continue;
 				renderAtomsHost[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsHost[pidGlobal].position.w);
+				currentTask.pclusters[pcid].pqd[pid].position = update.positions[pcid * PersistentCluster::maxParticles + pid];
 				if (update.forceMagnitudes && rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
 					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(update.forceMagnitudes[pidGlobal], 1e5f, 1e11f);
 				}
 			}
 		}
 	}
+	if (rendersettings.coloringMethod == ColoringMethod::NewCartoon && newCartoonRenderer)
+		newCartoonRenderer->Update(update.positions);
 	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsHost.size()) {
 		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
 		if (attachedAtomId < renderAtomsHost.size()) {
@@ -405,6 +425,8 @@ void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const
 
 
 void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
+	if (newCartoonRenderer)
+		newCartoonRenderer->Clear();
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
@@ -537,6 +559,8 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 
 
 void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
+	if (newCartoonRenderer)
+		newCartoonRenderer->Clear();
 	int nAtoms = task.grofile.atoms.size();
 	if (!task.drawSolvent) {
 		for (int i = 0; i < task.grofile.atoms.size(); i++) {

@@ -593,7 +593,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const SimParams& simparams
 )
 {
-	TimeIt timer("buildMolecules", true);
+	//TimeIt timer("buildMolecules", true);
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
 
 	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);

@@ -20,7 +20,7 @@ public:
 		const int nBlocks = BoxGrid::BlocksTotal(boxSize);
 		//const int nElements = _nBlocks + 1; 
 		const size_t byteSize = sizeof(SuperCluster) * nBlocks * SuperClustersControl::maxClustersPerBlock + sizeof(SuperClusterMeta) * nBlocks * SuperClustersControl::maxClustersPerBlock + sizeof(int) * (nBlocks + 1) * 2;
-		printf("Bytesize %f MB\n", static_cast<float>(byteSize) / 1024.f / 1024.f);
+		//printf("Bytesize %f MB\n", static_cast<float>(byteSize) / 1024.f / 1024.f);
 
 		cudaMalloc(&nClustersPerBlock, sizeof(int) * (nBlocks + 1)); // 1 extra element allows is to see the sum at the final prefixsum index
 		cudaMalloc(&nClustersPrefixSum, sizeof(int) * (nBlocks + 1));

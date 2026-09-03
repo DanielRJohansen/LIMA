@@ -68,7 +68,8 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 
 	if (display) {
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
+			simulation->box->boxparams, simStatus, simulation->box->backboneChains
 		));
 	}
 }
@@ -199,7 +200,8 @@ std::chrono::duration<double> Environment::run() {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 		display->Render(std::make_unique<Rendering::SimulationTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
+			simulation->box->boxparams, simStatus, simulation->box->backboneChains
 		), stepwise);
 	}
 

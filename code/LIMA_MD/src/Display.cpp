@@ -5,7 +5,8 @@
 
 
 #include "Display.h"
-#include "Shaders.h"    
+#include "Shaders.h"
+#include "NewCartoonRenderer.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"

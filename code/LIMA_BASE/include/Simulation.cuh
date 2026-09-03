@@ -6,6 +6,8 @@
 #include <filesystem>
 #include "BoxGrid.cuh"
 #include "SimParams.h"
+#include "Backbone.h"
+
 #include <set>
 
 namespace MDFiles { struct TrrFile; }
@@ -99,6 +101,7 @@ namespace LIMALOGSYSTEM {
 	}
 }
 
+
 struct Box {
 	Box() {}
 	Box(Float3 boxSize);
@@ -117,6 +120,9 @@ struct Box {
 
 	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
 	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
+
+	// Backbone chains
+	BackboneChains backboneChains; // Only for rendering
 };
 
 

@@ -123,6 +123,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->persistentClustersMetadata = boxImage.persistentClustersMetadata;
 	box->particlesBondedToParticle = std::move(boxImage.particleBondedToParticle);
 	box->pclustersBondedToPcluster = std::move(boxImage.pclusterBondedToPcluster);
+	box->backboneChains = InterpretBackboneChains(boxImage.grofile);
 	//box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
 
 	return box;

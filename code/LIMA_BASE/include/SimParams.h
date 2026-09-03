@@ -4,7 +4,7 @@
 #include <set>
 #include <filesystem>
 
-enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude };
+enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
 
 enum BoundaryConditionSelect{NoBC, PBC};
 

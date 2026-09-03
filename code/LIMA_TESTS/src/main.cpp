@@ -40,13 +40,14 @@ void TestDisplayT4() {
 	}
 
 
-	display.Render(std::make_unique<Rendering::SimulationTask>(box->persistentClusters, box->persistentClustersMetadata, box->boxparams), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(
+		box->persistentClusters, box->persistentClustersMetadata, box->boxparams, SimStatus{}, box->backboneChains), true);
 	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(positions.data(), nullptr, SimStatus{}), true);
 }
 
 void LiveEditTest() {
 	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(13.f));
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(25.f));
 	env.CreateSimulation(grofile, topfile, simparams);
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
@@ -63,7 +64,8 @@ void LiveEditTest() {
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
 	
 
-	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{8, 10, 10 }});
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{16, 10, 10 }});
 	env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
 	env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ true, false, false });
 
@@ -94,8 +96,8 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 
 		//TestDisplayT4();
-		//LiveEditTest();
-		BuildCellTest();
+		LiveEditTest();
+		//BuildCellTest();
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
@@ -208,6 +210,11 @@ int main() {
 		//	grofile.printToFile("membranesolvated_em.gro");
 		//	topfile.printToFile("membranesolvated_em.top");
 		//}
+
+		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\T4Lysozyme\molecule\out.gro)" };
+		Display::RenderGrofile(grofile, true);*/
+		
+
 		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
 		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
 		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv)", EnvMode::Full);
@@ -222,7 +229,7 @@ int main() {
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
 		//TestBuildmembraneSmall(envmode, false);
-		//RunAllUnitTests();
+		RunAllUnitTests();
 
 	}
 	catch (std::runtime_error ex) {

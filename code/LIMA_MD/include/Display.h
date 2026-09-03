@@ -24,6 +24,7 @@ class DrawAtomsPrettyShader;
 class DrawNormalsShader;
 class DrawTrianglesShader;
 class DrawBackgroundGradientShader;
+namespace NewCartoon { class Renderer; }
 
 class RenderTargetControl;
 class Camera;
@@ -73,6 +74,7 @@ namespace Rendering {
 		std::vector<PersistentClusterMeta> pcMeta; // TODO: This could just be a ref, since it remains constant?
 		const BoxParams boxparams;	
 		SimStatus simStatus;
+		BackboneChains backboneChains;
 	};
 	// Sent at each render-step
 	struct SimulationTaskUpdate {
@@ -272,6 +274,7 @@ private:
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
 	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader; 
+	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
 
 	// Render Data
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;

@@ -29,7 +29,7 @@ void TestDisplayT4() {
 	auto env = TestUtils::basicSetup("T4Lysozyme", std::nullopt, EnvMode::Full);
 	Display display{};
 
-	auto& box = env->getSimPtr()->box_host;
+	auto& box = env->getSimPtr()->box;
 
 	std::vector<Float3> positions;
 
@@ -40,12 +40,63 @@ void TestDisplayT4() {
 	}
 
 
-	display.Render(std::make_unique<Rendering::SimulationTask>(positions.data(), box->persistentClusters, box->persistentClustersMetadata, box->boxparams, "", Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(box->persistentClusters, box->persistentClustersMetadata, box->boxparams), true);
+	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(positions.data(), nullptr, SimStatus{}), true);
+}
+
+void LiveEditTest() {
+	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(13.f));
+	env.CreateSimulation(grofile, topfile, simparams);
+
+	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
+	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
+	topfile.printToFile();
+	topfile = TopologyFile{ topfile.path };
+
+
+	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
+	////std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 3.f } });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ false, false, true });
+	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
+	
+
+	env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
+	env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
+	env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ true, false, false });
+
+	env.LiveEdit(grofile, topfile);
+}
+
+void BuildCellTest() {
+	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
+	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(30, 30, 40));
+	env.CreateSimulation(grofile, topfile, simparams);
+
+	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
+	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
+	topfile.printToFile();
+	topfile = TopologyFile{ topfile.path };
+
+
+	//std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 100.}};
+	std::vector<std::tuple<std::string, double>> lipids = { {"DPPE", 30.5}, {"DMPG", 39.5}, {"cholesterol", 10}, {"SM18", 20} };
+	//env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Plane{ 5.f } });
+	env.liveEditCommandsQueue.push_back(LiveEdit::BuildMembrane{ lipids, MembraneGeometry::Ellipsoid{Float3{15,15,20  }, Float3{12, 12, 18 }} });
+
+	env.LiveEdit(grofile, topfile);
 }
 
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+
+		//TestDisplayT4();
+		//LiveEditTest();
+		BuildCellTest();
+
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
 
@@ -88,21 +139,24 @@ int main() {
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
-		/*for (int i = 0; i < 10; i++)
-		loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);*/
-		
-		
-		//const fs::path work_dir = simulations_dir / "test";
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+
+
+		//const fs::path workDir = simulations_dir / "test";
 		//Lipids::Selection lipids;
-		//lipids.emplace_back(Lipids::Select{ "DPPE", work_dir, 30.5 });
-		//lipids.emplace_back(Lipids::Select{ "DMPG", work_dir, 39.5 });
-		//lipids.emplace_back(Lipids::Select{ "Cholesterol", work_dir, 10 });
-		//lipids.emplace_back(Lipids::Select{ "SM18", work_dir, 20 });
-		//auto [grofile, topfile] = SimulationBuilder::CreateMembrane(lipids, Float3{ 20.f }, 5.f);
-		//SimulationBuilder::CreateMembrane(*grofile, *topfile, lipids, 15.f);
-		//Programs::EnergyMinimize(*grofile, *topfile, true, work_dir, envmode, true);
-		//grofile->printToFile(work_dir / "membrane.gro");
-		//topfile->printToFile(work_dir / "membrane.top");
+		//lipids.emplace_back(Lipids::Select{ "DPPE", workDir, 30.5 });
+		//lipids.emplace_back(Lipids::Select{ "DMPG", workDir, 39.5 });
+		//lipids.emplace_back(Lipids::Select{ "Cholesterol", workDir, 10 });
+		//lipids.emplace_back(Lipids::Select{ "SM18", workDir, 20 });
+		//GroFile grofile;
+		//grofile.box_size = Float3{ 20.f };
+		//TopologyFile topfile;
+		//topfile.SetSystem("Membrane");
+		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 5.f);
+		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 15.f);
+		//Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true);
+		//grofile->printToFile(workDir / "membrane.gro");
+		//topfile->printToFile(workDir / "membrane.top");
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//TestBuildmembraneSmall(envmode, false);
@@ -111,10 +165,10 @@ int main() {
 		//Lipids::_MakeLipid("cholesterol");
 
 		//TestLimaChosesSameBondparametersAsGromacs(envmode);
-		
+
 
 		//TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode);
-		
+
 		//TestForces1To1(envmode);
 
 		//ForceComparisons::T4RmsdAndRmsf();
@@ -124,7 +178,12 @@ int main() {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
-		Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+		/*for (int i = 0; i < 10; i++)
+			Benchmarks::PrepareSimulation_stmv(envmode);*/
+		//Benchmarks::STMV(500);
+		//Benchmarks::Psome(envmode);
+		
 
 		//Benchmarks::PrepareSimulation_stmv(envmode);
 		//Benchmarks::Psome(envmode);
@@ -156,16 +215,16 @@ int main() {
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
+		//ForceComparisons::DoAllForceComparisons(envmode);
+
 		//KernelAlgorithms::WarpSort64_Unittest(envmode);
 		//Benchmarks::Psome(envmode);
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
+		//TestBuildmembraneSmall(envmode, false);
 		//RunAllUnitTests();
-		/*int runAll = 1;
-		if (!runAll)
-			Benchmarks::Benchmark("membrane20", "membranesolvated_em");
-		else
-			RunAllUnitTests();*/}
+
+	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
 	}
@@ -193,7 +252,7 @@ void RunAllUnitTests() {
 		std::cout << "WARNING: Not all physics modules are enabled, expect tests to fail!" << std::endl;
 		TestUtils::setConsoleTextColorDefault();
 	}
-		
+
 
 
 	// Isolated forces sanity checks
@@ -212,13 +271,13 @@ void RunAllUnitTests() {
 	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", loadAndRunBasicSimulation("Met", envmode, 1.199e-3, 2e-6));
+	ADD_TEST("doMethionineBenchmark", loadAndRunBasicSimulation("Met", envmode, "doMethionineBenchmark"));
 	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, 3.22e-7, 1.1e-7));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 1.757e-3, 5e-4));
-	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode));
+	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, "SolventBenchmark"));
+	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, "T4Lysozyme"));
+	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, "Deterministic Simulations"); }, 2, envmode));
 
 
 	// Electrostatics
@@ -227,7 +286,7 @@ void RunAllUnitTests() {
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
 	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
-	
+
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
@@ -236,6 +295,7 @@ void RunAllUnitTests() {
 
 	// Programs test
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
+	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 

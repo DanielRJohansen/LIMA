@@ -10,6 +10,13 @@ set(CMAKE_CUDA_ARCHITECTURES "89")
 
 project(lima LANGUAGES CXX CUDA C)
 
+if (MSVC)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:preprocessor /Zc:__cplusplus")
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Zc:preprocessor")
+
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=/Zc:preprocessor -Xcompiler=/Zc:__cplusplus")
+endif()
+
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 23)
@@ -29,8 +36,12 @@ if (UNIX)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro,-z,now")	#Flags for executable security, to appease NAMCAP
 else()
 	#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std=c++26 /W4" )
-	#add_compile_options(/Zc:__cplusplus)
+	#add_compile_options( $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>)
 	#add_compile_options(/std:c++latest /Zc:__cplusplus /W4)
+    #add_compile_options(
+    #    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
+    #    $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>
+    #)
 endif()
 
 

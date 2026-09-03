@@ -1,0 +1,39 @@
+;
+;	File 'topol.top' was generated
+;	By user: lima (1000)
+;	On host: lima-ms7d08
+;	At date: Wed Oct 25 15:15:04 2023
+;
+;	This is a standalone topology file
+;
+;	Created by:
+;	                    :-) GROMACS - gmx pdb2gmx, 2022.6 (-:
+;	
+;	Executable:   /usr/local/gromacs/bin/gmx
+;	Data prefix:  /usr/local/gromacs
+;	Working dir:  /home/lima/Desktop/t4
+;	Command line:
+;	  gmx pdb2gmx -f 6lzm.pdb
+;	Force field was read from the standard GROMACS share directory.
+;
+
+; Include forcefield parameters
+#include "charmm27.ff/forcefield.itp"
+
+; Include water topology
+#include "charmm27.ff/spc.itp"
+
+#ifdef POSRES_WATER
+; Position restraint for each water oxygen
+[ position_restraints ]
+;  i funct       fcx        fcy        fcz
+   1    1       1000       1000       1000
+#endif
+
+[ system ]
+; Name
+Water in water
+
+[ molecules ]
+; Compound        #mols
+SOL             11225

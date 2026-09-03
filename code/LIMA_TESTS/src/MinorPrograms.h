@@ -10,7 +10,7 @@ namespace TestMinorPrograms {
 	namespace fs = std::filesystem;
 
 	LimaUnittestResult InsertMoleculesAndDoStaticbodyEM(EnvMode envmode) {
-		const fs::path workDir = simulations_dir / "manyt4";
+		const fs::path workDir = HeavyTestsDir() / "manyt4";
 		
 		const int boxSize = 40;
 		const int nInsertions = 200;

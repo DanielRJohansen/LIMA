@@ -9,20 +9,24 @@ namespace Benchmarks {
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
 	
+	const fs::path TestsDir() {
+		return HeavyTestsDir();
+	}
+
 	static void ReadGroFile(EnvMode mode) {
 		assert(ENABLE_FILE_CACHING == false);
 		TimeIt timer("ReadGroFile", true);
-		const fs::path work_dir = simulations_dir / "MembraneAndPsome";
-		GroFile psomeGrofile{ work_dir / "molecule/membrane_with_psome.gro" };
+		const fs::path workDir = TestsDir() / "MembraneAndPsome";
+		GroFile psomeGrofile{ workDir / "molecule/membrane_with_psome.gro" };
 		printf("N atoms: %d\n", psomeGrofile.atoms.size());
 	}
 
 	static void MembraneWithPsome(EnvMode envmode) {
-		//const fs::path work_dir = simulations_dir / "MembraneAndPsome";
+		//const fs::path workDir = simulations_dir / "MembraneAndPsome";
 		// 
 		//bool buildFromScratch = true;
 		//if (buildFromScratch) {
-		//	Environment env{ work_dir.string(), envmode, false };
+		//	Environment env{ workDir.string(), envmode, false };
 		//	const float boxlen = 23.f;
 
 		//	env.CreateSimulation(boxlen);
@@ -31,29 +35,29 @@ namespace Benchmarks {
 		//		lipidselection.emplace_back(Lipids::Select{ name, name == "POPC" ? 50 : 10 });	// 10% of each lipid, except 50% POPC
 		//	}
 
-		//	auto [membraneGrofile, membraneTopfile] = Programs::CreateMembrane(work_dir, lipidselection, Float3{boxlen}, boxlen / 4.f, envmode);
+		//	auto [membraneGrofile, membraneTopfile] = Programs::CreateMembrane(workDir, lipidselection, Float3{boxlen}, boxlen / 4.f, envmode);
 
 
-		//	GroFile psomeGrofile{ work_dir / "molecule/psome.gro" };
-		//	auto psomeTopFile = std::make_shared<TopologyFile>(work_dir / "molecule/psome.top");
+		//	GroFile psomeGrofile{ workDir / "molecule/psome.gro" };
+		//	auto psomeTopFile = std::make_shared<TopologyFile>(workDir / "molecule/psome.top");
 		//	Programs::SetMoleculeCenter(psomeGrofile, Float3{ boxlen / 2.f, boxlen / 2.f, 17.f });
 		//	Programs::EnergyMinimize(env, psomeGrofile, *psomeTopFile, true, boxlen);
 		//	
 		//	MDFiles::MergeFiles(*membraneGrofile, *membraneTopfile, psomeGrofile, psomeTopFile);
 
 		//	// Now the "membrane" files also has the psome. Print it to file
-		//	membraneGrofile->printToFile(work_dir / "molecule/membrane_with_psome.gro");
-		//	membraneTopfile->printToFile(work_dir / "molecule/membrane_with_psome.top");
+		//	membraneGrofile->printToFile(workDir / "molecule/membrane_with_psome.gro");
+		//	membraneTopfile->printToFile(workDir / "molecule/membrane_with_psome.top");
 		//}
 		////return;
 
 		//SimParams emparams{ 2000, 20, true, PBC };
 
-		//const GroFile conf{work_dir / "molecule" / "membrane_with_psome.gro"};
-		//const TopologyFile topol{work_dir / "molecule" / "membrane_with_psome.top"};
-		//const fs::path simpar = work_dir / "sim_params.txt";
+		//const GroFile conf{workDir / "molecule" / "membrane_with_psome.gro"};
+		//const TopologyFile topol{workDir / "molecule" / "membrane_with_psome.top"};
+		//const fs::path simpar = workDir / "sim_params.txt";
 
-		//Environment env{ work_dir, envmode, false};
+		//Environment env{ workDir, envmode, false};
 
 		//const SimParams ip{ simpar.string()};
 		//env.CreateSimulation(conf, topol, ip);
@@ -67,7 +71,7 @@ namespace Benchmarks {
 		////const fs::path work_folder = simulations_dir / folder_name;
 		////const std::string simpar_path = work_folder + "/sim_params.txt";
 		////SimParams params{ simpar_path };
-		////auto sim = env->getSim();
+		////auto sim = env->GetSim();
 		////env->CreateSimulation(*sim, params);
 		////env->run();
 		//////Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
@@ -84,11 +88,11 @@ namespace Benchmarks {
 		////const auto status = result.first == true ? true : false;
 	}
 
-	static LimaUnittestResult Bench(const fs::path& workDir, const GroFile& grofile, const TopologyFile& topfile, SimParams ip, std::chrono::microseconds allowedTimePerStep, std::optional<int> nSteps = std::nullopt) {
+	static LimaUnittestResult Bench(const fs::path& workDir, const GroFile& grofile, const TopologyFile& topfile, SimParams ip, std::chrono::microseconds allowedTimePerStep, std::string name, std::optional<int> nSteps = std::nullopt) {
 		EnvMode envmode = ConsoleOnly;
 
 		ip.data_logging_interval = 20;
-		ip.dt = 0.5f * FEMTO_TO_NANO;
+		//ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
 		if (nSteps)
 			ip.n_steps = nSteps.value();
@@ -96,69 +100,74 @@ namespace Benchmarks {
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run();
 
-		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
 		auto duration = env.simulationTimer->GetTiming();
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
-
-		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+		env.PrintTiming();
+		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("{} - Time per step: {} [us] Allowed: {} [us]", name, timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
 	}
 
 
-	static LimaUnittestResult Psome(EnvMode envmode, std::optional<int> nSteps=std::nullopt) {
-		 if (envmode== Full)
-			 envmode = ConsoleOnly;	// Cant go fast in Full
+	static LimaUnittestResult Psome(std::optional<int> nSteps=std::nullopt) {
+		// if (envmode== Full)
+		//	 envmode = ConsoleOnly;	// Cant go fast in Full
 
-		const fs::path work_dir = simulations_dir / "psome";
-		
-		bool em = false;
-		if (em) {
-			GroFile grofile{ work_dir / "molecule" / "conf.gro" };
-			TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
+		//const fs::path workDir = simulations_dir / "psome";
+		//
+		//bool em = false;
+		//if (em) {
+		//	GroFile grofile{ workDir / "molecule" / "conf.gro" };
+		//	TopologyFile topfile{ workDir / "molecule" / "topol.top" };
 
-			MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
-			//SimulationBuilder::SolvateGrofile(grofile);
-			auto sim = Programs::EnergyMinimize(grofile, topfile, true, work_dir, envmode, false);
-			grofile.printToFile(std::string{ "em.gro" });
+		//	MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
+		//	//SimulationBuilder::SolvateGrofile(grofile);
+		//	auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
+		//	grofile.printToFile(std::string{ "em.gro" });
 
-			SimAnalysis::PlotPotentialEnergyDistribution(*sim, work_dir, {0,1000, 2000, 3000, 4000 - 1});
-		}
+		//	SimAnalysis::PlotPotentialEnergyDistribution(*sim, workDir, {0,1000, 2000, 3000, 4000 - 1});
+		//}
 
-		GroFile grofile{ work_dir / "molecule" / "em.gro" };
-		TopologyFile topfile{ work_dir / "molecule" / "topol.top" };
-		SimParams ip{ work_dir / "sim_params.txt" };
-		ip.data_logging_interval = 20;
-		ip.dt = 0.5f * FEMTO_TO_NANO;
-		ip.enable_electrostatics = true;
-		if (nSteps)
-			ip.n_steps = nSteps.value();
-		Environment env{ work_dir, envmode };
-		env.CreateSimulation(grofile, topfile, ip);
-		env.run();
+		//GroFile grofile{ workDir / "molecule" / "em.gro" };
+		//TopologyFile topfile{ workDir / "molecule" / "topol.top" };
+		//SimParams ip{ workDir / "sim_params.txt" };
+		//ip.data_logging_interval = 20;
+		//ip.dt = 0.5f * FEMTO_TO_NANO;
+		//ip.enable_electrostatics = true;
+		//if (nSteps)
+		//	ip.n_steps = nSteps.value();
+		//Environment env{ workDir, envmode };
+		//env.CreateSimulation(grofile, topfile, ip);
+		//env.run();
 
-		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+		//ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
-		auto duration = env.simulationTimer->GetTiming();
-		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
-		const std::chrono::microseconds allowedTimePerStep{ 4000 };
+		//auto duration = env.simulationTimer->GetTiming();
+		//const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+		//const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
-		return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+		//return LimaUnittestResult { timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode!=Headless};
+
+		const fs::path workDir = TestsDir() / "psome";
+		GroFile grofile{ workDir / "molecule" / "conf.gro"};
+		TopologyFile topfile{ workDir / "molecule" / "topol.top"};
+		SimParams ip{ workDir / "sim_params.txt" };
+		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4000 }, "Psome", 30);
 	}
 
-	static LimaUnittestResult STMV() {
-		const fs::path work_dir = simulations_dir / "benchmarking" / "stmv";
-		GroFile grofile{ work_dir  / "conf.gro" };
-		TopologyFile topfile{ work_dir  / "topol.top" };
-		SimParams ip{ work_dir / "sim_params.txt" };
-		Bench(work_dir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, 3);
-		return LimaUnittestResult{ true, "STMV benchmark completed", true };
+	static LimaUnittestResult STMV(int nSteps) {
+		const fs::path workDir = TestsDir() / "benchmarking" / "stmv";
+		GroFile grofile{ workDir  / "conf.gro" };
+		TopologyFile topfile{ workDir  / "topol.top" };
+		SimParams ip{ workDir / "sim_params.txt" };
+		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, "STMV", nSteps);
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {
 		if (envmode== Full)
 		    envmode = ConsoleOnly;	// Cant go fast in Full
 
-		const fs::path workDir  = simulations_dir / "manyt4";		
+		const fs::path workDir  = TestsDir() / "manyt4";		
 		TopologyFile topfile(workDir / "t4_many.top");
 		GroFile grofile(workDir / "t4_many_em.gro");
 
@@ -182,7 +191,7 @@ namespace Benchmarks {
 		env.CreateSimulation(grofile, topfile, ip);
 		env.run();
 
-		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simparams_host.n_steps, "Simulation did not run fully");
+		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
 		auto duration = env.simulationTimer->GetTiming();
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
@@ -207,7 +216,7 @@ namespace Benchmarks {
 		}
 
 
-		const fs::path workDir = simulations_dir / "benchmarking"/dir;
+		const fs::path workDir = TestsDir() / "benchmarking"/dir;
 		fs::path topPath, groPath;
 
 		if (name) {
@@ -240,7 +249,7 @@ namespace Benchmarks {
 		env.CreateSimulation(grofile, topfile, params);
 		env.run();
 
-		if (env.getSimPtr()->getStep() != env.getSimPtr()->simparams_host.n_steps) {
+		if (env.getSimPtr()->getStep() != env.getSimPtr()->simParams.n_steps) {
 			throw std::runtime_error("Simulation did not run fully");
 		}
 
@@ -275,20 +284,20 @@ namespace Benchmarks {
 
 	static LimaUnittestResult PrepareSimulation_stmv(EnvMode envmode) {
 		TimeIt timer("Load Sim");
-		const fs::path work_dir = simulations_dir / "benchmarking"/"stmv";
+		const fs::path workDir = TestsDir() / "benchmarking"/"stmv";
 
-		GroFile grofile{ work_dir / "conf.gro" };
-		TopologyFile topfile{ work_dir /  "topol.top" };
+		GroFile grofile{ workDir / "conf.gro" };
+		TopologyFile topfile{ workDir /  "topol.top" };
 		SimParams ip{};
 		ip.n_steps = 1;
 		ip.data_logging_interval = 20;
 		ip.enable_electrostatics = true;
-		Environment env{ work_dir, envmode };
+		Environment env{ workDir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
 		env.prepareForRun();
 		const std::chrono::duration<double> elapsedTime = timer.elapsed();
 		
-		const std::chrono::duration<double> maxTime{ 15. }; // [s]
+		const std::chrono::duration<double> maxTime{ 8. }; // [s]
 		
 		return LimaUnittestResult{ elapsedTime < maxTime, std::format("Elapsed time: {:.2f} [s] Allowed: {:.2f} [s]", elapsedTime.count(), maxTime.count()), envmode != Headless };
 	}

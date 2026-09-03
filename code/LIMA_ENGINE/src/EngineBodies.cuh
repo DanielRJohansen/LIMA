@@ -88,7 +88,7 @@ public:
 struct SuperClustersControl {
 	//int* nSuperclustersInGrid;
 	//int* pclusterIdsInSuperclusters;
-	static const int maxClustersPerBlock = 12;
+	static const int maxClustersPerBlock = 16;
 
 	SuperClusterMeta* scMeta = nullptr;
 	SuperCluster* scData = nullptr;

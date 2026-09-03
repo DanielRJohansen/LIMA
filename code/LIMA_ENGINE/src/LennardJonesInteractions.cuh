@@ -99,99 +99,26 @@ namespace LJ {
 		return force;	// [1/24 J/mol/nm]
 	}
 
-
-
-		// Specific to solvent kernel	
-	template<bool computePotE, bool emvariant>
-	__device__ void ComputeSolventToSolventLJForcesIntrablock(ForceEnergy& fe, 
-		const uint8_t& myAtomtype, const Float3& myPosition,
-		const ParticleQuickData* const queryParticles,
-		const NonbondedInteractionParams& precomputedOO,
-		const float* const charges, /*{O, H}*/
-		int nParticles, int nParticlesThisBatch, int batchOffset) 
-	{	
-		if (threadIdx.x >= nParticles)
-			return;
-
-		for (int queryIndexRel = 0; queryIndexRel < nParticlesThisBatch; queryIndexRel++) {
-			//const bool sameAtom = index == queryIndex; 
-			const int queryIndexAbs = batchOffset + queryIndexRel;
-			const bool sameMolecule = threadIdx.x / 3 == queryIndexAbs / 3; //Not needed since H_epsilon is 0... // This is only valid for water-like molecules with 3 atoms each
-			if (sameMolecule) // TODO: THis is worng. We should still do ES inside molecules, just not LJ
-				continue;
-
-			const Float3 diff = Float3(queryParticles[queryIndexRel].relPos) - myPosition;
-			const float distSq = diff.lenSquared();
-
-			if (EngineUtils::isOutsideCutoff(distSq)) { continue; }
-
-			if (myAtomtype == 0 && queryParticles[queryIndexRel].atomType == 0) {
-				fe.force += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, fe.potE,
-					precomputedOO.sigma, precomputedOO.epsilon,
-					CalcLJOrigin::SolSolIntra,
-					threadIdx.x, queryIndexRel
-				) * 24.f;
-			}
-			if constexpr (ENABLE_ES_SR) {
-				const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndexRel].atomType];
-				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq);
-				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
-			}
-		}
-	}
-
-	template<bool computePotE, bool emvariant>
-	__device__ void ComputeSolventToSolventLJForcesInterblock(
-		ForceEnergy& fe, 
-		const uint8_t& myAtomtype, const Float3& myPosition,
-		const ParticleQuickData* __restrict__ const queryParticles,
-		const NonbondedInteractionParams precomputedOO, const float* const charges, /*{O, H}*/
-		int nParticles, int nParticlesQueryThisBatch, float cutoffNmSq)
-	{
-		if (threadIdx.x >= nParticles)
-			return;
-
-		for (int queryIndex = 0; queryIndex < nParticlesQueryThisBatch; queryIndex++) {
-
-			const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPosition;
-			const float distSq = diff.lenSquared();
-			if (distSq > cutoffNmSq)
-				continue;
-
-
-			if (myAtomtype == 0 && queryParticles[queryIndex].atomType == 0) {
-				fe.force += calcLJForceOptim<computePotE, emvariant>(diff, 1. / distSq, fe.potE,
-					precomputedOO.sigma, precomputedOO.epsilon,
-					CalcLJOrigin::SolSolInter,
-					threadIdx.x, queryIndex
-				) * 24.f;
-			}
-
-			if constexpr (ENABLE_ES_SR) {
-				const float chargeProduct = charges[myAtomtype] * charges[queryParticles[queryIndex].atomType];
-				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, distSq);
-				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq);
-			}
-		}
-	}
-
-
 	// Returns fe on p0, invert to get fe on p1
 	template<bool computePotE, bool emvariant>
-	__device__ ForceEnergy ComputeParticleParticleNB(const PData& p0, const PData& p1, int p0ParticleGlobalId, int p1ParticleGlobalId) 
+	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId)
 	{
 		ForceEnergy fe{}; // on p0
 		
 		//const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPosition;
-		const Float3 diff = p1.position - p0.position;
+		//const Float3 diff = sc1.positions[sc1Index] - sc0.positions[sc0Index];
+		const Float3 diff{
+			sc0.posX[sc0Index] - pdOwned.position.x,
+			sc0.posY[sc0Index] - pdOwned.position.y,
+			sc0.posZ[sc0Index] - pdOwned.position.z
+		};
 		
-		if (p0.params.epsilonSqrt != -1.f && p1.params.epsilonSqrt != -1.f) {
+		
+		if (sc0.epsilonSqrt[sc0Index] != -1.f && pdOwned.params.epsilonSqrt != -1.f) {
 			//diff.print('d');
 			fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1. / diff.lenSquared(), fe.potE,
-				CalcSigma(p0.params.sigmaHalf, p1.params.sigmaHalf),
-				CalcEpsilon(p0.params.epsilonSqrt, p1.params.epsilonSqrt),
+				CalcSigma(sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf),
+				CalcEpsilon(sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt),
 				//precomputedOO.sigma, precomputedOO.epsilon,
 				CalcLJOrigin::PP,
 				p0ParticleGlobalId, p1ParticleGlobalId
@@ -209,8 +136,9 @@ namespace LJ {
 		}
 
 		if constexpr (ENABLE_ES_SR) {
-			if (p0.params.charge * p1.params.charge != 0.f) {
-				const float chargeProduct = p0.params.charge * p1.params.charge;
+			const float chargeProduct = sc0.charge[sc0Index] * pdOwned.params.charge;
+			if (chargeProduct != 0.f) {
+				
 				//printf("PP charproduct %f force %f %f %f\n", chargeProduct,
 				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).x,
 				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).y,
@@ -228,9 +156,9 @@ namespace LJ {
 			if (fe.force.isNan() || isnan(fe.potE)) {
 				printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
 					diff.x, diff.y, diff.z,
-					p0.params.sigmaHalf, p1.params.sigmaHalf,
-					p0.params.epsilonSqrt, p1.params.epsilonSqrt,
-					p0.params.charge, p1.params.charge,
+					sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt,
+					sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf,
+					sc0.charge[sc0Index], pdOwned.params.charge,
 					diff.len());
 			}
 		}

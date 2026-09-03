@@ -8,7 +8,7 @@
 #include "Shaders.h"    
 #include "TimeIt.h"
 #include "MDFiles.h"
-
+#include "SSBO.h"
 
 
 
@@ -62,24 +62,20 @@ void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
     }
 }
 
+void Display::SetupCallbacks() {
+	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+		if (display)
+			display->windowSize = glm::ivec2{ width, height };
+	});
 
-void Display::Setup() {
-    int success = initGLFW();
-    SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
-
-    SetThreadName("RenderThread");
-
-    // Initialize GLEW
-    glewExperimental = GL_TRUE; // Ensure GLEW uses modern techniques for managing OpenGL functionality
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
-    }
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glfwSetWindowUserPointer(window, this);
+	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+		if (display) {
+			display->framebufferSize = glm::ivec2{ width, height };
+			display->framebufferResizePending = true;
+		}
+	});
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
         if (action == GLFW_PRESS) {
@@ -109,9 +105,16 @@ void Display::Setup() {
                 case GLFW_KEY_N:
                     display->debugValue = 1;
                     break;
-                case GLFW_KEY_P:
-                    display->pause = !display->pause;
+                case GLFW_KEY_P: {
+                    std::lock_guard<std::mutex> lock2(display->liveEditCommandsQueueMutex);
+                    display->liveEditCommandsQueue.push_back(LiveEdit::TogglePause{});
                     break;
+                }
+                case GLFW_KEY_S: {
+                    std::lock_guard<std::mutex> lock2(display->liveEditCommandsQueueMutex);
+                    display->liveEditCommandsQueue.push_back(LiveEdit::StepOnce{});
+					break;
+                }
                 case GLFW_KEY_1:
                     display->renderAtoms = !display->renderAtoms;
                     break;
@@ -145,7 +148,36 @@ void Display::Setup() {
             display->OnMouseScroll(xoffset, yoffset);
         }
         });
+}
 
+
+void Display::Setup() {
+    SetThreadName("RenderThread");
+    int success = initGLFW();
+    SetWindowIcon(window, (FileUtils::GetLimaDir() / "resources"/"logo" / "Lima_Symbol_64x64.png").string().c_str());
+
+   
+    // Initialize GLEW
+    glewExperimental = GL_TRUE; // Ensure GLEW uses modern techniques for managing OpenGL functionality
+    if (glewInit() != GLEW_OK) {
+        std::cerr << "Failed to initialize GLEW" << std::endl;
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glfwSetWindowUserPointer(window, this);
+
+    SetupCallbacks();
+	glfwGetWindowSize(window, &windowSize.x, &windowSize.y);
+	glfwGetFramebufferSize(window, &framebufferSize.x, &framebufferSize.y);
+	framebufferResizePending = true;
+	ApplyPendingFramebufferResize();
+
+    overlay = std::make_unique<Overlay>(window, FileUtils::GetLimaDir());
+
+    renderAtomsBuffer = std::make_unique<SSBO>();
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -157,6 +189,8 @@ void Display::Setup() {
 Display::Display() :
     camera(Float3{ 2.f })
 {
+        // todo: Display needs to know if its in liveedit, so it knows whether to render gizmo and console.
+        // It should also tell Overlay if there is any solvent present, if not dont have the button there..
     renderThread = std::jthread([this] {
         try {
             Setup();
@@ -188,11 +222,11 @@ void Display::WaitForDisplayReady() {
 
 
 
-void Display::PrepareTask(Task& task) {
+void Display::PrepareTask(Task& task, bool ignorePosition) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
         if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-            PrepareNewRenderTask(*taskPtr);
+            PrepareNewRenderTask(*taskPtr, ignorePosition);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
             PrepareNewRenderTask(*taskPtr);
@@ -207,70 +241,107 @@ void Display::PrepareTask(Task& task) {
 }
 
 void Display::Mainloop() {
-    Rendering::Task currentRenderTask = nullptr;
-
-    Overlay overlay{window, FileUtils::GetLimaDir()};
+    Rendering::Task currentRenderTask = Rendering::NoTask{};
+    
     TimeIt frameTime{};
 
     while (!kill) {
         // Update camera, check if window is closed
         glfwPollEvents();
+		const bool framebufferWasResized = ApplyPendingFramebufferResize();
         if (glfwWindowShouldClose(window)) {
             break;
             printf("Window closed");
         }
         
+        bool shouldRecolorAtoms = false;
+        ConsumeInputs(shouldRecolorAtoms);
 
-        // Check if new data
-        bool newData = false;
+        // Check for new task
+        bool newTask = false;
+        bool updatedPositions = false;
         {
-            incomingRenderTaskMutex.lock();
-            if (!std::holds_alternative<void*>(incomingRenderTask)) {
-                currentRenderTask = std::move(incomingRenderTask);
-                incomingRenderTask = nullptr;
-                newData = true;
-            }
-            incomingRenderTaskMutex.unlock();
+			std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);     
+            if (!incomingRenderTasks.empty()) {
+                Rendering::Task incomingRenderTask = std::move(incomingRenderTasks.front());
+                incomingRenderTasks.pop_front();
 
-            if (newData) {
-                PrepareTask(currentRenderTask);
+                if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
+                    if (std::holds_alternative<std::unique_ptr<SimulationTask>>(currentRenderTask)) {
+                        if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
+                            int a = 0;
+                        }
+                        PrepareNewRenderTask(*std::get<std::unique_ptr<SimulationTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
+                        //incomingRenderTask = Rendering::NoTask{};
+                        updatedPositions = true;
+                    }
+                    else {
+                        // This shouldn't happen
+                    }
+                }
+                else if (!std::holds_alternative<Rendering::NoTask>(incomingRenderTask)) {
+                    currentRenderTask = std::move(incomingRenderTask);
+                    //incomingRenderTasks = Rendering::NoTask{};
+                    newTask = true;
+                }
             }
         }
+        if (newTask || shouldRecolorAtoms) {
+            bool ignorePosition = !newTask;
+            PrepareTask(currentRenderTask, ignorePosition);
+        }
+        
+        // Check for new input
+        bool newInput = false;
+		std::optional<std::set<int>> newSelection;
+        {
+			std::lock_guard<std::mutex> lock(inputMutex);
+            newSelection = std::exchange(newSelectionInput, std::nullopt);
+        }
+        if (newSelection.has_value()) {
+            _UpdateSelection(newSelection.value());
+            newInput = true;
+		}
+
+
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newData || frameTime.elapsed().count() > msPerFrame;
+        bool shouldDraw = newTask || updatedPositions || newInput || framebufferWasResized
+			|| frameTime.elapsed().count() > msPerFrame;
 
-        if (shouldDraw) {
-            if (!std::holds_alternative<void*>(currentRenderTask)) {
-                std::visit([&](auto& taskPtr) {
-                    using T = std::decay_t<decltype(taskPtr)>;
-                    if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
-                        const int nParticles = taskPtr->boxparams.totalParticles;
-                        overlay.Draw(rendersettings, taskPtr->simStatus, fps.GetFps());
-                        _RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
-                    }
-                    else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
-                        _Render(taskPtr->molCollection, taskPtr->boxSize);
-                    }
-                    else if constexpr (std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-                        _RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
-                    }
-                    }, currentRenderTask);
-            }
+        if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
+            _Render(currentRenderTask);
 
-            overlay.Render();
-
-            glfwSwapBuffers(window);
             fps.NewFrame();
             frameTime = TimeIt{};
         }
     }
 }
 
+bool Display::ApplyPendingFramebufferResize() {
+	if (!framebufferResizePending || framebufferSize.x <= 0 || framebufferSize.y <= 0)
+		return false;
+
+	framebufferResizePending = false;
+	camera.UpdateViewport(framebufferSize);
+	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+	if (renderTargetControl)
+		renderTargetControl->Resize(framebufferSize);
+	return true;
+}
+
 void Display::Render(Rendering::Task task, bool blocking) {
-    incomingRenderTaskMutex.lock();
-    incomingRenderTask = std::move(task);
-    incomingRenderTaskMutex.unlock();
+    {
+        if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
+            if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {
+                int a = 0;
+            }
+        }
+		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
+
+        if (incomingRenderTasks.size() < 20) // With too many tasks, drop incoming
+            incomingRenderTasks.push_back(std::move(task));
+    }
 
     if (blocking) {
         while (1) {
@@ -282,68 +353,18 @@ void Display::Render(Rendering::Task task, bool blocking) {
     }
 }
 
+void Display::UpdateSelection(const std::set<int>& selection) {
 
-
-
-
-
-
-
-
-void Display::OnMouseMove(double xpos, double ypos) {
-    if (isDragging) {
-        const float sensitivity = 0.001f; // Adjust sensitivity as needed
-        const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
-        const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity; // Reversed since y-coordinates go from bottom to top
-
-        camera.Update(xOffset, -yOffset, 0);
-    }
-
-    mousePos.x = xpos;
-    mousePos.y = ypos;
+	std::lock_guard<std::mutex> lock(inputMutex);
+	newSelectionInput = selection;
 }
 
-void HandleHighlightAtom(int atomId, int& prevAtomId, SSBO& renderAtoms) {
-    if (atomId == prevAtomId)
-        return;
 
-    auto renderAtomsHost = renderAtoms.GetData<RenderAtom>();
-    if (prevAtomId != -1)
-        renderAtomsHost[prevAtomId].HighLight(false);
-    if (atomId != -1)
-        renderAtomsHost[atomId].HighLight(true);
-    prevAtomId = atomId;
-    renderAtoms.SetData(renderAtomsHost);
-}
 
-void Display::OnMouseButton(int button, int action, int mods) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        if (action == GLFW_PRESS) {
-            isDragging = true;
-            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
-            mousePosAtBtnDown = mousePos;
-            timeAtBtnDown = std::chrono::steady_clock::now();
-        }
-        else if (action == GLFW_RELEASE) {
-            isDragging = false;
 
-            glm::dvec2 mousePos{};
-            glfwGetCursorPos(window, &mousePos.x, &mousePos.y);
-            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - timeAtBtnDown).count();
-            bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
 
-            if (isClick && drawAtomsFromCpuShader) {
-                int atomId = drawAtomsFromCpuShader->GetAtomIdAtPixel(int2{ (int)mousePos.x, (int)mousePos.y });
-                HandleHighlightAtom(atomId, lastSelectedAtomId, drawAtomsFromCpuShader->renderAtomsBuffer);
-                printf("Atomid %d\n", atomId);
-            }
-        }
-    }
-}
 
-void Display::OnMouseScroll(double xoffset, double yoffset) {
-    camera.Update(0,0,yoffset * 0.1f);
-}
+
 
 bool Display::initGLFW() {
     // Initialize the library
@@ -361,7 +382,7 @@ bool Display::initGLFW() {
     int displayWidth = mode->width;
     int displayHeight = mode->height;
 
-    windowSize = int2{ (int)((float)displayHeight * 0.8f), (int)((float)displayHeight * 0.8f) };
+    windowSize = glm::ivec2{ (int)((float)displayHeight * 0.8f), (int)((float)displayHeight * 0.8f) };
 
 
     // Create a windowed mode window and its OpenGL context
@@ -381,6 +402,36 @@ bool Display::initGLFW() {
     return 1;
 }
 
+Float3 Convert(const glm::vec3& v) {
+    return Float3{ v.x, v.y, v.z };
+}
+
+std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
+    if (activeGizmo && (activeGizmo->pullForce || activeGizmo->rotateForce)) {        
+        return LiveEdit::MoveMolecule(Convert(activeGizmo->pullForce.value_or(glm::vec3{})), Convert(activeGizmo->rotateForce.value_or(glm::vec3{})));
+    }
+    if (bool stopMove = stopMovingLiveeditCmd.exchange(false)) {
+		return LiveEdit::MoveMolecule{};
+    }
+    {
+        std::lock_guard<std::mutex> lock2(liveEditCommandsQueueMutex);
+        if (!liveEditCommandsQueue.empty()) {
+            LiveEdit::Command cmd = liveEditCommandsQueue.front();
+            liveEditCommandsQueue.pop_front();
+            return cmd;
+        }
+    }
+    return std::nullopt;
+}
+
+
+
+
+
+
+
+
+
 
 Camera::Camera(Float3 boxSize) : center(boxSize/2.f), dist(-2.0f * boxSize.y) {}
 void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
@@ -389,8 +440,15 @@ void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
     dist += deltaDist + deltaDist * -std::min(dist, 0.f) * 0.5f;
 }
 void Camera::Update(Float3 boxSize) {
-    if (center != boxSize / 2.f)
-        *this = Camera(boxSize);
+	if (center != boxSize / 2.f) {
+		const float currentAspectRatio = aspectRatio;
+		*this = Camera(boxSize);
+		aspectRatio = currentAspectRatio;
+	}
+}
+void Camera::UpdateViewport(glm::ivec2 viewportSize) {
+	if (viewportSize.x > 0 && viewportSize.y > 0)
+		aspectRatio = static_cast<float>(viewportSize.x) / static_cast<float>(viewportSize.y);
 }
 
 
@@ -436,12 +494,6 @@ void Display::TestDisplay() {
     std::vector<PersistentClusterMeta> pcMetas(1);
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
-	display.Render(std::make_unique<Rendering::SimulationTask>(position.get(), pclusters, pcMetas, params, "", Atomname), true);
+	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params), true);
+	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), nullptr, SimStatus{}), true);
 }
-
-
-
-//void Display::RenderGrofile(const GroFile& grofile) {
-//    Display d;
-//    d.Render(std::make_unique<Rendering::GrofileTask>(grofile), true);
-//}

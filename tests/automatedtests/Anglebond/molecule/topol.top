@@ -1,0 +1,26 @@
+#include "charmm27.ff/forcefield.itp"
+
+
+[ moleculetype ]
+angle 3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 MET rtp MET  q +1.0
+     1         CA      1    lxx      C      1       0.0      14.007
+     2         CA      1    lxx      C      2       0.0      14.007
+     3         CA      1    lxx      C      2       0.0      14.007
+
+[ bonds ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     2     1 
+    2     3     1
+[ angles ]
+;  ai    aj    ak funct            c0            c1            c2            c3
+    1     2     3     5 
+
+[ system ]
+angle
+
+[ molecules ]
+angle 1

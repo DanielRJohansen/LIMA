@@ -1,0 +1,12 @@
+; ElectroStatic Field Test
+
+#include "lima_custom_forcefield.itp"
+
+#include "lxx.itp"
+
+[ system ]
+MySystem
+
+[ molecules ]
+lxx 8000
+

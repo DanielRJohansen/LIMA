@@ -5,6 +5,7 @@
 #include "Bodies.cuh"
 #include "Filehandling.h"
 #include "Trajectory.h"
+#include "SmallString.h"
 
 #include <optional>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include <ranges>
 #include <map>
 
+
 const bool ENABLE_FILE_CACHING = true;
 
 
@@ -22,12 +24,12 @@ namespace fs = std::filesystem;
 
 struct GroRecord {
 	int residue_number{};
-	std::string residueName{};
-	std::string atomName{};
+	SmallString residueName{};
+	SmallString atomName{};
 	int gro_id{};
 	Float3 position{};
 	std::optional<Float3> velocity{};
-	std::string sourceLine;
+	//std::string sourceLine;
 };
 
 struct GroFile {
@@ -202,11 +204,11 @@ public:
 	struct ForcefieldInclude {
 		//ForcefieldInclude(const std::string& name, const fs::path& path) : name(name), path(path) {};
 		ForcefieldInclude(const fs::path& filename) : filename(filename) {};
-
+		
 		void SaveToDir(const fs::path& dir) const;
 		void AddEntry(TopologySection section, const std::string& entry);
 
-		const fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
+		fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
 		GenericItpFile contents;
 	};
 	struct MoleculeEntry {
@@ -281,13 +283,6 @@ public:
 				})
 			// 3. Join all the individual vectors into a single flattened range of elements (e.g., all SingleBonds from all molecules).
 					| std::views::join;
-	}
-
-	const GenericItpFile& GetForcefield() const {
-		if (forcefieldInclude.has_value()) {
-			return forcefieldInclude->contents;
-		}
-		throw std::runtime_error("No forcefield include in this topology");
 	}
 
 	const Moleculetype& GetMoleculeType() const {

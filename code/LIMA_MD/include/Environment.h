@@ -5,6 +5,7 @@
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "Trajectory.h"
+#include "LiveEditCommands.h"
 
 #include <memory>
 #include <chrono>
@@ -12,7 +13,7 @@
 class Display;
 struct BoxImage;
 class Engine;
-
+struct LiveEditData;
 
 namespace fs = std::filesystem;
 
@@ -40,20 +41,41 @@ public:
 	// The basic createSim
 	void CreateSimulation(const GroFile&, const TopologyFile&, const SimParams&);
 
-
 	/// <summary>
 	/// Create a simulation that starts from where boxorigin is currently
 	/// </summary>
 	void CreateSimulation(Simulation& simulation_src, SimParams);
 
 	/// <summary>
-	/// Create .gro .top and simparams.txt files in the current directory
+	/// Create .gro .top and simparams.txt files in the current directory, and returns them in memory for optional use
 	/// </summary>
-	void createSimulationFiles(float boxlen);
+	std::tuple<GroFile, TopologyFile, SimParams> CreateSimulationFiles(Float3 boxlen);
 
 	// Run a standard MD sim
     /// <returns>Elapsed Engine time in seconds</returns>
     std::chrono::duration<double> run();
+
+
+
+	////////////////// LIVE EDIT //////////////////
+
+	/// <summary>
+	/// A mode where the user can continously give inputs to the program
+	/// </summary>
+	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
+private:
+	void InsertMolecule(LiveEditData*, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
+	void BuildMembrane(LiveEditData*, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
+	void HandleMoveMoleculeCommand(LiveEditData*, const LiveEdit::MoveMolecule& newMoveCommand);
+	void UpdateForcemask(LiveEditData*, const LiveEdit::AddForcemaskToSelection&);
+	void UpdateSelection(LiveEditData*, const LiveEdit::AtomSelected&);
+	void UpdateSelection(LiveEditData*, const LiveEdit::SelectAtomsBasedOnQualifier&);
+	void UpdateElasticPosition(LiveEditData*, const LiveEdit::ElasticPosition&);
+	void EM(LiveEditData*);
+	////////////////// ////////////////// ////////////////// 
+public:
+
+
 
 	/// <summary>
 	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
@@ -72,7 +94,7 @@ public:
 
 	void RenderSimulation();
 	
-	
+
 	
 	
 	void renderTrajectory(std::string trj_path);
@@ -80,31 +102,36 @@ public:
 	void makeVirtualTrajectory(std::string trj_path, std::string waterforce_path);
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
-	std::unique_ptr<Simulation> getSim();
+	std::unique_ptr<Simulation> GetSim();
 	Simulation* getSimPtr();
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 
-	std::string getWorkdir() { return work_dir.string(); }
+	std::string getWorkdir() { return workDir.string(); }
 
 	void PrintTiming() const;
 
 	std::chrono::steady_clock::time_point time0;
 
-	const fs::path work_dir = "";	// Main dir of the current simulation
+	const fs::path workDir = "";	// Main dir of the current simulation
 
 	std::optional<TimeIt> simulationTimer;
 	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
 	std::optional<std::chrono::duration<double>> engineTime;
 
+	std::deque<LiveEdit::Command> liveEditCommandsQueue;	
+
 	SimStatus simStatus{};
+	bool forceWriteSimstatusToDisplay = false;
 
 	bool prepareForRun();
 private:
 
+	fs::path FixPath(const fs::path& path) const;
+
 	void constexpr verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
-	void handleStatus(int64_t step, bool emVariant);
+	void UpdateSimstatus(bool printToConsole, bool alwaysUpdate/*Performance hit*/);
 
 	// Returns false if display has been closed by user
 	bool handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
@@ -118,25 +145,13 @@ private:
 
 	int64_t step_at_last_render = INT64_MIN;
 
-
-	//std::unique_ptr<BoxBuilder> boxbuilder;
 	LimaLogger m_logger;
 
 
-
-	std::unique_ptr<Engine> engine;
-	std::unique_ptr<Simulation> simulation;
-	std::optional<SimParams> simparamsCopy; // Only available when simulation is given to engine
-
-	ColoringMethod coloringMethod;	// Not ideal to have here..
-
-	// TEMP: Cache some constants here before we give ownership to engine. DO NOT READ VOLATILE VALUES FROM THESE
-	//std::vector<Compound> compounds;
-	BoxParams boxparams;
-	std::vector<PersistentCluster> pClusters;
-	std::vector<PersistentClusterMeta> pClusterMeta;
-
-	std::unique_ptr<BoxImage> boximage;
+	std::unique_ptr<Display> display = nullptr;
+	std::unique_ptr<Engine> engine = nullptr;
+	std::unique_ptr<Simulation> simulation = nullptr;
+	std::unique_ptr<BoxImage> boximage = nullptr;
 
 	std::optional<SimAnalysis::AnalyzedPackage> postsim_anal_package;
 };

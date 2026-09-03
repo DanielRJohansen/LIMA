@@ -10,8 +10,9 @@
 #include <span>
 #include <optional>
 #include "Constants.h"
-
 #include <array>
+#include <ranges>
+//#include <generator>
 
 // TODO: EASY: LARGE: Its a huge waste that the boxsize is a Int3, when it really should be a packed into a single 32 bit DWORD..
 // 1024 nm boxsize is a reasonable limitation. However we cant use the same type for PME grid obviously
@@ -137,7 +138,7 @@ struct Float3 {
 	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
 	constexpr Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
 	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
-
+	constexpr Float3 Inv() const { return Float3{ 1.f } / *this; }
 
     constexpr Float3 Floor() const { return Float3(std::floor(x), std::floor(y), std::floor(z));}
 
@@ -274,6 +275,10 @@ struct ForceEnergy {
 	Float3 force{};	// [J/mol/nm]
 	float potE{};		// [J/mol]
 
+	constexpr ForceEnergy InvertForce(){
+		return ForceEnergy{ -force, potE };
+	}
+
 	constexpr ForceEnergy operator+ (const ForceEnergy& a) const {
 		return ForceEnergy{ force + a.force, potE + a.potE };
 	}		
@@ -286,23 +291,6 @@ struct ForceEnergy {
 		return (force != a.force) || (potE != a.potE);
 	}
 };
-
-struct ParticleQuickData {
-	Float3 relPos{};		// [nm]
-	std::array<int8_t, 3> gridIndex;
-	uint8_t atomType=0x0000;		// dont need all 8 bits for this.
-
-	//constexpr Float3 getRelpos(const Int3& toIndex) const {// TODO: unsure of the & here
-	//	Float3 shift{
-	//		static_cast<int>(gridIndex[0]) - toIndex.x,
-	//		static_cast<int>(gridIndex[1]) - toIndex.y,
-	//		static_cast<int>(gridIndex[2]) - toIndex.z
-	//	};
-	//	return relPos + shift;
-	//}
-};
-
-
 
 
 struct Double3 {
@@ -450,7 +438,11 @@ struct Coord {
 	//}
 };
 
-
+struct Rotation {
+	Float3 center{};
+	Float3 rotation{}; // rotX, rotY, rotZ
+	constexpr bool Valid() const { return rotation != Float3{0.f}; }
+};
 
 
 
@@ -461,13 +453,27 @@ struct BoundingBox {
 		: min(min), max(max) {}
 
 	constexpr BoundingBox(const std::vector<Float3>& points);
-
+	//BoundingBox(std::generator<Float3> generator); 
+	BoundingBox(std::ranges::input_range auto&& range) {
+		min = Float3{ std::numeric_limits<float>::max() };
+		max = Float3{ std::numeric_limits<float>::min() };
+		for (const Float3& p : range) {
+			min.x = std::min(min.x, p.x);
+			min.y = std::min(min.y, p.y);
+			min.z = std::min(min.z, p.z);
+			max.x = std::max(max.x, p.x);
+			max.y = std::max(max.y, p.y);
+			max.z = std::max(max.z, p.z);
+		}
+	}
 	Float3 min, max;
 
 	constexpr Float3 Center() const {
 		return (min + max) * 0.5f;
 	}
-
+	constexpr Float3 Dimensions() const {
+		return max - min;
+	}
 	constexpr bool intersects(BoundingBox b) const {
 		return
 			min.x <= b.max.x && max.x >= b.min.x &&
@@ -482,30 +488,6 @@ struct BoundingBox {
 		max += Float3(padding);
 	}
 };
-
-template<typename T>
-T* genericMoveToDevice(T* data_ptr, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	if (n_elements == 0) { return nullptr; }
-
-	T* gpu_ptr = nullptr;
-	size_t bytesize = n_elements * sizeof(T);
-
-	cudaMallocManaged(&gpu_ptr, bytesize);
-	auto cuda_status = cudaMemcpy(gpu_ptr, data_ptr, bytesize, cudaMemcpyHostToDevice);
-
-	if (cuda_status != cudaSuccess) {
-		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
-		throw std::runtime_error("Move to device failed");
-	}
-
-	cudaDeviceSynchronize();
-
-	if (n_elements == 1)
-		delete data_ptr;
-	else
-		delete[] data_ptr;
-	return gpu_ptr;
-}
 
 template<typename T>
 void GenericCopyToHost(T* srcDevice, std::vector<T>& destHost, size_t nElements) {
@@ -577,7 +559,7 @@ struct RenderAtom {
 
 	float4 position = Disabled(); // {posX, posY, posZ, radius} [normalized]
 	float4 color{};					// {r, g, b, a} [0-1]	
-	uint4 flags;
+	uint4 flags{};
 
 	void HighLight(bool highLight) {
 		flags.x = highLight ? 1 : 0;
@@ -585,12 +567,4 @@ struct RenderAtom {
 
 	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
-};
-
-struct SimStatus {
-	size_t step = 0;
-	std::optional<float> temperature = std::nullopt;			// [K]
-	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
-	float avgStepTime = NAN;							// [ms]
-	std::optional<float> simulationPerformance = std::nullopt; // [ns/day]
 };

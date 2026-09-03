@@ -1,14 +1,14 @@
 #pragma once
 
 #include "LimaTypes.cuh"
-
+#include <set>
 #include <filesystem>
 
-enum ColoringMethod { Atomname, Charge, GradientFromAtomid, GradientFromCompoundId };
+enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude };
 
 enum BoundaryConditionSelect{NoBC, PBC};
 
-enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential};
+enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition};
 
 struct SimParams {
     SimParams() {}
@@ -22,13 +22,13 @@ struct SimParams {
     float dt = 2.f * FEMTO_TO_NANO;           // Time step [ns]
     bool em_variant = false;
     float em_force_tolerance = 1000;           // [kJ/mol/nm]
-    int stepsPerNlistupdate = 5;
+    int stepsPerNlistupdate = 20;
 
     // Physics parameters
     BoundaryConditionSelect bc_select{ PBC };
     bool enable_electrostatics = true;
     float cutoff_nm = 1.2f;                    // Cutoff distance [nm]
-    SupernaturalForcesSelect snf_select{ None }; // (Consider using a bitmask for multiple flags)
+    std::set<SupernaturalForcesSelect> snf_select;
 
     // Thermostat
     int64_t steps_per_temperature_measurement = 200;
@@ -57,7 +57,7 @@ struct SimParams {
     // Output parameters
     int data_logging_interval = 5;
     bool save_energy = false;
-    ColoringMethod coloring_method = ColoringMethod::Atomname;
+    ColoringMethod coloring_method = ColoringMethod::Atomname;  // TODO: THis is actually being ignored now...
     // int nstxout = 500;                    // Frequency for writing coordinates [steps] (important)
     // int nstvout = 500;                    // Frequency for writing velocities [steps] (unimportant)
     // int nstenergy = 100;                  // Frequency for writing energies [steps] (critical)

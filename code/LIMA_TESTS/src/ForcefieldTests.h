@@ -187,9 +187,9 @@ void ParseForcefieldFromItp(
 
 LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode) 
 {
-	Programs::GetForcefieldParams(GroFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/conf.gro" },
-		TopologyFile{ TestUtils::simulations_dir / "T4Lysozyme/molecule/topol.top" },
-		TestUtils::simulations_dir / "Forcefieldtests");
+	Programs::GetForcefieldParams(GroFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/conf.gro" },
+		TopologyFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/topol.top" },
+		TestUtils::AutomatedTestsDir() / "Forcefieldtests");
 
 	
 	
@@ -206,10 +206,10 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
     std::vector<std::array<int, 4>> dihIds;
 
 
-    ParseForcefieldFromTpr((TestUtils::simulations_dir / "Forcefieldtests/tpr_content.txt").string(), bondparamsGromacs, 
+    ParseForcefieldFromTpr((TestUtils::AutomatedTestsDir() / "Forcefieldtests/tpr_content.txt").string(), bondparamsGromacs, 
         angleparamsGromacs, dihedralparamsGromacs, improperDihedralparamsGromacs, dihIds);
 
-    ParseForcefieldFromItp((TestUtils::simulations_dir / "Forcefieldtests/appliedForcefield.itp").string(), bondparamsLima,
+    ParseForcefieldFromItp((TestUtils::AutomatedTestsDir() / "Forcefieldtests/appliedForcefield.itp").string(), bondparamsLima,
         angleparamsLima, dihedralparamsLima, improperDihedralparamsLima, atomnamesSinglebonds, atomnamesAnglebonds, atomnamesDihedralbonds, atomnamesImproperDihedralbonds);
 
 

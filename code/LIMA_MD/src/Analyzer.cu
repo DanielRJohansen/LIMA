@@ -68,11 +68,11 @@ void __global__ MonitorPclusterEnergy(const PersistentClusterMeta* const pcMeta,
 SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) {	// Calculates the avg J/mol // calculate energies separately for compounds and solvents. weigh averages based on amount of each
 	LIMA_UTILS::genericErrorCheck("Cuda error before analyzeEnergy\n");
 
-	const std::vector<PersistentClusterMeta>& pcMetaHost = simulation->box_host->persistentClustersMetadata;
+	const std::vector<PersistentClusterMeta>& pcMetaHost = simulation->box->persistentClustersMetadata;
 	if (pcMetaHost.empty()) {
 		return SimAnalysis::AnalyzedPackage{};
 	}
-	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simparams_host.data_logging_interval);
+	const int64_t n_entryindices = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), simulation->simParams.data_logging_interval);
 	if (n_entryindices < 2) { return AnalyzedPackage(); }
 
 	const int nParticlesUpperbound = pcMetaHost.size() * PersistentCluster::maxParticles;
@@ -276,14 +276,14 @@ SimAnalysis::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, s
 //void Analyzer::findAndDumpPiecewiseEnergies(const Simulation& sim, const std::string& workdir) {
 //	std::vector<float> energies;
 //	
-//	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1, sim.simparams_host.data_logging_interval); entryindex++) {
+//	for (auto entryindex = 0; entryindex < LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep()-1, sim.simParams.data_logging_interval); entryindex++) {
 //
-//		for (int compound_id = 0; compound_id < sim.box_host->boxparams.n_compounds; compound_id++) {
+//		for (int compound_id = 0; compound_id < sim.box->boxparams.n_compounds; compound_id++) {
 //			for (int particle_id = 0; particle_id < MAX_COMPOUND_PARTICLES; particle_id++) {
 //				
 //				const float potE = sim.potE_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
 //
-//				const uint8_t& atom_type = sim.box_host->compounds[compound_id].atom_types[particle_id];
+//				const uint8_t& atom_type = sim.box->compounds[compound_id].atom_types[particle_id];
 //				const float mass = sim.forcefield.particle_parameters[atom_type].mass;
 //				const float vel = sim.vel_buffer->getCompoundparticleDatapointAtIndex(compound_id, particle_id, entryindex);
 //				const float kinE = PhysicsUtils::calcKineticEnergy(vel, mass);
@@ -293,7 +293,7 @@ SimAnalysis::AnalyzedPackage::AnalyzedPackage(std::vector<Float3>& avg_energy, s
 //			}
 //		}
 //
-//		for (int solvent_id = 0; solvent_id < sim.box_host->boxparams.n_solvents; solvent_id++) {
+//		for (int solvent_id = 0; solvent_id < sim.box->boxparams.n_solvents; solvent_id++) {
 //
 //			const float potE = sim.potE_buffer->getSolventparticleDatapointAtIndex(solvent_id, entryindex);
 //
@@ -340,21 +340,21 @@ void SimAnalysis::PlotPotentialEnergyDistribution(const Simulation& simulation, 
 	//cudaMalloc(&histogramDataDevice, NUM_BINS * sizeof(int));
 	//	
 	//float* energyBufferDevice;	
-	//cudaMalloc(&energyBufferDevice, sizeof(float) * simulation.box_host->boxparams.total_particles_upperbound);
+	//cudaMalloc(&energyBufferDevice, sizeof(float) * simulation.box->boxparams.total_particles_upperbound);
 
 	//Compound* compoundsDevice;
-	//cudaMalloc(&compoundsDevice, sizeof(Compound) * simulation.box_host->boxparams.n_compounds);
-	//cudaMemcpy(compoundsDevice, simulation.box_host->compounds.data(), sizeof(Compound) * simulation.box_host->boxparams.n_compounds, cudaMemcpyHostToDevice);
+	//cudaMalloc(&compoundsDevice, sizeof(Compound) * simulation.box->boxparams.n_compounds);
+	//cudaMemcpy(compoundsDevice, simulation.box->compounds.data(), sizeof(Compound) * simulation.box->boxparams.n_compounds, cudaMemcpyHostToDevice);
 
 	//std::ofstream out_file(dir / "histogram_data.bin", std::ios::binary);
 	//int nPlots = stepsToPlot.size();
 	//out_file.write(reinterpret_cast<char*>(&nPlots), sizeof(int));
 	//for (int64_t step : stepsToPlot) {
-	//	cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.box_host->boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
+	//	cudaMemcpy(energyBufferDevice, simulation.potE_buffer->GetBufferAtStep(step), sizeof(float) * simulation.box->boxparams.total_particles_upperbound, cudaMemcpyHostToDevice);
 	//	cudaMemset(histogramDataDevice, 0, NUM_BINS * sizeof(int));
 
 	//	cudaDeviceSynchronize();
-	//	potEHistogramKernel << <simulation.box_host->boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (compoundsDevice, simulation.box_host->boxparams.total_particles_upperbound, energyBufferDevice, histogramDataDevice, step);
+	//	potEHistogramKernel << <simulation.box->boxparams.n_compounds, MAX_COMPOUND_PARTICLES >> > (compoundsDevice, simulation.box->boxparams.total_particles_upperbound, energyBufferDevice, histogramDataDevice, step);
 	//	cudaDeviceSynchronize();
 
 	//	std::vector<int> histogramDataHost;

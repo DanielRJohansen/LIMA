@@ -5,7 +5,7 @@
 namespace ProgramsTests {
 
 	LimaUnittestResult TestBuildMembrane(EnvMode envmode) {
-		const fs::path workDir = simulations_dir / "etc";
+		const fs::path workDir = HeavyTestsDir() / "etc";
 
 		std::vector<std::string> args = {
 			"lima", "buildMembrane",

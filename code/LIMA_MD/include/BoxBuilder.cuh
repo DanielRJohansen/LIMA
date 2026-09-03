@@ -1,7 +1,7 @@
 #pragma once
 #include "Bodies.cuh"
 #include "Simulation.cuh"
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 
 #include <vector>
 

@@ -163,19 +163,14 @@ struct BondgroupRef { // A particles ref to its position in a bondgroup
 
 struct BondGroup {
 	struct ParticleRef {
-		// TODO: REmove these 2!!
-		//int compoundId = 0; // TODO: make uint16_t?
-		//int localIdInCompound = 0; // TODO: make uint16_t?
-
-
 		int pcid;
 		int pid; // local to pcluster
 	};
 
-	static const int maxParticles = 64;
+	static const int maxParticles = 64;	
 	static const int maxSinglebonds = 128;
 	static const int maxAnglebonds = 128 + 64;
-	static const int maxDihedralbonds = 256 + 64;
+	static const int maxDihedralbonds = 256 + 64 + 64;
 	static const int maxPairbonds = maxDihedralbonds;
 	static const int maxImproperdihedralbonds = 32;
 
@@ -192,6 +187,8 @@ struct BondGroup {
 	int nAnglebonds = 0;
 	int nDihedralbonds = 0;
 	int nImproperdihedralbonds = 0;
+
+	static_assert(maxParticles < UINT8_MAX, "bonds can't index their particles!");
 };
 
 struct NBParams {
@@ -199,7 +196,7 @@ struct NBParams {
 	float epsilonSqrt = -1;		// [J/mol/nm]
 	float charge = 0;		// [kC/mol]
 
-	__host__ bool operator==(const NBParams& other) const = default;
+	//__host__ bool operator==(const NBParams& other) const = default;
 };
 
 // Precomputed values for pairs of atomtypes
@@ -231,12 +228,12 @@ struct ForceField_NB {
 
 struct PData {
 	Float3 position;
-	NBParams params;
+	NBParams params{};
 	constexpr bool Valid() const { return params.epsilonSqrt != -1.f; }
 
-	__host__ bool operator!=(const PData& other) const {
+	/*__host__ bool operator!=(const PData& other) const {
 		return position != other.position || params != other.params;
-	}
+	}*/
 };
 
 struct BondgroupRefManager {
@@ -254,13 +251,13 @@ struct PersistentCluster {
 	static const int maxParticles = 4;
 	PData pqd[maxParticles];
 
-	__host__ bool operator!=(const PersistentCluster& other) const {
-		for (int i = 0; i < maxParticles; i++) {
-			if (pqd[i] != other.pqd[i])
-				return true;
-		}
-		return false;
-	}
+	//__host__ bool operator!=(const PersistentCluster& other) const {
+	//	for (int i = 0; i < maxParticles; i++) {
+	//		if (pqd[i] != other.pqd[i])
+	//			return true;
+	//	}
+	//	return false;
+	//}
 };
 struct PersistentClusterMeta {
 	int particleIdsGlobal[PersistentCluster::maxParticles]={ -1, -1, -1, -1 };
@@ -286,6 +283,11 @@ class StaticSet {
 	int data[size]; // is sorted
 	static const int noVal = INT_MIN;
 public:
+	constexpr StaticSet() {
+		for (int& value : data)
+			value = noVal;
+	}
+
 	constexpr bool Contains(int value) const {
 		for (int i = 0; i < size; i++) {
 			if (data[i] == value)
@@ -299,14 +301,18 @@ public:
 	static std::vector<StaticSet> Create(const std::vector<std::set<int>>& sets) {
 		std::vector<StaticSet> result(sets.size());
 		for (int i= 0; i < sets.size(); i++) {
-			int j = 0;
-			for (int val : sets[i]) {
-				if (j >= size)
-					throw std::runtime_error("Too many values in set, increase size or check your clustering");
-				result[i].data[j++] = val;
-			}
-			for (; j < size; j++)
-				result[i].data[j] = noVal;
+			result[i] = Create(sets[i]);
+		}
+		return result;
+	}
+
+	static StaticSet Create(const std::set<int>& values, int offset = 0) {
+		StaticSet result;
+		int index = 0;
+		for (const int value : values) {
+			if (index >= size)
+				throw std::runtime_error("Too many values in set, increase size or check your clustering");
+			result.data[index++] = value + offset;
 		}
 		return result;
 	}
@@ -386,16 +392,40 @@ struct SuperCluster {
 	//static const int maxPclusters = 4;
 	static const int maxParticles = 16;
 
-	//Float3 positions[nParticles];
-	PData pData[maxParticles];
+	//Float3 positions[maxParticles];
+	float posX[maxParticles];
+	float posY[maxParticles];
+	float posZ[maxParticles];
+	float sigmaHalf[maxParticles];		// [nm]
+	float epsilonSqrt[maxParticles];		// [J/mol/nm]
+	float charge[maxParticles];
 
-	__host__ bool operator!= (const SuperCluster& other) const {
-		for (int i = 0; i < maxParticles; i++) {
-			if (pData[i] != other.pData[i])
-				return true;
-		}
-		return false;
+	__device__ void SetPdata(const PData& pdata, int index) {
+		posX[index] = pdata.position.x;
+		posY[index] = pdata.position.y;
+		posZ[index] = pdata.position.z;
+		sigmaHalf[index] = pdata.params.sigmaHalf;
+		epsilonSqrt[index] = pdata.params.epsilonSqrt;
+		charge[index] = pdata.params.charge;
 	}
+	__device__ void LoadPdata(PData& pdata, int index) const {
+		pdata.position = Float3(posX[index], posY[index], posZ[index]);
+		pdata.params.sigmaHalf = sigmaHalf[index];
+		pdata.params.epsilonSqrt = epsilonSqrt[index];
+		pdata.params.charge = charge[index];
+	}
+	__device__ Float3 Position(int index) const {
+		return Float3(posX[index], posY[index], posZ[index]);
+	}
+	//PData pData[maxParticles];
+
+	//__host__ bool operator!= (const SuperCluster& other) const {
+	//	for (int i = 0; i < maxParticles; i++) {
+	//		if (pData[i] != other.pData[i])
+	//			return true;
+	//	}
+	//	return false;
+	//}
 };
 
 struct SuperClusterMeta {
@@ -441,23 +471,21 @@ struct SCResult {
 	}
 };
 
+//struct ScScTask {
+//	static constexpr int nInteractions = 4;
+//
+//	int sc0Id;
+//	int queryScIds[nInteractions];
+//	int sc0ResultIndex;
+//	int queryResultIndices[nInteractions];
+//	int nointeractionMatrixIndex[nInteractions];
+//};
+
 struct ScScTask {
-	int scIds[2];
-	int resultIndices[2];
-	int nointeractionMatrixIndex = -1;
-
-	__host__ constexpr bool operator!=(const ScScTask& other) const {
-		for (int i = 0; i < 2; i++) {
-			if (scIds[i] != other.scIds[i])
-				return true;
-			if (resultIndices[i] != other.resultIndices[i])
-				return true;
-		}
-		return false;
-	}
+//	int sc0Id; // implicitly the index of this task	
+	int startIndexInQueriesBuffers = 0;
+	int nQueryScs = 0;
 };
-
-
 
 
 
@@ -487,7 +515,7 @@ class UniformElectricField {
 	/// <summary></summary>
 	/// <param name="charge">[kC/mol]</param>
 	/// <returns>[gigaN/mol]</returns>
-	__device__ Float3 GetForce(float charge) const {
+	constexpr Float3 GetForce(float charge) const {
 		return field * charge;
 	}
 };

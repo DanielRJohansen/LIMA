@@ -2,14 +2,17 @@
 #include <filesystem>
 #include <string>
 #include <optional>
+#include <numeric>
 
 #include "Environment.h"
 #include "MDFiles.h"
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 #include "UpgradeableFileFormat.h"
+#include "SimulationBuilder.h"
+#include "MoleculeUtils.h"
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -21,7 +24,7 @@ constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::Environment(const fs::path& workdir, EnvMode mode)
-	: work_dir(workdir)
+	: workDir(workdir)
 	, m_mode(mode)
 	, m_logger{ LimaLogger::compact, m_mode, "environment", workdir.string()}	// .string() is temp
 {
@@ -56,46 +59,61 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		grofile,
 		topolfile,
 		V1,
-		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", work_dir),
+		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", workDir),
 		IGNORE_HYDROGEN,
 		params
 		);
 
 	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
-	simulation->forcefield = boximage->forcefield;
-	//simulation->forcefieldTinymol = boximage->tinymolTypes;
-	simulation->forcefieldTest = boximage->nonbondedInteractionParams;
+
+	if (display) {
+		display->Render(std::make_unique<Rendering::SimulationTask>(
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+		));
+	}
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
 
 	simulation.reset(new Simulation(params));
-	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box_host), simulation_src.getStep());
-
-	simulation->forcefield = simulation_src.forcefield;
-	//simulation->forcefieldTinymol = simulation_src.forcefieldTinymol;
-	simulation->forcefieldTest = simulation_src.forcefieldTest;
+	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box), simulation_src.getStep());
 }
 
 
-void Environment::createSimulationFiles(float boxlen) {
+std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(Float3 boxlen) {
 	GroFile grofile{};
-	grofile.m_path = work_dir / "molecule/conf.gro";
+	grofile.m_path = workDir / "conf.gro";
 	grofile.box_size = Float3{ boxlen };
 	grofile.printToFile();
 
 	TopologyFile topfile{};
-	topfile.path = work_dir / "molecule/topol.top";
+	topfile.SetSystem("MySystem");
+	topfile.path = workDir / "topol.top";
+	//topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
 	topfile.printToFile();
+	topfile = TopologyFile{workDir / "topol.top"}; // Reload the topfile to parse the ffinclude
+
 
 	SimParams simparams{};
-	simparams.dumpToFile(work_dir / "sim_params.txt");
+	simparams.dumpToFile(workDir / "sim_params.txt");
+
+	return { grofile, topfile, simparams };
 }
 
 void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
-	if (simulation->simparams_host.cutoff_nm != 1.2f) {// TODO: DANGER
+	if (simulation->simParams.cutoff_nm != 1.2f) {// TODO: DANGER
 		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
 	}
+}
+
+fs::path Environment::FixPath(const fs::path& path) const {
+	if (path.is_absolute())
+		return path;
+	if (fs::exists(workDir / path))
+		return workDir / path;
+	if (fs::exists( "./" / path))
+		return "./" / path;
+	return path;
 }
 
 void Environment::verifyBox() {
@@ -140,27 +158,23 @@ bool Environment::prepareForRun() {
 	verifyBox();
 	simulation->ready_to_run = true;
 
-	avgStepTimes.reserve((simulation->simparams_host.n_steps + 1) / STEPS_PER_UPDATE);
-
-	// TEMP, this is a bad solution ?? TODO NOW
-	//this->compounds = simulation->box_host->compounds;
-	this->pClusters = simulation->box_host->persistentClusters;
-	this->pClusterMeta = simulation->box_host->persistentClustersMetadata;
-
-	boxparams = simulation->box_host->boxparams;
-	coloringMethod = simulation->simparams_host.coloring_method;
+	avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 
 
 	engine = std::make_unique<Engine>(
-		std::move(simulation),
-		simulation->simparams_host.bc_select,
-		std::make_unique<LimaLogger>(LimaLogger::compact, m_mode, "engine", work_dir));
+		simulation.get(),
+		simulation->simParams.bc_select);
 
 	return true;
 }
 
 
 void Environment::sayHello() {
+	static bool hasSaidHello = false;
+	if (hasSaidHello)
+		return;
+	hasSaidHello = true;
+
 	std::ifstream file(FileUtils::GetLimaDir() / "resources/logo/logo_ascii.txt");
 	if (!file) {
 		throw std::runtime_error("Failed to open logo file");
@@ -173,9 +187,9 @@ void Environment::sayHello() {
 }
 
 std::chrono::duration<double> Environment::run() {
-	const bool emVariant = simulation->simparams_host.em_variant;
-	const bool stepwise = simulation->simparams_host.stepwise;
-	simparamsCopy = simulation->simparams_host;
+	const bool emVariant = simulation->simParams.em_variant;
+	const bool stepwise = simulation->simParams.stepwise;
+	//simparamsCopy = simulation->simParams;
 
     if (!prepareForRun()) { return {}; }
 
@@ -184,6 +198,9 @@ std::chrono::duration<double> Environment::run() {
 	if (m_mode == Full) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
+		display->Render(std::make_unique<Rendering::SimulationTask>(
+			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata, simulation->box->boxparams, simStatus
+		), stepwise);
 	}
 
 	simulationTimer.emplace(TimeIt{ "Simulation" });
@@ -191,7 +208,7 @@ std::chrono::duration<double> Environment::run() {
     auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(boxparams, display.get(), emVariant, stepwise)) {
+		if (!handleDisplay(simulation->box->boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
@@ -199,7 +216,7 @@ std::chrono::duration<double> Environment::run() {
 		
 		engine->step();
 
-		handleStatus(engine->runstatus.current_step, emVariant);
+		UpdateSimstatus(true, true);
 		
 		if (engine->runstatus.simulation_finished) {
 			break;
@@ -214,8 +231,8 @@ std::chrono::duration<double> Environment::run() {
 	// Transfers the remaining traj data and more
 	engine->terminateSimulation();
 
-	simulation = engine->takeBackSim();
-	simparamsCopy.reset();
+	//simulation = engine->takeBackSim();
+	//simparamsCopy.reset();
 
 	simulation->finished = true;
 	simulation->ready_to_run = false ;
@@ -227,18 +244,27 @@ std::chrono::duration<double> Environment::run() {
     return t1-t0;
 }
 
+
+
+
+
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
 	int particlesUpdated = 0;
 
-	const int64_t stepToLoadFrom = _step.value_or(simulation->getStep())-1;
+	
+	// First offload the current state from engine to host - if there is no engine, the state in the current boxhost IS the current state
+	if (engine) {
+		CudaBuffer<PersistentCluster>& pcBuffer = engine->OffloadPclusterState();
+		simulation->box->persistentClusters = GenericCopyToHost(pcBuffer.Get(), simulation->box->persistentClusters.size()); // TODO: Reuse mem here somehow, this'll be slow..
+	}
 
-
-	for (int pcId = 0; pcId < simulation->box_host->persistentClusters.size(); pcId++) {
-		const PersistentClusterMeta& pcMeta = simulation->box_host->persistentClustersMetadata[pcId];
+	for (int pcId = 0; pcId < simulation->box->persistentClusters.size(); pcId++) {
+		const PersistentClusterMeta& pcMeta = simulation->box->persistentClustersMetadata[pcId];
+		const PersistentCluster& pcData = simulation->box->persistentClusters[pcId];
 		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 			const int pidGlobal = pcMeta.particleIdsGlobal[pid];
 			if (pidGlobal != -1) {
-				grofile.atoms[pidGlobal].position = simulation->traj_buffer->GetDatapointAtStep(pcId, pid, stepToLoadFrom);
+				grofile.atoms[pidGlobal].position = pcData.pqd[pid].position;
 				particlesUpdated++;
 			}
 		}
@@ -252,7 +278,7 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 	GroFile outputfile{ boximage->grofile };
 
 	if (filename.has_value()) {
-		outputfile.m_path = work_dir / "molecule" / (filename.value() + ".gro");
+		outputfile.m_path = workDir / "molecule" / (filename.value() + ".gro");
 	}
 
 	WriteBoxCoordinatesToFile(outputfile);
@@ -260,33 +286,18 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 	return outputfile;
 }
 std::vector<Float3> Environment::GetForces(int64_t step) const {
-	int particlesUpdated = 0;
+	std::vector<Float3> forces(boximage->grofile.atoms.size());		// [kJ/mol/nm]
+	const auto& forcesBuffer = *simulation->forceBuffer;			// [J/mol/nm]
+	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
+		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
+			const int gpid = simulation->box->persistentClustersMetadata[pcid].particleIdsGlobal[pid]; 			
+			if (gpid == -1)
+				continue;
 
-	std::vector<Float3> forces(boximage->grofile.atoms.size()); // [kJ/mol/nm]
-
-//TODO!!
-
-		//for (int cid = 0; cid < boximage->compounds.size(); cid++) {
-		//	for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
-		//		forces[boximage->compounds[cid].indicesInGrofile[pid]] = simulation->forceBuffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step) / KILO;
-		//		particlesUpdated++;
-		//	}
-		//}
-
-		//for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
-		//	const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
-		//	const int nAtomsInTinymol = tinymol.nParticles;
-
-		//	for (int i = 0; i < nAtomsInTinymol; i++) {
-		//		forces[tinymol.firstParticleIdInGrofile + i] = simulation->forceBuffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
-		//		particlesUpdated++;
-		//	}
-		//}
-
-		//if (particlesUpdated != boximage->grofile.atoms.size()) {
-		//	throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, boximage->grofile.atoms.size()));
-		//}
-	
+			const Float3 force = forcesBuffer.GetDatapointAtStep(pcid, pid, step);
+			forces[gpid] = force / KILO;
+		}
+	}
 
 	return forces;
 }
@@ -296,10 +307,10 @@ Trajectory Environment::WriteSimToTrajectory() const {
 	const int nSteps = simulation->getStep();
 	const int nAtoms = boximage->grofile.atoms.size();
 
-	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simparams_host.dt);
+	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simParams.dt);
 
 	// TODO!!
-	//for (int step = 0; step < nSteps; step += simulation->simparams_host.data_logging_interval) {
+	//for (int step = 0; step < nSteps; step += simulation->simParams.data_logging_interval) {
 
 	//	for (int cid = 0; cid < boximage->compounds.size(); cid++) {
 	//		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
@@ -308,7 +319,7 @@ Trajectory Environment::WriteSimToTrajectory() const {
 	//		}
 	//	}
 
-	//	for (int tinymolId = 0; tinymolId < simulation->box_host->boxparams.nTinymols; tinymolId++) {
+	//	for (int tinymolId = 0; tinymolId < simulation->box->boxparams.nTinymols; tinymolId++) {
 	//		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
 	//		const int nAtomsInTinymol = tinymol.nParticles;
 
@@ -333,43 +344,67 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	UpgradeableFileFormat file(path);
 
 	file.WriteSection("numAtoms", std::vector{ nAtoms });
-	file.WriteSection("numFrames", std::vector{nSteps / simulation->simparams_host.data_logging_interval});
+	file.WriteSection("numFrames", std::vector{nSteps / simulation->simParams.data_logging_interval});
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
-void Environment::handleStatus(const int64_t step, bool emVariant) {
-	if (m_mode == Headless) {
+void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
+	if (!simulation || !engine) {
 		return;
 	}
 
-	if (step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) {		
-		auto duration = std::chrono::steady_clock::now() - time0;
+	const int64_t step = simulation->getStep();
+	if ((step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) || forceWriteSimstatusToDisplay) {		
+		forceWriteSimstatusToDisplay = false;
+		auto duration = std::chrono::steady_clock::now() - time0;		
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
-		//// First clear the current line
-		//printf("\r\033[K");
-		// Move cursor to the beginning of the line and clear it
-		printf("\033[1000D\033[K");
 
-		printf("Step #%06llu", step);
-		printf("\tAvg. time: %.2fms", avgSteptime);
+		if (printToConsole && m_mode == Full) {
+			//// First clear the current line
+			//printf("\r\033[K");
+			// Move cursor to the beginning of the line and clear it
+			printf("\033[1000D\033[K");
+
+			printf("Step #%06llu", step);
+			printf("\tAvg. time: %.2fms", avgSteptime);
+		}
 
 		time0 = std::chrono::steady_clock::now();
 		avgStepTimes.emplace_back(avgSteptime);
 
 
 
-		SimStatus newStatus{};
-		newStatus.step = engine->runstatus.current_step;
-		newStatus.maxForce = emVariant ? std::optional<float>(engine->runstatus.greatestForce) : std::nullopt;
-		newStatus.temperature = !emVariant ? std::optional<float>(engine->runstatus.current_temperature) : std::nullopt;
-		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
-		const int nStepsSinceLast = engine->runstatus.current_step - simStatus.step;
-		const double totalNsSimulated = nStepsSinceLast * simparamsCopy->dt; // [ns]
+
+		const int nStepsSinceLast = engine->runstatus.current_step - *simStatus.step;
+		const double totalNsSimulated = nStepsSinceLast * simulation->simParams.dt; // [ns]
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-		newStatus.simulationPerformance = ns_per_day;
+		const double completionFraction = (double)step / (double)simulation->simParams.n_steps;
+		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = simulation->simParams.n_steps > 0 && simulationTimer.has_value()
+			? std::optional<std::chrono::duration<double>> {simulationTimer->Elapsed()* (1. / completionFraction * (1.-completionFraction))}
+			: std::nullopt;
+
+		SimStatus newStatus{};
+		newStatus.step = engine->runstatus.current_step;
+		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
+		newStatus.expectedTimeToFinish = expectedTimeToFinish;
+		if (simulation->simParams.em_variant) {
+		}
+		else {
+			newStatus.simulationPerformance = ns_per_day;
+		}
+
 		simStatus = newStatus;
+	}
+
+	// "Free" updates
+	if (simulation->simParams.em_variant) {
+		simStatus.maxForce = engine->runstatus.greatestForce;
+	}
+	else {
+		if (!std::isnan(engine->runstatus.current_temperature))
+			simStatus.temperature = engine->runstatus.current_temperature;
 	}
 }
 
@@ -385,26 +420,28 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 		std::rethrow_exception(displayException);
 	}
 
-	if (engine->runstatus.stepForMostRecentData != step_at_last_render && engine->runstatus.most_recent_positions != nullptr) {		
+	int64_t stepForMostRecentData = engine ? engine->runstatus.stepForMostRecentData : -1;
+	Float3* renderPositions = engine ? engine->runstatus.most_recent_positions : nullptr;
+	std::string info{};
 
-		const std::string info = emVariant
+	if (engine) {
+		info = emVariant
 			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
 			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
+	}
 
-		/*display->Render(std::make_unique<Rendering::SimulationTask>(
-			engine->runstatus.most_recent_positions, compounds_host, boxparams, info, coloringMethod, simStatus
-		), stepwise);*/
-		display->Render(std::make_unique<Rendering::SimulationTask>(
-			engine->runstatus.most_recent_positions, pClusters, pClusterMeta, boxparams, info, coloringMethod, simStatus
+	if (stepForMostRecentData > step_at_last_render) {
+		display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
+			renderPositions, nullptr, simStatus
 		), stepwise);
-		step_at_last_render = engine->runstatus.current_step;
-		engine->runstatus.most_recent_positions = nullptr;
+		step_at_last_render = stepForMostRecentData;
+		//engine->runstatus.most_recent_positions = nullptr;
 	}
 
 	return !display->DisplaySelfTerminated();
 }
 
-std::unique_ptr<Simulation> Environment::getSim() {
+std::unique_ptr<Simulation> Environment::GetSim() {
 	engine.reset();
 	return std::move(simulation);
 }
@@ -431,7 +468,7 @@ void Environment::PrintTiming() const {
 		return;
 
 	const double wall_time_sec = engineTime->count();
-	const double totalNsSimulated = static_cast<double>(simulation->getStep()) * simulation->simparams_host.dt;
+	const double totalNsSimulated = static_cast<double>(simulation->getStep()) * simulation->simParams.dt;
 
 	// Calculate performance metrics
 	const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day

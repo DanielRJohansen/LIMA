@@ -1,0 +1,56 @@
+
+;
+;	File 'topol.top' was generated
+;	By user: unknown (11042)
+;	On host: j-81498-job-0
+;	At date: Wed Jul 27 22:25:46 2022
+;
+;	This is a standalone topology file
+;
+;	Created by:
+;	                    :-) GROMACS - gmx pdb2gmx, 2020.6 (-:
+;	
+;	Executable:   /gromacs/bin.AVX_512/gmx
+;	Data prefix:  /gromacs
+;	Working dir:  /work/Bio_sim/THESIS/ENDGAME/A3
+;	Command line:
+;	  gmx pdb2gmx -f 6lzm_noligand.pdb
+;	Force field was read from the standard GROMACS share directory.
+;
+
+; Include forcefield parameters
+#include "charmm27.ff/forcefield.itp"
+
+[ moleculetype ]
+; Name            nrexcl
+dih     3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 MET rtp MET  q +1.0
+     1        CT2      1    MET     CA      1       0.0      12.011
+     2        CT2      1    MET     CB      2      -0.0      12.011
+     3          C      1    MET      C      3      -0.0      12.011
+     4          C      1    MET      C      4       0.0      12.011
+
+[ bonds ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     2     1 
+    1     4     1 
+    2     3     1 
+
+[ angles ]
+;  ai    aj    ak funct            c0            c1            c2            c3
+    2     1     4     5 
+    1     2     3     5 
+
+[ dihedrals ]
+;  ai    aj    ak    al funct            c0            c1            c2            c3            c4            c5
+     4     1     2     3     9 
+
+
+[ system ]
+dih
+
+[ molecules ]
+dih 1

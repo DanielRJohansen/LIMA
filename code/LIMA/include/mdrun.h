@@ -66,11 +66,11 @@ Example:
 
     ArgParser parser(helpText);
 
-    fs::path work_dir;
-    fs::path conf = work_dir / "conf.gro";
-    fs::path topol = work_dir / "topol.top";
-    fs::path simpar = work_dir / "sim_params.txt";
-    fs::path conf_out = work_dir / "out.gro";
+    fs::path workDir;
+    fs::path conf = workDir / "conf.gro";
+    fs::path topol = workDir / "topol.top";
+    fs::path simpar = workDir / "sim_params.txt";
+    fs::path conf_out = workDir / "out.gro";
     fs::path trajOut{};
 
     bool render = false;
@@ -87,7 +87,7 @@ Example:
 
     EnvMode envmode = render ? Full : ConsoleOnly;
 
-    auto env = std::make_unique<Environment>(work_dir, envmode);
+    auto env = std::make_unique<Environment>(workDir, envmode);
 
     const SimParams ip(simpar);
     GroFile grofile{ conf };
@@ -112,7 +112,7 @@ Example:
     }
 
     if (uff) {
-		fs::path path = work_dir / "trajectory.uff";
+		fs::path path = workDir / "trajectory.uff";
         env->WriteTrajectoryAsUff(path);
     }
 

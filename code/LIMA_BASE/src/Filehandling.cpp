@@ -159,12 +159,12 @@ bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::
 	return false;
 }
 
-std::optional<std::string> FileUtils::ChechlineForDefine(const std::string& line) {
+std::optional<std::string> FileUtils::ChechlineForDefine(std::string_view line) {
 	auto pos = line.find_first_not_of(" ");
 
-	if (pos != std::string::npos) {
+	if (pos != std::string_view::npos) {
 		if (line.size() >= pos + 7 && line.substr(pos, 7) == "#define") {
-			std::string define = line.substr(pos + 7);
+			std::string define = std::string(line.substr(pos + 7));
 			removeWhitespace(define);
 			return define;
 		}

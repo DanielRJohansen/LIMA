@@ -25,7 +25,7 @@ namespace ForceComparisons {
 	}
 
 	bool CompareForces(const std::string& dir, float errorThreshold=1e-3) {
-		const fs::path workdir = simulations_dir / "CompareWithOtherMdEngines/Forcecomparison1step" / dir;
+		const fs::path workdir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / dir;
 		auto env = LoadAndRunSim(workdir);
 
 		const std::vector<Float3> gromacsForces = FileUtils::ReadCsvAsVectorOfFloat3(workdir / "forces.csv");
@@ -48,7 +48,7 @@ namespace ForceComparisons {
 	}
 
 	bool T4RmsdAndRmsf() {
-		const fs::path workdir = simulations_dir / "CompareWithOtherMdEngines/Forcecomparison1step" / "T4Lysozyme";
+		const fs::path workdir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / "T4Lysozyme";
 		auto env = LoadAndRunSim(workdir);
 
 		Trajectory traj = env->WriteSimToTrajectory();

@@ -12,14 +12,15 @@
 #include <iostream>
 #include <functional>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <map>
+#include <sstream>
 
 namespace TestUtils {
-#ifndef __linux__
-	const fs::path simulations_dir = "C:/Users/Daniel/git_repo/LIMA_data/";
-	fs::path SimulationDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
-#else
-	const fs::path simulations_dir = "/home/lima/Downloads/LIMA_data/";
-#endif
+
+	fs::path AutomatedTestsDir() { return FileUtils::GetLimaDir() / "tests" / "automatedtests"; }
+	fs::path HeavyTestsDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
 
 	fs::path getMostSuitableGroFile(const fs::path& workdir) {
 		const fs::path em = workdir / "molecule/em.gro";
@@ -50,7 +51,8 @@ namespace TestUtils {
 	}
 
 	void CleanDirIfNotContains(const fs::path& dir, const std::string& except) {
-		if (dir.string().find("LIMA_data") == std::string::npos) {
+		// must contain LIMA_data or automatedtests
+		if (dir.string().find("LIMA_data") == std::string::npos && dir.string().find("automatedtests") == std::string::npos) {
 			throw std::runtime_error("LIMA is not allowed to clean this directory");
 		}
 
@@ -100,7 +102,7 @@ namespace TestUtils {
 	// yet been moved to device. I should find a way to enforce this...
 	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, std::optional<SimParams> simparams, EnvMode envmode) {
 		
-		const fs::path work_folder = SimulationDir() / foldername;
+		const fs::path work_folder = AutomatedTestsDir() / foldername;
 		const GroFile conf{getMostSuitableGroFile(work_folder)};
 		const TopologyFile topol {work_folder / "molecule/topol.top"};
 		const fs::path simpar = work_folder / "sim_params.txt";
@@ -128,6 +130,112 @@ namespace TestUtils {
 		return value > target;
 	}
 
+	struct VarianceCoefficientThresholds {
+		float max_vc;
+		float max_gradient;
+	};
+
+	const fs::path VarianceCoefficientTargetsPath() {
+		return AutomatedTestsDir() / "vc_targets.csv";
+	}
+
+	const fs::path VarianceCoefficientActualsPath() {
+		return AutomatedTestsDir() / "vc_results.csv";
+	}
+
+	std::map<std::string, VarianceCoefficientThresholds>& ActualVarianceCoefficientResults() {
+		static std::map<std::string, VarianceCoefficientThresholds> results;
+		return results;
+	}
+
+	bool& VarianceCoefficientSuiteStarted() {
+		static bool started = false;
+		return started;
+	}
+
+	void WriteActualVarianceCoefficientResults() {
+		std::ofstream output{ VarianceCoefficientActualsPath(), std::ios::trunc };
+		if (!output) {
+			throw std::runtime_error("Could not write " + VarianceCoefficientActualsPath().string());
+		}
+
+		output << "test,max_vc,max_gradient\n" << std::setprecision(9);
+		for (const auto& [test_name, result] : ActualVarianceCoefficientResults()) {
+			output << test_name << ',' << result.max_vc << ',' << result.max_gradient << '\n';
+		}
+	}
+
+	void BeginVarianceCoefficientTestSuite() {
+		ActualVarianceCoefficientResults().clear();
+		VarianceCoefficientSuiteStarted() = true;
+		WriteActualVarianceCoefficientResults();
+	}
+
+	void RecordActualVarianceCoefficientResult(
+		const std::string& test_name,
+		const std::vector<float>& VCs,
+		const std::vector<float>& energy_gradients
+	) {
+		if (VCs.empty() || energy_gradients.empty()) {
+			throw std::runtime_error("Variance coefficient tests must provide at least one VC and energy gradient");
+		}
+		if (!VarianceCoefficientSuiteStarted()) {
+			BeginVarianceCoefficientTestSuite();
+		}
+
+		const float max_vc = *std::max_element(VCs.begin(), VCs.end());
+		const float max_gradient = std::abs(*std::max_element(
+			energy_gradients.begin(), energy_gradients.end(),
+			[](float lhs, float rhs) { return std::abs(lhs) < std::abs(rhs); }
+		));
+
+		auto [entry, inserted] = ActualVarianceCoefficientResults().try_emplace(
+			test_name, VarianceCoefficientThresholds{ max_vc, max_gradient });
+		if (!inserted) {
+			entry->second.max_vc = std::max(entry->second.max_vc, max_vc);
+			entry->second.max_gradient = std::max(entry->second.max_gradient, max_gradient);
+		}
+		WriteActualVarianceCoefficientResults();
+	}
+
+	const std::map<std::string, VarianceCoefficientThresholds>& VarianceCoefficientTargets() {
+		static const auto targets = []() {
+			std::ifstream input{ VarianceCoefficientTargetsPath() };
+			if (!input) {
+				throw std::runtime_error("Could not read " + VarianceCoefficientTargetsPath().string());
+			}
+
+			std::string line;
+			std::getline(input, line);
+			if (line.ends_with('\r')) line.pop_back();
+			if (line != "test,max_vc,max_gradient") {
+				throw std::runtime_error("Unexpected header in " + VarianceCoefficientTargetsPath().string());
+			}
+
+			std::map<std::string, VarianceCoefficientThresholds> parsed;
+			while (std::getline(input, line)) {
+				if (line.ends_with('\r')) line.pop_back();
+				if (line.empty()) continue;
+
+				std::istringstream row{ line };
+				std::string test_name, max_vc_text, max_gradient_text;
+				if (!std::getline(row, test_name, ',') ||
+					!std::getline(row, max_vc_text, ',') ||
+					!std::getline(row, max_gradient_text) ||
+					test_name.empty()) {
+					throw std::runtime_error("Malformed row in " + VarianceCoefficientTargetsPath().string() + ": " + line);
+				}
+
+				const VarianceCoefficientThresholds values{ std::stof(max_vc_text), std::stof(max_gradient_text) };
+				if (!parsed.emplace(test_name, values).second) {
+					throw std::runtime_error("Duplicate variance coefficient target: " + test_name);
+				}
+			}
+			return parsed;
+		}();
+		return targets;
+	}
+
 
 	bool CompareVecWithFile(const std::vector<Float3>& vec, const fs::path& path, float errorThreshold, bool overwriteFile) {
 		if (overwriteFile) {
@@ -151,8 +259,19 @@ namespace TestUtils {
 
 	/// <summary></summary>	
 	/// <returns>{success, error_string(empty if successful)}</returns>
-	std::pair<bool, std::string> evaluateTest(std::vector<float> VCs, float target_vc, std::vector<float> energy_gradients, float max_energygradient_abs = 1e-6)
+	std::pair<bool, std::string> evaluateTest(
+		const std::string& test_name,
+		std::vector<float> VCs,
+		std::vector<float> energy_gradients)
 	{
+		RecordActualVarianceCoefficientResult(test_name, VCs, energy_gradients);
+		const auto target = VarianceCoefficientTargets().find(test_name);
+		if (target == VarianceCoefficientTargets().end()) {
+			throw std::runtime_error("No variance coefficient target configured for test: " + test_name);
+		}
+		const float target_vc = target->second.max_vc;
+		const float max_energygradient_abs = target->second.max_gradient;
+
 		// Pick the correct evaluate function depending on if we have multiple VCs. Cant set a target vc to keep, if we have different sims ;)
 		auto evaluateVC = [&](float vc) {
 			if (VCs.size() > 1) {
@@ -166,7 +285,7 @@ namespace TestUtils {
 
 		for (auto& vc : VCs) {
 			if (evaluateVC(vc)) {
-				return { false, std::format("Variance Coefficient of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
+				return { false, std::format("Var. Coeff. of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
 			}
 		}
 
@@ -258,7 +377,7 @@ namespace TestUtils {
 
 	class LimaUnittestManager {
 	public:
-		LimaUnittestManager(){}
+		LimaUnittestManager(){ BeginVarianceCoefficientTestSuite(); }
 		~LimaUnittestManager() {
 			if (successCount == tests.size()) {
 				setConsoleTextColorGreen();
@@ -297,8 +416,7 @@ namespace TestUtils {
 	static LimaUnittestResult loadAndRunBasicSimulation(
 		const string& folder_name,
 		EnvMode envmode,
-		float max_vc = 0.001,
-		float max_gradient=1e-7,
+		const std::string& test_name,
 		std::optional<SimParams> ip = {}
 	)
 	{		
@@ -317,11 +435,10 @@ namespace TestUtils {
 			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics.total_energy});
 			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
 		}
-		ASSERT(env->getSimPtr()->simsignals_host.critical_error_encountered == false, "Critical error encountered");
-		ASSERT(env->getSimPtr()->getStep() == env->getSimPtr()->simparams_host.n_steps, std::format("Simulation did not finish {}/{}",
-			env->getSimPtr()->getStep(), env->getSimPtr()->simparams_host.n_steps));
+		ASSERT(env->getSimPtr()->getStep() == env->getSimPtr()->simParams.n_steps, std::format("Simulation did not finish {}/{}",
+			env->getSimPtr()->getStep(), env->getSimPtr()->simParams.n_steps));
 
-		const auto result = evaluateTest({ varcoff }, max_vc, {analytics.energy_gradient}, max_gradient);
+		const auto result = evaluateTest(test_name, { varcoff }, {analytics.energy_gradient});
 
 		return LimaUnittestResult{ result.first, result.second, envmode == Full };
 	}

@@ -1,0 +1,22 @@
+; 
+
+#include "charmm27.ff/forcefield.itp"
+
+#include "DDPC.itp"
+#include "Cholesterol.itp"
+#include "POPE.itp"
+#include "DMPC.itp"
+#include "DOPC.itp"
+#include "POPC.itp"
+
+[ system ]
+Membrane
+
+[ molecules ]
+DDPC 9
+DMPC 13
+DOPC 14
+POPC 93
+POPE 14
+Cholesterol 23
+

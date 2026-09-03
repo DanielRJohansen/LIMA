@@ -1,0 +1,4 @@
+dt=2
+n_steps=1000
+data_logging_interval=5
+enable_electrostatics=false

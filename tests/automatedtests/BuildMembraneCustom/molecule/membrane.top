@@ -1,0 +1,14 @@
+; My Topology file
+
+#include "Slipids_2020.ff/forcefield.itp"
+
+#include "CUST.itp"
+#include "POPC.itp"
+
+[ system ]
+Membrane
+
+[ molecules ]
+CUST 50
+POPC 116
+

@@ -45,6 +45,8 @@ struct DatabuffersDeviceController {
 	static const int nStepsInBuffer = 5; // TODO: I want this to be dynamic.
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
+		if (loggingInterval == 0)
+			return false;
 		return step % (nStepsInBuffer * loggingInterval) == 0;
 	}
 	static int StepsReadyToTransfer(size_t step, int loggingInterval) {
@@ -77,7 +79,7 @@ struct DatabuffersDeviceController {
 struct SimulationDevice {
 	SimulationDevice(const SimulationDevice&) = delete;
 
-	SimulationDevice(const SimParams& params_host, Box* box_host, const BoxConfig& boxConfig,
+	SimulationDevice(const SimParams& params_host, Box* box, const BoxConfig& boxConfig,
 	const BoxState& boxState, const DatabuffersDeviceController&);
 
 	// Recursively free members. Use cudaFree on *this immediately after
@@ -85,18 +87,10 @@ struct SimulationDevice {
 
 	
 	
-
-	// Module used to move solvents to a new block, in parallel
-	//SolventBlockTransfermodule* transfermodule_array = nullptr;
-
-	const SimParams params;
-	SimSignals* signals = nullptr;
-
 	const BoxConfig boxConfig;
 	const BoxState boxState;
 	const BoxParams boxparams;
 
-	uint8_t* nParticlesInCompoundsBuffer = nullptr;
 
 	// Databuffers, NOT owned by this class, so dont free them
 	float* potE_buffer = nullptr;

@@ -1,0 +1,21 @@
+#define FLEXIBLE
+
+#include "charmm27.ff/forcefield.itp"
+
+#include "charmm27.ff/spc.itp"
+;#include "charmm27.ff/tip3p.itp"
+
+[ moleculetype ]
+pool 3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 MET rtp MET  q +1.0
+     1          C      1    lxx      C      1       -0.3     12.011
+
+[ system ]
+pool
+
+[ molecules ]
+pool 1
+SOL 1

@@ -12,12 +12,6 @@ namespace MDFiles { struct TrrFile; }
 
 
 
-struct SimSignals {
-	bool critical_error_encountered = false;	// Move into struct SimFlags, so SimParams can be const inside kernels
-};
-
-
-
 struct BoxParams {
 	Int3 boxSize{};	// [nm]
 	int n_bridges = 0;
@@ -68,11 +62,20 @@ public:
 		return buffer[indexOffset + pcOffset + pid];
 	}
 
+	T GetDatapoint(int pcid, int pid, size_t entryindex) const {
+		const size_t indexOffset = entryindex * nPclusters * PersistentCluster::maxParticles;
+		const size_t pcOffset = static_cast<size_t>(pcid) * PersistentCluster::maxParticles;
+		return buffer[indexOffset + pcOffset + pid];
+	}
+
 	T& GetDatapointAtStep(int pcid, int pid, size_t step) {
 		const size_t entryIndex = step / loggingInterval;
 		return GetDatapoint(pcid, pid, entryIndex);
 	}
-
+	T GetDatapointAtStep(int pcid, int pid, size_t step) const {
+		const size_t entryIndex = step / loggingInterval;
+		return GetDatapoint(pcid, pid, entryIndex);
+	}
 	size_t GetLoggingInterval() const { return loggingInterval; }
 	size_t EntriesPerStep() const { return n_particles_upperbound; }
 	const size_t n_particles_upperbound;
@@ -102,14 +105,6 @@ struct Box {
 
 	BoxParams boxparams;
 
-
-	//std::vector<Compound> compounds;
-	////std::vector<CompoundInterimState> compoundInterimStates;
-	
-	//std::vector<CompoundCoords> compoundCoordsBuffer;
-	//std::vector<TinyMolParticleState> tinyMolParticlesState;
-	//std::vector<SolventBlock> solventblockgrid_circularqueue;
-	//std::vector<BondedParticlesLUT> bpLutCollection;
 	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 
 	std::vector<BondGroup> bondgroups;
@@ -158,18 +153,23 @@ public:
 	std::vector<float> loggingdata;
 #endif
 
-	std::unique_ptr<Box> box_host = nullptr;
+	std::unique_ptr<Box> box = nullptr;
+	SimParams simParams;
 
-
-	SimSignals simsignals_host;	// I think this is a mistake, there should be no copy, only a pipeline to access
-	SimParams simparams_host;
-
-	ForceField_NB forcefield;
-	//ForcefieldTinymol forcefieldTinymol;
-	std::vector<NonbondedInteractionParams> forcefieldTest;
 
 
 	friend class Engine;
 };
 
 
+struct SimStatus {
+	// SimulationStatus
+	std::optional<size_t> step = 0;
+	std::optional<float> temperature = std::nullopt;			// [K]
+	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
+	std::optional<std::chrono::duration<double>> expectedTimeToFinish = std::nullopt;
+
+	// Engine Performance
+	std::optional<float> avgStepTime = std::nullopt;			// [ms]
+	std::optional<float> simulationPerformance = std::nullopt;  // [ns/day]
+};

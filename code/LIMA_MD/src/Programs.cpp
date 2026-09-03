@@ -6,7 +6,7 @@
 #include "Environment.h"
 #include "Forcefield.h"
 #include "ConvexHullEngine.cuh"
-#include "CompoundBuilder.h"
+#include "BoxImageBuilder.h"
 
 #include <glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -172,11 +172,10 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 
 	params.enable_electrostatics = true;
 	params.n_steps = 20000;
-	params.snf_select = None;
 	params.bc_select = BoundaryConditionSelect::PBC;
 
 	if (mayOverlapEdges && false)
-		env.CreateSimulation(*env.getSim(), params);
+		env.CreateSimulation(*env.GetSim(), params);
 	else
 		env.CreateSimulation(grofile, topfile, params);
 	env.run();
@@ -197,7 +196,7 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	if (envmode == Full)
 		printf("Min force reached: %f\n", minForce);
 
-	return env.getSim();
+	return env.GetSim();
 }
 
 

@@ -7,19 +7,26 @@
 #include <mutex>
 
 class TimeIt {
+    struct TaskRecord {
+        std::chrono::nanoseconds totalTime = std::chrono::nanoseconds(0);
+        size_t count = 0;
+    };
 public:
     TimeIt(const std::string& taskName = "Task", bool printUponDestruction = false);
+    ~TimeIt();
 
     std::chrono::nanoseconds GetTiming() const;
 
     std::chrono::nanoseconds stop();
 
     std::chrono::milliseconds elapsed() const;
+    std::chrono::duration<double> Elapsed() const;
     std::string ElapsedPretty() const;
 
-    ~TimeIt();
-
+    
+    static void PrintTaskStats(const std::string& taskName, const TaskRecord& record);
     static void PrintTaskStats(const std::string& taskName);
+    static void PrintAllTaskStats();
 
 private:
     std::string taskName;
@@ -28,10 +35,6 @@ private:
     bool manuallyStopped;
     bool printUponDestruction;
 
-    struct TaskRecord {
-        std::chrono::nanoseconds totalTime = std::chrono::nanoseconds(0);
-        size_t count = 0;
-    };
 
     static std::unordered_map<std::string, TaskRecord> taskRecords;
     static std::mutex mutex_;

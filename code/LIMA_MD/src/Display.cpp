@@ -5,6 +5,7 @@
 
 
 #include "Display.h"
+#include "DisplayInternal.h"
 #include "Shaders.h"
 #include "NewCartoonRenderer.h"
 #include "TimeIt.h"
@@ -86,22 +87,22 @@ void Display::SetupCallbacks() {
                 const float delta = 3.1415 / 8.f;
                 switch (key) {
                 case GLFW_KEY_UP:
-                    display->camera.Update(0, delta, 0);
+                    display->camera->Update(0, delta, 0);
                     break;
                 case GLFW_KEY_DOWN:
-                    display->camera.Update(0, -delta, 0);
+                    display->camera->Update(0, -delta, 0);
                     break;
                 case GLFW_KEY_LEFT:
-                    display->camera.Update(delta, 0, 0);
+                    display->camera->Update(delta, 0, 0);
                     break;
                 case GLFW_KEY_RIGHT:
-                    display->camera.Update(-delta, 0, 0);
+                    display->camera->Update(-delta, 0, 0);
                     break;
                 case GLFW_KEY_PAGE_UP:
-                    display->camera.Update(0, 0, 0.5f);
+                    display->camera->Update(0, 0, 0.5f);
                     break;
                 case GLFW_KEY_PAGE_DOWN:
-                    display->camera.Update(0, 0, -0.5f);
+                    display->camera->Update(0, 0, -0.5f);
                     break;
                 case GLFW_KEY_N:
                     display->debugValue = 1;
@@ -187,8 +188,10 @@ void Display::Setup() {
     }
 }
 
-Display::Display() :
-    camera(Float3{ 2.f })
+Display::Display()
+	: rendersettings(std::make_unique<RenderSettings>())
+	, fps(std::make_unique<FPS>())
+	, camera(std::make_unique<Camera>(Float3{ 2.f }))
 {
         // todo: Display needs to know if its in liveedit, so it knows whether to render gizmo and console.
         // It should also tell Overlay if there is any solvent present, if not dont have the button there..
@@ -310,7 +313,7 @@ void Display::Mainloop() {
         if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
             _Render(currentRenderTask);
 
-            fps.NewFrame();
+			fps->NewFrame();
             frameTime = TimeIt{};
         }
     }
@@ -321,7 +324,7 @@ bool Display::ApplyPendingFramebufferResize() {
 		return false;
 
 	framebufferResizePending = false;
-	camera.UpdateViewport(framebufferSize);
+	camera->UpdateViewport(framebufferSize);
 	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
 	if (renderTargetControl)
 		renderTargetControl->Resize(framebufferSize);
@@ -430,56 +433,6 @@ std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
 
 
 
-
-Camera::Camera(Float3 boxSize) : center(boxSize/2.f), dist(-2.0f * boxSize.y) {}
-void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist) {
-    yaw += deltaYaw;
-    pitch += deltaPitch;
-    dist += deltaDist + deltaDist * -std::min(dist, 0.f) * 0.5f;
-}
-void Camera::Update(Float3 boxSize) {
-	if (center != boxSize / 2.f) {
-		const float currentAspectRatio = aspectRatio;
-		*this = Camera(boxSize);
-		aspectRatio = currentAspectRatio;
-	}
-}
-void Camera::UpdateViewport(glm::ivec2 viewportSize) {
-	if (viewportSize.x > 0 && viewportSize.y > 0)
-		aspectRatio = static_cast<float>(viewportSize.x) / static_cast<float>(viewportSize.y);
-}
-
-
-
-
-
-
-
-
-
-
-    // Constructor initializes the start time and the frame counter
-FPS::FPS() {
-    auto now = std::chrono::high_resolution_clock::now();
-    for (auto& timepoint : prevTimepoints) {
-		timepoint = now;
-	}
-}
-
-    // Call this function when a new frame is rendered
-void FPS::NewFrame() {
-	using namespace std::chrono;
-    head = (head + 1) % prevTimepoints.size();
-	prevTimepoints[head] = high_resolution_clock::now();
-}
-
-// Returns the current FPS value
-int FPS::GetFps() const {
-	const int back = (head + 1) % prevTimepoints.size();
-    const auto elapsed = duration_cast<std::chrono::nanoseconds>(prevTimepoints[head] - prevTimepoints[back]);
-    const auto avgFrameTime = elapsed / (prevTimepoints.size()-1);
-    return static_cast<int>(1e9 / avgFrameTime.count());
-}
 
 void Display::TestDisplay() {
 	Display display{};

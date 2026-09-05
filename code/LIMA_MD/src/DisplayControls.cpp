@@ -1,4 +1,5 @@
 #include "Display.h"
+#include "DisplayInternal.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -245,15 +246,15 @@ void TransformGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camer
 
 // ----------------------------------------- GLFW callbacks ----------------------------------------- //
 void Display::OnMouseMove(double xpos, double ypos) {
-    if (activeGizmo.has_value() && activeGizmo->activeAxis.has_value()) {
-        activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), camera, windowSize);
+    if (activeGizmo && activeGizmo->activeAxis.has_value()) {
+		activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), *camera, windowSize);
     }
     else if (isDragging) {
         const float sensitivity = 0.001f;
         const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
         const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity;
 
-        camera.Update(xOffset, -yOffset, 0);
+		camera->Update(xOffset, -yOffset, 0);
     }
 
     mousePos.x = xpos;
@@ -270,8 +271,8 @@ void Display::HandleGizmo(int objectId) {
         return;
     }
 
-    if (!activeGizmo.has_value()) {
-        activeGizmo = TransformGizmo{};
+    if (!activeGizmo) {
+		activeGizmo = std::make_unique<TransformGizmo>();
     }
     if (objectId < renderAtomsHost.size()) {
         activeGizmo->position = glm::vec3{ renderAtomsHost[objectId].position.x, renderAtomsHost[objectId].position.y, renderAtomsHost[objectId].position.z };
@@ -294,12 +295,12 @@ void Display::OnMouseButton(int button, int action, int mods) {
 
             if (activeGizmo) {
 				activeGizmo->SetActiveAxis(objectId);
-                activeGizmo->BeginDragging(mousePos, camera, windowSize);
+				activeGizmo->BeginDragging(mousePos, *camera, windowSize);
             }
 
         }
         else if (action == GLFW_RELEASE) {
-            if (activeGizmo.has_value()) {
+            if (activeGizmo) {
                 activeGizmo->activeAxis.reset();
                 activeGizmo->pullForce.reset();
 				stopMovingLiveeditCmd.store(true);
@@ -333,7 +334,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
 }
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
-    camera.Update(0, 0, yoffset * 0.1f);
+	camera->Update(0, 0, yoffset * 0.1f);
 }
 // -------------------------------------------------------------------------------------------------- //
 
@@ -341,7 +342,7 @@ void Display::OnMouseScroll(double xoffset, double yoffset) {
 void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
 
     if (activeGizmo) {
-        activeGizmo->UpdateDraggingForce(mousePos, camera, windowSize);
+		activeGizmo->UpdateDraggingForce(mousePos, *camera, windowSize);
     }
 
 
@@ -356,11 +357,11 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
                 }
             }
             else if constexpr (std::is_same_v<T, ColoringMethod>) {
-                rendersettings.coloringMethod = cmd;
+				rendersettings->coloringMethod = cmd;
                 shouldRecolorAtoms |= true;
             }
             else if constexpr (std::is_same_v<T, Overlay::SolventVisibility>) {
-                rendersettings.showSolvents = cmd.visible;
+				rendersettings->showSolvents = cmd.visible;
                 shouldRecolorAtoms |= true;
             }
             else {

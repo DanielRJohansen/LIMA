@@ -4,6 +4,8 @@
 #include "backends/imgui_impl_opengl3.h"
 
 #include "Display.h"
+#include "DisplayInternal.h"
+#include "Utilities.h"
 #include "filesystem"
 
 #include <deque>

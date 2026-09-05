@@ -15,11 +15,13 @@ add_library(LIMA_MD STATIC
     src/Analyzer.cu
     src/BoxBuilder.cpp
     src/Display.cpp
+    src/DisplayInternal.cpp
     src/Environment.cpp
     src/Interface.cpp
     src/Programs.cpp
     src/Pdb2gmx.cpp
     src/Rendering.cpp
+    src/RenderTask.cpp
     src/BackboneStructureInterpreter.cpp
     src/NewCartoonRenderer.cpp
     src/Lipids.cpp

@@ -1,21 +1,22 @@
 #pragma once
 
-#include "Simulation.cuh"
-#include "LimaTypes.cuh"
-#include "Utilities.h"
-#include "MoleculeHull.cuh"
-#include "filesystem"
 #include "LiveEditCommands.h"
-#include "RenderCommons.h"
+#include "RenderTask.h"
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <exception>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <set>
 #include <string>
 #include <thread>
-#include <variant>
-#include <mutex>
-#include <condition_variable>
-#include <set>
-#include <deque>
+#include <vector>
+
+#include <glm.hpp>
 
 class DrawBoxOutlineShader;
 class DrawFacetsShader;
@@ -24,231 +25,56 @@ class DrawAtomsPrettyShader;
 class DrawNormalsShader;
 class DrawTrianglesShader;
 class DrawBackgroundGradientShader;
-namespace NewCartoon { class Renderer; }
-
 class RenderTargetControl;
 class Camera;
+class FPS;
 class GLFWwindow;
+class Overlay;
+struct RenderSettings;
 class SSBO;
-
-namespace LimaMoleculeGraph {
-	class MoleculeGraph;
-}
-
-class FPS {
-	std::array<std::chrono::high_resolution_clock::time_point, 32> prevTimepoints;
-	int head = 0;
-public:
-	FPS();
-	void NewFrame();
-	int GetFps() const;
-};
-
-class Camera {
-	Float3 center;
-	float dist = -2.f;
-	float yaw = 0;
-	float pitch = 0;
-	float aspectRatio = 1.f;
-
-public:
-	Camera(Float3 boxSize);
-	void Update(float deltaYaw, float deltaPitch, float deltaDist);
-	void Update(Float3 boxSize);
-	void UpdateViewport(glm::ivec2 viewportSize);
-
-	glm::mat4 View() const;
-	glm::mat4 Projection() const;
-	glm::mat4 ViewProjection() const;
-
-};
-
-//enum AtomColoringMethod { Name, Charge, Force, GlobalParticleId, PcId};
-
-namespace Rendering {
-	struct NoTask{};
-
-	struct AtomRenderData {
-		char atomLetter = ' ';
-		float charge = 0.f;
-		int groupId = -1;
-		bool isSolvent = false;
-	};
-
-	// Renderer-owned snapshot. Simulations and coordinate files are adapted to this
-	// representation before they enter the display queue.
-	struct AtomRenderTask {
-		std::vector<Float3> positions;
-		std::vector<AtomRenderData> atoms;
-		std::vector<int> packedPositionIndices;
-		Float3 boxSize{};
-		SimStatus simStatus;
-		BackboneChains backboneChains;
-		std::set<int> highlightedAtoms;
-		bool showSolvents = true;
-
-		AtomRenderTask(const GroFile& grofile, bool showSolvents = true);
-		AtomRenderTask(
-			const std::vector<PersistentCluster>& pclusters,
-			const std::vector<PersistentClusterMeta>& pcMeta,
-			const BoxParams& boxparams,
-			SimStatus simStatus = {},
-			BackboneChains backboneChains = {});
-	};
-	// Sent at each render-step
-	struct SimulationTaskUpdate {
-		const Float3* const positions = nullptr;
-		const float* const forceMagnitudes = nullptr;
-		SimStatus simStatus;
-	};
-
-	struct MoleculehullTask {
-		const MoleculeHullCollection& molCollection;
-		Float3 boxSize{};
-	};
-
-	using Task = std::variant<NoTask, std::unique_ptr<AtomRenderTask>, std::unique_ptr<SimulationTaskUpdate>, std::unique_ptr<MoleculehullTask>>;
-}
-
-struct RenderSettings {
-	bool showSolvents = true;
-	ColoringMethod coloringMethod{};
-};
-
-class Overlay {
-public:	
-	struct SubmittedCmd { std::string cmd{}; };
-	struct SolventVisibility { bool visible = true; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility>;
-private:
-	bool didDrawThisFrame = false;
-
-	void HandleConsole();
-	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos);
-
-public:
-	std::deque<Command> submittedCommands;
-	bool enableConsole = false;	
-
-
-	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
-	~Overlay();
-
-	void Draw(RenderSettings&, const SimStatus&, int fps,
-		std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible);
-	void Render();
-};
-
-struct Arrow {
-	glm::vec3 direction = glm::vec3(1.f, 0.f, 0.f);
-	std::vector<Vertex> vertices;
-	glm::vec4 color;
-	int uniqueId;
-	Arrow(glm::vec3 direction, glm::vec4 color, int uniqueId);
-	void Draw(DrawTrianglesShader*, const glm::mat4& MVP, const glm::vec3& position, float scale = 1.f) const;
-};
-
-struct Ring {
-	glm::vec3 normal = glm::vec3(0.f, 0.f, 1.f);
-	std::vector<Vertex> vertices;
-	glm::vec4 color;
-	int uniqueId;
-
-	Ring(glm::vec3 normal, glm::vec4 color, int uniqueId);
-	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& position, float scale = 1.f) const;
-};
-struct TransformGizmo {
-	glm::vec3 position{};
-	int idOfAtomAttachedTo = -1;
-
-	std::optional<int> activeAxis = std::nullopt;
-	enum GizmoMode { Translate, Rotate } activeMode = GizmoMode::Translate;
-
-	std::optional<glm::vec3> pullForce;
-	std::optional<glm::vec3> rotateForce;
-
-	glm::vec3 dragStartPosition{};
-	glm::vec2 dragStartMousePos{};
-	glm::vec3 dragStartRotateVector{};
-
-	Arrow arrowX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowX };
-	Arrow arrowY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.f, 1.f, 0.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowY };
-	Arrow arrowZ{ glm::vec3(0.f, 0.f, 1.f), glm::vec4(0.f, 0.f, 1.f, 1.f), (int)UniqueRenderElementIds::gizmoArrowZ };
-
-	Ring ringX{ glm::vec3(1.f, 0.f, 0.f), glm::vec4(1.f, 0.25f, 0.25f, 1.f), (int)UniqueRenderElementIds::gizmoRotateX };
-	Ring ringY{ glm::vec3(0.f, 1.f, 0.f), glm::vec4(0.25f, 1.f, 0.25f, 1.f), (int)UniqueRenderElementIds::gizmoRotateY };
-	Ring ringZ{ glm::vec3(0.f, 0.f, 1.f), glm::vec4(0.25f, 0.25f, 1.f, 1.f), (int)UniqueRenderElementIds::gizmoRotateZ };
-
-	void Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const;
-	void SetActiveAxis(int selectedObjectId);
-	void BeginDragging(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize);
-	void UpdateDraggingForce(glm::vec2 mousePos, const Camera& camera, glm::vec2 windowSize);
-};
-
+struct TransformGizmo;
+namespace NewCartoon { class Renderer; }
 
 class Display {
 public:
-	// Functions called by main thread only
 	Display();
 	~Display();
 	void WaitForDisplayReady();
 
-	/// <summary>
-	/// Queue up a new task for the Display to render. The function waits for a mutex, transfers the data and then leaves
-	/// </summary>
-	/// <param name=""></param>
-	/// <param name="blocking"> If true, the calling thread will be blocked untill debugvalue is set</param>
-	void Render(Rendering::Task, bool blocking=false);
+	void Render(Rendering::Task, bool blocking = false);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
 	void UpdateSelection(const std::set<int>& particleIds);
-	void SetSpinnerVisible(bool visible) {
-		spinnerVisible.store(visible);
-	}
+	void SetSpinnerVisible(bool visible) { spinnerVisible.store(visible); }
 
 	volatile int debugValue = 0;
-
 	std::exception_ptr displayThreadException{ nullptr };
-
 	std::atomic_bool allowUserInputs = false;
 
 	static void TestDisplay();
-	static void RenderGrofile(const GroFile& grofile, bool showSolvents=true) {
-		Display d;
-		d.Render(std::make_unique<Rendering::AtomRenderTask>(grofile, showSolvents), true);
+	static void RenderGrofile(const GroFile& grofile, bool showSolvents = true) {
+		Display display;
+		display.Render(std::make_unique<Rendering::AtomRenderTask>(grofile, showSolvents), true);
 	}
 
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
-private:
-	// The renderThread will be spawned during construction, and run this indefinitely
-	void Mainloop();
 
+private:
+	void Mainloop();
 	void Setup();
 	void SetupCallbacks();
 	bool ApplyPendingFramebufferResize();
-
 	bool initGLFW();
 
 	void _RenderAtoms();
 	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
-	void _Render(const Rendering::Task& currentRenderTask); // Render all the things
-
+	void _Render(const Rendering::Task& currentRenderTask);
 	void PrepareTask(Rendering::Task& task, bool ignorePosition);
-
 	void PrepareNewRenderTask(Rendering::AtomRenderTask&, bool ignorePosition);
 	void PrepareNewRenderTask(Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
-
 	void _UpdateSelection(const std::set<int>& selection);
 
-
-	// Interfacing
-	bool isDragging = false;
-	glm::dvec2 mousePosAtBtnDown{};
-	std::optional<glm::dvec3> mousePosAtRightBtnDown{};
-	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
-	glm::dvec2 mousePos{};
-	int lastSelectedAtomId = -1;
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
@@ -258,44 +84,41 @@ private:
 	int GetObjectIdAtPixel(glm::ivec2);
 	void ConsumeInputs(bool& shouldRecolorAtoms);
 
+	bool isDragging = false;
+	glm::dvec2 mousePosAtBtnDown{};
+	std::optional<glm::dvec3> mousePosAtRightBtnDown{};
+	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
+	glm::dvec2 mousePos{};
+	int lastSelectedAtomId = -1;
+
 	std::mutex liveEditCommandsQueueMutex;
 	std::deque<LiveEdit::Command> liveEditCommandsQueue;
 	bool renderAtoms = true;
 	bool renderFacets = true;
 	bool renderFacetsNormals = false;
-	RenderSettings rendersettings;
-	FPS fps{};
-
-	std::optional<TransformGizmo> activeGizmo;
+	std::unique_ptr<RenderSettings> rendersettings;
+	std::unique_ptr<FPS> fps;
+	std::unique_ptr<TransformGizmo> activeGizmo;
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
-	// Inputs
 	std::mutex incomingRenderTaskMutex;
 	std::deque<Rendering::Task> incomingRenderTasks;
-
 	std::mutex inputMutex;
 	std::optional<std::set<int>> newSelectionInput;
-	//
-	
 
-	// Shaders
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawFacetsShader> drawFacetsShader;
 	std::unique_ptr<DrawAtomsShader> drawAtomsFromCpuShader;
 	std::unique_ptr<DrawNormalsShader> drawNormalsShader;
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
-	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader; 
+	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader;
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
 
-	// Render Data
 	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
-
-
 	std::unique_ptr<RenderTargetControl> renderTargetControl;
-
 
 	std::jthread renderThread;
 	std::mutex mutex_;
@@ -303,22 +126,15 @@ private:
 	bool setupCompleted = false;
 
 	std::unique_ptr<Overlay> overlay;
-	Camera camera;
-
+	std::unique_ptr<Camera> camera;
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
-
 	GLFWwindow* window = nullptr;
-	// Cursor positions use logical window coordinates, while OpenGL resources
-	// use framebuffer pixels (which can differ on high-DPI displays).
 	glm::ivec2 windowSize{};
 	glm::ivec2 framebufferSize{};
 	bool framebufferResizePending = false;
 
 	const float PI = 3.1415f;
-
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
 	std::atomic_bool spinnerVisible = false;
 };
-
-

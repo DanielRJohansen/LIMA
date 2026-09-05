@@ -10,6 +10,29 @@ namespace ForceCorrectness {
 
 	const fs::path TestsDir() { return AutomatedTestsDir(); }
 
+	void RunAndRecord(Environment& env, EnvMode envmode,
+		std::vector<float>& varcoffs, std::vector<float>& energy_gradients) {
+		RunOnGpu(env);
+		const auto analytics = AnalyzeOnGpu(env);
+		varcoffs.push_back(analytics.variance_coefficient);
+		energy_gradients.push_back(analytics.energy_gradient);
+		if (envmode != Headless) {
+			analytics.Print();
+		}
+	}
+
+	LimaUnittestResult FinishStabilitySweep(const std::string& name, EnvMode envmode,
+		const std::string& xLabel, const std::vector<float>& xValues,
+		const std::vector<float>& varcoffs, const std::vector<float>& energy_gradients) {
+		if (envmode != Headless) {
+			LIMA_Print::printMatlabVec(xLabel, xValues);
+			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
+			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
+		}
+		const auto result = evaluateTest(name, varcoffs, energy_gradients);
+		return { result.first, result.second, envmode == Full };
+	}
+
 	//Test assumes two carbons particles in conf
 	LimaUnittestResult doPoolBenchmark(EnvMode envmode) {
 		const fs::path work_folder = TestsDir() / "Pool/";
@@ -17,7 +40,6 @@ namespace ForceCorrectness {
 
 		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
 		std::vector<float> particle_temps{ 400 };
-		//std::vector<float> particle_temps{ 400, 800, 1200 };
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
@@ -36,23 +58,10 @@ namespace ForceCorrectness {
 			box->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
 			box->pclusterInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
 
-			RunOnGpu(env);
-
-			const auto analytics = AnalyzeOnGpu(env);
-			varcoffs.push_back(analytics.variance_coefficient);
-			energy_gradients.push_back(analytics.energy_gradient);
-			if (envmode != Headless) { analytics.Print(); }
+			RunAndRecord(env, envmode, varcoffs, energy_gradients);
 		}
 
-		if (envmode != Headless) {
-			LIMA_Print::printMatlabVec("temperature", particle_temps);
-			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
-		}
-
-		const auto result = evaluateTest("doPoolBenchmark", varcoffs, energy_gradients);
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full};
+		return FinishStabilitySweep("doPoolBenchmark", envmode, "temperature", particle_temps, varcoffs, energy_gradients);
 	}
 
 	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode) {
@@ -62,7 +71,6 @@ namespace ForceCorrectness {
 		const float dt = params.dt;
 		params.data_logging_interval = 1;
 
-		//std::vector<float> particle_temps{ 400, 1200, 2400, 4800 };// , 1000, 2000, 5000, 10000
 		std::vector<float> particle_temps{ 400, 1200 };
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
@@ -98,25 +106,10 @@ namespace ForceCorrectness {
 			//}
 
 
-			RunOnGpu(env);
-
-			auto analytics = AnalyzeOnGpu(env);
-			if (envmode != Headless) {
-				analytics.Print();
-			}
-			
-			varcoffs.push_back(analytics.variance_coefficient);
-			energy_gradients.push_back(analytics.energy_gradient);
+			RunAndRecord(env, envmode, varcoffs, energy_gradients);
 		}
 
-		if (envmode != Headless) {
-			LIMA_Print::printMatlabVec("temperature", particle_temps);
-			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-		}	
-
-		const auto result = evaluateTest("doPoolCompSolBenchmark", varcoffs, energy_gradients);
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		return FinishStabilitySweep("doPoolCompSolBenchmark", envmode, "temperature", particle_temps, varcoffs, energy_gradients);
 	}
 
 
@@ -142,10 +135,6 @@ namespace ForceCorrectness {
 		const SingleBond::Parameters bondparams = box.bondgroups[0].singlebonds[0].params;
 		assert(bondparams.b0 == expectedB0);
 
-		// Now we have the bond params, set the actual test position
-		/*CompoundCoords* coordarray_ptr = &box.compoundCoordsBuffer[0];
-		coordarray_ptr->rel_positions[1].x = coordarray_ptr->rel_positions[0].x + Coord{ Float3{bondlenErrorNM + bondparams.b0, 0.f, 0.f} }.x;
-		box.persistentClusters[0].pqd[1].position.x = box.persistentClusters[0].pqd[0].position.x + bondlenErrorNM + bondparams.b0;*/
 
 		// Now figure the expected force and potential
 		const double kB = bondparams.kb / 2.;									// [J/mol/nm^2]
@@ -159,7 +148,6 @@ namespace ForceCorrectness {
 
 		const auto sim = env.GetSim();
 		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
-		//const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 0, 0) + sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, 1, 0);
 		const float actualPotE = sim->potE_buffer->GetDatapoint(0, 0, 0) + sim->potE_buffer->GetDatapoint(0, 1, 0);
 
 		const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[0];
@@ -207,17 +195,12 @@ namespace ForceCorrectness {
 		const SingleBond::Parameters bondparams = box.bondgroups[0].singlebonds[0].params;
 		assert(bondparams.b0 == expectedB0);
 
-		/*CompoundCoords* coordarray_ptr = &box.compoundCoordsBuffer[0];
-		coordarray_ptr[0].rel_positions[1].x = coordarray_ptr[0].rel_positions[0].x - Coord{ Float3{bond_len_error + bondparams.b0, 0.f, 0.f } }.x;
-		box.persistentClusters[0].pqd[1].position.x = box.persistentClusters[0].pqd[0].position.x - bond_len_error - bondparams.b0;*/
 
 
 
 		// Now figure out how fast the bond should oscillate
 		const float massA = box.persistentClustersMetadata[0].mass[0];
 		const float massB = box.persistentClustersMetadata[0].mass[1];
-		//const float massA = box.compounds[0].atomMasses[0];
-		//const float massB = box.compounds[0].atomMasses[1];
 		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
 		const double kB = bondparams.kb / NANO / NANO; // [J/(mol m^2)]
 
@@ -252,11 +235,7 @@ namespace ForceCorrectness {
 		SimParams params{ work_folder / "sim_params.txt" };
 		params.n_steps = 1;
 		params.data_logging_interval = 1;
-
-		// Deviation from equilibrium values
 		
-		//const float ubDistErrorNM = 0.02f;   // [nm]
-
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
@@ -270,21 +249,11 @@ namespace ForceCorrectness {
 			env.CreateSimulation(grofile, topfile, params);
 			Box& box = *env.getSimPtr()->box.get();
 
-			//box.bondgroups[0].anglebonds[0].params.kTheta = 0.f;
-			//box.bondgroups[0].anglebonds[0].params.kUB = 0.f;
-			//box.bondgroups[0].nSinglebonds = 0; // Shouldn't be necessary..
-
 			// First equilibrilize the singlebond
 			{
 				const SingleBond::Parameters bondParams = box.bondgroups[0].singlebonds[0].params;
 				grofile.atoms[0].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
 				grofile.atoms[2].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
-
-				//CompoundCoords* coordarray_ptr = &box.compoundCoordsBuffer[0];
-				/*coordarray_ptr->rel_positions[0] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };
-				coordarray_ptr->rel_positions[2] = coordarray_ptr->rel_positions[1] + Coord{ Float3{ bondParams.b0, 0.0f, 0.0f } };*/
-				/*box.persistentClusters[0].pqd[0].position = box.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
-				box.persistentClusters[0].pqd[2].position = box.persistentClusters[0].pqd[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };*/
 			}
 
 			// Now set the angle error
@@ -294,10 +263,6 @@ namespace ForceCorrectness {
 				const Float3 p2Pos = grofile.atoms[2].position;
 				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
 				grofile.atoms[2].position = p2Rotated;
-				/*const Float3 p2Pos = box.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();
-				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
-				box.compoundCoordsBuffer[0].rel_positions[2] = Coord{ p2Rotated };
-				box.persistentClusters[0].pqd[2].position = p2Rotated;*/
 			}
 		}
 
@@ -310,12 +275,6 @@ namespace ForceCorrectness {
 		const Float3 p0 = box.persistentClusters[0].pqd[0].position;
 		const Float3 p1 = box.persistentClusters[0].pqd[1].position;
 		const Float3 p2 = box.persistentClusters[0].pqd[2].position;
-		/*const Float3 p0 = box.compoundCoordsBuffer[0].rel_positions[0].ToRelpos();
-		const Float3 p1 = box.compoundCoordsBuffer[0].rel_positions[1].ToRelpos();
-		const Float3 p2 = box.compoundCoordsBuffer[0].rel_positions[2].ToRelpos();*/
-
-		//ASSERT((p1 - p0).len() == box.bondgroups[0].singlebonds[0].params.b0, std::format("Singlebondlen not as expected {}/{}", (p1 - p0).len(), box.bondgroups[0].singlebonds[0].params.b0));
-		//ASSERT((p2 - p1).len() == box.bondgroups[0].singlebonds[0].params.b0, std::format("Anglebondlen not as expected {}/{}", (p2 - p1).len(), box.bondgroups[0].singlebonds[0].params.b0));
 
 		// Angular component
 		const float potAngle = angleparams.kTheta * angleErrorRad * angleErrorRad * 0.5f;		// Energy [J/mol]			
@@ -393,10 +352,6 @@ namespace ForceCorrectness {
 		// Now calculate expected forces and potential energy
 		const int pidInPcluster0 = box.bondgroups[0].particles[box.bondgroups[0].pairbonds[0].atom_indexes[0]].pid;
 		const int pidInPcluster1 = box.bondgroups[0].particles[box.bondgroups[0].pairbonds[0].atom_indexes[1]].pid;
-		/*const int pidGlobal0 = box.persistentClustersMetadata[0].particleIdsGlobal[0];
-		const int pidGlobal1 = box.persistentClustersMetadata[0].particleIdsGlobal[1];
-		const int pidInCompound0 = box.particleToCompoundOrSolventMapping[pidGlobal0].particleId;
-		const int pidInCompound1 = box.particleToCompoundOrSolventMapping[pidGlobal1].particleId;*/
 
 
 		const Float3 pos0 = box.persistentClusters[0].pqd[pidInPcluster0].position;
@@ -414,10 +369,6 @@ namespace ForceCorrectness {
 
 		const auto sim = env.GetSim();
 
-		// Fetch the potential energy from the buffer, summing over all three atoms
-		//const float actualPotE = sim->potE_buffer->getCompoundparticleDatapointAtIndex(0, pidInCompound0, 0);		
-		// Fetch the actual force on the middle atom (atom 1)
-		//const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[pidInCompound0];
 
 		const float actualPotE = sim->potE_buffer->GetDatapoint(0, pidInPcluster0, 0);
 		const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, pidInPcluster0, 0);
@@ -455,7 +406,6 @@ namespace ForceCorrectness {
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
 
-		//const float bondEquilibrium = 0.149; // [nm]
 		const float bondEquilibrium = 0.1335; // [nm]
 
 		for (auto bond_len_error : bond_len_errors) {
@@ -465,31 +415,11 @@ namespace ForceCorrectness {
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
-			Box* box = env.getSimPtr()->box.get();
+			RunAndRecord(env, envmode, varcoffs, energy_gradients);
 
-			RunOnGpu(env);
-
-			const auto analytics = AnalyzeOnGpu(env);
-			varcoffs.push_back(analytics.variance_coefficient);
-			energy_gradients.push_back(analytics.energy_gradient);
-
-			if (envmode != Headless) {
-				analytics.Print();
-			}
-
-			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
-			//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
 		}
 
-		if (envmode != Headless) {
-			LIMA_Print::printMatlabVec("bond_len_errors", bond_len_errors);
-			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
-		}
-
-		const auto result = evaluateTest("doSinglebondBenchmark", varcoffs, energy_gradients);
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		return FinishStabilitySweep("doSinglebondBenchmark", envmode, "bond_len_errors", bond_len_errors, varcoffs, energy_gradients);
 	}
 
 	// Benchmarks anglebonds + singlebonds (for stability)
@@ -514,26 +444,10 @@ namespace ForceCorrectness {
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
-			RunOnGpu(env);
-
-			const auto analytics = AnalyzeOnGpu(env);
-			varcoffs.push_back(analytics.variance_coefficient);
-			energy_gradients.push_back(analytics.energy_gradient);
-
-			if (envmode != Headless) {
-				analytics.Print();
-			}
+			RunAndRecord(env, envmode, varcoffs, energy_gradients);
 		}
 
-		if (envmode != Headless) {
-			LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
-			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
-		}
-
-		const auto result = evaluateTest("doAnglebondBenchmark", varcoffs, energy_gradients);
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		return FinishStabilitySweep("doAnglebondBenchmark", envmode, "bond_angle_errors", angle_errors, varcoffs, energy_gradients);
 	}
 
 	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
@@ -545,9 +459,6 @@ namespace ForceCorrectness {
 
 		Environment env{ work_folder, envmode};
 		SimParams params{ work_folder / "sim_params.txt" };
-		//params.n_steps = 5000;
-		//params.data_logging_interval = 1;
-		//params.dt = 50.f;
 		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]
 		std::vector<float> varcoffs;
 		std::vector<float> energy_gradients;
@@ -589,29 +500,11 @@ namespace ForceCorrectness {
 
 			Box* box = env.getSimPtr()->box.get();
 
-			RunOnGpu(env);
-
-			const auto analytics = AnalyzeOnGpu(env);
-			varcoffs.push_back(analytics.variance_coefficient);
-			energy_gradients.push_back(analytics.energy_gradient);
-
-			if (envmode != Headless) {
-				analytics.Print();
-				//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
-
-			}
+			RunAndRecord(env, envmode, varcoffs, energy_gradients);
 		}
 
-		if (envmode != Headless) {
-			//LIMA_Print::printMatlabVec("bond_angle_errors", angle_errors);
-			//LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-			//LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
-			//LIMA_Print::plotEnergies(env.getAnalyzedPackage()->pot_energy, env.getAnalyzedPackage()->kin_energy, env.getAnalyzedPackage()->total_energy);
-		}
 
-		const auto result = evaluateTest("doImproperDihedralBenchmark", varcoffs, energy_gradients);
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		return FinishStabilitySweep("doImproperDihedralBenchmark", envmode, "angle_errors", angle_errors, varcoffs, energy_gradients);
 	}
 
 
@@ -691,14 +584,6 @@ namespace VerletintegrationTesting {
 		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
 		ASSERT(error < 0.01f, std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedKinE, actualKineticEnergy));
 
-		{
-			//const Float3 pos0 = env.getSimPtr()->traj_buffer->GetMostRecentCompoundparticleDatapoint(0, 0, 0);
-			//const Float3 pos1 = env.getSimPtr()->traj_buffer->GetMostRecentCompoundparticleDatapoint(0, 0, params.n_steps - 1);
-			//const float distanceTraveled = (pos1 - pos0).len();						// [nm]
-			//const float expectedDistance = expectedVelocity * (timeElapsed / NANO); // [nm]
-			//const float error = std::abs(distanceTraveled - expectedDistance) / expectedDistance;
-			//ASSERT(error < 0.01f, std::format("Expected distance: {:.2e} Actual distance: {:.2e}", expectedDistance, distanceTraveled));
-		}
 
 
 		return LimaUnittestResult{ true, "", envmode == Full};

@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <format>
 #include <memory>
 #include <string>
@@ -9,6 +10,7 @@
 #include "CommandlineUtils.h"
 #include "MoleculeUtils.h"
 #include "Display.h"
+#include "Environment.h"
 #include "argparser.h"
 #include "Programs.h"
 
@@ -102,10 +104,55 @@ Example:
 	// can likewise extend beyond its former periodic cell after unwrapping.
 	if (conversion || whole) MoleculeUtils::FitMoleculeInBox(grofile);
 
-    std::set<int> highlightedAtoms(highlightAtomsInput.begin(), highlightAtomsInput.end());
+	std::set<int> highlightedAtoms(highlightAtomsInput.begin(), highlightAtomsInput.end());
 
     Display d{};
-	auto renderTask = std::make_unique<Rendering::AtomRenderTask>(grofile, !hidewater);
+	std::optional<TopologyFile> topologyFile;
+	const TopologyFile* topology = nullptr;
+	if (conversion) {
+		topology = &conversion->topology;
+	}
+	else if (fs::exists(topol)) {
+		try {
+			topologyFile.emplace(topol);
+			topology = &topologyFile.value();
+		}
+		catch (const std::exception&) {
+			// An unreadable optional topology should not prevent coordinate rendering.
+		}
+	}
+
+	std::unique_ptr<Rendering::AtomRenderTask> renderTask;
+	if (topology) {
+		try {
+			// Simulation boxes currently require integer dimensions. Keep the input
+			// coordinates unchanged and use a private, padded copy for the adapter.
+			GroFile simulationGrofile = grofile;
+			simulationGrofile.box_size = Float3{
+				std::ceil(simulationGrofile.box_size.x),
+				std::ceil(simulationGrofile.box_size.y),
+				std::ceil(simulationGrofile.box_size.z)
+			};
+
+			Environment environment(simulationGrofile.m_path.parent_path(), EnvMode::Headless);
+			environment.CreateSimulation(simulationGrofile, *topology, SimParams{});
+			std::unique_ptr<Simulation> simulation = environment.GetSim();
+			renderTask = std::make_unique<Rendering::AtomRenderTask>(
+				simulation->box->persistentClusters,
+				simulation->box->persistentClustersMetadata,
+				simulation->box->boxparams,
+				SimStatus{}, simulation->box->backboneChains);
+		}
+		catch (const std::exception&) {
+			// Coordinate-only rendering remains valid when the topology or
+			// force-field cannot produce a complete simulation.
+			renderTask.reset();
+		}
+	}
+	if (!renderTask) {
+		renderTask = std::make_unique<Rendering::AtomRenderTask>(grofile, !hidewater);
+	}
+	renderTask->showSolvents = !hidewater;
 	renderTask->highlightedAtoms = highlightedAtoms;
     d.Render(std::move(renderTask), true);
 

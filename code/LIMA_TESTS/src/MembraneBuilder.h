@@ -263,7 +263,9 @@ namespace TestMembraneBuilder {
 
 		// Finally test if we can stabilize the simulation
 		const float emtol = 200.f;
-		auto sim = Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, emtol);
+		auto sim = WithGpu([&] {
+			return Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, emtol);
+		});
 		float finalMaxForce = sim->maxForceBuffer.back().second;
 
 		return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
@@ -289,7 +291,9 @@ namespace TestMembraneBuilder {
 		TopologyFile top;
 		top.SetSystem("Membrane");
 		SimulationBuilder::CreateMembrane(gro, top, lipidselection, 3.5f);
-		Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
+		WithGpu([&] {
+			Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, 300000.f);
+		}); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
 
 		gro.printToFile(mol_dir / "membrane.gro");
 		top.printToFile(mol_dir / "membrane.top");
@@ -350,7 +354,9 @@ namespace TestMembraneBuilder {
 
 		// The third test is to see if this function throws
 		const float emtol = 1000.f;
-		auto sim = Programs::EnergyMinimize(grofile, topfile, false, workDir, envmode, true, emtol);
+		auto sim = WithGpu([&] {
+			return Programs::EnergyMinimize(grofile, topfile, false, workDir, envmode, true, emtol);
+		});
 
 		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
 

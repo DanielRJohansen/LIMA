@@ -103,6 +103,7 @@ public:
 
 	// Functions for dev only : TODO move to child whioch inherits all as public
 	std::unique_ptr<Simulation> GetSim();
+	void ReleaseEngine();
 	Simulation* getSimPtr();
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 

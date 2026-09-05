@@ -36,9 +36,9 @@ namespace ForceCorrectness {
 			box->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
 			box->pclusterInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
 
-			env.run();
+			RunOnGpu(env);
 
-			const auto analytics = env.getAnalyzedPackage();
+			const auto analytics = AnalyzeOnGpu(env);
 			varcoffs.push_back(analytics.variance_coefficient);
 			energy_gradients.push_back(analytics.energy_gradient);
 			if (envmode != Headless) { analytics.Print(); }
@@ -98,9 +98,9 @@ namespace ForceCorrectness {
 			//}
 
 
-			env.run();
+			RunOnGpu(env);
 
-			auto analytics = env.getAnalyzedPackage();
+			auto analytics = AnalyzeOnGpu(env);
 			if (envmode != Headless) {
 				analytics.Print();
 			}
@@ -154,7 +154,7 @@ namespace ForceCorrectness {
 		const float expectedPotential = kB * bondlenErrorNM * bondlenErrorNM;	// [J/mol]
 
 
-		env.run();
+		RunOnGpu(env);
 		LIMA_UTILS::genericErrorCheck("Error during test");
 
 		const auto sim = env.GetSim();
@@ -224,7 +224,7 @@ namespace ForceCorrectness {
 		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
 
 
-		env.run();
+		RunOnGpu(env);
 
 		const auto sim = env.GetSim();
 
@@ -241,7 +241,7 @@ namespace ForceCorrectness {
 		const float errorThreshold = 1e-2;
 
 		return LimaUnittestResult{ error < errorThreshold ? true : false, 
-			std::format("Expected freq: {:.2e} [1/fs], Actual: {:.2e} [1/fs]", expectedFrequency, actualFrequency, error),
+			std::format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency, error),
 			envmode == Full };
 	}
 
@@ -336,7 +336,7 @@ namespace ForceCorrectness {
 		const Float3 expectedForce = forceAngle + forceUB;
 		const float expectedPotential = potAngle + potUB;
 
-		env.run();
+		RunOnGpu(env);
 		LIMA_UTILS::genericErrorCheck("Error during test");
 
 		const auto sim = env.GetSim();
@@ -409,7 +409,7 @@ namespace ForceCorrectness {
 		const Float3 expectedForce = diff * force_scalar;
 		const float expectedPotential = 4.f * bondparams.epsilon * s * (s - 1.f) * 0.5f;
 
-		env.run();
+		RunOnGpu(env);
 		LIMA_UTILS::genericErrorCheck("Error during test");
 
 		const auto sim = env.GetSim();
@@ -467,9 +467,9 @@ namespace ForceCorrectness {
 
 			Box* box = env.getSimPtr()->box.get();
 
-			env.run();
+			RunOnGpu(env);
 
-			const auto analytics = env.getAnalyzedPackage();
+			const auto analytics = AnalyzeOnGpu(env);
 			varcoffs.push_back(analytics.variance_coefficient);
 			energy_gradients.push_back(analytics.energy_gradient);
 
@@ -514,9 +514,9 @@ namespace ForceCorrectness {
 			TopologyFile topfile{ work_folder / "molecule/topol.top" };
 			env.CreateSimulation(grofile, topfile, params);
 
-			env.run();
+			RunOnGpu(env);
 
-			const auto analytics = env.getAnalyzedPackage();
+			const auto analytics = AnalyzeOnGpu(env);
 			varcoffs.push_back(analytics.variance_coefficient);
 			energy_gradients.push_back(analytics.energy_gradient);
 
@@ -589,9 +589,9 @@ namespace ForceCorrectness {
 
 			Box* box = env.getSimPtr()->box.get();
 
-			env.run();
+			RunOnGpu(env);
 
-			const auto analytics = env.getAnalyzedPackage();
+			const auto analytics = AnalyzeOnGpu(env);
 			varcoffs.push_back(analytics.variance_coefficient);
 			energy_gradients.push_back(analytics.energy_gradient);
 
@@ -626,7 +626,7 @@ namespace ForceCorrectness {
 		params.n_steps = 11;
 		params.data_logging_interval = 1;
 		env.CreateSimulation(grofile, topfile, params);
-		env.run();
+		RunOnGpu(env);
 
 		TestUtils::CompareForces1To1(workDir, env, false);
 	}
@@ -684,10 +684,10 @@ namespace VerletintegrationTesting {
 		const float expectedVelocity = particleCharge * electricFieldStrength / NANO * timeElapsed / particleMass; // [m/s]
 		const float expectedKinE = PhysicsUtils::calcKineticEnergy(expectedVelocity, particleMass); // [J/mol]
 
-		env.run();
+		RunOnGpu(env);
 
 
-		const float actualKineticEnergy = env.getAnalyzedPackage().kin_energy.back();
+		const float actualKineticEnergy = AnalyzeOnGpu(env).kin_energy.back();
 		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
 		ASSERT(error < 0.01f, std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedKinE, actualKineticEnergy));
 

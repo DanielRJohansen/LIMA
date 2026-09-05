@@ -15,9 +15,46 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <atomic>
+#include <condition_variable>
+#include <thread>
 #include <sstream>
+#include <utility>
 
 namespace TestUtils {
+	std::mutex& GpuTestMutex() {
+		static std::mutex mutex;
+		return mutex;
+	}
+
+	[[nodiscard]] std::unique_lock<std::mutex> AcquireGpu() {
+		return std::unique_lock{ GpuTestMutex() };
+	}
+
+	template<typename Callback>
+	decltype(auto) WithGpu(Callback&& callback) {
+		auto gpuLock = AcquireGpu();
+		return std::forward<Callback>(callback)();
+	}
+
+	std::chrono::duration<double> RunOnGpu(Environment& environment) {
+		auto gpuLock = AcquireGpu();
+		try {
+			const auto elapsed = environment.run();
+			environment.ReleaseEngine();
+			return elapsed;
+		}
+		catch (...) {
+			environment.ReleaseEngine();
+			throw;
+		}
+	}
+
+	// Analysis accesses CUDA-backed simulation data; keep it inside the GPU lease
+	// and return an owning copy so callers can aggregate results without the lock.
+	SimAnalysis::AnalyzedPackage AnalyzeOnGpu(Environment& environment) {
+		return WithGpu([&]() { return environment.getAnalyzedPackage(); });
+	}
 
 	fs::path AutomatedTestsDir() { return FileUtils::GetLimaDir() / "tests" / "automatedtests"; }
 	fs::path HeavyTestsDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
@@ -161,9 +198,9 @@ namespace TestUtils {
 		return results;
 	}
 
-	bool& VarianceCoefficientSuiteStarted() {
-		static bool started = false;
-		return started;
+	std::map<std::string, VarianceCoefficientThresholds>*& ActiveVarianceCoefficientResults() {
+		thread_local std::map<std::string, VarianceCoefficientThresholds>* results = nullptr;
+		return results;
 	}
 
 	void WriteActualVarianceCoefficientResults() {
@@ -178,10 +215,29 @@ namespace TestUtils {
 		}
 	}
 
-	void BeginVarianceCoefficientTestSuite() {
+	void ResetVarianceCoefficientResults() {
 		ActualVarianceCoefficientResults().clear();
-		VarianceCoefficientSuiteStarted() = true;
-		WriteActualVarianceCoefficientResults();
+	}
+
+	void MergeVarianceCoefficientResult(
+		std::map<std::string, VarianceCoefficientThresholds>& results,
+		const std::string& testName,
+		float maxVc,
+		float maxGradient) {
+		auto [entry, inserted] = results.try_emplace(
+			testName, VarianceCoefficientThresholds{ maxVc, maxGradient });
+		if (!inserted) {
+			entry->second.max_vc = std::max(entry->second.max_vc, maxVc);
+			entry->second.max_gradient = std::max(entry->second.max_gradient, maxGradient);
+		}
+	}
+
+	void PublishVarianceCoefficientResults(
+		const std::map<std::string, VarianceCoefficientThresholds>& results) {
+		for (const auto& [testName, result] : results) {
+			MergeVarianceCoefficientResult(
+				ActualVarianceCoefficientResults(), testName, result.max_vc, result.max_gradient);
+		}
 	}
 
 	void RecordActualVarianceCoefficientResult(
@@ -192,9 +248,6 @@ namespace TestUtils {
 		if (VCs.empty() || energy_gradients.empty()) {
 			throw std::runtime_error("Variance coefficient tests must provide at least one VC and energy gradient");
 		}
-		if (!VarianceCoefficientSuiteStarted()) {
-			BeginVarianceCoefficientTestSuite();
-		}
 
 		const float max_vc = *std::max_element(VCs.begin(), VCs.end());
 		const float max_gradient = std::abs(*std::max_element(
@@ -202,13 +255,14 @@ namespace TestUtils {
 			[](float lhs, float rhs) { return std::abs(lhs) < std::abs(rhs); }
 		));
 
-		auto [entry, inserted] = ActualVarianceCoefficientResults().try_emplace(
-			test_name, VarianceCoefficientThresholds{ max_vc, max_gradient });
-		if (!inserted) {
-			entry->second.max_vc = std::max(entry->second.max_vc, max_vc);
-			entry->second.max_gradient = std::max(entry->second.max_gradient, max_gradient);
+		auto* results = ActiveVarianceCoefficientResults();
+		if (results != nullptr) {
+			MergeVarianceCoefficientResult(*results, test_name, max_vc, max_gradient);
+			return;
 		}
-		WriteActualVarianceCoefficientResults();
+
+		MergeVarianceCoefficientResult(
+			ActualVarianceCoefficientResults(), test_name, max_vc, max_gradient);
 	}
 
 	const std::map<std::string, VarianceCoefficientThresholds>& VarianceCoefficientTargets() {
@@ -357,41 +411,56 @@ namespace TestUtils {
     } while (0)
 
 	struct LimaUnittest {
-		LimaUnittest(const std::string& name, std::function<LimaUnittestResult()> test) :
+		LimaUnittest(const std::string& name, std::function<LimaUnittestResult()> test, bool parallelizable = true) :
 			name(name),
-			test(test)
+			test(test),
+			parallelizable(parallelizable)
 		{}
 
-		void execute() {
-
+		void execute() noexcept {
+			auto*& activeResults = ActiveVarianceCoefficientResults();
+			auto* previousResults = activeResults;
+			activeResults = &varianceResults;
 			try {
 				TimeIt timer{};
-				std::cout << "Test " << name << " ";
 				testresult = std::make_unique<LimaUnittestResult>(test());
-
-				int str_len = 6 + name.length();
-				while (str_len++ < 61) { std::cout << " "; }
-
-				//testresult->printStatus(" (" + timer.ElapsedPretty() + ")");
-				testresult->printStatus();
-
+				elapsed = timer.Elapsed();
 			}
-			catch (const std::runtime_error& ex) {
+			catch (const std::exception& ex) {
 				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
-				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult{ false, err_desc, true });
+				testresult = std::make_unique<LimaUnittestResult>(false, err_desc, false);
 			}
+			catch (...) {
+				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw an unknown exception", false);
+			}
+			activeResults = previousResults;
+		}
+
+		void printResult() const {
+			std::cout << "Test " << name << " ";
+			int str_len = 6 + static_cast<int>(name.length());
+			while (str_len++ < 61) { std::cout << " "; }
+			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed, 1, 2) + ")");
 		}
 
 		const std::function<LimaUnittestResult()> test;
 		std::unique_ptr<LimaUnittestResult> testresult;
 		const std::string name;
+		const bool parallelizable;
+		std::chrono::duration<double> elapsed{};
+		std::map<std::string, VarianceCoefficientThresholds> varianceResults;
 	};
 
 
 	class LimaUnittestManager {
 	public:
-		LimaUnittestManager(){ BeginVarianceCoefficientTestSuite(); }
+		explicit LimaUnittestManager(std::size_t nParallelTests = 6)
+			: maxParallelTests(std::min<std::size_t>(nParallelTests, std::max(std::thread::hardware_concurrency(), 1u))) {
+			ResetVarianceCoefficientResults();
+		}
 		~LimaUnittestManager() {
+			Run();
+			WriteActualVarianceCoefficientResults();
 			if (successCount == tests.size()) {
 				setConsoleTextColorGreen();
 			}
@@ -411,16 +480,65 @@ namespace TestUtils {
 		}
 
 		void addTest(std::unique_ptr<LimaUnittest> test) {
-			test->execute();
-
-			if (test->testresult->success) { successCount++; }
-
 			tests.push_back(std::move(test));
 		}
 
 	private:
+		void PublishResult(const LimaUnittest& test) {
+			PublishVarianceCoefficientResults(test.varianceResults);
+			test.printResult();
+			if (test.testresult->success) ++successCount;
+		}
+
+		void RunParallelRange(std::size_t begin, std::size_t end) {
+			if (begin == end) return;
+			std::atomic<std::size_t> next{ begin };
+			std::vector<char> completed(tests.size());
+			std::mutex completionMutex;
+			std::condition_variable completionChanged;
+			std::mutex serialTestMutex;
+			const std::size_t workerCount = std::min(maxParallelTests, end - begin);
+			std::vector<std::jthread> workers;
+			workers.reserve(workerCount);
+			for (std::size_t worker = 0; worker < workerCount; ++worker) {
+				workers.emplace_back([&] {
+					while (true) {
+						const std::size_t index = next.fetch_add(1);
+						if (index >= end) break;
+						if (tests[index]->parallelizable) {
+							tests[index]->execute();
+						}
+						else {
+							const std::lock_guard serialLock(serialTestMutex);
+							tests[index]->execute();
+						}
+						{
+							const std::lock_guard lock(completionMutex);
+							completed[index] = true;
+						}
+						completionChanged.notify_all();
+					}
+				});
+			}
+
+			for (std::size_t index = begin; index < end; ++index) {
+				std::unique_lock lock(completionMutex);
+				completionChanged.wait(lock, [&] { return completed[index]; });
+				lock.unlock();
+				PublishResult(*tests[index]);
+			}
+		}
+
+		void Run() {
+			if (hasRun) return;
+			hasRun = true;
+			RunParallelRange(0, tests.size());
+		}
+
 		std::vector<std::unique_ptr<LimaUnittest>> tests;
 		int successCount = 0;
+		std::size_t maxParallelTests;
+		bool hasRun = false;
 	};
 
 
@@ -432,11 +550,11 @@ namespace TestUtils {
 		const std::string& test_name,
 		std::optional<SimParams> ip = {}
 	)
-	{		
+	{
 		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
-		env->run();
+		RunOnGpu(*env);
 
-		const auto analytics = env->getAnalyzedPackage();
+		const auto analytics = AnalyzeOnGpu(*env);
 		
 		float varcoff = analytics.variance_coefficient;
 		

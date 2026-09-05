@@ -448,6 +448,10 @@ std::unique_ptr<Simulation> Environment::GetSim() {
 	return std::move(simulation);
 }
 
+void Environment::ReleaseEngine() {
+	engine.reset();
+}
+
 Simulation* Environment::getSimPtr() {
 	if (simulation) { 
 		return simulation.get(); 

@@ -19,7 +19,7 @@ namespace ForceComparisons {
 		SimParams simparams{ paramsPath };
 		auto env = std::make_unique<Environment>( workdir, Headless ); 
 		env->CreateSimulation(grofile, topfile, simparams);
-		env->run();
+		RunOnGpu(*env);
 
 		return env;
 	}

@@ -96,12 +96,12 @@ namespace ElectrostaticsTests {
 		// TODO!!
 		//env.getSimPtr()->box->compounds[1].atom_charges[0] = -env.getSimPtr()->box->compounds[0].atom_charges[0];
 
-		env.run();
+		RunOnGpu(env);
 
 
 		//LIMA_Print::printPythonVec("potE", env.getAnalyzedPackage()->pot_energy);
 
-		const float actualVC = env.getAnalyzedPackage().variance_coefficient;
+		const float actualVC = AnalyzeOnGpu(env).variance_coefficient;
 		const float maxVC = 1e-3;
 		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
@@ -153,7 +153,7 @@ namespace ElectrostaticsTests {
 
 		env->getSimPtr()->box->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f};
 
-		env->run();	
+		RunOnGpu(*env);
 
 		if (envmode == Full)
 			TestUtils::CompareForces1To1(AutomatedTestsDir() / "ElectrostaticField", *env, false);
@@ -337,7 +337,6 @@ namespace ElectrostaticsTests {
 		params.data_logging_interval = 1;
 		const float c0 = -1.f * elementaryChargeToKiloCoulombPerMole;
 		const float c1 = 1.f * elementaryChargeToKiloCoulombPerMole;
-
 		for (int testIndex = 0; testIndex < testSetups.size(); testIndex++) {
 			const auto setup = testSetups[testIndex];
 
@@ -370,8 +369,7 @@ namespace ElectrostaticsTests {
 			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff) + mirrorForce;
 
 
-
-			env.run();
+			RunOnGpu(env);
 			const auto sim = env.GetSim();
 
 			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
@@ -444,7 +442,7 @@ namespace ElectrostaticsTests {
 			expectedPot.push_back(pot);
 			expectedForce.push_back(force + mirrorForce);
 
-			env.run();
+			RunOnGpu(env);
 			const auto sim = env.GetSim();			
 
 			actualPot.push_back(sim->potE_buffer->GetDatapoint(0, 0, 0));
@@ -502,7 +500,7 @@ namespace ElectrostaticsTests {
 
 
 
-		env.run();
+		RunOnGpu(env);
 
 		// First go trough the traj data and find the step where the particles are less than 0.5 nm apart
 		int step = -1;
@@ -518,7 +516,7 @@ namespace ElectrostaticsTests {
 		}
 
 		// Only use the energies up untill the step found above
-		auto anal = env.getAnalyzedPackage();
+		auto anal = AnalyzeOnGpu(env);
 		//LIMA_Print::plotEnergies(std::span(anal.pot_energy).subspan(0, step), std::span(anal.kin_energy).subspan(0, step), std::span(anal.total_energy).subspan(0, step));
 
 		return LimaUnittestResult{ anal.variance_coefficient < 1e-3f, "", envmode == Full };
@@ -552,7 +550,7 @@ namespace ElectrostaticsTests {
 		//topfile.GetSystemMutable().molecules.resize(3);
 
 		env.CreateSimulation(grofile, topfile, params);
-		env.run();
+		RunOnGpu(env);
 
 
 		// Now compute all expected forces and potentials

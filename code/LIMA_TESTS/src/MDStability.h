@@ -20,7 +20,10 @@ namespace TestMDStability {
 
 		GroFile grofile{ workDir / "molecule"/"conf.gro" };
 		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
-		auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
+
+		auto sim = WithGpu([&] {
+			return Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
+		});
 
 		SimParams params{ workDir/"sim_params.txt"};
 		Environment env{ workDir, envmode };
@@ -28,11 +31,12 @@ namespace TestMDStability {
 
 
 		env.CreateSimulation(*sim, params);
+		
 		//env.CreateSimulation(grofile, topfile, params);
-		env.run();
+		RunOnGpu(env);
 		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
 
-		const auto analytics = env.getAnalyzedPackage();
+		const auto analytics = AnalyzeOnGpu(env);
 		
 		if (envmode != Headless) {
 			analytics.Print();

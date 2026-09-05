@@ -113,7 +113,7 @@ namespace Benchmarks {
 			ip.n_steps = nSteps.value();
 		Environment env{ workDir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run();
+		RunOnGpu(env);
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
@@ -204,7 +204,7 @@ namespace Benchmarks {
 		ip.n_steps = 4000;
 		Environment env{ workDir , envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.run();
+		RunOnGpu(env);
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
@@ -262,7 +262,7 @@ namespace Benchmarks {
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);
-		env.run();
+		RunOnGpu(env);
 
 		if (env.getSimPtr()->getStep() != env.getSimPtr()->simParams.n_steps) {
 			throw std::runtime_error("Simulation did not run fully");
@@ -309,7 +309,10 @@ namespace Benchmarks {
 		ip.enable_electrostatics = true;
 		Environment env{ workDir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		env.prepareForRun();
+		WithGpu([&] {
+			env.prepareForRun();
+			env.ReleaseEngine();
+		});
 		const std::chrono::duration<double> elapsedTime = timer.elapsed();
 		
 		const std::chrono::duration<double> maxTime{ 8. }; // [s]

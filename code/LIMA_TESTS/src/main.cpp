@@ -250,8 +250,12 @@ int main() {
 #define ADD_TEST(description, execution_function) \
     testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
 
+#define ADD_SERIAL_TEST(description, execution_function) \
+    testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;}, false }))
+
 // Runs all unit tests with the fastest/crucial ones first
 void RunAllUnitTests() {
+	TimeIt timer("RunAllUnitTests", true);
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
@@ -290,7 +294,7 @@ void RunAllUnitTests() {
 	// Larger tests
 	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, "SolventBenchmark"));
 	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, "T4Lysozyme"));
-	ADD_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, "Deterministic Simulations"); }, 2, envmode));
+	ADD_SERIAL_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, "Deterministic Simulations"); }, 2, envmode));
 
 
 	// Electrostatics
@@ -304,16 +308,16 @@ void RunAllUnitTests() {
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 	// Test Setup
-	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
+	ADD_SERIAL_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
 
 	// Programs test
 	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile(envmode));
 	ADD_TEST("ToGmx handles multiple chains", ProgramsTests::TestToGmx_multichain(envmode));
 	ADD_TEST("ToGmx CIF matches GROMACS", ProgramsTests::TestToGmx_ciffile(envmode));
-	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
+	ADD_SERIAL_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
-	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
+	ADD_SERIAL_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 
 	// Gromacs correctness
 	ADD_TEST("ForceComparisons", ForceComparisons::DoAllForceComparisons(envmode));
@@ -321,7 +325,7 @@ void RunAllUnitTests() {
 	//ADD_TEST("InsertMoleculesAndDoStaticbodyEM", TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode));
 
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
-	//ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...
+	//ADD_SERIAL_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...
 
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif(envmode));
@@ -330,7 +334,7 @@ void RunAllUnitTests() {
 	//doPool50x(EnvMode::Headless);
 
 
-	//ADD_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
+	//ADD_SERIAL_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
 
 	// Total test status will print as testman is destructed
 }

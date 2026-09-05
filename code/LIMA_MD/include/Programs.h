@@ -15,6 +15,7 @@ namespace Programs {
 		fs::path gro;
 		fs::path topology;
 		fs::path positionRestraints;
+		std::vector<fs::path> additionalPositionRestraints;
 	};
 
 	WaterModel ParseWaterModel(std::string_view name);

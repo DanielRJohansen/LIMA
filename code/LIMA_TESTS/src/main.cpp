@@ -307,6 +307,7 @@ void RunAllUnitTests() {
 
 	// Programs test
 	ADD_TEST("pdb2gmx matches GROMACS", ProgramsTests::TestPdb2Gmx_pdbfile(envmode));
+	ADD_TEST("pdb2gmx handles multiple chains", ProgramsTests::TestPdb2Gmx_multichain(envmode));
 	ADD_TEST("cif2gmx matches GROMACS", ProgramsTests::TestCif2Gmx_ciffile(envmode));
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));

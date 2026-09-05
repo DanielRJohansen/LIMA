@@ -106,8 +106,10 @@ Example:
     parser.Parse(argc, argv);
 
 	std::unique_ptr<RenderCli::TemporaryDirectory> conversionDirectory;
+	bool convertedStructure = false;
 	const std::string extension = RenderCli::Lowercase(conf.extension().string());
 	if (extension == ".pdb" || extension == ".cif") {
+		convertedStructure = true;
 		conversionDirectory = std::make_unique<RenderCli::TemporaryDirectory>();
 		const Programs::WaterModel waterModel = Programs::ParseWaterModel(water);
 		const std::optional<std::string> conversionName{ "render_input" };
@@ -124,16 +126,21 @@ Example:
 
     GroFile grofile{ conf };
 
-    if (hidewater) {
-        while (!grofile.atoms.empty() && grofile.atoms.back().residueName == "SOL") {
-            grofile.atoms.pop_back();
-        }
-    }
-
     if (whole) {
         TopologyFile topfile{ topol };
-        MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
+		MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
     }
+
+	if (hidewater) {
+		while (!grofile.atoms.empty() && grofile.atoms.back().residueName == "SOL") {
+			grofile.atoms.pop_back();
+		}
+	}
+
+	// Converted coordinate files carry crystallographic cell dimensions, which do
+	// not necessarily bound the displayed biological structure. A whole structure
+	// can likewise extend beyond its former periodic cell after unwrapping.
+	if (convertedStructure || whole) MoleculeUtils::FitMoleculeInBox(grofile);
 
     std::set<int> highlightedAtoms(highlightAtomsInput.begin(), highlightAtomsInput.end());
 

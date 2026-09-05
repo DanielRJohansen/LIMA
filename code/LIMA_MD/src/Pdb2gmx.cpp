@@ -796,11 +796,6 @@ std::vector<OutputResidue> makeAtoms(
     const std::unordered_map<std::string, std::vector<HydrogenInstruction>>& hydrogenDatabase,
     const std::unordered_map<std::string, TerminalPatch>& nTerminalPatches,
     const std::unordered_map<std::string, TerminalPatch>& cTerminalPatches) {
-    const std::string& chain = pdb.residues.front().chain;
-    if (std::ranges::any_of(pdb.residues, [chain](const PdbResidue& residue) { return residue.chain != chain; })) {
-        throw std::runtime_error("pdb2gmx currently requires a single protein chain");
-    }
-
     std::vector<OutputResidue> result;
     result.reserve(pdb.residues.size());
     for (int residueIndex = 0; residueIndex < static_cast<int>(pdb.residues.size()); ++residueIndex) {
@@ -892,6 +887,14 @@ struct Interactions {
     std::vector<Cmap> cmaps;
 };
 
+struct OutputMolecule {
+    std::string chain;
+    std::string name;
+    std::vector<OutputResidue> residues;
+    Interactions interactions;
+    fs::path positionRestraints;
+};
+
 Interactions makeInteractions(
     const std::vector<OutputResidue>& residues,
     const std::unordered_map<std::string, ResidueTemplate>& templates) {
@@ -971,23 +974,53 @@ Interactions makeInteractions(
     return result;
 }
 
+std::vector<PdbInput> splitInputByChain(const PdbInput& input) {
+    std::vector<PdbInput> chains;
+    std::set<std::string> completedChains;
+    for (const auto& residue : input.residues) {
+        if (chains.empty() || chains.back().residues.back().chain != residue.chain) {
+            if (completedChains.contains(residue.chain)) {
+                throw std::runtime_error(std::format(
+                    "Chain {} occurs in multiple non-contiguous blocks", residue.chain.empty() ? "<blank>" : residue.chain));
+            }
+            if (!chains.empty()) completedChains.insert(chains.back().residues.back().chain);
+            chains.push_back(PdbInput{ input.title, {}, input.box });
+        }
+        chains.back().residues.push_back(residue);
+    }
+    return chains;
+}
+
+std::string moleculeNameForChain(std::string_view chain, std::size_t index, std::size_t chainCount) {
+    if (chain.empty() && chainCount == 1) return "Protein";
+    std::string suffix = chain.empty() ? std::to_string(index + 1) : std::string(chain);
+    for (char& c : suffix) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') c = '_';
+    }
+    return "Protein_chain_" + suffix;
+}
+
 void writeGro(const fs::path& path, const std::string& title,
-              const std::vector<OutputResidue>& residues, const std::optional<CrystalBox>& box) {
+              const std::vector<OutputMolecule>& molecules, const std::optional<CrystalBox>& box) {
     std::ofstream output(path);
     if (!output) throw std::runtime_error(std::format("Failed to create {}", path.string()));
     std::size_t atomCount = 0;
-    for (const auto& residue : residues) atomCount += residue.atoms.size();
+    for (const auto& molecule : molecules) {
+        for (const auto& residue : molecule.residues) atomCount += residue.atoms.size();
+    }
     output << title << '\n' << atomCount << '\n';
     int atomId = 1;
-    for (const auto& residue : residues) {
-        for (const auto& atom : residue.atoms) {
-            output << std::setw(5) << std::right << (atom.residue % 100000)
-                   << std::setw(5) << std::left << atom.residueName.substr(0, 5)
-                   << std::setw(5) << std::right << atom.name.substr(0, 5)
-                   << std::setw(5) << std::right << (atomId++ % 100000)
-                   << std::setw(8) << std::fixed << std::setprecision(3) << atom.position->x
-                   << std::setw(8) << atom.position->y
-                   << std::setw(8) << atom.position->z << '\n';
+    for (const auto& molecule : molecules) {
+        for (const auto& residue : molecule.residues) {
+            for (const auto& atom : residue.atoms) {
+                output << std::setw(5) << std::right << (atom.residue % 100000)
+                       << std::setw(5) << std::left << atom.residueName.substr(0, 5)
+                       << std::setw(5) << std::right << atom.name.substr(0, 5)
+                       << std::setw(5) << std::right << (atomId++ % 100000)
+                       << std::setw(8) << std::fixed << std::setprecision(3) << atom.position->x
+                       << std::setw(8) << atom.position->y
+                       << std::setw(8) << atom.position->z << '\n';
+            }
         }
     }
     const auto values = box ? box->groValues : std::array<double, 9>{};
@@ -1034,24 +1067,16 @@ std::string_view waterTopologyFilename(const Programs::WaterModel model) {
     throw std::runtime_error("Unknown water model");
 }
 
-void writeTopology(const fs::path& path, const fs::path& positionRestraints,
-                   const std::string& title, std::string_view chain,
-                   const std::vector<OutputResidue>& residues, const Interactions& interactions,
-                   Programs::WaterModel waterModel, const BondedTypeDefaults& bondedTypes) {
-    std::ofstream output(path);
-    if (!output) throw std::runtime_error(std::format("Failed to create {}", path.string()));
-    const std::string moleculeName = chain.empty() ? "Protein" : std::string("Protein_chain_") + std::string(chain);
-    output << "; Topology generated by LIMA pdb2gmx\n\n"
-              "; Include forcefield parameters\n"
-              "#include \"charmm27.ff/forcefield.itp\"\n\n"
-              "[ moleculetype ]\n"
+void writeMoleculeTopology(std::ofstream& output, const OutputMolecule& molecule,
+                           const BondedTypeDefaults& bondedTypes) {
+    output << "[ moleculetype ]\n"
               "; Name            nrexcl\n"
-           << moleculeName << "     " << bondedTypes.exclusions << "\n\n"
+           << molecule.name << "     " << bondedTypes.exclusions << "\n\n"
               "[ atoms ]\n"
               "; nr type resnr residue atom cgnr charge mass\n";
     int atomId = 1;
     double totalCharge = 0.0;
-    for (const auto& residue : residues) {
+    for (const auto& residue : molecule.residues) {
         for (std::size_t i = 0; i < residue.atoms.size(); ++i) {
             const auto& atom = residue.atoms[i];
             totalCharge += atom.charge;
@@ -1071,17 +1096,29 @@ void writeTopology(const fs::path& path, const fs::path& positionRestraints,
         }
     }
     output << '\n';
-    writeInteractionSection(output, "bonds", interactions.bonds, bondedTypes.bond);
-    writeInteractionSection(output, "pairs", interactions.pairs, 1);
-    writeInteractionSection(output, "angles", interactions.angles, bondedTypes.angle);
-    writeInteractionSection(output, "dihedrals", interactions.propers, bondedTypes.properDihedral);
-    writeInteractionSection(output, "dihedrals", interactions.impropers, bondedTypes.improperDihedral);
-    writeInteractionSection(output, "cmap", interactions.cmaps, 1);
-    output << "#ifdef POSRES\n#include \"" << positionRestraints.filename().string() << "\"\n#endif\n\n"
-              "; Include water topology\n#include \"charmm27.ff/" << waterTopologyFilename(waterModel) << "\"\n\n"
+    writeInteractionSection(output, "bonds", molecule.interactions.bonds, bondedTypes.bond);
+    writeInteractionSection(output, "pairs", molecule.interactions.pairs, 1);
+    writeInteractionSection(output, "angles", molecule.interactions.angles, bondedTypes.angle);
+    writeInteractionSection(output, "dihedrals", molecule.interactions.propers, bondedTypes.properDihedral);
+    writeInteractionSection(output, "dihedrals", molecule.interactions.impropers, bondedTypes.improperDihedral);
+    writeInteractionSection(output, "cmap", molecule.interactions.cmaps, 1);
+    output << "#ifdef POSRES\n#include \"" << molecule.positionRestraints.filename().string() << "\"\n#endif\n\n";
+}
+
+void writeTopology(const fs::path& path, const std::string& title,
+                   const std::vector<OutputMolecule>& molecules,
+                   Programs::WaterModel waterModel, const BondedTypeDefaults& bondedTypes) {
+    std::ofstream output(path);
+    if (!output) throw std::runtime_error(std::format("Failed to create {}", path.string()));
+    output << "; Topology generated by LIMA pdb2gmx/cif2gmx\n\n"
+              "; Include forcefield parameters\n"
+              "#include \"charmm27.ff/forcefield.itp\"\n\n";
+    for (const auto& molecule : molecules) writeMoleculeTopology(output, molecule, bondedTypes);
+    output << "; Include water topology\n#include \"charmm27.ff/" << waterTopologyFilename(waterModel) << "\"\n\n"
               "; Include topology for ions\n#include \"charmm27.ff/ions.itp\"\n\n"
               "[ system ]\n; Name\n" << title << "\n\n"
-              "[ molecules ]\n; Compound        #mols\n" << moleculeName << "     1\n";
+              "[ molecules ]\n; Compound        #mols\n";
+    for (const auto& molecule : molecules) output << molecule.name << "     1\n";
 }
 
 Programs::GmxConversionResult convertStructureToGmx(
@@ -1098,8 +1135,6 @@ Programs::GmxConversionResult convertStructureToGmx(
     const auto hydrogenDatabase = readHydrogenDatabase(forcefieldDirectory / "aminoacids.hdb");
     const auto nTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.n.tdb");
     const auto cTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.c.tdb");
-    const auto outputResidues = makeAtoms(input, templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
-    const auto interactions = makeInteractions(outputResidues, templates);
 
     const fs::path inputDirectory = inputPath.parent_path().empty() ? fs::current_path() : inputPath.parent_path();
     const fs::path directory = outputDirectory.value_or(inputDirectory);
@@ -1111,11 +1146,28 @@ Programs::GmxConversionResult convertStructureToGmx(
     const fs::path topPath = directory / (basename.empty() ? "topol.top" : basename + ".top");
     const fs::path posrePath = directory / (basename.empty() ? "posre.itp" : basename + "_posre.itp");
 
-    writeGro(groPath, input.title, outputResidues, input.box);
-    writePositionRestraints(posrePath, outputResidues);
-    writeTopology(topPath, posrePath, input.title, input.residues.front().chain, outputResidues, interactions,
-        waterModel, bondedTypes);
-    return { groPath, topPath, posrePath };
+    const auto chainInputs = splitInputByChain(input);
+    std::vector<OutputMolecule> molecules;
+    molecules.reserve(chainInputs.size());
+    std::vector<fs::path> additionalPositionRestraints;
+    for (std::size_t i = 0; i < chainInputs.size(); ++i) {
+        OutputMolecule molecule;
+        molecule.chain = chainInputs[i].residues.front().chain;
+        molecule.name = moleculeNameForChain(molecule.chain, i, chainInputs.size());
+        molecule.residues = makeAtoms(
+            chainInputs[i], templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
+        molecule.interactions = makeInteractions(molecule.residues, templates);
+        molecule.positionRestraints = i == 0
+            ? posrePath
+            : directory / (posrePath.stem().string() + "_" + molecule.name + posrePath.extension().string());
+        writePositionRestraints(molecule.positionRestraints, molecule.residues);
+        if (i > 0) additionalPositionRestraints.push_back(molecule.positionRestraints);
+        molecules.push_back(std::move(molecule));
+    }
+
+    writeGro(groPath, input.title, molecules, input.box);
+    writeTopology(topPath, input.title, molecules, waterModel, bondedTypes);
+    return { groPath, topPath, posrePath, std::move(additionalPositionRestraints) };
 }
 
 } // namespace

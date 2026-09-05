@@ -94,7 +94,7 @@ void BuildCellTest() {
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
-		TestDisplayT4();
+		//TestDisplayT4();
 		//ProgramsTests::TestToGmx_ciffile(envmode);
 		//LiveEditTest();
 		//BuildCellTest();

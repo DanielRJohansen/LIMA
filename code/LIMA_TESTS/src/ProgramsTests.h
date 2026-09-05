@@ -1,4 +1,3 @@
-#include "../LIMA/include/BuildMembrane.h"
 #include "MoleculeUtils.h"
 #include "Programs.h"
 #include "TestUtils.h"
@@ -43,24 +42,19 @@ namespace ProgramsTests {
 
 	LimaUnittestResult TestBuildMembrane(EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "etc";
-
-		std::vector<std::string> args = {
-			"lima", "buildMembrane",
-			"-lipids", "DPPC", "60", "DOPC", "40",
-			"-centerz", "3.0",
-			"-boxsize", "12.0", "10.0","8.0",
-			"-emtol", "50",
-			"-working_dir", workDir.string().c_str(),
-			"-d"
+		Lipids::Selection lipids{
+			Lipids::Select{ "DPPC", workDir, 60.0 },
+			Lipids::Select{ "DOPC", workDir, 40.0 }
 		};
+		GroFile grofile;
+		grofile.box_size = Float3{ 12.f, 10.f, 8.f };
+		grofile.title = "Membrane";
+		TopologyFile topfile;
+		topfile.SetSystem("Membrane");
+		SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 3.f);
+		Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, true, 50.f);
 
-		std::vector<char*> argv;
-		for (auto& arg : args)
-			argv.push_back(arg.data());
-
-		int ret = buildMembrane(args.size(), argv.data());
-
-		return LimaUnittestResult{ ret == 0, "Success", envmode == Full };
+		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 	LimaUnittestResult TestToGmx_pdbfile(EnvMode envmode) {

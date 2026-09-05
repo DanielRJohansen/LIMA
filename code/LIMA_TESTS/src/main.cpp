@@ -40,7 +40,7 @@ void TestDisplayT4() {
 	}
 
 
-	display.Render(std::make_unique<Rendering::SimulationTask>(
+	display.Render(std::make_unique<Rendering::AtomRenderTask>(
 		box->persistentClusters, box->persistentClustersMetadata, box->boxparams, SimStatus{}, box->backboneChains), true);
 	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(positions.data(), nullptr, SimStatus{}), true);
 }
@@ -142,7 +142,7 @@ int main() {
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode, 1.15e-4, 2.e-6);
+		//loadAndRunBasicSimulation("T4Lysozyme", envmode,"T4Lysozyme");
 
 
 		//const fs::path workDir = simulations_dir / "test";

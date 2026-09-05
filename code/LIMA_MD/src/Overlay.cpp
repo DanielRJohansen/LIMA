@@ -520,7 +520,7 @@ void Overlay::HandleContextMenu(RenderSettings& renderSettings, std::optional<gl
     }
 }
 
-void DrawBottomBar(RenderSettings& renderSettings)
+void DrawBottomBar(RenderSettings& renderSettings, std::deque<Overlay::Command>& submittedCommands)
 {
     ImVec2 winSize = ImGui::GetIO().DisplaySize;
 
@@ -549,7 +549,8 @@ void DrawBottomBar(RenderSettings& renderSettings)
     float offset = (kBottomBarHeight - widgetHeight) * 0.5f;
 
     ImGui::SetCursorPosY(offset);
-    ImGui::Checkbox("Show solvents", &renderSettings.showSolvents);
+    if (ImGui::Checkbox("Show solvents", &renderSettings.showSolvents))
+        submittedCommands.push_back(Overlay::SolventVisibility{ renderSettings.showSolvents });
 
     EndFloatingPanel();
 }
@@ -580,7 +581,7 @@ void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, i
     if (enableConsole)
         HandleConsole();
 
-    DrawBottomBar(renderSettings);
+    DrawBottomBar(renderSettings, submittedCommands);
     HandleContextMenu(renderSettings, rightClickedPos);
 	if (spinnerVisible)
 		DrawSpinner();

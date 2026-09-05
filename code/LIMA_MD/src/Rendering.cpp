@@ -312,19 +312,73 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 	return elementId;
 }
 
-void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool ignorePosition)
+Rendering::AtomRenderTask::AtomRenderTask(const GroFile& grofile, bool shouldShowSolvents)
+	: positions(grofile.atoms.size())
+	, atoms(grofile.atoms.size())
+	, packedPositionIndices(grofile.atoms.size())
+	, boxSize(grofile.box_size)
+	, showSolvents(shouldShowSolvents)
 {
+	for (std::size_t atomId = 0; atomId < grofile.atoms.size(); ++atomId) {
+		const GroRecord& atom = grofile.atoms[atomId];
+		positions[atomId] = atom.position;
+		packedPositionIndices[atomId] = static_cast<int>(atomId);
+		atoms[atomId].atomLetter = atom.atomName[0];
+		atoms[atomId].isSolvent = atom.residueName == "SOL" || atom.residueName == "TIP3";
+	}
+}
+
+Rendering::AtomRenderTask::AtomRenderTask(
+	const std::vector<PersistentCluster>& pclusters,
+	const std::vector<PersistentClusterMeta>& pcMeta,
+	const BoxParams& boxparams,
+	SimStatus initialSimStatus,
+	BackboneChains initialBackboneChains)
+	: positions(boxparams.totalParticles)
+	, atoms(boxparams.totalParticles)
+	, packedPositionIndices(boxparams.totalParticles, -1)
+	, boxSize(boxparams.BoxSizeFloat())
+	, simStatus(initialSimStatus)
+	, backboneChains(std::move(initialBackboneChains))
+{
+	for (std::size_t pcid = 0; pcid < pcMeta.size(); ++pcid) {
+		for (int pid = 0; pid < PersistentCluster::maxParticles; ++pid) {
+			const int globalParticleId = pcMeta[pcid].particleIdsGlobal[pid];
+			if (globalParticleId < 0)
+				continue;
+
+			const std::size_t atomId = static_cast<std::size_t>(globalParticleId);
+			if (atomId >= atoms.size() || pcid >= pclusters.size())
+				throw std::runtime_error("Invalid simulation particle mapping in render task");
+
+			positions[atomId] = pclusters[pcid].pqd[pid].position;
+			packedPositionIndices[atomId] = static_cast<int>(pcid * PersistentCluster::maxParticles + pid);
+			atoms[atomId] = {
+				pcMeta[pcid].atomLetter[pid],
+				pclusters[pcid].pqd[pid].params.charge,
+				static_cast<int>(pcid),
+				pcMeta[pcid].isSolvent
+			};
+		}
+	}
+}
+
+void Display::PrepareNewRenderTask(Rendering::AtomRenderTask& task, bool ignorePosition)
+{
+	if (!ignorePosition)
+		rendersettings.showSolvents = task.showSolvents;
+
 	if (rendersettings.coloringMethod == ColoringMethod::NewCartoon) {
 		if (!newCartoonRenderer)
 			newCartoonRenderer = std::make_unique<NewCartoon::Renderer>();
 		newCartoonRenderer->Prepare(
-			task.backboneChains, task.pclusters, task.pcMeta, task.boxparams.BoxSizeFloat());
+			task.backboneChains, task.positions, task.boxSize);
 	}
 	else if (newCartoonRenderer) {
 		newCartoonRenderer->Clear();
 	}
 
-	camera.Update(task.boxparams.BoxSizeFloat());
+	camera.Update(task.boxSize);
 
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
@@ -340,42 +394,36 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 
 	// Preprocess the renderAtoms
 	{
-		renderAtomsHost.resize(task.boxparams.totalParticles, RenderAtom{});
-		for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
-			for (int pid = 0; pid < 4; pid++) {
-				const PersistentClusterMeta& pcMeta = task.pcMeta[pcid];
-				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
+		renderAtomsHost.resize(task.atoms.size(), RenderAtom{});
+		for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
+			const Rendering::AtomRenderData& atom = task.atoms[atomId];
+			const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+			const float chargeNormalized = (atom.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
 
-				if (pidGlobal == -1)
-					continue;
+			if (!ignorePosition)
+				renderAtomsHost[atomId].position = task.positions[atomId].Tofloat4(RenderUtilities::getRadius(atomType));
+			renderAtomsHost[atomId].flags.y = static_cast<int>(atomId);
 
-				auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
-				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-
-				if (!ignorePosition)
-					renderAtomsHost[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
-				renderAtomsHost[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
-
-				if (rendersettings.coloringMethod == ColoringMethod::Atomname
-					|| rendersettings.coloringMethod == ColoringMethod::NewCartoon)
-					renderAtomsHost[pidGlobal].color = RenderUtilities::getColor(atomType);
-				else if (rendersettings.coloringMethod == ColoringMethod::Charge) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
-				}
-				else if (rendersettings.coloringMethod == ColoringMethod::PersistentClusterId) {
-					int nElementsPerRevolution = 12;
-					float fraction = (static_cast<float>(pcid % nElementsPerRevolution) / static_cast<float>(nElementsPerRevolution));
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(fraction);
-				}
-				else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid) {					
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pidGlobal) / static_cast<float>(task.boxparams.totalParticles));
-				}
-				else if (rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e6f);
-				}
-				if (!rendersettings.showSolvents && pcMeta.isSolvent)
-					renderAtomsHost[pidGlobal].color.w = 0.f;
+			if (task.highlightedAtoms.contains(static_cast<int>(atomId)))
+				renderAtomsHost[atomId].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f);
+			else if (rendersettings.coloringMethod == ColoringMethod::Atomname
+				|| rendersettings.coloringMethod == ColoringMethod::NewCartoon)
+				renderAtomsHost[atomId].color = RenderUtilities::getColor(atomType);
+			else if (rendersettings.coloringMethod == ColoringMethod::Charge)
+				renderAtomsHost[atomId].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+			else if (rendersettings.coloringMethod == ColoringMethod::PersistentClusterId) {
+				constexpr int nElementsPerRevolution = 12;
+				const int groupId = std::max(atom.groupId, 0);
+				const float fraction = static_cast<float>(groupId % nElementsPerRevolution) / nElementsPerRevolution;
+				renderAtomsHost[atomId].color = RenderUtilities::GetColorInGradientHue(fraction);
 			}
+			else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid)
+				renderAtomsHost[atomId].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / task.atoms.size());
+			else if (rendersettings.coloringMethod == ColoringMethod::ForceMagnitude)
+				renderAtomsHost[atomId].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e6f);
+
+			if (!rendersettings.showSolvents && atom.isSolvent)
+				renderAtomsHost[atomId].color.w = 0.f;
 		}
 	}
 
@@ -390,28 +438,24 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 	renderAtomsBuffer->SetData(renderAtomsHost);
 }
 
-void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate& update)
+void Display::PrepareNewRenderTask(Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate& update)
 {
 	currentTask.simStatus = update.simStatus;
 
 	// Update the renderAtoms
 	{
-		for (int pcid = 0; pcid < currentTask.pcMeta.size(); pcid++) {
-			for (int pid = 0; pid < 4; pid++) {
-				const PersistentClusterMeta& pcMeta = currentTask.pcMeta[pcid];
-				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
-				if (pidGlobal == -1)
-					continue;
-				renderAtomsHost[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsHost[pidGlobal].position.w);
-				currentTask.pclusters[pcid].pqd[pid].position = update.positions[pcid * PersistentCluster::maxParticles + pid];
-				if (update.forceMagnitudes && rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(update.forceMagnitudes[pidGlobal], 1e5f, 1e11f);
-				}
-			}
+		for (std::size_t atomId = 0; atomId < currentTask.atoms.size(); ++atomId) {
+			const int packedPositionIndex = currentTask.packedPositionIndices[atomId];
+			if (packedPositionIndex < 0)
+				continue;
+			currentTask.positions[atomId] = update.positions[packedPositionIndex];
+			renderAtomsHost[atomId].position = currentTask.positions[atomId].Tofloat4(renderAtomsHost[atomId].position.w);
+			if (update.forceMagnitudes && rendersettings.coloringMethod == ColoringMethod::ForceMagnitude)
+				renderAtomsHost[atomId].color = RenderUtilities::GetLogColorGradient(update.forceMagnitudes[atomId], 1e5f, 1e11f);
 		}
 	}
 	if (rendersettings.coloringMethod == ColoringMethod::NewCartoon && newCartoonRenderer)
-		newCartoonRenderer->Update(update.positions);
+		newCartoonRenderer->Update(currentTask.positions);
 	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsHost.size()) {
 		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
 		if (attachedAtomId < renderAtomsHost.size()) {
@@ -496,19 +540,13 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
 		std::visit([&](auto& taskPtr) {
 			using T = std::decay_t<decltype(taskPtr)>;
-			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
-				const int nParticles = taskPtr->boxparams.totalParticles;
+			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::AtomRenderTask>>) {
 				simStatus = taskPtr->simStatus;
-				boxSize = taskPtr->boxparams.BoxSizeFloat();
-				//_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
+				boxSize = taskPtr->boxSize;
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
 				//_Render(taskPtr->molCollection, taskPtr->boxSize);
 				boxSize = taskPtr->boxSize;
-			}
-			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
-				//_RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
-				boxSize = taskPtr->grofile.box_size;
 			}
 			}, currentRenderTask);
 	}
@@ -527,15 +565,11 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
 		std::visit([&](auto& taskPtr) {
 			using T = std::decay_t<decltype(taskPtr)>;
-			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
-				const int nParticles = taskPtr->boxparams.totalParticles;
+			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::AtomRenderTask>>) {
 				_RenderAtoms();
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
 				_Render(taskPtr->molCollection, taskPtr->boxSize);
-			}
-			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
-				_RenderAtoms();
 			}
 			}, currentRenderTask);
 	}
@@ -557,54 +591,6 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	glfwSwapBuffers(window);
 }
 
-
-void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
-	if (newCartoonRenderer)
-		newCartoonRenderer->Clear();
-	int nAtoms = task.grofile.atoms.size();
-	if (!task.drawSolvent) {
-		for (int i = 0; i < task.grofile.atoms.size(); i++) {
-			auto resname = task.grofile.atoms[i].residueName;
-			if (resname == "SOL" || resname == "TIP3") {
-				nAtoms = i;
-				break;
-			}
-		}
-	}
-	task.nAtoms = nAtoms;
-
-	if (!drawBoxOutlineShader)
-		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
-
-	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader>();
-
-
-
-	camera.Update(task.grofile.box_size);
-
-	// Preprocess the renderAtoms
-	{
-		renderAtomsHost.resize(nAtoms);
-
-		for (int i = 0; i < nAtoms; i++) {
-			renderAtomsHost[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
-
-			if (task.highlightedAtoms.contains(i))
-				renderAtomsHost[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f); // Highlighted atoms are pink
-			else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid)
-				renderAtomsHost[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
-			else
-				renderAtomsHost[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
-		}
-	}
-
-	// Move the renderAtoms to device
-	{
-		renderAtomsBuffer->SetData(renderAtomsHost);
-	}
-
-}
 
 void Display::_UpdateSelection(const std::set<int>& selection) {
 	// This is purposefully done in 2 passes, as the selection is likely MUCH smaller that the renderatoms, and this no point in doing lookings.

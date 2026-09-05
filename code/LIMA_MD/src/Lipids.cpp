@@ -234,7 +234,7 @@ void Lipids::_MakeLipid(const std::string& name) {
 	// Chicken before egg issue, cant load the lipid as it is not correctly part of the ff yet?
 	{
 		std::unique_ptr<Display> display = std::make_unique<Display>();
-		display->Render(std::make_unique<Rendering::GrofileTask>(grofile, true), true);
+		display->Render(std::make_unique<Rendering::AtomRenderTask>(grofile, true), true);
 
 
 		//Environment env{ grofile.m_path.parent_path(), Headless };

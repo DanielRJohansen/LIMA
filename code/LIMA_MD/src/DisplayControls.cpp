@@ -359,6 +359,10 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
                 rendersettings.coloringMethod = cmd;
                 shouldRecolorAtoms |= true;
             }
+            else if constexpr (std::is_same_v<T, Overlay::SolventVisibility>) {
+                rendersettings.showSolvents = cmd.visible;
+                shouldRecolorAtoms |= true;
+            }
             else {
                 int a = 0;
             }

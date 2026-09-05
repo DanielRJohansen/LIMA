@@ -13,15 +13,14 @@ namespace NewCartoon {
 
 class Renderer {
 public:
-	// Bind immutable global backbone ids to the simulation's packed position layout.
+	// Bind immutable global backbone ids to renderer-owned global positions.
 	void Prepare(
 		const BackboneChains& backboneChains,
-		const std::vector<PersistentCluster>& pclusters,
-		const std::vector<PersistentClusterMeta>& pcMeta,
+		const std::vector<Float3>& positions,
 		Float3 boxSize);
 
 	// Position-only fast path. The secondary-structure assignment is preserved.
-	void Update(const Float3* packedPositions);
+	void Update(const std::vector<Float3>& positions);
 	void Clear();
 	void Draw(DrawTrianglesShader& shader, const glm::mat4& viewProjection) const;
 
@@ -30,7 +29,6 @@ public:
 private:
 	struct BoundPoint {
 		int globalParticleId = -1;
-		int packedPositionIndex = -1;
 		SecondaryStructure secondaryStructure = SecondaryStructure::Coil;
 	};
 
@@ -52,7 +50,7 @@ private:
 	void RebuildMeshes();
 
 	Float3 boxSize{};
-	std::size_t packedPositionCount = 0;
+	std::size_t positionCount = 0;
 	std::vector<BoundChain> boundChains;
 	std::vector<DrawableRun> drawableRuns;
 };

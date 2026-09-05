@@ -67,7 +67,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
 
 	if (display) {
-		display->Render(std::make_unique<Rendering::SimulationTask>(
+		display->Render(std::make_unique<Rendering::AtomRenderTask>(
 			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 			simulation->box->boxparams, simStatus, simulation->box->backboneChains
 		));
@@ -199,7 +199,7 @@ std::chrono::duration<double> Environment::run() {
 	if (m_mode == Full) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
-		display->Render(std::make_unique<Rendering::SimulationTask>(
+		display->Render(std::make_unique<Rendering::AtomRenderTask>(
 			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 			simulation->box->boxparams, simStatus, simulation->box->backboneChains
 		), stepwise);

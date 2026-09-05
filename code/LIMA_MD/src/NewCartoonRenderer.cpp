@@ -229,52 +229,31 @@ glm::vec4 StructureColor(SecondaryStructure structure)
 
 void Renderer::Prepare(
 	const BackboneChains& backboneChains,
-	const std::vector<PersistentCluster>& pclusters,
-	const std::vector<PersistentClusterMeta>& pcMeta,
+	const std::vector<Float3>& positions,
 	Float3 newBoxSize)
 {
 	Clear();
 	boxSize = newBoxSize;
-	packedPositionCount = pclusters.size() * PersistentCluster::maxParticles;
-
-	int largestGlobalParticleId = -1;
-	for (const PersistentClusterMeta& meta : pcMeta) {
-		for (int particleId : meta.particleIdsGlobal)
-			largestGlobalParticleId = std::max(largestGlobalParticleId, particleId);
-	}
-	std::vector<int> globalToPacked(static_cast<std::size_t>(largestGlobalParticleId + 1), -1);
-	for (std::size_t pcid = 0; pcid < pcMeta.size(); ++pcid) {
-		for (int pid = 0; pid < PersistentCluster::maxParticles; ++pid) {
-			const int globalId = pcMeta[pcid].particleIdsGlobal[pid];
-			if (globalId >= 0)
-				globalToPacked[globalId] = static_cast<int>(pcid * PersistentCluster::maxParticles + pid);
-		}
-	}
+	positionCount = positions.size();
 
 	for (const BackboneChain& sourceChain : backboneChains) {
 		BoundChain chain;
 		chain.points.reserve(sourceChain.points.size());
 		for (const BackbonePoint& point : sourceChain.points) {
-			if (point.particleId < 0 || static_cast<std::size_t>(point.particleId) >= globalToPacked.size()
-				|| globalToPacked[point.particleId] < 0) {
+			if (point.particleId < 0 || static_cast<std::size_t>(point.particleId) >= positionCount) {
 				if (chain.points.size() >= 2)
 					boundChains.push_back(std::move(chain));
 				chain = {};
 				continue;
 			}
-			chain.points.push_back({ point.particleId, globalToPacked[point.particleId], point.secondaryStructure });
+			chain.points.push_back({ point.particleId, point.secondaryStructure });
 		}
 		if (chain.points.size() >= 2)
 			boundChains.push_back(std::move(chain));
 	}
 
 	BuildDrawableRuns();
-	std::vector<Float3> initialPositions(packedPositionCount);
-	for (std::size_t pcid = 0; pcid < pclusters.size(); ++pcid) {
-		for (int pid = 0; pid < PersistentCluster::maxParticles; ++pid)
-			initialPositions[pcid * PersistentCluster::maxParticles + pid] = pclusters[pcid].pqd[pid].position;
-	}
-	Update(initialPositions.data());
+	Update(positions);
 }
 
 void Renderer::BuildDrawableRuns()
@@ -301,20 +280,20 @@ void Renderer::BuildDrawableRuns()
 	}
 }
 
-void Renderer::Update(const Float3* packedPositions)
+void Renderer::Update(const std::vector<Float3>& positions)
 {
-	if (!packedPositions || packedPositionCount == 0)
+	if (positions.empty() || positionCount == 0)
 		return;
 
 	for (BoundChain& chain : boundChains) {
 		chain.positions.resize(chain.points.size());
 		glm::vec3 previousRawPosition{};
 		for (std::size_t i = 0; i < chain.points.size(); ++i) {
-			const int packedIndex = chain.points[i].packedPositionIndex;
-			if (packedIndex < 0 || static_cast<std::size_t>(packedIndex) >= packedPositionCount)
+			const int globalParticleId = chain.points[i].globalParticleId;
+			if (globalParticleId < 0 || static_cast<std::size_t>(globalParticleId) >= positions.size())
 				continue;
 
-			const glm::vec3 rawPosition = ToCartoonVec3(packedPositions[packedIndex]);
+			const glm::vec3 rawPosition = ToCartoonVec3(positions[globalParticleId]);
 			if (i == 0)
 				chain.positions[i] = rawPosition;
 			else
@@ -346,7 +325,7 @@ void Renderer::RebuildMeshes()
 
 void Renderer::Clear()
 {
-	packedPositionCount = 0;
+	positionCount = 0;
 	boundChains.clear();
 	drawableRuns.clear();
 }

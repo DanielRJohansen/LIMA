@@ -97,12 +97,6 @@ Example:
 		}
     }
 
-	if (hidewater) {
-		while (!grofile.atoms.empty() && grofile.atoms.back().residueName == "SOL") {
-			grofile.atoms.pop_back();
-		}
-	}
-
 	// Converted coordinate files carry crystallographic cell dimensions, which do
 	// not necessarily bound the displayed biological structure. A whole structure
 	// can likewise extend beyond its former periodic cell after unwrapping.
@@ -111,7 +105,7 @@ Example:
     std::set<int> highlightedAtoms(highlightAtomsInput.begin(), highlightAtomsInput.end());
 
     Display d{};
-    auto renderTask = std::make_unique<Rendering::GrofileTask>(grofile);
+	auto renderTask = std::make_unique<Rendering::AtomRenderTask>(grofile, !hidewater);
 	renderTask->highlightedAtoms = highlightedAtoms;
     d.Render(std::move(renderTask), true);
 

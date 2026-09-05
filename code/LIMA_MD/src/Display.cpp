@@ -226,15 +226,12 @@ void Display::WaitForDisplayReady() {
 void Display::PrepareTask(Task& task, bool ignorePosition) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
-        if constexpr (std::is_same_v<T, std::unique_ptr<SimulationTask>>) {
+		if constexpr (std::is_same_v<T, std::unique_ptr<AtomRenderTask>>) {
             PrepareNewRenderTask(*taskPtr, ignorePosition);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
             PrepareNewRenderTask(*taskPtr);
         }
-        else if constexpr(std::is_same_v<T, std::unique_ptr<GrofileTask>>) {
-			PrepareNewRenderTask(*taskPtr);
-		}
 		else {
 			throw std::runtime_error("Unknown task type");
 		}
@@ -268,11 +265,11 @@ void Display::Mainloop() {
                 incomingRenderTasks.pop_front();
 
                 if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
-                    if (std::holds_alternative<std::unique_ptr<SimulationTask>>(currentRenderTask)) {
+					if (std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
                         if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
                             int a = 0;
                         }
-                        PrepareNewRenderTask(*std::get<std::unique_ptr<SimulationTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
+						PrepareNewRenderTask(*std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
                         //incomingRenderTask = Rendering::NoTask{};
                         updatedPositions = true;
                     }
@@ -495,6 +492,6 @@ void Display::TestDisplay() {
     std::vector<PersistentClusterMeta> pcMetas(1);
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
-	display.Render(std::make_unique<Rendering::SimulationTask>(pclusters, pcMetas, params), true);
+	display.Render(std::make_unique<Rendering::AtomRenderTask>(pclusters, pcMetas, params), true);
 	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), nullptr, SimStatus{}), true);
 }

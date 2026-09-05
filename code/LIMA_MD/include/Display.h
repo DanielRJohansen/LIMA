@@ -68,13 +68,32 @@ public:
 namespace Rendering {
 	struct NoTask{};
 
-	// Sent at simulation start
-	struct SimulationTask {
-		std::vector<PersistentCluster> pclusters;
-		std::vector<PersistentClusterMeta> pcMeta; // TODO: This could just be a ref, since it remains constant?
-		const BoxParams boxparams;	
+	struct AtomRenderData {
+		char atomLetter = ' ';
+		float charge = 0.f;
+		int groupId = -1;
+		bool isSolvent = false;
+	};
+
+	// Renderer-owned snapshot. Simulations and coordinate files are adapted to this
+	// representation before they enter the display queue.
+	struct AtomRenderTask {
+		std::vector<Float3> positions;
+		std::vector<AtomRenderData> atoms;
+		std::vector<int> packedPositionIndices;
+		Float3 boxSize{};
 		SimStatus simStatus;
 		BackboneChains backboneChains;
+		std::set<int> highlightedAtoms;
+		bool showSolvents = true;
+
+		AtomRenderTask(const GroFile& grofile, bool showSolvents = true);
+		AtomRenderTask(
+			const std::vector<PersistentCluster>& pclusters,
+			const std::vector<PersistentClusterMeta>& pcMeta,
+			const BoxParams& boxparams,
+			SimStatus simStatus = {},
+			BackboneChains backboneChains = {});
 	};
 	// Sent at each render-step
 	struct SimulationTaskUpdate {
@@ -88,14 +107,7 @@ namespace Rendering {
 		Float3 boxSize{};
 	};
 
-	struct GrofileTask {
-		const GroFile& grofile;
-		bool drawSolvent = true;
-		int nAtoms;
-		std::set<int> highlightedAtoms;
-	};
-
-	using Task = std::variant<NoTask, std::unique_ptr<SimulationTask>, std::unique_ptr<SimulationTaskUpdate>, std::unique_ptr<MoleculehullTask>, std::unique_ptr<GrofileTask>>;
+	using Task = std::variant<NoTask, std::unique_ptr<AtomRenderTask>, std::unique_ptr<SimulationTaskUpdate>, std::unique_ptr<MoleculehullTask>>;
 }
 
 struct RenderSettings {
@@ -106,7 +118,8 @@ struct RenderSettings {
 class Overlay {
 public:	
 	struct SubmittedCmd { std::string cmd{}; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod>;
+	struct SolventVisibility { bool visible = true; };
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility>;
 private:
 	bool didDrawThisFrame = false;
 
@@ -200,9 +213,9 @@ public:
 	std::atomic_bool allowUserInputs = false;
 
 	static void TestDisplay();
-	static void RenderGrofile(const GroFile& grofile, bool drawSolvent=true) {
+	static void RenderGrofile(const GroFile& grofile, bool showSolvents=true) {
 		Display d;
-		d.Render(std::make_unique<Rendering::GrofileTask>(grofile, drawSolvent), true);
+		d.Render(std::make_unique<Rendering::AtomRenderTask>(grofile, showSolvents), true);
 	}
 
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
@@ -222,10 +235,9 @@ private:
 
 	void PrepareTask(Rendering::Task& task, bool ignorePosition);
 
-	void PrepareNewRenderTask(const Rendering::SimulationTask&, bool ignorePosition);
-	void PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate&);
+	void PrepareNewRenderTask(Rendering::AtomRenderTask&, bool ignorePosition);
+	void PrepareNewRenderTask(Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
 	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
-	void PrepareNewRenderTask(Rendering::GrofileTask&);
 
 	void _UpdateSelection(const std::set<int>& selection);
 

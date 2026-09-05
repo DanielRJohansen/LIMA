@@ -23,4 +23,9 @@ namespace Programs {
 		bool writePositionsToGrofile, const fs::path& workDir, EnvMode, bool mayOverlapEdges, float emtol=100.f);
 
 	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&, bool render);
+
+	/// Build a CHARMM27 topology and coordinates from a PDB structure. Output is
+	/// written next to pdbfile as conf.gro/topol.top/posre.itp, or with the
+	/// supplied basename as <name>.gro/<name>.top/<name>_posre.itp.
+	void pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name = std::nullopt);
 }

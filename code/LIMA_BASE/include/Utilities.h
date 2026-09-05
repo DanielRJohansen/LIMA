@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <string_view>
 
 namespace LIMA_UTILS {
 
@@ -55,6 +56,8 @@ namespace LIMA_UTILS {
 
 namespace StringUtils {
     std::string FormatTime(std::chrono::duration<double> duration, int decimalPlacesBeforePoint, int decimalPlacesAfterPoint); // Formats into "%%.%% [s/min/hr/days/weeks/months/years]
+
+    std::vector<std::string> SplitWords(std::string_view line);
 }
 
 

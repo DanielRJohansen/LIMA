@@ -33,6 +33,24 @@ namespace TestUtils {
 		}
 	}
 
+	bool MayModifyDir(const fs::path& path) {
+		if (path.string().find("LIMA_data") == std::string::npos && path.string().find("automatedtests") == std::string::npos) {
+			throw std::runtime_error("LIMA is not allowed to clean this directory");
+			return false;
+		}
+		return true;
+	}
+
+	void TryDeleteFile(const fs::path& path) {
+		MayModifyDir(path);
+		try {
+			fs::remove(path);
+		}
+		catch (const fs::filesystem_error& e) {
+			std::cerr << "Error removing " << path << ": " << e.what() << '\n';
+		}
+	}
+
 	void CleanDirectory(const fs::path& dir) {
 		if (dir.string().find("LIMA_data") == std::string::npos) {
 			throw std::runtime_error("LIMA is not allowed to clean this directory");
@@ -64,12 +82,7 @@ namespace TestUtils {
 		// Remove all files that do not contain "reference" in their name
 		for (auto& p : fs::recursive_directory_iterator(dir)) {
 			if (fs::is_regular_file(p) && p.path().filename().string().find(except) == std::string::npos) {
-				try {
-					fs::remove(p);
-				}
-				catch (const fs::filesystem_error& e) {
-					std::cerr << "Error removing " << p.path() << ": " << e.what() << '\n';
-				}
+				TryDeleteFile(p.path());
 			}
 		}
 
@@ -522,6 +535,73 @@ namespace TestUtils {
 		else {
 			return LimaUnittestResult{ true, "Success", envmode != Headless };
 		}
+	}
+
+	LimaUnittestResult CompareTopologyFiles(const TopologyFile& newTop, const TopologyFile& refTop, EnvMode envmode) {
+
+		auto EqualUnordered = []<std::ranges::input_range R1, std::ranges::input_range R2>(R1&& a, R2&& b) {
+			using T = std::ranges::range_value_t<R1>;
+
+			std::vector<T> va(std::ranges::begin(a), std::ranges::end(a));
+			std::vector<T> vb(std::ranges::begin(b), std::ranges::end(b));
+			if (va.size() != vb.size())
+				return false;
+
+			// Bonded interactions are invariant under complete atom-order reversal.
+			auto canonicalize = [](T& interaction) {
+				auto reversedIds = interaction.ids;
+				std::ranges::reverse(reversedIds);
+				if (reversedIds < interaction.ids)
+					interaction.ids = reversedIds;
+			};
+			std::ranges::for_each(va, canonicalize);
+			std::ranges::for_each(vb, canonicalize);
+
+			auto byIdsAndFunction = [](const T& lhs, const T& rhs) {
+				if (lhs.ids != rhs.ids)
+					return lhs.ids < rhs.ids;
+				return lhs.funct < rhs.funct;
+			};
+			std::ranges::sort(va, byIdsAndFunction);
+			std::ranges::sort(vb, byIdsAndFunction);
+
+			return va == vb;
+		};
+
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology AtomsEntry Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology SingleBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::PairBond>(), refTop.GetAllElements<TopologyFile::PairBond>()), "Topology PairBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology AngleBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology DihedralBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology ImproperDihedralBond Mismatch");
+		return LimaUnittestResult{ true, "Success", false };
+	}
+
+	LimaUnittestResult CompareGroFiles(const GroFile& newGro, const GroFile& refGro, EnvMode envmode, float maxCoordinateError=0.0015) {		
+		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
+		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
+		for (int i = 0; i < newGro.atoms.size(); i++) {
+			const auto& newAtom = newGro.atoms[i];
+			const auto& refAtom = refGro.atoms[i];
+			ASSERT(newAtom.residue_number == refAtom.residue_number, "Residue number mismatch");
+			ASSERT(newAtom.residueName == refAtom.residueName, "Residue name mismatch");
+			ASSERT(newAtom.atomName== refAtom.atomName, "Atom name mismatch");
+			ASSERT(newAtom.gro_id== refAtom.gro_id, "Atom number mismatch");
+
+
+			bool errX = std::abs(newAtom.position.x - refAtom.position.x) > maxCoordinateError;
+			bool errY = std::abs(newAtom.position.y - refAtom.position.y) > maxCoordinateError;
+			bool errZ = std::abs(newAtom.position.z - refAtom.position.z) > maxCoordinateError;
+			if (errX || errY || errZ) {
+				std::string errorMsg = std::format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
+					newAtom.gro_id,
+					newAtom.position.x, newAtom.position.y, newAtom.position.z,
+					refAtom.position.x, refAtom.position.y, refAtom.position.z);
+				return LimaUnittestResult{ false, errorMsg, envmode != Headless };
+			}
+
+		}
+		return LimaUnittestResult{ true, "Success", false };
 	}
 
 } // namespace TestUtils

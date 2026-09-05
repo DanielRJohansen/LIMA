@@ -160,3 +160,10 @@ std::string StringUtils::FormatTime(
 
     return std::format("{} [{}]", formatted, selectedUnit->suffix);
 }
+
+std::vector<std::string> StringUtils::SplitWords(std::string_view line) {
+    	std::istringstream input{ std::string(line) };
+    	std::vector<std::string> result;
+    	for (std::string word; input >> word;) result.push_back(std::move(word));
+    	return result;
+    }

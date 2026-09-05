@@ -236,12 +236,10 @@ namespace TestMembraneBuilder {
 		//	std::string str = oss.str();
 		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
 		//}
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::PairBond>(), refTop.GetAllElements<TopologyFile::PairBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology Atom Mismatch");
+
+		LimaUnittestResult topTestResults = TestUtils::CompareTopologyFiles(newTop, refTop, envmode);
+		if (!topTestResults.success)
+			return topTestResults;
 		
 		// Test the conf is identical to reference
 		GroFile newGro{ mol_dir / "membrane.gro" };

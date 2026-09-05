@@ -94,9 +94,9 @@ void BuildCellTest() {
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
-
 		//TestDisplayT4();
-		LiveEditTest();
+		ProgramsTests::TestPdb2Gmx_pdbfile(envmode);
+		//LiveEditTest();
 		//BuildCellTest();
 
 
@@ -301,6 +301,7 @@ void RunAllUnitTests() {
 	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
 
 	// Programs test
+	ADD_TEST("pdb2gmx matches GROMACS", ProgramsTests::TestPdb2Gmx_pdbfile(envmode));
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));

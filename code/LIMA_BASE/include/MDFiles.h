@@ -400,6 +400,9 @@ struct TopologyFile::GenericBond{
     bool operator==(const GenericBond<N, ParametersType>& other) const {
 		return std::equal(std::begin(ids), std::end(ids), std::begin(other.ids)) && funct == other.funct;
 	}
+	auto operator<=>(const GenericBond& other) const {
+		return ids <=> other.ids;
+	}
 };
 struct TopologyFile::SingleBond : GenericBond<2, Bondtypes::SingleBond::Parameters> {};
 struct TopologyFile::PairBond : GenericBond<2, Bondtypes::PairBond::Parameters> {};

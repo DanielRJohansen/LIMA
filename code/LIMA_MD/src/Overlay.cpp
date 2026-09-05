@@ -513,10 +513,19 @@ void Overlay::HandleContextMenu(RenderSettings& renderSettings, std::optional<gl
 
         ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Atomname);
         ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Charge);
-        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::GradientFromAtomid);
-        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::PersistentClusterId);
-		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::ForceMagnitude);
-		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::NewCartoon);
+		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::GradientFromAtomid);
+		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::PersistentClusterId);
+		if (renderSettings.hasForceData)
+			ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::ForceMagnitude);
+		if (renderSettings.hasBackbone)
+			ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::NewCartoon);
+
+		ImGui::Separator();
+		ImGui::TextUnformatted("Camera");
+		if (ImGui::MenuItem("Reset camera"))
+			submittedCommands.push_back(ResetCamera{});
+		if (ImGui::MenuItem("Revolve"))
+			submittedCommands.push_back(RevolveCamera{});
 
         ImGui::EndPopup();
     }

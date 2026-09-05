@@ -257,6 +257,12 @@ void Display::Mainloop() {
         
         bool shouldRecolorAtoms = false;
         ConsumeInputs(shouldRecolorAtoms);
+		if (revolveCamera) {
+			const auto now = std::chrono::high_resolution_clock::now();
+			const float elapsedSeconds = std::chrono::duration<float>(now - lastRevolveTime).count();
+			camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
+			lastRevolveTime = now;
+		}
 
         // Check for new task
         bool newTask = false;

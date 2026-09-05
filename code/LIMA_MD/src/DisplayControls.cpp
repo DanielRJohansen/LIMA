@@ -250,6 +250,7 @@ void Display::OnMouseMove(double xpos, double ypos) {
 		activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), *camera, windowSize);
     }
     else if (isDragging) {
+		revolveCamera = false;
         const float sensitivity = 0.001f;
         const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
         const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity;
@@ -281,6 +282,8 @@ void Display::HandleGizmo(int objectId) {
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
+	if (action == GLFW_PRESS)
+		revolveCamera = false;
 
 	glm::ivec2 pixel{ static_cast<int>(mousePos.x),        static_cast<int>(mousePos.y) };
 	const int objectId = GetObjectIdAtPixel(pixel);
@@ -364,6 +367,14 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
 				rendersettings->showSolvents = cmd.visible;
                 shouldRecolorAtoms |= true;
             }
+			else if constexpr (std::is_same_v<T, Overlay::ResetCamera>) {
+				camera->Reset();
+				revolveCamera = false;
+			}
+			else if constexpr (std::is_same_v<T, Overlay::RevolveCamera>) {
+				revolveCamera = true;
+				lastRevolveTime = std::chrono::high_resolution_clock::now();
+			}
             else {
                 int a = 0;
             }

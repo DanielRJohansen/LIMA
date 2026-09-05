@@ -284,6 +284,14 @@ void Display::PrepareNewRenderTask(Rendering::AtomRenderTask& task, bool ignoreP
 {
 	if (!ignorePosition)
 		rendersettings->showSolvents = task.showSolvents;
+	if (!ignorePosition) {
+		rendersettings->hasBackbone = !task.backboneChains.empty();
+		rendersettings->hasForceData = false;
+		if (!rendersettings->hasBackbone && rendersettings->coloringMethod == ColoringMethod::NewCartoon)
+			rendersettings->coloringMethod = ColoringMethod::Atomname;
+		if (!rendersettings->hasForceData && rendersettings->coloringMethod == ColoringMethod::ForceMagnitude)
+			rendersettings->coloringMethod = ColoringMethod::Atomname;
+	}
 
 	if (rendersettings->coloringMethod == ColoringMethod::NewCartoon) {
 		if (!newCartoonRenderer)
@@ -358,6 +366,8 @@ void Display::PrepareNewRenderTask(Rendering::AtomRenderTask& task, bool ignoreP
 void Display::PrepareNewRenderTask(Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate& update)
 {
 	currentTask.simStatus = update.simStatus;
+	if (update.forceMagnitudes)
+		rendersettings->hasForceData = true;
 
 	// Update the renderAtoms
 	{

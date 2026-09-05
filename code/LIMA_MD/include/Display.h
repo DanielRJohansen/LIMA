@@ -99,6 +99,8 @@ private:
 	std::unique_ptr<RenderSettings> rendersettings;
 	std::unique_ptr<FPS> fps;
 	std::unique_ptr<TransformGizmo> activeGizmo;
+	bool revolveCamera = false;
+	std::chrono::high_resolution_clock::time_point lastRevolveTime{};
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	std::mutex incomingRenderTaskMutex;

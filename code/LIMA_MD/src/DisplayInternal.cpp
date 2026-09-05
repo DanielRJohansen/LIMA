@@ -9,6 +9,7 @@
 
 Camera::Camera(Float3 boxSize)
 	: center(boxSize / 2.f)
+	, boxSize(boxSize)
 	, dist(-2.f * boxSize.y)
 {}
 
@@ -21,11 +22,19 @@ void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist)
 
 void Camera::Update(Float3 boxSize)
 {
+	this->boxSize = boxSize;
 	if (center != boxSize / 2.f) {
 		const float currentAspectRatio = aspectRatio;
 		*this = Camera(boxSize);
 		aspectRatio = currentAspectRatio;
 	}
+}
+
+void Camera::Reset()
+{
+	const float currentAspectRatio = aspectRatio;
+	*this = Camera(boxSize);
+	aspectRatio = currentAspectRatio;
 }
 
 void Camera::UpdateViewport(glm::ivec2 viewportSize)

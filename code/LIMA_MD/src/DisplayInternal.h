@@ -28,6 +28,7 @@ public:
 
 class Camera {
 	Float3 center;
+	Float3 boxSize;
 	float dist = -2.f;
 	float yaw = 0;
 	float pitch = 0;
@@ -38,6 +39,7 @@ public:
 	void Update(float deltaYaw, float deltaPitch, float deltaDist);
 	void Update(Float3 boxSize);
 	void UpdateViewport(glm::ivec2 viewportSize);
+	void Reset();
 
 	glm::mat4 View() const;
 	glm::mat4 Projection() const;
@@ -47,13 +49,17 @@ public:
 struct RenderSettings {
 	bool showSolvents = true;
 	ColoringMethod coloringMethod{};
+	bool hasForceData = false;
+	bool hasBackbone = false;
 };
 
 class Overlay {
 public:
 	struct SubmittedCmd { std::string cmd{}; };
 	struct SolventVisibility { bool visible = true; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility>;
+	struct ResetCamera {};
+	struct RevolveCamera {};
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera>;
 private:
 	bool didDrawThisFrame = false;
 

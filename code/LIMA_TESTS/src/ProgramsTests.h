@@ -70,4 +70,28 @@ namespace ProgramsTests {
 			"Selected SPC/E water topology was not included");
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
+
+	LimaUnittestResult TestCif2Gmx_ciffile(EnvMode envmode) {
+		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
+		const fs::path generatedGro = directory / "generated_cif.gro";
+		const fs::path generatedTop = directory / "generated_cif.top";
+		const fs::path generatedPosre = directory / "generated_cif_posre.itp";
+		TryDeleteFile(generatedGro);
+		TryDeleteFile(generatedTop);
+		TryDeleteFile(generatedPosre);
+
+		Programs::cif2gmx(directory / "7LZM.cif", "generated_cif");
+		LimaUnittestResult gResult = CompareGroFiles(
+			GroFile{ generatedGro }, GroFile{ directory / "conf_ref.gro" }, envmode, 0.75f, 0.05f, 0.075f);
+		if (!gResult.success)
+			return LimaUnittestResult{ false, gResult.error_description, envmode == Full };
+
+		LimaUnittestResult tResult = CompareTopologyFiles(generatedTop, directory / "topol_ref.top", envmode);
+		if (!tResult.success)
+			return LimaUnittestResult{ false, tResult.error_description, envmode == Full };
+
+		ASSERT(ReadPositionRestraintAtoms(generatedPosre) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
+			"CIF position-restraint atom sets differ");
+		return LimaUnittestResult{ true, "Success", envmode == Full };
+	}
 }

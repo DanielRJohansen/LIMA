@@ -577,9 +577,14 @@ namespace TestUtils {
 		return LimaUnittestResult{ true, "Success", false };
 	}
 
-	LimaUnittestResult CompareGroFiles(const GroFile& newGro, const GroFile& refGro, EnvMode envmode, float maxCoordinateError=0.0015) {		
-		ASSERT(newGro.box_size == refGro.box_size, "Box size mismatch");
+	LimaUnittestResult CompareGroFiles(const GroFile& newGro, const GroFile& refGro, EnvMode envmode,
+		float maxCoordinateError=0.0015, float maxBoxError=0.f,
+		std::optional<float> maxCoordinateRmsd=std::nullopt) {
+		ASSERT(std::abs(newGro.box_size.x - refGro.box_size.x) <= maxBoxError
+			&& std::abs(newGro.box_size.y - refGro.box_size.y) <= maxBoxError
+			&& std::abs(newGro.box_size.z - refGro.box_size.z) <= maxBoxError, "Box size mismatch");
 		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
+		double squaredCoordinateError = 0.0;
 		for (int i = 0; i < newGro.atoms.size(); i++) {
 			const auto& newAtom = newGro.atoms[i];
 			const auto& refAtom = refGro.atoms[i];
@@ -592,6 +597,10 @@ namespace TestUtils {
 			bool errX = std::abs(newAtom.position.x - refAtom.position.x) > maxCoordinateError;
 			bool errY = std::abs(newAtom.position.y - refAtom.position.y) > maxCoordinateError;
 			bool errZ = std::abs(newAtom.position.z - refAtom.position.z) > maxCoordinateError;
+			const double dx = newAtom.position.x - refAtom.position.x;
+			const double dy = newAtom.position.y - refAtom.position.y;
+			const double dz = newAtom.position.z - refAtom.position.z;
+			squaredCoordinateError += dx * dx + dy * dy + dz * dz;
 			if (errX || errY || errZ) {
 				std::string errorMsg = std::format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
 					newAtom.gro_id,
@@ -600,6 +609,11 @@ namespace TestUtils {
 				return LimaUnittestResult{ false, errorMsg, envmode != Headless };
 			}
 
+		}
+		if (maxCoordinateRmsd) {
+			const double rmsd = std::sqrt(squaredCoordinateError / static_cast<double>(newGro.atoms.size()));
+			ASSERT(rmsd <= *maxCoordinateRmsd,
+				std::format("Coordinate RMSD {:.6f} exceeds allowed {:.6f}", rmsd, *maxCoordinateRmsd));
 		}
 		return LimaUnittestResult{ true, "Success", false };
 	}

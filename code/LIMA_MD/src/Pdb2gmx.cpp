@@ -45,7 +45,7 @@ std::string withoutComment(std::string line) {
 struct PdbAtom {
     std::string name;
     std::string residueName;
-    char chain{};
+    std::string chain;
     int residueNumber{};
     char insertionCode{};
     glm::vec3 position;
@@ -53,7 +53,7 @@ struct PdbAtom {
 
 struct PdbResidue {
     std::string name;
-    char chain{};
+    std::string chain;
     int number{};
     char insertionCode{};
     std::unordered_map<std::string, PdbAtom> atoms;
@@ -66,6 +66,24 @@ struct PdbInput {
     std::vector<PdbResidue> residues;
     std::optional<CrystalBox> box;
 };
+
+CrystalBox makeCrystalBox(double a, double b, double c, double alphaDegrees,
+                          double betaDegrees, double gammaDegrees) {
+    const double alpha = alphaDegrees * std::numbers::pi / 180.0;
+    const double beta = betaDegrees * std::numbers::pi / 180.0;
+    const double gamma = gammaDegrees * std::numbers::pi / 180.0;
+    const double bx = b * std::cos(gamma);
+    const double by = b * std::sin(gamma);
+    const double cx = c * std::cos(beta);
+    const double cy = c * (std::cos(alpha) - std::cos(beta) * std::cos(gamma)) / std::sin(gamma);
+    const double cz = std::sqrt(std::max(0.0, c * c - cx * cx - cy * cy));
+    return CrystalBox{ { a, by, cz, 0.0, 0.0, bx, 0.0, cx, cy } };
+}
+
+std::string lowercase(std::string value) {
+    std::ranges::transform(value, value.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
 
 PdbInput readPdb(const fs::path& path) {
     std::ifstream input(path);
@@ -84,15 +102,8 @@ PdbInput readPdb(const fs::path& path) {
             const double a = std::stod(line.substr(6, 9)) * 0.1;
             const double b = std::stod(line.substr(15, 9)) * 0.1;
             const double c = std::stod(line.substr(24, 9)) * 0.1;
-            const double alpha = std::stod(line.substr(33, 7)) * std::numbers::pi / 180.0;
-            const double beta = std::stod(line.substr(40, 7)) * std::numbers::pi / 180.0;
-            const double gamma = std::stod(line.substr(47, 7)) * std::numbers::pi / 180.0;
-            const double bx = b * std::cos(gamma);
-            const double by = b * std::sin(gamma);
-            const double cx = c * std::cos(beta);
-            const double cy = c * (std::cos(alpha) - std::cos(beta) * std::cos(gamma)) / std::sin(gamma);
-            const double cz = std::sqrt(std::max(0.0, c * c - cx * cx - cy * cy));
-            result.box = CrystalBox{ { a, by, cz, 0.0, 0.0, bx, 0.0, cx, cy } };
+            result.box = makeCrystalBox(a, b, c, std::stod(line.substr(33, 7)),
+                std::stod(line.substr(40, 7)), std::stod(line.substr(47, 7)));
         }
 
         if (!line.starts_with("ATOM  ") || line.size() < 54) continue;
@@ -105,7 +116,7 @@ PdbInput readPdb(const fs::path& path) {
         atom.residueName = trim(std::string_view(line).substr(17, 3));
         // Standard PDB and CHARMM use different names for isoleucine's terminal carbon.
         if (atom.residueName == "ILE" && atom.name == "CD1") atom.name = "CD";
-        atom.chain = line.size() > 21 ? line[21] : ' ';
+        atom.chain = line.size() > 21 && line[21] != ' ' ? std::string(1, line[21]) : std::string{};
         atom.residueNumber = std::stoi(line.substr(22, 4));
         atom.insertionCode = line.size() > 26 ? line[26] : ' ';
         atom.position = { std::stof(line.substr(30, 8)) * 0.1f,
@@ -121,6 +132,212 @@ PdbInput readPdb(const fs::path& path) {
         result.residues.back().atoms.try_emplace(atom.name, std::move(atom));
     }
 
+    if (result.residues.empty()) throw std::runtime_error(std::format("No ATOM records were found in {}", path.string()));
+    if (result.title.empty()) result.title = path.stem().string();
+    return result;
+}
+
+struct CifToken {
+    std::string value;
+    bool quoted{};
+};
+
+std::vector<CifToken> tokenizeCif(const fs::path& path) {
+    std::ifstream input(path);
+    if (!input) throw std::runtime_error(std::format("Failed to open CIF file {}", path.string()));
+
+    std::vector<CifToken> tokens;
+    bool inTextField = false;
+    std::string textField;
+    for (std::string line; std::getline(input, line);) {
+        if (inTextField) {
+            if (!line.empty() && line.front() == ';') {
+                tokens.push_back({ std::move(textField), true });
+                textField.clear();
+                inTextField = false;
+            }
+            else {
+                if (!textField.empty()) textField.push_back('\n');
+                textField += line;
+            }
+            continue;
+        }
+        if (!line.empty() && line.front() == ';') {
+            inTextField = true;
+            textField = line.substr(1);
+            continue;
+        }
+
+        for (std::size_t i = 0; i < line.size();) {
+            while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) ++i;
+            if (i == line.size() || line[i] == '#') break;
+            if (line[i] == '\'' || line[i] == '"') {
+                const char quote = line[i++];
+                const std::size_t begin = i;
+                while (i < line.size() && line[i] != quote) ++i;
+                if (i == line.size()) throw std::runtime_error("Unterminated quoted CIF value");
+                tokens.push_back({ line.substr(begin, i - begin), true });
+                ++i;
+            }
+            else {
+                const std::size_t begin = i;
+                while (i < line.size() && !std::isspace(static_cast<unsigned char>(line[i]))) ++i;
+                tokens.push_back({ line.substr(begin, i - begin), false });
+            }
+        }
+    }
+    if (inTextField) throw std::runtime_error("Unterminated semicolon-delimited CIF text field");
+    return tokens;
+}
+
+struct CifLoop {
+    std::vector<std::string> columns;
+    std::vector<std::vector<std::string>> rows;
+};
+
+struct CifDocument {
+    std::unordered_map<std::string, std::string> values;
+    std::vector<CifLoop> loops;
+};
+
+bool isCifControlToken(const CifToken& token) {
+    if (token.quoted) return false;
+    const std::string normalized = lowercase(token.value);
+    return token.value.starts_with('_') || normalized == "loop_" || normalized == "stop_"
+        || normalized.starts_with("data_") || normalized.starts_with("save_");
+}
+
+CifDocument readCifDocument(const fs::path& path) {
+    const auto tokens = tokenizeCif(path);
+    CifDocument document;
+    for (std::size_t i = 0; i < tokens.size();) {
+        const std::string normalized = lowercase(tokens[i].value);
+        if (!tokens[i].quoted && normalized == "loop_") {
+            ++i;
+            CifLoop loop;
+            while (i < tokens.size() && !tokens[i].quoted && tokens[i].value.starts_with('_')) {
+                loop.columns.push_back(lowercase(tokens[i++].value));
+            }
+            if (loop.columns.empty()) throw std::runtime_error("CIF loop has no column names");
+            std::vector<std::string> values;
+            while (i < tokens.size() && !isCifControlToken(tokens[i])) values.push_back(tokens[i++].value);
+            if (values.size() % loop.columns.size() != 0) throw std::runtime_error("CIF loop has an incomplete row");
+            for (std::size_t row = 0; row < values.size(); row += loop.columns.size()) {
+                loop.rows.emplace_back(values.begin() + static_cast<std::ptrdiff_t>(row),
+                    values.begin() + static_cast<std::ptrdiff_t>(row + loop.columns.size()));
+            }
+            document.loops.push_back(std::move(loop));
+        }
+        else if (!tokens[i].quoted && tokens[i].value.starts_with('_')) {
+            const std::string key = lowercase(tokens[i++].value);
+            if (i == tokens.size() || isCifControlToken(tokens[i])) {
+                throw std::runtime_error(std::format("CIF item {} has no value", key));
+            }
+            document.values[key] = tokens[i++].value;
+        }
+        else {
+            ++i;
+        }
+    }
+    return document;
+}
+
+bool cifValueMissing(const std::string& value) {
+    return value == "." || value == "?";
+}
+
+PdbInput readCif(const fs::path& path) {
+    const CifDocument document = readCifDocument(path);
+    PdbInput result;
+    if (const auto title = document.values.find("_struct.title"); title != document.values.end() && !cifValueMissing(title->second)) {
+        result.title = trim(title->second);
+    }
+    if (result.title.empty()) {
+        if (const auto entry = document.values.find("_entry.id"); entry != document.values.end()) result.title = entry->second;
+    }
+    std::ranges::replace(result.title, '\n', ' ');
+
+    const auto numericValue = [&document](std::string_view key) {
+        const auto found = document.values.find(std::string(key));
+        if (found == document.values.end() || cifValueMissing(found->second)) {
+            throw std::runtime_error(std::format("Required CIF value {} is missing", key));
+        }
+        return std::stod(found->second);
+    };
+    if (document.values.contains("_cell.length_a")) {
+        result.box = makeCrystalBox(numericValue("_cell.length_a") * 0.1, numericValue("_cell.length_b") * 0.1,
+            numericValue("_cell.length_c") * 0.1, numericValue("_cell.angle_alpha"),
+            numericValue("_cell.angle_beta"), numericValue("_cell.angle_gamma"));
+    }
+
+    const auto atomLoop = std::ranges::find_if(document.loops, [](const CifLoop& loop) {
+        return std::ranges::find(loop.columns, "_atom_site.cartn_x") != loop.columns.end();
+    });
+    if (atomLoop == document.loops.end()) throw std::runtime_error("CIF file has no atom_site Cartesian-coordinate loop");
+
+    const auto column = [&atomLoop](std::initializer_list<std::string_view> alternatives) {
+        for (const auto alternative : alternatives) {
+            const auto found = std::ranges::find(atomLoop->columns, alternative);
+            if (found != atomLoop->columns.end()) return static_cast<std::size_t>(std::distance(atomLoop->columns.begin(), found));
+        }
+        throw std::runtime_error(std::format("Required CIF atom_site column {} is missing", *alternatives.begin()));
+    };
+    const auto optionalColumn = [&atomLoop](std::string_view name) -> std::optional<std::size_t> {
+        const auto found = std::ranges::find(atomLoop->columns, name);
+        if (found == atomLoop->columns.end()) return std::nullopt;
+        return static_cast<std::size_t>(std::distance(atomLoop->columns.begin(), found));
+    };
+
+    const std::size_t group = column({ "_atom_site.group_pdb" });
+    const auto authAtomName = optionalColumn("_atom_site.auth_atom_id");
+    const auto labelAtomName = optionalColumn("_atom_site.label_atom_id");
+    const auto authResidueName = optionalColumn("_atom_site.auth_comp_id");
+    const auto labelResidueName = optionalColumn("_atom_site.label_comp_id");
+    const auto authChain = optionalColumn("_atom_site.auth_asym_id");
+    const auto labelChain = optionalColumn("_atom_site.label_asym_id");
+    const auto authResidueNumber = optionalColumn("_atom_site.auth_seq_id");
+    const auto labelResidueNumber = optionalColumn("_atom_site.label_seq_id");
+    const std::size_t x = column({ "_atom_site.cartn_x" });
+    const std::size_t y = column({ "_atom_site.cartn_y" });
+    const std::size_t z = column({ "_atom_site.cartn_z" });
+    const auto alternate = optionalColumn("_atom_site.label_alt_id");
+    const auto insertion = optionalColumn("_atom_site.pdbx_pdb_ins_code");
+    const auto model = optionalColumn("_atom_site.pdbx_pdb_model_num");
+    std::string firstModel;
+
+    const auto preferredValue = [](const std::vector<std::string>& row, std::optional<std::size_t> preferred,
+                                   std::optional<std::size_t> fallback, std::string_view description) -> const std::string& {
+        if (preferred && !cifValueMissing(row[*preferred])) return row[*preferred];
+        if (fallback && !cifValueMissing(row[*fallback])) return row[*fallback];
+        throw std::runtime_error(std::format("CIF atom_site row has no {}", description));
+    };
+
+    for (const auto& row : atomLoop->rows) {
+        if (row[group] != "ATOM") continue;
+        if (model) {
+            if (firstModel.empty()) firstModel = row[*model];
+            if (row[*model] != firstModel) continue;
+        }
+        if (alternate && !cifValueMissing(row[*alternate]) && row[*alternate] != "A") continue;
+
+        PdbAtom atom;
+        atom.name = preferredValue(row, authAtomName, labelAtomName, "atom name");
+        if (atom.name == "H") atom.name = "HN";
+        atom.residueName = preferredValue(row, authResidueName, labelResidueName, "residue name");
+        if (atom.residueName == "ILE" && atom.name == "CD1") atom.name = "CD";
+        const std::string& chainValue = preferredValue(row, authChain, labelChain, "chain identifier");
+        atom.chain = cifValueMissing(chainValue) ? std::string{} : chainValue;
+        atom.residueNumber = std::stoi(preferredValue(row, authResidueNumber, labelResidueNumber, "residue number"));
+        atom.insertionCode = insertion && !cifValueMissing(row[*insertion]) ? row[*insertion].front() : ' ';
+        atom.position = { std::stof(row[x]) * 0.1f, std::stof(row[y]) * 0.1f, std::stof(row[z]) * 0.1f };
+
+        if (result.residues.empty() || result.residues.back().chain != atom.chain
+            || result.residues.back().number != atom.residueNumber
+            || result.residues.back().insertionCode != atom.insertionCode) {
+            result.residues.push_back(PdbResidue{ atom.residueName, atom.chain, atom.residueNumber, atom.insertionCode, {} });
+        }
+        result.residues.back().atoms.try_emplace(atom.name, std::move(atom));
+    }
     if (result.residues.empty()) throw std::runtime_error(std::format("No ATOM records were found in {}", path.string()));
     if (result.title.empty()) result.title = path.stem().string();
     return result;
@@ -300,11 +517,6 @@ struct TerminalPatch {
     std::vector<NamedInteraction> impropers;
     std::vector<NamedInteraction> cmaps;
 };
-
-std::string lowercase(std::string value) {
-    std::ranges::transform(value, value.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return value;
-}
 
 std::unordered_map<std::string, TerminalPatch> readTerminalPatches(const fs::path& path) {
     std::ifstream input(path);
@@ -584,7 +796,7 @@ std::vector<OutputResidue> makeAtoms(
     const std::unordered_map<std::string, std::vector<HydrogenInstruction>>& hydrogenDatabase,
     const std::unordered_map<std::string, TerminalPatch>& nTerminalPatches,
     const std::unordered_map<std::string, TerminalPatch>& cTerminalPatches) {
-    const char chain = pdb.residues.front().chain;
+    const std::string& chain = pdb.residues.front().chain;
     if (std::ranges::any_of(pdb.residues, [chain](const PdbResidue& residue) { return residue.chain != chain; })) {
         throw std::runtime_error("pdb2gmx currently requires a single protein chain");
     }
@@ -823,12 +1035,12 @@ std::string_view waterTopologyFilename(const Programs::WaterModel model) {
 }
 
 void writeTopology(const fs::path& path, const fs::path& positionRestraints,
-                   const std::string& title, char chain,
+                   const std::string& title, std::string_view chain,
                    const std::vector<OutputResidue>& residues, const Interactions& interactions,
                    Programs::WaterModel waterModel, const BondedTypeDefaults& bondedTypes) {
     std::ofstream output(path);
     if (!output) throw std::runtime_error(std::format("Failed to create {}", path.string()));
-    const std::string moleculeName = chain == ' ' ? "Protein" : std::string("Protein_chain_") + chain;
+    const std::string moleculeName = chain.empty() ? "Protein" : std::string("Protein_chain_") + std::string(chain);
     output << "; Topology generated by LIMA pdb2gmx\n\n"
               "; Include forcefield parameters\n"
               "#include \"charmm27.ff/forcefield.itp\"\n\n"
@@ -872,17 +1084,10 @@ void writeTopology(const fs::path& path, const fs::path& positionRestraints,
               "[ molecules ]\n; Compound        #mols\n" << moleculeName << "     1\n";
 }
 
-} // namespace
-
-void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name, WaterModel waterModel) {
-    if (pdbfile.extension() != ".pdb") {
-        throw std::runtime_error(std::format("Expected a .pdb input file, got {}", pdbfile.string()));
-    }
-    if (!fs::is_regular_file(pdbfile)) {
-        throw std::runtime_error(std::format("PDB input file does not exist: {}", pdbfile.string()));
-    }
+void convertStructureToGmx(const fs::path& inputPath, const PdbInput& input,
+                           const std::optional<std::string>& name, Programs::WaterModel waterModel) {
     if (name && (name->empty() || fs::path(*name).has_parent_path())) {
-        throw std::runtime_error("pdb2gmx output name must be a non-empty basename");
+        throw std::runtime_error("pdb2gmx/cif2gmx output name must be a non-empty basename");
     }
 
     const fs::path forcefieldDirectory = FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff";
@@ -892,18 +1097,39 @@ void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name,
     const auto hydrogenDatabase = readHydrogenDatabase(forcefieldDirectory / "aminoacids.hdb");
     const auto nTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.n.tdb");
     const auto cTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.c.tdb");
-    const PdbInput pdb = readPdb(pdbfile);
-    const auto outputResidues = makeAtoms(pdb, templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
+    const auto outputResidues = makeAtoms(input, templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
     const auto interactions = makeInteractions(outputResidues, templates);
 
-    const fs::path directory = pdbfile.parent_path().empty() ? fs::current_path() : pdbfile.parent_path();
+    const fs::path directory = inputPath.parent_path().empty() ? fs::current_path() : inputPath.parent_path();
     const std::string basename = name.value_or("");
     const fs::path groPath = directory / (basename.empty() ? "conf.gro" : basename + ".gro");
     const fs::path topPath = directory / (basename.empty() ? "topol.top" : basename + ".top");
     const fs::path posrePath = directory / (basename.empty() ? "posre.itp" : basename + "_posre.itp");
 
-    writeGro(groPath, pdb.title, outputResidues, pdb.box);
+    writeGro(groPath, input.title, outputResidues, input.box);
     writePositionRestraints(posrePath, outputResidues);
-    writeTopology(topPath, posrePath, pdb.title, pdb.residues.front().chain, outputResidues, interactions,
+    writeTopology(topPath, posrePath, input.title, input.residues.front().chain, outputResidues, interactions,
         waterModel, bondedTypes);
+}
+
+} // namespace
+
+void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name, WaterModel waterModel) {
+    if (pdbfile.extension() != ".pdb") {
+        throw std::runtime_error(std::format("Expected a .pdb input file, got {}", pdbfile.string()));
+    }
+    if (!fs::is_regular_file(pdbfile)) {
+        throw std::runtime_error(std::format("PDB input file does not exist: {}", pdbfile.string()));
+    }
+    convertStructureToGmx(pdbfile, readPdb(pdbfile), name, waterModel);
+}
+
+void Programs::cif2gmx(const fs::path& ciffile, std::optional<std::string> name, WaterModel waterModel) {
+    if (lowercase(ciffile.extension().string()) != ".cif") {
+        throw std::runtime_error(std::format("Expected a .cif input file, got {}", ciffile.string()));
+    }
+    if (!fs::is_regular_file(ciffile)) {
+        throw std::runtime_error(std::format("CIF input file does not exist: {}", ciffile.string()));
+    }
+    convertStructureToGmx(ciffile, readCif(ciffile), name, waterModel);
 }

@@ -95,7 +95,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		//TestDisplayT4();
-		ProgramsTests::TestPdb2Gmx_pdbfile(envmode);
+		ProgramsTests::TestCif2Gmx_ciffile(envmode);
 		//LiveEditTest();
 		//BuildCellTest();
 
@@ -259,6 +259,11 @@ void RunAllUnitTests() {
 		std::cout << "WARNING: Not all physics modules are enabled, expect tests to fail!" << std::endl;
 		TestUtils::setConsoleTextColorDefault();
 	}
+#ifdef _DEBUG
+	TestUtils::setConsoleTextColorRed();
+	std::cout << "WARNING: Running tests in debug mode may result in incorrect VC results due to missing floating point math optimizations" << std::endl;
+	TestUtils::setConsoleTextColorDefault();
+#endif
 
 
 
@@ -302,6 +307,7 @@ void RunAllUnitTests() {
 
 	// Programs test
 	ADD_TEST("pdb2gmx matches GROMACS", ProgramsTests::TestPdb2Gmx_pdbfile(envmode));
+	ADD_TEST("cif2gmx matches GROMACS", ProgramsTests::TestCif2Gmx_ciffile(envmode));
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));

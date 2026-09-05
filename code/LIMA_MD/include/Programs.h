@@ -32,4 +32,8 @@ namespace Programs {
 	/// water model determines the solvent topology included for later solvation.
 	void pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name = std::nullopt,
 		WaterModel waterModel = WaterModel::Tip3p);
+
+	/// Build CHARMM27 topology and coordinates from an mmCIF structure.
+	void cif2gmx(const fs::path& ciffile, std::optional<std::string> name = std::nullopt,
+		WaterModel waterModel = WaterModel::Tip3p);
 }

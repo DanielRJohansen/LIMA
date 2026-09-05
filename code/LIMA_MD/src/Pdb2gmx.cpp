@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <format>
@@ -243,6 +244,130 @@ std::vector<std::string> generatedNames(const HydrogenInstruction& instruction) 
     return names;
 }
 
+struct TerminalReplacement {
+    std::string sourceName;
+    std::string targetName;
+    std::string type;
+    double charge{};
+    double mass{};
+};
+
+struct BondedTypeDefaults {
+    int bond{};
+    int angle{};
+    int properDihedral{};
+    int improperDihedral{};
+    int generateAllDihedrals{};
+    int exclusions{};
+    int generateHydrogenPairs{};
+    int removeDihedralsWithImpropers{};
+};
+
+BondedTypeDefaults readBondedTypeDefaults(const fs::path& path) {
+    std::ifstream input(path);
+    if (!input) throw std::runtime_error(std::format("Failed to open residue database {}", path.string()));
+    bool inBondedTypes = false;
+    for (std::string line; std::getline(input, line);) {
+        line = withoutComment(std::move(line));
+        if (line.empty()) continue;
+        if (line.front() == '[' && line.back() == ']') {
+            inBondedTypes = trim(std::string_view(line).substr(1, line.size() - 2)) == "bondedtypes";
+            continue;
+        }
+        if (inBondedTypes) {
+            const auto fields = words(line);
+            if (fields.size() < 8) break;
+            return { std::stoi(fields[0]), std::stoi(fields[1]), std::stoi(fields[2]), std::stoi(fields[3]),
+                std::stoi(fields[4]), std::stoi(fields[5]), std::stoi(fields[6]), std::stoi(fields[7]) };
+        }
+    }
+    throw std::runtime_error(std::format("No [ bondedtypes ] defaults in {}", path.string()));
+}
+
+struct TerminalAddition {
+    HydrogenInstruction instruction;
+    std::string type;
+    double charge{};
+    int chargeGroup{};
+    double mass{};
+};
+
+struct TerminalPatch {
+    std::vector<TerminalReplacement> replacements;
+    std::vector<TerminalAddition> additions;
+    std::set<std::string> deletions;
+    std::vector<NamedInteraction> bonds;
+    std::vector<NamedInteraction> impropers;
+    std::vector<NamedInteraction> cmaps;
+};
+
+std::string lowercase(std::string value) {
+    std::ranges::transform(value, value.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+std::unordered_map<std::string, TerminalPatch> readTerminalPatches(const fs::path& path) {
+    std::ifstream input(path);
+    if (!input) throw std::runtime_error(std::format("Failed to open terminal database {}", path.string()));
+
+    std::unordered_map<std::string, TerminalPatch> result;
+    std::string patchName;
+    std::string subsection;
+    std::optional<HydrogenInstruction> pendingAddition;
+    for (std::string line; std::getline(input, line);) {
+        line = withoutComment(std::move(line));
+        if (line.empty()) continue;
+        if (line.front() == '[' && line.back() == ']') {
+            const std::string section = trim(std::string_view(line).substr(1, line.size() - 2));
+            const std::string normalized = lowercase(section);
+            if (normalized == "replace" || normalized == "add" || normalized == "delete"
+                || normalized == "bonds" || normalized == "impropers" || normalized == "cmap") {
+                subsection = normalized;
+            }
+            else {
+                patchName = section;
+                subsection.clear();
+                result.try_emplace(patchName);
+            }
+            pendingAddition.reset();
+            continue;
+        }
+        if (patchName.empty() || subsection.empty()) continue;
+
+        const auto fields = words(line);
+        auto& patch = result.at(patchName);
+        if (subsection == "replace" && fields.size() >= 4) {
+            const bool renamed = fields.size() >= 5;
+            const std::string& type = fields[renamed ? 2 : 1];
+            const double declaredMass = std::stod(fields[renamed ? 3 : 2]);
+            patch.replacements.push_back({ fields[0], renamed ? fields[1] : fields[0], type,
+                std::stod(fields[renamed ? 4 : 3]), declaredMass });
+        }
+        else if (subsection == "add") {
+            if (!pendingAddition) {
+                if (fields.size() < 4) throw std::runtime_error(std::format("Malformed terminal add instruction: {}", line));
+                HydrogenInstruction instruction;
+                instruction.count = std::stoi(fields[0]);
+                instruction.type = std::stoi(fields[1]);
+                instruction.namePrefix = fields[2];
+                instruction.controls.assign(fields.begin() + 3, fields.end());
+                pendingAddition = std::move(instruction);
+            }
+            else {
+                if (fields.size() < 4) throw std::runtime_error(std::format("Malformed terminal atom definition: {}", line));
+                patch.additions.push_back({ *pendingAddition, fields[0], std::stod(fields[2]), std::stoi(fields[3]),
+                    std::stod(fields[1]) });
+                pendingAddition.reset();
+            }
+        }
+        else if (subsection == "delete" && !fields.empty()) patch.deletions.insert(fields[0]);
+        else if (subsection == "bonds" && fields.size() >= 2) patch.bonds.push_back({ fields[0], fields[1] });
+        else if (subsection == "impropers" && fields.size() >= 4) patch.impropers.push_back({ fields[0], fields[1], fields[2], fields[3] });
+        else if (subsection == "cmap" && fields.size() >= 5) patch.cmaps.push_back({ fields[0], fields[1], fields[2], fields[3], fields[4] });
+    }
+    return result;
+}
+
 // Geometry rules are the standard GROMACS hydrogen-database construction
 // rules. Distances are in nm and match the CHARMM27 pdb2gmx defaults.
 std::vector<glm::vec3> calculateAddedPositions(int type, const std::vector<glm::vec3>& controls, int outputCount) {
@@ -323,6 +448,10 @@ struct OutputResidue {
     std::string rtpName;
     std::vector<OutputAtom> atoms;
     std::unordered_map<std::string, int> localIndex;
+    std::vector<HydrogenInstruction> terminalCoordinateInstructions;
+    std::vector<NamedInteraction> terminalBonds;
+    std::vector<NamedInteraction> terminalImpropers;
+    std::vector<NamedInteraction> terminalCmaps;
 };
 
 std::string rtpNameFor(const std::string& pdbName) {
@@ -335,60 +464,47 @@ std::string rtpNameFor(const std::string& pdbName) {
     return pdbName;
 }
 
-void applyNTerminus(std::vector<TemplateAtom>& atoms, const std::string& residueName) {
-    const bool glycine = residueName == "GLY";
-    const bool proline = residueName == "PRO";
+void applyTerminalPatch(std::vector<TemplateAtom>& atoms, OutputResidue& output, const TerminalPatch& patch) {
     std::vector<TemplateAtom> modified;
+    modified.reserve(atoms.size());
     for (auto atom : atoms) {
-        if (atom.name == "HN") continue;
-        if (atom.name == "N") {
-            if (proline) {
-                atom.type = "NP";
-                atom.charge = -0.07;
-            }
-            else {
-                atom.type = "NH3";
-                atom.charge = -0.3;
-            }
-            modified.push_back(atom);
-            const int hydrogenCount = proline ? 2 : 3;
-            const double hydrogenCharge = proline ? 0.24 : 0.33;
-            for (int i = 1; i <= hydrogenCount; ++i) {
-                modified.push_back({ "H" + std::to_string(i), "HC", hydrogenCharge, -1, 1.008 });
-            }
-            continue;
-        }
-        if (atom.name == "CA") {
-            atom.type = glycine ? "CT2" : proline ? "CP1" : "CT1";
-            atom.charge = glycine ? 0.13 : proline ? 0.16 : 0.21;
-        }
-        else if (atom.name == "HA" && !proline) {
-            atom.type = "HB";
-            atom.charge = 0.10;
-        }
-        else if (atom.name == "CD" && proline) {
-            atom.type = "CP3";
-            atom.charge = 0.16;
+        if (patch.deletions.contains(atom.name)) continue;
+        if (const auto replacement = std::ranges::find(patch.replacements, atom.name, &TerminalReplacement::sourceName);
+            replacement != patch.replacements.end()) {
+            atom.name = replacement->targetName;
+            atom.type = replacement->type;
+            atom.charge = replacement->charge;
+            atom.mass = replacement->mass;
         }
         modified.push_back(std::move(atom));
     }
-    atoms = std::move(modified);
-}
 
-void applyCTerminus(std::vector<TemplateAtom>& atoms) {
-    for (auto& atom : atoms) {
-        if (atom.name == "C") {
-            atom.type = "CC";
-            atom.charge = 0.34;
+    for (const auto& addition : patch.additions) {
+        const auto names = generatedNames(addition.instruction);
+        std::size_t insertion = 0;
+        if (!addition.instruction.controls.empty()) {
+            const auto parent = std::ranges::find(modified, addition.instruction.controls.front(), &TemplateAtom::name);
+            if (parent != modified.end()) insertion = static_cast<std::size_t>(std::distance(modified.begin(), parent) + 1);
         }
-        else if (atom.name == "O") {
-            atom.name = "OT1";
-            atom.type = "OC";
-            atom.charge = -0.67;
-            atom.mass = 15.9994;
+        for (const auto& name : names) {
+            const auto existing = std::ranges::find(modified, name, &TemplateAtom::name);
+            if (existing != modified.end()) insertion = std::max(insertion, static_cast<std::size_t>(std::distance(modified.begin(), existing) + 1));
         }
+        for (const auto& name : names) {
+            if (std::ranges::find(modified, name, &TemplateAtom::name) == modified.end()) {
+                modified.insert(modified.begin() + static_cast<std::ptrdiff_t>(insertion++),
+                    TemplateAtom{ name, addition.type, addition.charge, addition.chargeGroup, addition.mass });
+            }
+            if (!addition.instruction.controls.empty()) {
+                output.terminalBonds.push_back({ addition.instruction.controls.front(), name });
+            }
+        }
+        output.terminalCoordinateInstructions.push_back(addition.instruction);
     }
-    atoms.push_back({ "OT2", "OC", -0.67, -1, 15.9994 });
+    output.terminalBonds.insert(output.terminalBonds.end(), patch.bonds.begin(), patch.bonds.end());
+    output.terminalImpropers.insert(output.terminalImpropers.end(), patch.impropers.begin(), patch.impropers.end());
+    output.terminalCmaps.insert(output.terminalCmaps.end(), patch.cmaps.begin(), patch.cmaps.end());
+    atoms = std::move(modified);
 }
 
 std::optional<glm::vec3> lookupPosition(const std::vector<OutputResidue>& residues, int residue, std::string name) {
@@ -415,10 +531,8 @@ void assignAddedCoordinates(
                 throw std::runtime_error(std::format("No hydrogen database entry for residue {}", residue.rtpName));
             }
             std::vector<HydrogenInstruction> instructions = databaseEntry->second;
-            if (residueIndex == 0) {
-                instructions.insert(instructions.begin(), HydrogenInstruction{
-                    residue.sourceName == "PRO" ? 2 : 3, 4, "H", { "N", "CA", "C" } });
-            }
+            instructions.insert(instructions.begin(), residue.terminalCoordinateInstructions.begin(),
+                residue.terminalCoordinateInstructions.end());
 
             for (const auto& instruction : instructions) {
                 const auto names = generatedNames(instruction);
@@ -453,17 +567,6 @@ void assignAddedCoordinates(
         if (!changed) break;
     }
 
-    auto& last = residues.back();
-    if (const auto ot2 = last.localIndex.find("OT2"); ot2 != last.localIndex.end() && !last.atoms[ot2->second].position) {
-        std::vector<glm::vec3> controls;
-        for (const std::string name : { "C", "CA", "N" }) {
-            const auto position = lookupPosition(residues, static_cast<int>(residues.size()) - 1, name);
-            if (!position) throw std::runtime_error("Cannot construct the C-terminal OT2 atom");
-            controls.push_back(*position);
-        }
-        last.atoms[ot2->second].position = calculateAddedPositions(8, controls, 2)[1];
-    }
-
     for (const auto& residue : residues) {
         for (const auto& atom : residue.atoms) {
             if (!atom.position) {
@@ -478,7 +581,9 @@ void assignAddedCoordinates(
 std::vector<OutputResidue> makeAtoms(
     const PdbInput& pdb,
     const std::unordered_map<std::string, ResidueTemplate>& templates,
-    const std::unordered_map<std::string, std::vector<HydrogenInstruction>>& hydrogenDatabase) {
+    const std::unordered_map<std::string, std::vector<HydrogenInstruction>>& hydrogenDatabase,
+    const std::unordered_map<std::string, TerminalPatch>& nTerminalPatches,
+    const std::unordered_map<std::string, TerminalPatch>& cTerminalPatches) {
     const char chain = pdb.residues.front().chain;
     if (std::ranges::any_of(pdb.residues, [chain](const PdbResidue& residue) { return residue.chain != chain; })) {
         throw std::runtime_error("pdb2gmx currently requires a single protein chain");
@@ -494,10 +599,17 @@ std::vector<OutputResidue> makeAtoms(
             throw std::runtime_error(std::format("Residue {} has no CHARMM27 amino-acid template", source.name));
         }
         std::vector<TemplateAtom> definitions = templateEntry->second.atoms;
-        if (residueIndex == 0) applyNTerminus(definitions, source.name);
-        if (residueIndex == static_cast<int>(pdb.residues.size()) - 1) applyCTerminus(definitions);
+        OutputResidue output;
+        output.sourceName = source.name;
+        output.rtpName = rtpName;
+        if (residueIndex == 0) {
+            const std::string patchName = source.name == "GLY" ? "GLY-NH3+" : source.name == "PRO" ? "PRO-NH2+" : "NH3+";
+            applyTerminalPatch(definitions, output, nTerminalPatches.at(patchName));
+        }
+        if (residueIndex == static_cast<int>(pdb.residues.size()) - 1) {
+            applyTerminalPatch(definitions, output, cTerminalPatches.at("COO-"));
+        }
 
-        OutputResidue output{ source.name, rtpName, {}, {} };
         for (const auto& definition : definitions) {
             OutputAtom atom;
             atom.residue = residueIndex + 1;
@@ -594,24 +706,18 @@ Interactions makeInteractions(
         for (const auto& names : residueTemplate.cmaps) {
             if (auto cmap = resolveInteraction<5>(names, residues, offsets, residue)) result.cmaps.push_back(*cmap);
         }
-    }
-
-    const auto firstN = resolveAtom(residues, offsets, 0, "N");
-    for (int i = 1; i <= (residues.front().sourceName == "PRO" ? 2 : 3); ++i) {
-        const auto hydrogen = resolveAtom(residues, offsets, 0, "H" + std::to_string(i));
-        if (firstN && hydrogen) bondSet.insert({ *firstN, *hydrogen });
-    }
-    const int lastResidue = static_cast<int>(residues.size()) - 1;
-    const auto carbon = resolveAtom(residues, offsets, lastResidue, "C");
-    const auto ot2 = resolveAtom(residues, offsets, lastResidue, "OT2");
-    if (carbon && ot2) {
-        Bond bond{ *carbon, *ot2 };
-        if (bond[1] < bond[0]) std::swap(bond[0], bond[1]);
-        bondSet.insert(bond);
-    }
-    if (const auto ca = resolveAtom(residues, offsets, lastResidue, "CA"); carbon && ca && ot2) {
-        const auto ot1 = resolveAtom(residues, offsets, lastResidue, "OT1");
-        if (ot1) result.impropers.push_back({ *carbon, *ca, *ot2, *ot1 });
+        for (const auto& names : residues[residue].terminalBonds) {
+            if (auto bond = resolveInteraction<2>(names, residues, offsets, residue)) {
+                if ((*bond)[1] < (*bond)[0]) std::swap((*bond)[0], (*bond)[1]);
+                bondSet.insert(*bond);
+            }
+        }
+        for (const auto& names : residues[residue].terminalImpropers) {
+            if (auto improper = resolveInteraction<4>(names, residues, offsets, residue)) result.impropers.push_back(*improper);
+        }
+        for (const auto& names : residues[residue].terminalCmaps) {
+            if (auto cmap = resolveInteraction<5>(names, residues, offsets, residue)) result.cmaps.push_back(*cmap);
+        }
     }
     result.bonds.assign(bondSet.begin(), bondSet.end());
 
@@ -704,9 +810,22 @@ void writePositionRestraints(const fs::path& path, const std::vector<OutputResid
     }
 }
 
+std::string_view waterTopologyFilename(const Programs::WaterModel model) {
+    switch (model) {
+        case Programs::WaterModel::Tip3p: return "tip3p.itp";
+        case Programs::WaterModel::Tip4p: return "tip4p.itp";
+        case Programs::WaterModel::Tips3p: return "tips3p.itp";
+        case Programs::WaterModel::Tip5p: return "tip5p.itp";
+        case Programs::WaterModel::Spc: return "spc.itp";
+        case Programs::WaterModel::Spce: return "spce.itp";
+    }
+    throw std::runtime_error("Unknown water model");
+}
+
 void writeTopology(const fs::path& path, const fs::path& positionRestraints,
                    const std::string& title, char chain,
-                   const std::vector<OutputResidue>& residues, const Interactions& interactions) {
+                   const std::vector<OutputResidue>& residues, const Interactions& interactions,
+                   Programs::WaterModel waterModel, const BondedTypeDefaults& bondedTypes) {
     std::ofstream output(path);
     if (!output) throw std::runtime_error(std::format("Failed to create {}", path.string()));
     const std::string moleculeName = chain == ' ' ? "Protein" : std::string("Protein_chain_") + chain;
@@ -715,7 +834,7 @@ void writeTopology(const fs::path& path, const fs::path& positionRestraints,
               "#include \"charmm27.ff/forcefield.itp\"\n\n"
               "[ moleculetype ]\n"
               "; Name            nrexcl\n"
-           << moleculeName << "     3\n\n"
+           << moleculeName << "     " << bondedTypes.exclusions << "\n\n"
               "[ atoms ]\n"
               "; nr type resnr residue atom cgnr charge mass\n";
     int atomId = 1;
@@ -740,14 +859,14 @@ void writeTopology(const fs::path& path, const fs::path& positionRestraints,
         }
     }
     output << '\n';
-    writeInteractionSection(output, "bonds", interactions.bonds, 1);
+    writeInteractionSection(output, "bonds", interactions.bonds, bondedTypes.bond);
     writeInteractionSection(output, "pairs", interactions.pairs, 1);
-    writeInteractionSection(output, "angles", interactions.angles, 5);
-    writeInteractionSection(output, "dihedrals", interactions.propers, 9);
-    writeInteractionSection(output, "dihedrals", interactions.impropers, 2);
+    writeInteractionSection(output, "angles", interactions.angles, bondedTypes.angle);
+    writeInteractionSection(output, "dihedrals", interactions.propers, bondedTypes.properDihedral);
+    writeInteractionSection(output, "dihedrals", interactions.impropers, bondedTypes.improperDihedral);
     writeInteractionSection(output, "cmap", interactions.cmaps, 1);
     output << "#ifdef POSRES\n#include \"" << positionRestraints.filename().string() << "\"\n#endif\n\n"
-              "; Include water topology\n#include \"charmm27.ff/tip3p.itp\"\n\n"
+              "; Include water topology\n#include \"charmm27.ff/" << waterTopologyFilename(waterModel) << "\"\n\n"
               "; Include topology for ions\n#include \"charmm27.ff/ions.itp\"\n\n"
               "[ system ]\n; Name\n" << title << "\n\n"
               "[ molecules ]\n; Compound        #mols\n" << moleculeName << "     1\n";
@@ -755,7 +874,7 @@ void writeTopology(const fs::path& path, const fs::path& positionRestraints,
 
 } // namespace
 
-void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name) {
+void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name, WaterModel waterModel) {
     if (pdbfile.extension() != ".pdb") {
         throw std::runtime_error(std::format("Expected a .pdb input file, got {}", pdbfile.string()));
     }
@@ -768,10 +887,13 @@ void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name)
 
     const fs::path forcefieldDirectory = FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff";
     const auto masses = readAtomMasses(forcefieldDirectory / "atomtypes.atp");
+    const auto bondedTypes = readBondedTypeDefaults(forcefieldDirectory / "aminoacids.rtp");
     const auto templates = readResidueTemplates(forcefieldDirectory / "aminoacids.rtp", masses);
     const auto hydrogenDatabase = readHydrogenDatabase(forcefieldDirectory / "aminoacids.hdb");
+    const auto nTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.n.tdb");
+    const auto cTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.c.tdb");
     const PdbInput pdb = readPdb(pdbfile);
-    const auto outputResidues = makeAtoms(pdb, templates, hydrogenDatabase);
+    const auto outputResidues = makeAtoms(pdb, templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
     const auto interactions = makeInteractions(outputResidues, templates);
 
     const fs::path directory = pdbfile.parent_path().empty() ? fs::current_path() : pdbfile.parent_path();
@@ -782,5 +904,6 @@ void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name)
 
     writeGro(groPath, pdb.title, outputResidues, pdb.box);
     writePositionRestraints(posrePath, outputResidues);
-    writeTopology(topPath, posrePath, pdb.title, pdb.residues.front().chain, outputResidues, interactions);
+    writeTopology(topPath, posrePath, pdb.title, pdb.residues.front().chain, outputResidues, interactions,
+        waterModel, bondedTypes);
 }

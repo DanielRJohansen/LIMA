@@ -62,6 +62,12 @@ namespace ProgramsTests {
 
 		ASSERT(ReadPositionRestraintAtoms(generatedPosre) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
 			"Position-restraint atom sets differ");
+
+		Programs::pdb2gmx(directory / "6lzm.pdb", "generated_spce", Programs::WaterModel::Spce);
+		std::ifstream spceTopology(directory / "generated_spce.top");
+		const std::string spceContents(std::istreambuf_iterator<char>{ spceTopology }, {});
+		ASSERT(spceContents.contains("#include \"charmm27.ff/spce.itp\""),
+			"Selected SPC/E water topology was not included");
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 }

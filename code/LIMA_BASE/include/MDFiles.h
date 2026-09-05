@@ -84,6 +84,7 @@ class GenericItpFile {
 public:
 	GenericItpFile() {}
 	GenericItpFile(const fs::path& path);
+	void printToFile(const fs::path& path) const;
 
 	const Section& GetSection(TopologySection section) const {
 		auto it = sections.find(section);
@@ -160,6 +161,7 @@ public:
 	struct AngleBond;
 	struct DihedralBond;
 	struct ImproperDihedralBond;
+	struct CmapBond;
 	struct Moleculetype {
 		Moleculetype() = default;
 		Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath=std::nullopt ) : name(name), includePath(includePath), nrexcl(nrexcl) {};
@@ -173,6 +175,8 @@ public:
 		std::vector<AngleBond> anglebonds;
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
+		std::vector<CmapBond> cmapbonds;
+		std::optional<fs::path> positionRestraintsInclude;
 
 		// Only used during parsing!
 		//std::string mostRecentAtomsSectionName{};
@@ -188,6 +192,7 @@ public:
 			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+			else if constexpr (std::is_same_v<T, CmapBond>) return cmapbonds;
 			else static_assert(std::is_same_v<T, void>, "Unknown section type");
 		}
 		template <typename T>
@@ -198,6 +203,7 @@ public:
 			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+			else if constexpr (std::is_same_v<T, CmapBond>) return cmapbonds;
 			else static_assert(std::is_same_v<T, void>, "Unknown section type");
 		}
 	};
@@ -345,6 +351,7 @@ private:
 	static void ParseAngleBond(std::string_view line, TopologyFile::AngleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
 	static void ParseDihedralBond(std::string_view line, TopologyFile::DihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
 	static void ParseImproperDihedralBond(std::string_view line, TopologyFile::ImproperDihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
+	static void ParseCmapBond(std::string_view line, TopologyFile::CmapBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
 
 
 	System m_system{};
@@ -409,3 +416,4 @@ struct TopologyFile::PairBond : GenericBond<2, Bondtypes::PairBond::Parameters> 
 struct TopologyFile::AngleBond : GenericBond<3, Bondtypes::AngleUreyBradleyBond::Parameters> {};
 struct TopologyFile::DihedralBond : GenericBond<4, Bondtypes::DihedralBond::Parameters> {};
 struct TopologyFile::ImproperDihedralBond : GenericBond<4, Bondtypes::ImproperDihedralBond::Parameters> {};
+struct TopologyFile::CmapBond : GenericBond<5, std::array<float, 0>> {};

@@ -321,6 +321,12 @@ void TopologyFile::ParseImproperDihedralBond(std::string_view sv, TopologyFile::
 		bond.parameters = Bondtypes::ImproperDihedralBond::Parameters::CreateFromCharmm(phi0, kphi);
 }
 
+void TopologyFile::ParseCmapBond(std::string_view sv, TopologyFile::CmapBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& error) {
+	SkipLeadingWhitespace(sv);
+	if (!LoadIds<5>(sv, bond.ids, groIdToLimaId, error)) return;
+	if (!ParseValue<int>(sv, bond.funct)) error = true;
+}
+
 void TopologyFile::ParseMoleculetypeEntry(TopologySection section, const std::string& line, std::shared_ptr<Moleculetype> moleculetype) {
 	std::istringstream iss(line);
 
@@ -491,6 +497,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 	std::vector<std::string_view> anglebondStrings;
 	std::vector<std::string_view> dihedralbondStrings;
 	std::vector<std::string_view> improperbondStrings;
+	std::vector<std::string_view> cmapbondStrings;
 
 
 	const std::string fileContents = ReadWholeFile(path);
@@ -639,6 +646,9 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 		case TopologySection::impropers:
 			improperbondStrings.push_back(line);
 			break;
+		case TopologySection::cmap:
+			cmapbondStrings.push_back(line);
+			break;
 		case TopologySection::defaults:
 		case TopologySection::atomtypes:
 		case TopologySection::pairtypes:
@@ -727,12 +737,14 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 	mostRecentMoleculetype->anglebonds.resize(anglebondStrings.size());
 	mostRecentMoleculetype->dihedralbonds.resize(dihedralbondStrings.size());
 	mostRecentMoleculetype->improperdihedralbonds.resize(improperbondStrings.size());
+	mostRecentMoleculetype->cmapbonds.resize(cmapbondStrings.size());
 
 	ParseBonds(singlebondStrings, mostRecentMoleculetype->singlebonds, ParseSingleBond, error);
 	ParseBonds(pairbondStrings, mostRecentMoleculetype->pairbonds, ParsePairBond, error);
 	ParseBonds(anglebondStrings, mostRecentMoleculetype->anglebonds, ParseAngleBond, error);
 	ParseBonds(dihedralbondStrings, mostRecentMoleculetype->dihedralbonds, ParseDihedralBond, error);
 	ParseBonds(improperbondStrings, mostRecentMoleculetype->improperdihedralbonds, ParseImproperDihedralBond, error);
+	ParseBonds(cmapbondStrings, mostRecentMoleculetype->cmapbonds, ParseCmapBond, error);
 }
 //
 //void TopologyFile::ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile) {
@@ -959,6 +971,34 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 	}
 }
 
+void GenericItpFile::printToFile(const fs::path& path) const {
+	if (path.extension() != ".itp") {
+		throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string()));
+	}
+	std::ofstream file(path);
+	if (!file) throw std::runtime_error(std::format("Failed to create {}", path.string()));
+
+	for (const auto& include : GetSection(includes)) file << "#include \"" << include << "\"\n";
+	constexpr std::array sectionNames{
+		std::pair{ defaults, "defaults" }, std::pair{ atomtypes, "atomtypes" },
+		std::pair{ pairtypes, "pairtypes" }, std::pair{ bondtypes, "bondtypes" },
+		std::pair{ constainttypes, "constrainttypes" }, std::pair{ angletypes, "angletypes" },
+		std::pair{ dihedraltypes, "dihedraltypes" }, std::pair{ impropertypes, "dihedraltypes" },
+		std::pair{ cmaptypes, "cmaptypes" }, std::pair{ moleculetype, "moleculetype" },
+		std::pair{ atoms, "atoms" }, std::pair{ bonds, "bonds" }, std::pair{ pairs, "pairs" },
+		std::pair{ angles, "angles" }, std::pair{ dihedrals, "dihedrals" },
+		std::pair{ impropers, "dihedrals" }, std::pair{ cmap, "cmap" },
+		std::pair{ position_restraints, "position_restraints" },
+		std::pair{ _system, "system" }, std::pair{ molecules, "molecules" }
+	};
+	for (const auto& [section, name] : sectionNames) {
+		const auto& entries = GetSection(section);
+		if (entries.empty()) continue;
+		file << "\n[ " << name << " ]\n";
+		for (const auto& entry : entries) file << entry << '\n';
+	}
+}
+
 
 
 void TopologyFile::ForcefieldInclude::AddEntry(TopologySection section, const std::string& entry) {
@@ -1084,6 +1124,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 			moleculetype->ToFile(path.parent_path());
 			file << "#include \"" << moleculetype->includePath.value_or(fs::path(moleculetype->name + ".itp")).string() << "\"\n";
 		}
+		for (const auto& include : otherIncludes) file << "#include \"" << include << "\"\n";
 		file << "\n";
 
 		if (m_system.IsInit()) {
@@ -1188,7 +1229,12 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) + "\n";
 		file << composeString(dihedralbonds);
 		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) + "\n";
-		file << composeString(improperdihedralbonds);		
+		file << composeString(improperdihedralbonds);
+		file << "[ cmap ]\n" << generateLegend({ "ai", "aj", "ak", "al", "am", "funct" }) + "\n";
+		file << composeString(cmapbonds);
+		if (positionRestraintsInclude) {
+			file << "#ifdef POSRES\n#include \"" << positionRestraintsInclude->string() << "\"\n#endif\n";
+		}
 	}
 }
 void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {

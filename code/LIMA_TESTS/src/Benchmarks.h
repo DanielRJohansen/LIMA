@@ -13,6 +13,19 @@ namespace Benchmarks {
 		return HeavyTestsDir();
 	}
 
+	static LimaUnittestResult ToGmxLargeCif(EnvMode envmode) {
+		const fs::path input = TestsDir() / "fileconversions" / "3J3Q.cif";
+		ASSERT(fs::is_regular_file(input), "Missing ToGmx benchmark input: " + input.string());
+		TimeIt timer;
+		const auto conversion = Programs::ToGmx(input);
+		const auto elapsed = timer.stop();
+		ASSERT(!conversion.grofile.atoms.empty(), "ToGmx benchmark produced no atoms");
+		return LimaUnittestResult{ true,
+			std::format("3J3Q.cif: {:.3f} s, {} atoms",
+				std::chrono::duration<double>(elapsed).count(), conversion.grofile.atoms.size()),
+			envmode == Full };
+	}
+
 	static void ReadGroFile(EnvMode mode) {
 		assert(ENABLE_FILE_CACHING == false);
 		TimeIt timer("ReadGroFile", true);

@@ -12,10 +12,11 @@ namespace Programs {
 	enum class WaterModel { Tip3p, Tip4p, Tips3p, Tip5p, Spc, Spce };
 
 	struct GmxConversionResult {
-		fs::path gro;
-		fs::path topology;
-		fs::path positionRestraints;
-		std::vector<fs::path> additionalPositionRestraints;
+		GroFile grofile;
+		TopologyFile topology;
+		// Ordered like topology.GetSystem().molecules. Each file contains the
+		// position restraints for the corresponding molecule.
+		std::vector<GenericItpFile> positionRestraints;
 	};
 
 	WaterModel ParseWaterModel(std::string_view name);
@@ -37,14 +38,7 @@ namespace Programs {
 
 	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&, bool render);
 
-	/// Build a CHARMM27 topology and coordinates from a PDB structure. Output is
-	/// written next to pdbfile as conf.gro/topol.top/posre.itp, or with the
-	/// supplied basename as <name>.gro/<name>.top/<name>_posre.itp. The selected
-	/// water model determines the solvent topology included for later solvation.
-	GmxConversionResult pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name = std::nullopt,
-		WaterModel waterModel = WaterModel::Tip3p, std::optional<fs::path> outputDirectory = std::nullopt);
-
-	/// Build CHARMM27 topology and coordinates from an mmCIF structure.
-	GmxConversionResult cif2gmx(const fs::path& ciffile, std::optional<std::string> name = std::nullopt,
-		WaterModel waterModel = WaterModel::Tip3p, std::optional<fs::path> outputDirectory = std::nullopt);
+	/// Build in-memory CHARMM27 coordinates, topology, and position restraints
+	/// from a protein PDB or mmCIF structure.
+	GmxConversionResult ToGmx(const fs::path& structureFile, WaterModel waterModel = WaterModel::Tip3p);
 }

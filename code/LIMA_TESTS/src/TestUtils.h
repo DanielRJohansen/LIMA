@@ -574,6 +574,7 @@ namespace TestUtils {
 		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology AngleBond Mismatch");
 		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology DihedralBond Mismatch");
 		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology ImproperDihedralBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::CmapBond>(), refTop.GetAllElements<TopologyFile::CmapBond>()), "Topology CmapBond Mismatch");
 		return LimaUnittestResult{ true, "Success", false };
 	}
 

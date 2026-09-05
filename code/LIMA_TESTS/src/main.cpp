@@ -95,7 +95,7 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		//TestDisplayT4();
-		ProgramsTests::TestCif2Gmx_ciffile(envmode);
+		ProgramsTests::TestToGmx_ciffile(envmode);
 		//LiveEditTest();
 		//BuildCellTest();
 
@@ -306,9 +306,9 @@ void RunAllUnitTests() {
 	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
 
 	// Programs test
-	ADD_TEST("pdb2gmx matches GROMACS", ProgramsTests::TestPdb2Gmx_pdbfile(envmode));
-	ADD_TEST("pdb2gmx handles multiple chains", ProgramsTests::TestPdb2Gmx_multichain(envmode));
-	ADD_TEST("cif2gmx matches GROMACS", ProgramsTests::TestCif2Gmx_ciffile(envmode));
+	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile(envmode));
+	ADD_TEST("ToGmx handles multiple chains", ProgramsTests::TestToGmx_multichain(envmode));
+	ADD_TEST("ToGmx CIF matches GROMACS", ProgramsTests::TestToGmx_ciffile(envmode));
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall(envmode, false));
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder(envmode));
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode));
@@ -323,7 +323,7 @@ void RunAllUnitTests() {
 	//ADD_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...
 
 	// Performance test
-	//ADD_TEST(testman, "Benchmark Psome", Benchmarks::Psome(envmode));
+	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif(envmode));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

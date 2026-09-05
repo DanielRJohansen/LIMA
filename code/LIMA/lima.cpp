@@ -13,8 +13,7 @@
 #include "insertmolecules.h"
 #include "editconf.h"
 #include "em.h"
-#include "pdb2gmx.h"
-#include "cif2gmx.h"
+#include "togmx.h"
 #include "solvate.h"
 #include "SetWindowsRegistry.h"
 
@@ -44,8 +43,7 @@ Programs:
     insertmolecules     Inserts a molecule into a box multiple times
     editconf            Edit a .gro file.
     em                  Energy minimize a simulation with default parameters.
-    pdb2gmx             Build CHARMM27 .gro/.top files from a protein PDB.
-    cif2gmx             Build CHARMM27 .gro/.top files from a protein mmCIF.
+    togmx               Build CHARMM27 .gro/.top/.itp files from a protein PDB or mmCIF.
 
 Options:
     -help, -h           Displays this help message and exits.
@@ -76,8 +74,7 @@ int main(int argc, char** argv)
 		else if (program == "insertmolecules") { insertmolecules(argc, argv); }
 		else if (program == "editconf") { editconf(argc, argv); }
 		else if (program == "em") { em(argc, argv); }
-		else if (program == "pdb2gmx") { pdb2gmx(argc, argv); }
-		else if (program == "cif2gmx") { cif2gmx(argc, argv); }
+		else if (program == "togmx") { togmx(argc, argv); }
 		else if (program == "setregistry") { RegisterGrofileAssociation(); }
 		//else if (program == "solvate") { solvate(argc, argv); }
 		//else if (program == "getforcefieldparams") { GetForcefieldParams(); }

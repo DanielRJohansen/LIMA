@@ -8,16 +8,17 @@
 
 namespace ProgramsTests {
 	namespace {
-		std::set<int> ReadPositionRestraintAtoms(const fs::path& path) {
-			std::ifstream input(path);
-			if (!input) throw std::runtime_error(std::format("Could not open position restraints {}", path.string()));
+		std::set<int> ReadPositionRestraintAtoms(const GenericItpFile& file) {
 			std::set<int> result;
-			for (std::string line; std::getline(input, line);) {
-				if (const auto comment = line.find(';'); comment != std::string::npos) line.erase(comment);
+			for (const auto& line : file.GetSection(position_restraints)) {
 				const auto fields = StringUtils::SplitWords(line);
 				if (fields.size() == 5 && std::isdigit(static_cast<unsigned char>(fields[0][0]))) result.insert(std::stoi(fields[0]));
 			}
 			return result;
+		}
+
+		std::set<int> ReadPositionRestraintAtoms(const fs::path& path) {
+			return ReadPositionRestraintAtoms(GenericItpFile{ path });
 		}
 
 		void WriteTwoChainPdb(const fs::path& sourcePath, const fs::path& outputPath) {
@@ -38,12 +39,6 @@ namespace ProgramsTests {
 			}
 		}
 
-		std::size_t CountOccurrences(std::string_view text, std::string_view value) {
-			std::size_t count = 0;
-			for (std::size_t position = 0; (position = text.find(value, position)) != std::string_view::npos;
-				position += value.size()) ++count;
-			return count;
-		}
 	}
 
 	LimaUnittestResult TestBuildMembrane(EnvMode envmode) {
@@ -68,87 +63,65 @@ namespace ProgramsTests {
 		return LimaUnittestResult{ ret == 0, "Success", envmode == Full };
 	}
 
-	LimaUnittestResult TestPdb2Gmx_pdbfile(EnvMode envmode) {
+	LimaUnittestResult TestToGmx_pdbfile(EnvMode envmode) {
 		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
-		const fs::path generatedGro = directory / "generated.gro";
-		const fs::path generatedTop = directory / "generated.top";
-		const fs::path generatedPosre = directory / "generated_posre.itp";
-		TryDeleteFile(generatedGro);
-		TryDeleteFile(generatedTop);
-		TryDeleteFile(generatedPosre);
-
-		Programs::pdb2gmx(directory / "6lzm.pdb", "generated");
-		LimaUnittestResult gResult = CompareGroFiles(GroFile{ generatedGro }, GroFile{ directory / "conf_ref.gro" }, envmode);
+		const auto conversion = Programs::ToGmx(directory / "6lzm.pdb");
+		LimaUnittestResult gResult = CompareGroFiles(conversion.grofile, GroFile{ directory / "conf_ref.gro" }, envmode);
 		if (!gResult.success) 
 			return LimaUnittestResult{ false, gResult.error_description, envmode == Full };
 		
-		LimaUnittestResult tResult = CompareTopologyFiles(generatedTop, directory / "topol_ref.top", envmode);	
+		LimaUnittestResult tResult = CompareTopologyFiles(conversion.topology, TopologyFile{ directory / "topol_ref.top" }, envmode);
 		if (!tResult.success) 
 			return LimaUnittestResult{ false, tResult.error_description, envmode == Full };
 
-		ASSERT(ReadPositionRestraintAtoms(generatedPosre) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
+		ASSERT(conversion.positionRestraints.size() == 1
+			&& ReadPositionRestraintAtoms(conversion.positionRestraints.front()) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
 			"Position-restraint atom sets differ");
 
-		Programs::pdb2gmx(directory / "6lzm.pdb", "generated_spce", Programs::WaterModel::Spce);
-		std::ifstream spceTopology(directory / "generated_spce.top");
-		const std::string spceContents(std::istreambuf_iterator<char>{ spceTopology }, {});
-		ASSERT(spceContents.contains("#include \"charmm27.ff/spce.itp\""),
+		const auto spceConversion = Programs::ToGmx(directory / "6lzm.pdb", Programs::WaterModel::Spce);
+		ASSERT(std::ranges::contains(spceConversion.topology.otherIncludes, fs::path{ "charmm27.ff/spce.itp" }),
 			"Selected SPC/E water topology was not included");
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
-	LimaUnittestResult TestCif2Gmx_ciffile(EnvMode envmode) {
+	LimaUnittestResult TestToGmx_ciffile(EnvMode envmode) {
 		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
-		const fs::path generatedGro = directory / "generated_cif.gro";
-		const fs::path generatedTop = directory / "generated_cif.top";
-		const fs::path generatedPosre = directory / "generated_cif_posre.itp";
-		TryDeleteFile(generatedGro);
-		TryDeleteFile(generatedTop);
-		TryDeleteFile(generatedPosre);
-
-		const auto conversion = Programs::cif2gmx(
-			directory / "7LZM.cif", "generated_cif", Programs::WaterModel::Tip3p, directory);
-		ASSERT(conversion.gro == generatedGro && conversion.topology == generatedTop
-			&& conversion.positionRestraints == generatedPosre, "cif2gmx returned incorrect output paths");
+		const auto conversion = Programs::ToGmx(directory / "7LZM.cif", Programs::WaterModel::Tip3p);
 		LimaUnittestResult gResult = CompareGroFiles(
-			GroFile{ generatedGro }, GroFile{ directory / "conf_ref.gro" }, envmode, 0.75f, 0.05f, 0.075f);
+			conversion.grofile, GroFile{ directory / "conf_ref.gro" }, envmode, 0.75f, 0.05f, 0.075f);
 		if (!gResult.success)
 			return LimaUnittestResult{ false, gResult.error_description, envmode == Full };
 
-		LimaUnittestResult tResult = CompareTopologyFiles(generatedTop, directory / "topol_ref.top", envmode);
+		LimaUnittestResult tResult = CompareTopologyFiles(conversion.topology, TopologyFile{ directory / "topol_ref.top" }, envmode);
 		if (!tResult.success)
 			return LimaUnittestResult{ false, tResult.error_description, envmode == Full };
 
-		ASSERT(ReadPositionRestraintAtoms(generatedPosre) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
+		ASSERT(conversion.positionRestraints.size() == 1
+			&& ReadPositionRestraintAtoms(conversion.positionRestraints.front()) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
 			"CIF position-restraint atom sets differ");
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
-	LimaUnittestResult TestPdb2Gmx_multichain(EnvMode envmode) {
+	LimaUnittestResult TestToGmx_multichain(EnvMode envmode) {
 		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
 		const fs::path input = directory / "generated_multichain.pdb";
-		const fs::path gro = directory / "generated_multichain.gro";
-		const fs::path top = directory / "generated_multichain.top";
-		const fs::path primaryPosre = directory / "generated_multichain_posre.itp";
-		const fs::path secondPosre = directory / "generated_multichain_posre_Protein_chain_B.itp";
-		for (const auto& path : { input, gro, top, primaryPosre, secondPosre }) TryDeleteFile(path);
+		TryDeleteFile(input);
 
 		WriteTwoChainPdb(directory / "6lzm.pdb", input);
-		const auto conversion = Programs::pdb2gmx(input, "generated_multichain");
-		ASSERT(conversion.additionalPositionRestraints.size() == 1
-			&& conversion.additionalPositionRestraints.front() == secondPosre
-			&& fs::is_regular_file(primaryPosre) && fs::is_regular_file(secondPosre),
-			"Multi-chain position-restraint files were not generated correctly");
+		auto conversion = Programs::ToGmx(input);
+		ASSERT(conversion.positionRestraints.size() == 2
+			&& !conversion.positionRestraints[0].GetSection(position_restraints).empty()
+			&& !conversion.positionRestraints[1].GetSection(position_restraints).empty(),
+			"Multi-chain position restraints were not generated correctly");
 
-		std::ifstream topology(top);
-		const std::string contents(std::istreambuf_iterator<char>{ topology }, {});
-		ASSERT(CountOccurrences(contents, "[ moleculetype ]") == 2,
+		ASSERT(conversion.topology.moleculetypes.size() == 2,
 			"Multi-chain topology does not contain one molecule type per chain");
-		ASSERT(contents.contains("Protein_chain_A") && contents.contains("Protein_chain_B"),
+		ASSERT(conversion.topology.moleculetypes.contains("Protein_chain_A")
+			&& conversion.topology.moleculetypes.contains("Protein_chain_B"),
 			"Multi-chain topology is missing chain molecule names");
 
-		const TopologyFile parsedTopology{ top };
-		GroFile parsedCoordinates{ gro };
+		const TopologyFile& parsedTopology = conversion.topology;
+		GroFile parsedCoordinates = conversion.grofile;
 		std::size_t topologyAtomCount = 0;
 		for (const auto& molecule : parsedTopology.GetSystem().molecules) {
 			topologyAtomCount += molecule.moleculetype->atoms.size();

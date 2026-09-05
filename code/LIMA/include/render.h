@@ -4,9 +4,7 @@
 #include <cctype>
 #include <format>
 #include <memory>
-#include <random>
 #include <string>
-#include <system_error>
 
 #include "CommandlineUtils.h"
 #include "MoleculeUtils.h"
@@ -18,32 +16,6 @@
 namespace fs = std::filesystem;
 
 namespace RenderCli {
-	class TemporaryDirectory {
-	public:
-		TemporaryDirectory() {
-			const fs::path root = fs::temp_directory_path();
-			std::random_device random;
-			for (int attempt = 0; attempt < 32; ++attempt) {
-				path_ = root / ("lima-render-" + std::to_string(random()) + "-" + std::to_string(attempt));
-				std::error_code error;
-				if (fs::create_directory(path_, error)) return;
-			}
-			throw std::runtime_error("Could not create a temporary directory for structure conversion");
-		}
-
-		~TemporaryDirectory() {
-			std::error_code error;
-			fs::remove_all(path_, error);
-		}
-
-		TemporaryDirectory(const TemporaryDirectory&) = delete;
-		TemporaryDirectory& operator=(const TemporaryDirectory&) = delete;
-		const fs::path& path() const { return path_; }
-
-	private:
-		fs::path path_;
-	};
-
 	inline std::string Lowercase(std::string value) {
 		std::ranges::transform(value, value.begin(), [](const unsigned char c) {
 			return static_cast<char>(std::tolower(c));
@@ -105,30 +77,24 @@ Example:
 	parser.AddOption({ "-highlight", "-hl" }, false, highlightAtomsInput);
     parser.Parse(argc, argv);
 
-	std::unique_ptr<RenderCli::TemporaryDirectory> conversionDirectory;
-	bool convertedStructure = false;
+	std::optional<Programs::GmxConversionResult> conversion;
 	const std::string extension = RenderCli::Lowercase(conf.extension().string());
 	if (extension == ".pdb" || extension == ".cif") {
-		convertedStructure = true;
-		conversionDirectory = std::make_unique<RenderCli::TemporaryDirectory>();
-		const Programs::WaterModel waterModel = Programs::ParseWaterModel(water);
-		const std::optional<std::string> conversionName{ "render_input" };
-		const Programs::GmxConversionResult converted = extension == ".pdb"
-			? Programs::pdb2gmx(conf, conversionName, waterModel, conversionDirectory->path())
-			: Programs::cif2gmx(conf, conversionName, waterModel, conversionDirectory->path());
-		conf = converted.gro;
-		topol = converted.topology;
+		conversion.emplace(Programs::ToGmx(conf, Programs::ParseWaterModel(water)));
 	}
 	else if (extension != ".gro") {
 		throw std::runtime_error(std::format(
 			"lima render expects a .gro, .pdb, or .cif input file, got {}", conf.string()));
 	}
 
-    GroFile grofile{ conf };
+	GroFile grofile = conversion ? std::move(conversion->grofile) : GroFile{ conf };
 
     if (whole) {
-        TopologyFile topfile{ topol };
-		MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
+		if (conversion) MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, conversion->topology);
+		else {
+			TopologyFile topfile{ topol };
+			MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, topfile);
+		}
     }
 
 	if (hidewater) {
@@ -140,7 +106,7 @@ Example:
 	// Converted coordinate files carry crystallographic cell dimensions, which do
 	// not necessarily bound the displayed biological structure. A whole structure
 	// can likewise extend beyond its former periodic cell after unwrapping.
-	if (convertedStructure || whole) MoleculeUtils::FitMoleculeInBox(grofile);
+	if (conversion || whole) MoleculeUtils::FitMoleculeInBox(grofile);
 
     std::set<int> highlightedAtoms(highlightAtomsInput.begin(), highlightAtomsInput.end());
 

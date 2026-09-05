@@ -98,7 +98,7 @@ int main() {
 		//ProgramsTests::TestToGmx_ciffile(envmode);
 		//LiveEditTest();
 		//BuildCellTest();
-		Benchmarks::ToGmxLargeCif(envmode);
+		//Benchmarks::ToGmxLargeCif(envmode);
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);

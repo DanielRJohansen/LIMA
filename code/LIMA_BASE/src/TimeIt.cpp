@@ -71,22 +71,13 @@ std::string TimeIt::ElapsedPretty() const {
 
 
 void TimeIt::PrintTaskStats(const std::string& taskName, const TaskRecord& record) {
-	double avgTime = static_cast<double>(record.totalTime.count()) / record.count;
+	const double totalUs = std::chrono::duration<double, std::micro>(record.totalTime).count();
+	const bool useMs = totalUs >= 1000.0;
+	const double scale = useMs ? 1e-3 : 1.0;
+	const char* unit = useMs ? "ms" : "us";
 
-	// Convert to milliseconds or microseconds for readability
-	auto totalTimeInMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(record.totalTime);
-	auto totalTimeInMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(record.totalTime);
-
-	if (totalTimeInMilliseconds.count() > 0) {
-		// Use milliseconds if the total time is greater than 1 millisecond
-		std::cout << "Task \"" << taskName << "\" - Total Time: " << totalTimeInMilliseconds.count()
-			<< " milliseconds, Average Time: " << avgTime / 1e6 << " milliseconds.\n";
-	}
-	else {
-		// Otherwise, use microseconds
-		std::cout << "Task \"" << taskName << "\" - Total Time: " << totalTimeInMicroseconds.count()
-			<< " microseconds, Average Time: " << avgTime / 1e3 << " microseconds.\n";
-	}
+	std::cout << std::format("Task \"{}\" - Calls: {}, Total: {:.3f} {}, Average: {:.3f} {}\n",
+		taskName, record.count, totalUs * scale, unit, totalUs * scale / record.count, unit);
 }
 
 void TimeIt::PrintTaskStats(const std::string& taskName) {

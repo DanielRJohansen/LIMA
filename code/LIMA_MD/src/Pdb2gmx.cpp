@@ -1,6 +1,7 @@
 #include "Programs.h"
 
 #include "Filehandling.h"
+#include "TimeIt.h"
 
 #include <glm.hpp>
 
@@ -8,13 +9,17 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <execution>
 #include <fstream>
 #include <format>
 #include <iomanip>
+#include <memory>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <ranges>
 #include <set>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -51,12 +56,23 @@ struct PdbAtom {
     glm::vec3 position;
 };
 
+struct StringHash {
+    using is_transparent = void;
+    std::size_t operator()(std::string_view value) const noexcept { return std::hash<std::string_view>{}(value); }
+    std::size_t operator()(const std::string& value) const noexcept { return operator()(std::string_view{ value }); }
+};
+
+struct StringEqual {
+    using is_transparent = void;
+    bool operator()(std::string_view left, std::string_view right) const noexcept { return left == right; }
+};
+
 struct PdbResidue {
     std::string name;
     std::string chain;
     int number{};
     char insertionCode{};
-    std::unordered_map<std::string, PdbAtom> atoms;
+    std::unordered_map<std::string, PdbAtom, StringHash, StringEqual> atoms;
 };
 
 struct CrystalBox { std::array<double, 9> groValues{}; };
@@ -689,20 +705,21 @@ struct OutputResidue {
     std::string sourceName;
     std::string rtpName;
     std::vector<OutputAtom> atoms;
-    std::unordered_map<std::string, int> localIndex;
+    std::unordered_map<std::string, int, StringHash, StringEqual> localIndex;
     std::vector<HydrogenInstruction> terminalCoordinateInstructions;
     std::vector<NamedInteraction> terminalBonds;
     std::vector<NamedInteraction> terminalImpropers;
     std::vector<NamedInteraction> terminalCmaps;
 };
 
-std::string rtpNameFor(const std::string& pdbName) {
-    if (pdbName == "HIS" || pdbName == "HISD" || pdbName == "HIS1") return "HSD";
-    if (pdbName == "HISE") return "HSE";
-    if (pdbName == "HISH") return "HSP";
-    if (pdbName == "LYSN") return "LSN";
-    if (pdbName == "ASPH") return "ASPP";
-    if (pdbName == "GLUH") return "GLUP";
+const std::string& rtpNameFor(const std::string& pdbName) {
+    static const std::string HSD = "HSD", HSE = "HSE", HSP = "HSP", LSN = "LSN", ASPP = "ASPP", GLUP = "GLUP";
+    if (pdbName == "HIS" || pdbName == "HISD" || pdbName == "HIS1") return HSD;
+    if (pdbName == "HISE") return HSE;
+    if (pdbName == "HISH") return HSP;
+    if (pdbName == "LYSN") return LSN;
+    if (pdbName == "ASPH") return ASPP;
+    if (pdbName == "GLUH") return GLUP;
     return pdbName;
 }
 
@@ -749,10 +766,10 @@ void applyTerminalPatch(std::vector<TemplateAtom>& atoms, OutputResidue& output,
     atoms = std::move(modified);
 }
 
-std::optional<glm::vec3> lookupPosition(const std::vector<OutputResidue>& residues, int residue, std::string name) {
+std::optional<glm::vec3> lookupPosition(const std::vector<OutputResidue>& residues, int residue, std::string_view name) {
     if (!name.empty() && (name.front() == '-' || name.front() == '+')) {
         residue += name.front() == '-' ? -1 : 1;
-        name.erase(name.begin());
+        name.remove_prefix(1);
     }
     if (residue < 0 || residue >= static_cast<int>(residues.size())) return std::nullopt;
     if (name == "O" && residue == static_cast<int>(residues.size()) - 1) name = "OT1";
@@ -772,18 +789,14 @@ void assignAddedCoordinates(
             if (databaseEntry == hydrogenDatabase.end()) {
                 throw std::runtime_error(std::format("No hydrogen database entry for residue {}", residue.rtpName));
             }
-            std::vector<HydrogenInstruction> instructions = databaseEntry->second;
-            instructions.insert(instructions.begin(), residue.terminalCoordinateInstructions.begin(),
-                residue.terminalCoordinateInstructions.end());
-
-            for (const auto& instruction : instructions) {
+            const auto processInstruction = [&](const HydrogenInstruction& instruction) {
                 const auto names = generatedNames(instruction);
                 bool needed = false;
                 for (const auto& name : names) {
                     const auto atom = residue.localIndex.find(name);
                     needed = needed || (atom != residue.localIndex.end() && !residue.atoms[atom->second].position.has_value());
                 }
-                if (!needed) continue;
+                if (!needed) return;
 
                 std::vector<glm::vec3> controls;
                 for (const auto& controlName : instruction.controls) {
@@ -794,7 +807,7 @@ void assignAddedCoordinates(
                     }
                     controls.push_back(*value);
                 }
-                if (controls.size() != instruction.controls.size()) continue;
+                if (controls.size() != instruction.controls.size()) return;
 
                 const auto positions = calculateAddedPositions(instruction.type, controls, instruction.count);
                 for (int i = 0; i < instruction.count; ++i) {
@@ -804,7 +817,10 @@ void assignAddedCoordinates(
                         changed = true;
                     }
                 }
-            }
+            };
+
+            for (const auto& instruction : residue.terminalCoordinateInstructions) processInstruction(instruction);
+            for (const auto& instruction : databaseEntry->second) processInstruction(instruction);
         }
         if (!changed) break;
     }
@@ -821,33 +837,47 @@ void assignAddedCoordinates(
 }
 
 std::vector<OutputResidue> makeAtoms(
-    const PdbInput& pdb,
+    std::span<const PdbResidue> residues,
     const std::unordered_map<std::string, ResidueTemplate>& templates,
     const std::unordered_map<std::string, std::vector<HydrogenInstruction>>& hydrogenDatabase,
     const std::unordered_map<std::string, TerminalPatch>& nTerminalPatches,
     const std::unordered_map<std::string, TerminalPatch>& cTerminalPatches) {
+    TimeIt timer("makeAtoms", false);
+
     std::vector<OutputResidue> result;
-    result.reserve(pdb.residues.size());
-    for (int residueIndex = 0; residueIndex < static_cast<int>(pdb.residues.size()); ++residueIndex) {
-        const auto& source = pdb.residues[residueIndex];
-        const std::string rtpName = rtpNameFor(source.name);
+    result.reserve(residues.size());
+    for (int residueIndex = 0; residueIndex < static_cast<int>(residues.size()); ++residueIndex) {
+        const auto& source = residues[residueIndex];
+        const std::string& rtpName = rtpNameFor(source.name);
         const auto templateEntry = templates.find(rtpName);
         if (templateEntry == templates.end()) {
             throw std::runtime_error(std::format("Residue {} has no CHARMM27 amino-acid template", source.name));
         }
-        std::vector<TemplateAtom> definitions = templateEntry->second.atoms;
+        std::vector<TemplateAtom> patchedDefinitions;
+        const std::vector<TemplateAtom>* definitions = &templateEntry->second.atoms;
+        bool definitionsPatched = false;
         OutputResidue output;
         output.sourceName = source.name;
         output.rtpName = rtpName;
         if (residueIndex == 0) {
             const std::string patchName = source.name == "GLY" ? "GLY-NH3+" : source.name == "PRO" ? "PRO-NH2+" : "NH3+";
-            applyTerminalPatch(definitions, output, nTerminalPatches.at(patchName));
+            patchedDefinitions = *definitions;
+            definitions = &patchedDefinitions;
+            definitionsPatched = true;
+            applyTerminalPatch(patchedDefinitions, output, nTerminalPatches.at(patchName));
         }
-        if (residueIndex == static_cast<int>(pdb.residues.size()) - 1) {
-            applyTerminalPatch(definitions, output, cTerminalPatches.at("COO-"));
+        if (residueIndex == static_cast<int>(residues.size()) - 1) {
+            if (!definitionsPatched) {
+                patchedDefinitions = *definitions;
+                definitions = &patchedDefinitions;
+                definitionsPatched = true;
+            }
+            applyTerminalPatch(patchedDefinitions, output, cTerminalPatches.at("COO-"));
         }
 
-        for (const auto& definition : definitions) {
+        output.atoms.reserve(definitions->size());
+        output.localIndex.reserve(definitions->size());
+        for (const auto& definition : *definitions) {
             OutputAtom atom;
             atom.residue = residueIndex + 1;
             atom.residueName = source.name;
@@ -855,7 +885,7 @@ std::vector<OutputResidue> makeAtoms(
             atom.type = definition.type;
             atom.charge = definition.charge;
             atom.mass = definition.mass;
-            const std::string sourceName = atom.name == "OT1" ? "O" : atom.name;
+            const std::string_view sourceName = atom.name == "OT1" ? std::string_view{ "O" } : std::string_view{ atom.name };
             if (const auto found = source.atoms.find(sourceName); found != source.atoms.end()) {
                 atom.position = found->second.position;
             }
@@ -881,10 +911,10 @@ std::optional<int> resolveAtom(
     const std::vector<OutputResidue>& residues,
     const std::vector<int>& offsets,
     int residue,
-    std::string name) {
+    std::string_view name) {
     if (!name.empty() && (name.front() == '-' || name.front() == '+')) {
         residue += name.front() == '-' ? -1 : 1;
-        name.erase(name.begin());
+        name.remove_prefix(1);
     }
     if (residue < 0 || residue >= static_cast<int>(residues.size())) return std::nullopt;
     if (name == "O" && residue == static_cast<int>(residues.size()) - 1) name = "OT1";
@@ -921,12 +951,23 @@ struct OutputMolecule {
     std::string chain;
     std::string name;
     std::vector<OutputResidue> residues;
-    Interactions interactions;
+    std::shared_ptr<const Interactions> interactions;
 };
+
+std::string topologyKey(std::span<const PdbResidue> residues) {
+    std::string key;
+    key.reserve(residues.size() * 5);
+    for (const auto& residue : residues) {
+        key.append(residue.name);
+        key.push_back('\0');
+    }
+    return key;
+}
 
 Interactions makeInteractions(
     const std::vector<OutputResidue>& residues,
     const std::unordered_map<std::string, ResidueTemplate>& templates) {
+	TimeIt timer("makeInteractions", false);
     std::vector<int> offsets(residues.size());
     int atomCount = 0;
     for (int i = 0; i < static_cast<int>(residues.size()); ++i) {
@@ -934,14 +975,26 @@ Interactions makeInteractions(
         atomCount += static_cast<int>(residues[i].atoms.size());
     }
 
-    std::set<Bond> bondSet;
+    std::vector<Bond> bondCandidates;
     Interactions result;
+    std::size_t bondCapacity = 0;
+    std::size_t improperCapacity = 0;
+    std::size_t cmapCapacity = 0;
+    for (const auto& residue : residues) {
+        const auto& residueTemplate = templates.at(residue.rtpName);
+        bondCapacity += residueTemplate.bonds.size() + residue.terminalBonds.size();
+        improperCapacity += residueTemplate.impropers.size() + residue.terminalImpropers.size();
+        cmapCapacity += residueTemplate.cmaps.size() + residue.terminalCmaps.size();
+    }
+    bondCandidates.reserve(bondCapacity);
+    result.impropers.reserve(improperCapacity);
+    result.cmaps.reserve(cmapCapacity);
     for (int residue = 0; residue < static_cast<int>(residues.size()); ++residue) {
         const auto& residueTemplate = templates.at(residues[residue].rtpName);
         for (const auto& names : residueTemplate.bonds) {
             if (auto bond = resolveInteraction<2>(names, residues, offsets, residue)) {
                 if ((*bond)[1] < (*bond)[0]) std::swap((*bond)[0], (*bond)[1]);
-                bondSet.insert(*bond);
+                bondCandidates.push_back(*bond);
             }
         }
         for (const auto& names : residueTemplate.impropers) {
@@ -953,7 +1006,7 @@ Interactions makeInteractions(
         for (const auto& names : residues[residue].terminalBonds) {
             if (auto bond = resolveInteraction<2>(names, residues, offsets, residue)) {
                 if ((*bond)[1] < (*bond)[0]) std::swap((*bond)[0], (*bond)[1]);
-                bondSet.insert(*bond);
+                bondCandidates.push_back(*bond);
             }
         }
         for (const auto& names : residues[residue].terminalImpropers) {
@@ -963,59 +1016,92 @@ Interactions makeInteractions(
             if (auto cmap = resolveInteraction<5>(names, residues, offsets, residue)) result.cmaps.push_back(*cmap);
         }
     }
-    result.bonds.assign(bondSet.begin(), bondSet.end());
+    std::ranges::sort(bondCandidates);
+    bondCandidates.erase(std::ranges::unique(bondCandidates).begin(), bondCandidates.end());
+    result.bonds = std::move(bondCandidates);
 
-    std::vector<std::set<int>> neighbours(static_cast<std::size_t>(atomCount + 1));
+    std::vector<int> neighbourOffsets(static_cast<std::size_t>(atomCount + 2));
     for (const auto& bond : result.bonds) {
-        neighbours[bond[0]].insert(bond[1]);
-        neighbours[bond[1]].insert(bond[0]);
+        ++neighbourOffsets[bond[0] + 1];
+        ++neighbourOffsets[bond[1] + 1];
+    }
+    for (int atom = 1; atom <= atomCount; ++atom) {
+        neighbourOffsets[atom + 1] += neighbourOffsets[atom];
+    }
+    std::vector<int> neighbourCursor = neighbourOffsets;
+    std::vector<int> neighbours(static_cast<std::size_t>(neighbourOffsets.back()));
+    for (const auto& bond : result.bonds) {
+        neighbours[neighbourCursor[bond[0]]++] = bond[1];
+        neighbours[neighbourCursor[bond[1]]++] = bond[0];
+    }
+    for (int atom = 1; atom <= atomCount; ++atom) {
+        auto begin = neighbours.begin() + neighbourOffsets[atom];
+        auto end = neighbours.begin() + neighbourOffsets[atom + 1];
+        std::ranges::sort(begin, end);
     }
 
-    std::set<Bond> oneThree;
+    std::vector<Bond> oneThree;
     for (int center = 1; center <= atomCount; ++center) {
-        const std::vector<int> adjacent(neighbours[center].begin(), neighbours[center].end());
+        const auto begin = neighbours.begin() + neighbourOffsets[center];
+        const auto end = neighbours.begin() + neighbourOffsets[center + 1];
+        const auto adjacent = std::ranges::subrange(begin, end);
         for (std::size_t i = 0; i < adjacent.size(); ++i) {
             for (std::size_t j = i + 1; j < adjacent.size(); ++j) {
-                result.angles.push_back({ adjacent[i], center, adjacent[j] });
-                oneThree.insert({ adjacent[i], adjacent[j] });
+                result.angles.push_back({ *(begin + i), center, *(begin + j) });
+                oneThree.push_back({ *(begin + i), *(begin + j) });
             }
         }
     }
+    std::ranges::sort(oneThree);
+    oneThree.erase(std::ranges::unique(oneThree).begin(), oneThree.end());
 
-    std::set<Dihedral> properSet;
-    std::set<Bond> pairSet;
+    std::vector<Dihedral> properCandidates;
+    std::vector<Bond> pairCandidates;
     for (const auto& central : result.bonds) {
-        for (const int first : neighbours[central[0]]) {
+        const auto firstBegin = neighbours.begin() + neighbourOffsets[central[0]];
+        const auto firstEnd = neighbours.begin() + neighbourOffsets[central[0] + 1];
+        const auto fourthBegin = neighbours.begin() + neighbourOffsets[central[1]];
+        const auto fourthEnd = neighbours.begin() + neighbourOffsets[central[1] + 1];
+        for (const int first : std::ranges::subrange(firstBegin, firstEnd)) {
             if (first == central[1]) continue;
-            for (const int fourth : neighbours[central[1]]) {
+            for (const int fourth : std::ranges::subrange(fourthBegin, fourthEnd)) {
                 if (fourth == central[0] || fourth == first) continue;
                 Dihedral value{ first, central[0], central[1], fourth };
                 const Dihedral reverse{ fourth, central[1], central[0], first };
                 if (reverse < value) value = reverse;
-                properSet.insert(value);
+                properCandidates.push_back(value);
                 const Bond pair{ std::min(first, fourth), std::max(first, fourth) };
-                if (!bondSet.contains(pair) && !oneThree.contains(pair)) pairSet.insert(pair);
+                if (!std::ranges::binary_search(result.bonds, pair)
+                    && !std::ranges::binary_search(oneThree, pair)) pairCandidates.push_back(pair);
             }
         }
     }
-    result.propers.assign(properSet.begin(), properSet.end());
-    result.pairs.assign(pairSet.begin(), pairSet.end());
+    std::ranges::sort(properCandidates);
+    properCandidates.erase(std::ranges::unique(properCandidates).begin(), properCandidates.end());
+    std::ranges::sort(pairCandidates);
+    pairCandidates.erase(std::ranges::unique(pairCandidates).begin(), pairCandidates.end());
+    result.propers = std::move(properCandidates);
+    result.pairs = std::move(pairCandidates);
     return result;
 }
 
-std::vector<PdbInput> splitInputByChain(const PdbInput& input) {
-    std::vector<PdbInput> chains;
+std::vector<std::span<const PdbResidue>> splitInputByChain(const PdbInput& input) {
+    std::vector<std::span<const PdbResidue>> chains;
+    if (input.residues.empty()) return chains;
+
     std::set<std::string> completedChains;
-    for (const auto& residue : input.residues) {
-        if (chains.empty() || chains.back().residues.back().chain != residue.chain) {
-            if (completedChains.contains(residue.chain)) {
+    std::size_t chainBegin = 0;
+    for (std::size_t i = 1; i <= input.residues.size(); ++i) {
+        if (i == input.residues.size() || input.residues[i].chain != input.residues[chainBegin].chain) {
+            const auto& chain = input.residues[chainBegin].chain;
+            if (completedChains.contains(chain)) {
                 throw std::runtime_error(std::format(
-                    "Chain {} occurs in multiple non-contiguous blocks", residue.chain.empty() ? "<blank>" : residue.chain));
+                    "Chain {} occurs in multiple non-contiguous blocks", chain.empty() ? "<blank>" : chain));
             }
-            if (!chains.empty()) completedChains.insert(chains.back().residues.back().chain);
-            chains.push_back(PdbInput{ input.title, {}, input.box });
+            completedChains.insert(chain);
+            chains.emplace_back(input.residues.data() + chainBegin, i - chainBegin);
+            chainBegin = i;
         }
-        chains.back().residues.push_back(residue);
     }
     return chains;
 }
@@ -1117,12 +1203,12 @@ std::shared_ptr<TopologyFile::Moleculetype> makeMoleculeTopology(
         }
     }
 
-    appendInteractions(output->singlebonds, molecule.interactions.bonds, bondedTypes.bond);
-    appendInteractions(output->pairbonds, molecule.interactions.pairs, 1);
-    appendInteractions(output->anglebonds, molecule.interactions.angles, bondedTypes.angle);
-    appendInteractions(output->dihedralbonds, molecule.interactions.propers, bondedTypes.properDihedral);
-    appendInteractions(output->improperdihedralbonds, molecule.interactions.impropers, bondedTypes.improperDihedral);
-    appendInteractions(output->cmapbonds, molecule.interactions.cmaps, 1);
+    appendInteractions(output->singlebonds, molecule.interactions->bonds, bondedTypes.bond);
+    appendInteractions(output->pairbonds, molecule.interactions->pairs, 1);
+    appendInteractions(output->anglebonds, molecule.interactions->angles, bondedTypes.angle);
+    appendInteractions(output->dihedralbonds, molecule.interactions->propers, bondedTypes.properDihedral);
+    appendInteractions(output->improperdihedralbonds, molecule.interactions->impropers, bondedTypes.improperDihedral);
+    appendInteractions(output->cmapbonds, molecule.interactions->cmaps, 1);
     return output;
 }
 
@@ -1137,17 +1223,29 @@ Programs::GmxConversionResult convertStructureToGmx(
     const auto cTerminalPatches = readTerminalPatches(forcefieldDirectory / "aminoacids.c.tdb");
 
     const auto chainInputs = splitInputByChain(input);
-    std::vector<OutputMolecule> molecules;
-    molecules.reserve(chainInputs.size());
-    for (std::size_t i = 0; i < chainInputs.size(); ++i) {
-        OutputMolecule molecule;
-        molecule.chain = chainInputs[i].residues.front().chain;
+    std::vector<OutputMolecule> molecules(chainInputs.size());
+    std::vector<std::size_t> chainIndices(chainInputs.size());
+    std::iota(chainIndices.begin(), chainIndices.end(), 0);
+    std::for_each(std::execution::par, chainIndices.begin(), chainIndices.end(), [&](const std::size_t i) {
+        auto& molecule = molecules[i];
+        molecule.chain = chainInputs[i].front().chain;
         molecule.name = moleculeNameForChain(molecule.chain, i, chainInputs.size());
         molecule.residues = makeAtoms(
             chainInputs[i], templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
-        molecule.interactions = makeInteractions(molecule.residues, templates);
-        molecules.push_back(std::move(molecule));
+    });
+
+    std::unordered_map<std::string, std::shared_ptr<const Interactions>> interactionCache;
+    interactionCache.reserve(chainInputs.size());
+    for (std::size_t i = 0; i < chainInputs.size(); ++i) {
+        auto& molecule = molecules[i];
+        auto [cached, inserted] = interactionCache.try_emplace(topologyKey(chainInputs[i]));
+        if (inserted) {
+            cached->second = std::make_shared<Interactions>(makeInteractions(molecule.residues, templates));
+        }
+        molecule.interactions = cached->second;
     }
+
+	//TimeIt::PrintAllTaskStats();
 
     TopologyFile topology;
     topology.title = "Topology generated by LIMA ToGmx";

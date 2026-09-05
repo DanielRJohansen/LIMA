@@ -95,9 +95,10 @@ int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		//TestDisplayT4();
-		ProgramsTests::TestToGmx_ciffile(envmode);
+		//ProgramsTests::TestToGmx_ciffile(envmode);
 		//LiveEditTest();
 		//BuildCellTest();
+		Benchmarks::ToGmxLargeCif(envmode);
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);

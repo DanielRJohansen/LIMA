@@ -19,10 +19,12 @@ namespace Benchmarks {
 		TimeIt timer;
 		const auto conversion = Programs::ToGmx(input);
 		const auto elapsed = timer.stop();
+		const std::chrono::seconds allowedTime{ 25 };
+
 		ASSERT(!conversion.grofile.atoms.empty(), "ToGmx benchmark produced no atoms");
-		return LimaUnittestResult{ true,
-			std::format("3J3Q.cif: {:.3f} s, {} atoms",
-				std::chrono::duration<double>(elapsed).count(), conversion.grofile.atoms.size()),
+		return LimaUnittestResult{ elapsed < allowedTime,
+			std::format("3J3Q.cif elapsed: {:.3f} allowed: {:.3f}",
+				std::chrono::duration<double>(elapsed).count(), std::chrono::duration<double>(allowedTime).count()),
 			envmode == Full };
 	}
 

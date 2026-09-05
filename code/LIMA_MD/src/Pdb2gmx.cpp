@@ -138,111 +138,130 @@ PdbInput readPdb(const fs::path& path) {
 }
 
 struct CifToken {
-    std::string value;
+    std::string_view value;
     bool quoted{};
 };
 
-std::vector<CifToken> tokenizeCif(const fs::path& path) {
-    std::ifstream input(path);
+std::string readWholeTextFile(const fs::path& path) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) throw std::runtime_error(std::format("Failed to open CIF file {}", path.string()));
-
-    std::vector<CifToken> tokens;
-    bool inTextField = false;
-    std::string textField;
-    for (std::string line; std::getline(input, line);) {
-        if (inTextField) {
-            if (!line.empty() && line.front() == ';') {
-                tokens.push_back({ std::move(textField), true });
-                textField.clear();
-                inTextField = false;
-            }
-            else {
-                if (!textField.empty()) textField.push_back('\n');
-                textField += line;
-            }
-            continue;
-        }
-        if (!line.empty() && line.front() == ';') {
-            inTextField = true;
-            textField = line.substr(1);
-            continue;
-        }
-
-        for (std::size_t i = 0; i < line.size();) {
-            while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) ++i;
-            if (i == line.size() || line[i] == '#') break;
-            if (line[i] == '\'' || line[i] == '"') {
-                const char quote = line[i++];
-                const std::size_t begin = i;
-                while (i < line.size() && line[i] != quote) ++i;
-                if (i == line.size()) throw std::runtime_error("Unterminated quoted CIF value");
-                tokens.push_back({ line.substr(begin, i - begin), true });
-                ++i;
-            }
-            else {
-                const std::size_t begin = i;
-                while (i < line.size() && !std::isspace(static_cast<unsigned char>(line[i]))) ++i;
-                tokens.push_back({ line.substr(begin, i - begin), false });
-            }
-        }
-    }
-    if (inTextField) throw std::runtime_error("Unterminated semicolon-delimited CIF text field");
-    return tokens;
+    const auto size = input.tellg();
+    std::string contents(static_cast<std::size_t>(size), '\0');
+    input.seekg(0);
+    input.read(contents.data(), size);
+    if (!input) throw std::runtime_error(std::format("Failed to read CIF file {}", path.string()));
+    return contents;
 }
 
 struct CifLoop {
-    std::vector<std::string> columns;
-    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string_view> columns;
+    std::vector<std::string_view> values;
+    std::size_t rowCount{};
 };
 
 struct CifDocument {
+    std::shared_ptr<std::string> source;
     std::unordered_map<std::string, std::string> values;
     std::vector<CifLoop> loops;
 };
 
 bool isCifControlToken(const CifToken& token) {
     if (token.quoted) return false;
-    const std::string normalized = lowercase(token.value);
+    const std::string normalized = lowercase(std::string(token.value));
     return token.value.starts_with('_') || normalized == "loop_" || normalized == "stop_"
         || normalized.starts_with("data_") || normalized.starts_with("save_");
 }
 
 CifDocument readCifDocument(const fs::path& path) {
-    const auto tokens = tokenizeCif(path);
     CifDocument document;
-    for (std::size_t i = 0; i < tokens.size();) {
-        const std::string normalized = lowercase(tokens[i].value);
-        if (!tokens[i].quoted && normalized == "loop_") {
-            ++i;
+    document.source = std::make_shared<std::string>(readWholeTextFile(path));
+    const std::string_view source = *document.source;
+    std::size_t position = 0;
+    std::optional<CifToken> pendingToken;
+
+    const auto nextToken = [&]() -> std::optional<CifToken> {
+        if (pendingToken) {
+            auto result = pendingToken;
+            pendingToken.reset();
+            return result;
+        }
+        while (position < source.size()) {
+            while (position < source.size() && std::isspace(static_cast<unsigned char>(source[position]))) ++position;
+            if (position == source.size()) return std::nullopt;
+            if (source[position] == '#') {
+                while (position < source.size() && source[position] != '\n') ++position;
+                continue;
+            }
+            if (source[position] == '\'' || source[position] == '"') {
+                const char quote = source[position++];
+                const std::size_t begin = position;
+                while (position < source.size() && source[position] != quote) ++position;
+                if (position == source.size()) throw std::runtime_error("Unterminated quoted CIF value");
+                const auto result = CifToken{ source.substr(begin, position - begin), true };
+                ++position;
+                return result;
+            }
+            if (source[position] == ';' && (position == 0 || source[position - 1] == '\n')) {
+                const std::size_t begin = ++position;
+                while (position < source.size()) {
+                    const std::size_t lineStart = position;
+                    const std::size_t lineEnd = source.find('\n', position);
+                    position = lineEnd == std::string_view::npos ? source.size() : lineEnd + 1;
+                    if (lineStart < source.size() && source[lineStart] == ';') {
+                        return CifToken{ source.substr(begin, lineStart - begin), true };
+                    }
+                }
+                throw std::runtime_error("Unterminated semicolon-delimited CIF text field");
+            }
+            const std::size_t begin = position;
+            while (position < source.size() && !std::isspace(static_cast<unsigned char>(source[position]))) ++position;
+            return CifToken{ source.substr(begin, position - begin), false };
+        }
+        return std::nullopt;
+    };
+
+    while (const auto token = nextToken()) {
+        const std::string normalized = lowercase(std::string(token->value));
+        if (!token->quoted && normalized == "loop_") {
             CifLoop loop;
-            while (i < tokens.size() && !tokens[i].quoted && tokens[i].value.starts_with('_')) {
-                loop.columns.push_back(lowercase(tokens[i++].value));
+            while (const auto column = nextToken()) {
+                if (column->quoted || !column->value.starts_with('_')) {
+                    pendingToken = column;
+                    break;
+                }
+                loop.columns.push_back(column->value);
             }
             if (loop.columns.empty()) throw std::runtime_error("CIF loop has no column names");
-            std::vector<std::string> values;
-            while (i < tokens.size() && !isCifControlToken(tokens[i])) values.push_back(tokens[i++].value);
-            if (values.size() % loop.columns.size() != 0) throw std::runtime_error("CIF loop has an incomplete row");
-            for (std::size_t row = 0; row < values.size(); row += loop.columns.size()) {
-                loop.rows.emplace_back(values.begin() + static_cast<std::ptrdiff_t>(row),
-                    values.begin() + static_cast<std::ptrdiff_t>(row + loop.columns.size()));
+            // Re-scan loop data from the saved position. Control tokens are left
+            // for the outer parser, so only the atom loop retains its values.
+            const bool retainValues = std::ranges::any_of(loop.columns, [](const std::string_view column) {
+                return lowercase(std::string(column)) == "_atom_site.cartn_x";
+            });
+            while (const auto value = nextToken()) {
+                if (isCifControlToken(*value)) {
+                    pendingToken = value;
+                    break;
+                }
+                if (retainValues) loop.values.push_back(value->value);
             }
+            if (!loop.values.empty() && loop.values.size() % loop.columns.size() != 0)
+                throw std::runtime_error("CIF loop has an incomplete row");
+            loop.rowCount = loop.values.size() / loop.columns.size();
             document.loops.push_back(std::move(loop));
         }
-        else if (!tokens[i].quoted && tokens[i].value.starts_with('_')) {
-            const std::string key = lowercase(tokens[i++].value);
-            if (i == tokens.size() || isCifControlToken(tokens[i])) {
+        else if (!token->quoted && token->value.starts_with('_')) {
+            const std::string key = lowercase(std::string(token->value));
+            const auto value = nextToken();
+            if (!value || isCifControlToken(*value)) {
                 throw std::runtime_error(std::format("CIF item {} has no value", key));
             }
-            document.values[key] = tokens[i++].value;
-        }
-        else {
-            ++i;
+            document.values[key] = std::string(value->value);
         }
     }
     return document;
 }
 
-bool cifValueMissing(const std::string& value) {
+bool cifValueMissing(std::string_view value) {
     return value == "." || value == "?";
 }
 
@@ -271,19 +290,25 @@ PdbInput readCif(const fs::path& path) {
     }
 
     const auto atomLoop = std::ranges::find_if(document.loops, [](const CifLoop& loop) {
-        return std::ranges::find(loop.columns, "_atom_site.cartn_x") != loop.columns.end();
+        return std::ranges::any_of(loop.columns, [](const std::string_view column) {
+            return lowercase(std::string(column)) == "_atom_site.cartn_x";
+        });
     });
     if (atomLoop == document.loops.end()) throw std::runtime_error("CIF file has no atom_site Cartesian-coordinate loop");
 
     const auto column = [&atomLoop](std::initializer_list<std::string_view> alternatives) {
         for (const auto alternative : alternatives) {
-            const auto found = std::ranges::find(atomLoop->columns, alternative);
+            const auto found = std::ranges::find_if(atomLoop->columns, [alternative](const std::string_view column) {
+                return lowercase(std::string(column)) == alternative;
+            });
             if (found != atomLoop->columns.end()) return static_cast<std::size_t>(std::distance(atomLoop->columns.begin(), found));
         }
         throw std::runtime_error(std::format("Required CIF atom_site column {} is missing", *alternatives.begin()));
     };
     const auto optionalColumn = [&atomLoop](std::string_view name) -> std::optional<std::size_t> {
-        const auto found = std::ranges::find(atomLoop->columns, name);
+        const auto found = std::ranges::find_if(atomLoop->columns, [name](const std::string_view column) {
+            return lowercase(std::string(column)) == name;
+        });
         if (found == atomLoop->columns.end()) return std::nullopt;
         return static_cast<std::size_t>(std::distance(atomLoop->columns.begin(), found));
     };
@@ -305,14 +330,17 @@ PdbInput readCif(const fs::path& path) {
     const auto model = optionalColumn("_atom_site.pdbx_pdb_model_num");
     std::string firstModel;
 
-    const auto preferredValue = [](const std::vector<std::string>& row, std::optional<std::size_t> preferred,
-                                   std::optional<std::size_t> fallback, std::string_view description) -> const std::string& {
+    const auto preferredValue = [](std::span<const std::string_view> row, std::optional<std::size_t> preferred,
+                                   std::optional<std::size_t> fallback, std::string_view description) -> std::string_view {
         if (preferred && !cifValueMissing(row[*preferred])) return row[*preferred];
         if (fallback && !cifValueMissing(row[*fallback])) return row[*fallback];
         throw std::runtime_error(std::format("CIF atom_site row has no {}", description));
     };
 
-    for (const auto& row : atomLoop->rows) {
+    const std::size_t columnCount = atomLoop->columns.size();
+    for (std::size_t rowIndex = 0; rowIndex < atomLoop->rowCount; ++rowIndex) {
+        const auto row = std::span<const std::string_view>(
+            atomLoop->values.data() + rowIndex * columnCount, columnCount);
         if (row[group] != "ATOM") continue;
         if (model) {
             if (firstModel.empty()) firstModel = row[*model];
@@ -321,15 +349,17 @@ PdbInput readCif(const fs::path& path) {
         if (alternate && !cifValueMissing(row[*alternate]) && row[*alternate] != "A") continue;
 
         PdbAtom atom;
-        atom.name = preferredValue(row, authAtomName, labelAtomName, "atom name");
+        atom.name = std::string(preferredValue(row, authAtomName, labelAtomName, "atom name"));
         if (atom.name == "H") atom.name = "HN";
-        atom.residueName = preferredValue(row, authResidueName, labelResidueName, "residue name");
+        atom.residueName = std::string(preferredValue(row, authResidueName, labelResidueName, "residue name"));
         if (atom.residueName == "ILE" && atom.name == "CD1") atom.name = "CD";
-        const std::string& chainValue = preferredValue(row, authChain, labelChain, "chain identifier");
+        const std::string_view chainValue = preferredValue(row, authChain, labelChain, "chain identifier");
         atom.chain = cifValueMissing(chainValue) ? std::string{} : chainValue;
-        atom.residueNumber = std::stoi(preferredValue(row, authResidueNumber, labelResidueNumber, "residue number"));
+        atom.residueNumber = std::stoi(std::string(preferredValue(row, authResidueNumber, labelResidueNumber, "residue number")));
         atom.insertionCode = insertion && !cifValueMissing(row[*insertion]) ? row[*insertion].front() : ' ';
-        atom.position = { std::stof(row[x]) * 0.1f, std::stof(row[y]) * 0.1f, std::stof(row[z]) * 0.1f };
+        atom.position = { std::stof(std::string(row[x])) * 0.1f,
+                          std::stof(std::string(row[y])) * 0.1f,
+                          std::stof(std::string(row[z])) * 0.1f };
 
         if (result.residues.empty() || result.residues.back().chain != atom.chain
             || result.residues.back().number != atom.residueNumber

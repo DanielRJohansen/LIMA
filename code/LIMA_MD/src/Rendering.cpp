@@ -13,7 +13,6 @@
 const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
 
-
 glm::vec3 AnyPerpendicular(const glm::vec3& dir)
 {
 	const glm::vec3 helper = std::abs(dir.z) < 0.999f
@@ -39,61 +38,6 @@ glm::mat4 RotationFromZAxisTo(const glm::vec3& direction)
 	const float angle = std::acos(c);
 	return glm::rotate(glm::mat4(1.f), angle, rotAxis);
 }
-
-Arrow::Arrow(glm::vec3 direction, glm::vec4 color, int id) : direction(glm::normalize(direction)), color(color), uniqueId(id) {
-	constexpr int radialSegments = 64;
-	constexpr float totalLength = 1.0f;
-	constexpr float shaftLength = 0.78f * totalLength;
-	constexpr float shaftRadius = 0.035f * totalLength;
-	constexpr float headLength = totalLength - shaftLength;
-	constexpr float headRadius = 0.09f * totalLength;
-
-	const glm::vec3 axis(0.f, 0.f, 1.f);
-	const glm::vec3 u(1.f, 0.f, 0.f);
-	const glm::vec3 v(0.f, 1.f, 0.f);
-
-	const glm::vec3 shaftStart(0.f, 0.f, 0.f);
-	const glm::vec3 shaftEnd(0.f, 0.f, shaftLength);
-	const glm::vec3 coneBase(0.f, 0.f, shaftLength);
-	const glm::vec3 apex(0.f, 0.f, totalLength);
-
-	vertices.reserve(radialSegments * 12);
-
-	auto AppendTriangle = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
-		const glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
-		vertices.push_back({ a, normal });
-		vertices.push_back({ b, normal });
-		vertices.push_back({ c, normal });
-		};
-
-	for (int i = 0; i < radialSegments; ++i) {
-		const float a0 = 2.f * 3.1415f * static_cast<float>(i) / static_cast<float>(radialSegments);
-		const float a1 = 2.f * 3.1415f * static_cast<float>(i + 1) / static_cast<float>(radialSegments);
-
-		const glm::vec3 r0s = std::cos(a0) * u * shaftRadius + std::sin(a0) * v * shaftRadius;
-		const glm::vec3 r1s = std::cos(a1) * u * shaftRadius + std::sin(a1) * v * shaftRadius;
-
-		const glm::vec3 p0 = shaftStart + r0s;
-		const glm::vec3 p1 = shaftStart + r1s;
-		const glm::vec3 q0 = shaftEnd + r0s;
-		const glm::vec3 q1 = shaftEnd + r1s;
-
-		AppendTriangle(p0, p1, q1);
-		AppendTriangle(p0, q1, q0);
-
-		const glm::vec3 r0c = std::cos(a0) * u * headRadius + std::sin(a0) * v * headRadius;
-		const glm::vec3 r1c = std::cos(a1) * u * headRadius + std::sin(a1) * v * headRadius;
-
-		const glm::vec3 c0 = coneBase + r0c;
-		const glm::vec3 c1 = coneBase + r1c;
-
-		AppendTriangle(c0, c1, apex);
-		AppendTriangle(coneBase, c1, c0);
-	}
-
-	AppendTriangle(shaftStart, shaftStart + glm::vec3(shaftRadius, 0.f, 0.f), shaftStart + glm::vec3(0.f, shaftRadius, 0.f));
-}
-
 
 void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const {
 	//const float length = 2.f;
@@ -124,67 +68,6 @@ void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::ve
 	shader->Draw(vertices, MVP, model, color, uniqueId);
 };
 
-Ring::Ring(glm::vec3 normal, glm::vec4 color, int id)
-	: normal(glm::normalize(normal)), color(color), uniqueId(id)
-{
-	constexpr int majorSegments = 96;
-	constexpr int minorSegments = 12;
-	constexpr float majorRadius = 1.45f;
-	constexpr float tubeRadius = 0.020f;
-
-	vertices.reserve(majorSegments * minorSegments * 6);
-
-	auto TorusPoint = [&](float u, float v) {
-		const float cu = std::cos(u);
-		const float su = std::sin(u);
-		const float cv = std::cos(v);
-		const float sv = std::sin(v);
-
-		const float r = majorRadius + tubeRadius * cv;
-		return glm::vec3(r * cu, r * su, tubeRadius * sv);
-		};
-
-	auto TorusNormal = [&](float u, float v) {
-		const float cu = std::cos(u);
-		const float su = std::sin(u);
-		const float cv = std::cos(v);
-		const float sv = std::sin(v);
-
-		return glm::normalize(glm::vec3(cv * cu, cv * su, sv));
-		};
-
-	auto AppendTri = [&](const glm::vec3& a, const glm::vec3& na,
-		const glm::vec3& b, const glm::vec3& nb,
-		const glm::vec3& c, const glm::vec3& nc)
-		{
-			vertices.push_back({ a, na });
-			vertices.push_back({ b, nb });
-			vertices.push_back({ c, nc });
-		};
-
-	for (int i = 0; i < majorSegments; ++i) {
-		const float u0 = 2.f * PI * static_cast<float>(i) / static_cast<float>(majorSegments);
-		const float u1 = 2.f * PI * static_cast<float>(i + 1) / static_cast<float>(majorSegments);
-
-		for (int j = 0; j < minorSegments; ++j) {
-			const float v0 = 2.f * PI * static_cast<float>(j) / static_cast<float>(minorSegments);
-			const float v1 = 2.f * PI * static_cast<float>(j + 1) / static_cast<float>(minorSegments);
-
-			const glm::vec3 p00 = TorusPoint(u0, v0);
-			const glm::vec3 p10 = TorusPoint(u1, v0);
-			const glm::vec3 p11 = TorusPoint(u1, v1);
-			const glm::vec3 p01 = TorusPoint(u0, v1);
-
-			const glm::vec3 n00 = TorusNormal(u0, v0);
-			const glm::vec3 n10 = TorusNormal(u1, v0);
-			const glm::vec3 n11 = TorusNormal(u1, v1);
-			const glm::vec3 n01 = TorusNormal(u0, v1);
-
-			AppendTri(p00, n00, p10, n10, p11, n11);
-			AppendTri(p00, n00, p11, n11, p01, n01);
-		}
-	}
-}
 
 void Ring::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const
 {
@@ -196,37 +79,6 @@ void Ring::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec
 	const glm::mat4 MVP = VP * model;
 	shader->Draw(vertices, MVP, model, color, uniqueId);
 }
-
-void TransformGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
-	const int axis = activeAxis.value_or(-1);
-
-	const float translateScaleX = activeMode == GizmoMode::Translate && axis == 0 ? 2.2f : 2.f;
-	const float translateScaleY = activeMode == GizmoMode::Translate && axis == 1 ? 2.2f : 2.f;
-	const float translateScaleZ = activeMode == GizmoMode::Translate && axis == 2 ? 2.2f : 2.f;
-
-	const float rotateScaleX = activeMode == GizmoMode::Rotate && axis == 0 ? 2.2f : 2.f;
-	const float rotateScaleY = activeMode == GizmoMode::Rotate && axis == 1 ? 2.2f : 2.f;
-	const float rotateScaleZ = activeMode == GizmoMode::Rotate && axis == 2 ? 2.2f : 2.f;
-
-	arrowX.Draw(shader, VP, position, translateScaleX);
-	arrowY.Draw(shader, VP, position, translateScaleY);
-	arrowZ.Draw(shader, VP, position, translateScaleZ);
-
-	ringX.Draw(shader, VP, position, rotateScaleX);
-	ringY.Draw(shader, VP, position, rotateScaleY);
-	ringZ.Draw(shader, VP, position, rotateScaleZ);
-}
-
-
-
-
-
-
-
-
-
-
-
 
 
 

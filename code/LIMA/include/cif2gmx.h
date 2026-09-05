@@ -40,15 +40,7 @@ Example:
     parser.AddOption({ "-water", "-water-model" }, false, water);
     parser.Parse(argc, argv);
 
-    Programs::WaterModel waterModel;
-    if (water == "tip3p") waterModel = Programs::WaterModel::Tip3p;
-    else if (water == "tip4p") waterModel = Programs::WaterModel::Tip4p;
-    else if (water == "tips3p") waterModel = Programs::WaterModel::Tips3p;
-    else if (water == "tip5p") waterModel = Programs::WaterModel::Tip5p;
-    else if (water == "spc") waterModel = Programs::WaterModel::Spc;
-    else if (water == "spce") waterModel = Programs::WaterModel::Spce;
-    else throw std::runtime_error("Unsupported CHARMM27 water model: " + water);
-
-    Programs::cif2gmx(cifPath, name.empty() ? std::nullopt : std::optional<std::string>{ name }, waterModel);
+    Programs::cif2gmx(cifPath, name.empty() ? std::nullopt : std::optional<std::string>{ name },
+        Programs::ParseWaterModel(water));
     return 0;
 }

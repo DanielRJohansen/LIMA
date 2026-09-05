@@ -80,7 +80,10 @@ namespace ProgramsTests {
 		TryDeleteFile(generatedTop);
 		TryDeleteFile(generatedPosre);
 
-		Programs::cif2gmx(directory / "7LZM.cif", "generated_cif");
+		const auto conversion = Programs::cif2gmx(
+			directory / "7LZM.cif", "generated_cif", Programs::WaterModel::Tip3p, directory);
+		ASSERT(conversion.gro == generatedGro && conversion.topology == generatedTop
+			&& conversion.positionRestraints == generatedPosre, "cif2gmx returned incorrect output paths");
 		LimaUnittestResult gResult = CompareGroFiles(
 			GroFile{ generatedGro }, GroFile{ directory / "conf_ref.gro" }, envmode, 0.75f, 0.05f, 0.075f);
 		if (!gResult.success)

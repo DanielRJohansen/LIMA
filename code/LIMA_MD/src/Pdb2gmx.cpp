@@ -1084,8 +1084,9 @@ void writeTopology(const fs::path& path, const fs::path& positionRestraints,
               "[ molecules ]\n; Compound        #mols\n" << moleculeName << "     1\n";
 }
 
-void convertStructureToGmx(const fs::path& inputPath, const PdbInput& input,
-                           const std::optional<std::string>& name, Programs::WaterModel waterModel) {
+Programs::GmxConversionResult convertStructureToGmx(
+    const fs::path& inputPath, const PdbInput& input, const std::optional<std::string>& name,
+    Programs::WaterModel waterModel, const std::optional<fs::path>& outputDirectory) {
     if (name && (name->empty() || fs::path(*name).has_parent_path())) {
         throw std::runtime_error("pdb2gmx/cif2gmx output name must be a non-empty basename");
     }
@@ -1100,7 +1101,11 @@ void convertStructureToGmx(const fs::path& inputPath, const PdbInput& input,
     const auto outputResidues = makeAtoms(input, templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches);
     const auto interactions = makeInteractions(outputResidues, templates);
 
-    const fs::path directory = inputPath.parent_path().empty() ? fs::current_path() : inputPath.parent_path();
+    const fs::path inputDirectory = inputPath.parent_path().empty() ? fs::current_path() : inputPath.parent_path();
+    const fs::path directory = outputDirectory.value_or(inputDirectory);
+    if (!fs::is_directory(directory)) {
+        throw std::runtime_error(std::format("Conversion output directory does not exist: {}", directory.string()));
+    }
     const std::string basename = name.value_or("");
     const fs::path groPath = directory / (basename.empty() ? "conf.gro" : basename + ".gro");
     const fs::path topPath = directory / (basename.empty() ? "topol.top" : basename + ".top");
@@ -1110,26 +1115,42 @@ void convertStructureToGmx(const fs::path& inputPath, const PdbInput& input,
     writePositionRestraints(posrePath, outputResidues);
     writeTopology(topPath, posrePath, input.title, input.residues.front().chain, outputResidues, interactions,
         waterModel, bondedTypes);
+    return { groPath, topPath, posrePath };
 }
 
 } // namespace
 
-void Programs::pdb2gmx(const fs::path& pdbfile, std::optional<std::string> name, WaterModel waterModel) {
-    if (pdbfile.extension() != ".pdb") {
+Programs::WaterModel Programs::ParseWaterModel(std::string_view name) {
+    const std::string normalized = lowercase(std::string(name));
+    if (normalized == "tip3p") return WaterModel::Tip3p;
+    if (normalized == "tip4p") return WaterModel::Tip4p;
+    if (normalized == "tips3p") return WaterModel::Tips3p;
+    if (normalized == "tip5p") return WaterModel::Tip5p;
+    if (normalized == "spc") return WaterModel::Spc;
+    if (normalized == "spce") return WaterModel::Spce;
+    throw std::runtime_error(std::format("Unsupported CHARMM27 water model: {}", name));
+}
+
+Programs::GmxConversionResult Programs::pdb2gmx(
+    const fs::path& pdbfile, std::optional<std::string> name, WaterModel waterModel,
+    std::optional<fs::path> outputDirectory) {
+    if (lowercase(pdbfile.extension().string()) != ".pdb") {
         throw std::runtime_error(std::format("Expected a .pdb input file, got {}", pdbfile.string()));
     }
     if (!fs::is_regular_file(pdbfile)) {
         throw std::runtime_error(std::format("PDB input file does not exist: {}", pdbfile.string()));
     }
-    convertStructureToGmx(pdbfile, readPdb(pdbfile), name, waterModel);
+    return convertStructureToGmx(pdbfile, readPdb(pdbfile), name, waterModel, outputDirectory);
 }
 
-void Programs::cif2gmx(const fs::path& ciffile, std::optional<std::string> name, WaterModel waterModel) {
+Programs::GmxConversionResult Programs::cif2gmx(
+    const fs::path& ciffile, std::optional<std::string> name, WaterModel waterModel,
+    std::optional<fs::path> outputDirectory) {
     if (lowercase(ciffile.extension().string()) != ".cif") {
         throw std::runtime_error(std::format("Expected a .cif input file, got {}", ciffile.string()));
     }
     if (!fs::is_regular_file(ciffile)) {
         throw std::runtime_error(std::format("CIF input file does not exist: {}", ciffile.string()));
     }
-    convertStructureToGmx(ciffile, readCif(ciffile), name, waterModel);
+    return convertStructureToGmx(ciffile, readCif(ciffile), name, waterModel, outputDirectory);
 }

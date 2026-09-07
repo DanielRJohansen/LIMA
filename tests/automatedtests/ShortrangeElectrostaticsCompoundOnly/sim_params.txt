@@ -1,29 +1,25 @@
-
-// Main params
+// Main parameters
 n_steps=1000
 dt=2 # [fs]
-em=false # Is an energy-minimization sim
-em_force_tolerance=1000 # [kJ/mol/nm] - only relevant if em=true
+em=false # Is an energy-minimization simulation
+em_force_tolerance=1000 # [kJ/mol/nm], only relevant if em=true
 stepsPerNlistupdate=20 # [steps]
 
-// Physics params
-boundarycondition=PBC # (PBC, NoBC)
+// Physics parameters
+boundarycondition=PBC # PBC or NoBC
 enable_electrostatics=true
 cutoff_nm=1.2 # [nm]
+supernatural_forces=None
 
-// Thermostat params
+// Thermostat parameters
 steps_per_temperature_measurement=200 # [steps]
 apply_thermostat=false # Thermostat on/off
+ref_t=300 # Reference temperature [K]
 
-// Integration params
-
-// Constraints
-
-// Electrostatics / PME params
-
-// Output params
+// Output parameters
 data_logging_interval=5 # [steps]
 save_energy=false # Save kinetic and potential energy to file
+coloring_method=Atomname
 
-// Debug params (for developers)
+// Debug parameters
 stepwise=false # Wait for user to input key 'N' before each step

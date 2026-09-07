@@ -94,7 +94,7 @@ void Engine::setDeviceConstantMemory() {
 	boxSize_host.Set(simulation->box->boxparams.boxSize);
 	cudaMemcpyToSymbol(DeviceConstants::boxSize, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
 
-	cudaMemcpyToSymbol(DeviceConstants::cutoffNM, &simulation->simParams.cutoff_nm, sizeof(float), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::cutoffNM, &simulation->simParams.cutoff_nm.value, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmReciprocal = 1.f / simulation->simParams.cutoff_nm;
 	cudaMemcpyToSymbol(DeviceConstants::cutoffNmReciprocal, &cutoffNmReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
 	const float cutoffNmSquaredReciprocal = 1.f / (simulation->simParams.cutoff_nm * simulation->simParams.cutoff_nm );

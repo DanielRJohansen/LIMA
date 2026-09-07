@@ -1,71 +1,115 @@
 #pragma once
 
 #include "LimaTypes.cuh"
-#include <set>
+
 #include <filesystem>
+#include <format>
+#include <optional>
+#include <set>
+#include <string_view>
+#include <tuple>
+#include <utility>
 
 enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
+enum BoundaryConditionSelect { NoBC, PBC };
+enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };
+enum class SimParamSection { Main, Physics, Thermostat, Output, Debug };
 
-enum BoundaryConditionSelect{NoBC, PBC};
+template<typename T>
+struct SimParam {
+    using Type = T;
 
-enum SupernaturalForcesSelect{None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition};
+    constexpr SimParam(std::string_view name, T defaultValue, SimParamSection section,
+        std::optional<std::string_view> comment = std::nullopt)
+        : name(name), defaultValue(defaultValue), value(std::move(defaultValue)), section(section), comment(comment) {}
+
+    constexpr operator const T&() const { return value; }
+
+    constexpr SimParam& operator=(const T& newValue) {
+        value = newValue;
+        return *this;
+    }
+
+    constexpr auto empty() const requires requires(const T& candidate) { candidate.empty(); } {
+        return value.empty();
+    }
+
+    template<typename... Args>
+    constexpr decltype(auto) insert(Args&&... args)
+        requires requires(T& candidate) { candidate.insert(std::forward<Args>(args)...); } {
+        return value.insert(std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    constexpr decltype(auto) erase(Args&&... args)
+        requires requires(T& candidate) { candidate.erase(std::forward<Args>(args)...); } {
+        return value.erase(std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    constexpr decltype(auto) contains(Args&&... args) const
+        requires requires(const T& candidate) { candidate.contains(std::forward<Args>(args)...); } {
+        return value.contains(std::forward<Args>(args)...);
+    }
+
+    std::string_view name;
+    T defaultValue;
+    T value;
+    SimParamSection section;
+    std::optional<std::string_view> comment;
+};
+
+template<typename T, typename CharT>
+struct std::formatter<SimParam<T>, CharT> : std::formatter<T, CharT> {
+    template<typename FormatContext>
+    auto format(const SimParam<T>& param, FormatContext& context) const {
+        return std::formatter<T, CharT>::format(param.value, context);
+    }
+};
 
 struct SimParams {
-    SimParams() {}
-    SimParams(const std::filesystem::path& path);
+    SimParams() = default;
+    explicit SimParams(const std::filesystem::path& path);
     SimParams(std::initializer_list<int>) = delete;
 
-    void dumpToFile(const std::filesystem::path& filename = "sim_params.txt");
+    void DumpToFile(const std::filesystem::path& filename = "sim_params.txt") const;
 
-    // Main parameters
-    uint64_t n_steps = 1000;
-    float dt = 2.f * FEMTO_TO_NANO;           // Time step [ns]
-    bool em_variant = false;
-    float em_force_tolerance = 1000;           // [kJ/mol/nm]
-    int stepsPerNlistupdate = 20;
+    SimParam<uint64_t> n_steps{ "n_steps", 1000, SimParamSection::Main };
+    SimParam<float> dt{ "dt", 2.f * FEMTO_TO_NANO, SimParamSection::Main, "[fs]" };
+    SimParam<bool> em_variant{ "em", false, SimParamSection::Main, "Is an energy-minimization simulation" };
+    SimParam<float> em_force_tolerance{ "em_force_tolerance", 1000.f, SimParamSection::Main,
+        "[kJ/mol/nm], only relevant if em=true" };
+    SimParam<int> stepsPerNlistupdate{ "stepsPerNlistupdate", 20, SimParamSection::Main, "[steps]" };
 
-    // Physics parameters
-    BoundaryConditionSelect bc_select{ PBC };
-    bool enable_electrostatics = true;
-    float cutoff_nm = 1.2f;                    // Cutoff distance [nm]
-    std::set<SupernaturalForcesSelect> snf_select;
+    SimParam<BoundaryConditionSelect> bc_select{ "boundarycondition", PBC, SimParamSection::Physics, "PBC or NoBC" };
+    SimParam<bool> enable_electrostatics{ "enable_electrostatics", true, SimParamSection::Physics };
+    SimParam<float> cutoff_nm{ "cutoff_nm", 1.2f, SimParamSection::Physics, "[nm]" };
+    SimParam<std::set<SupernaturalForcesSelect>> snf_select{ "supernatural_forces", {}, SimParamSection::Physics };
 
-    // Thermostat
-    int64_t steps_per_temperature_measurement = 200;
-    bool apply_thermostat = false;
-    float ref_t = 300.0f;                      // Reference temperature [K] (critical)
-    // float tau_t = 0.1f;                     // Temperature coupling constant [ps] (critical)
-    // std::string tcoupl = "V-rescale";         // Temperature coupling algorithm (important)
+    SimParam<int64_t> steps_per_temperature_measurement{ "steps_per_temperature_measurement", 200,
+        SimParamSection::Thermostat, "[steps]" };
+    SimParam<bool> apply_thermostat{ "apply_thermostat", false, SimParamSection::Thermostat, "Thermostat on/off" };
+    SimParam<float> ref_t{ "ref_t", 300.f, SimParamSection::Thermostat, "Reference temperature [K]" };
 
-    // Barostat (Pressure Coupling)
-    // std::string pcoupl = "Parrinello-Rahman"; // Pressure coupling algorithm (critical)
-    // float ref_p = 1.0f;                     // Reference pressure [bar] (critical)
-    // float tau_p = 2.0f;                     // Pressure coupling constant [ps] (critical)
-    // float compressibility = 4.5e-5f;        // Isothermal compressibility [bar^-1] (important)
+    SimParam<int> data_logging_interval{ "data_logging_interval", 5, SimParamSection::Output, "[steps]" };
+    SimParam<bool> save_energy{ "save_energy", false, SimParamSection::Output,
+        "Save kinetic and potential energy to file" };
+    SimParam<ColoringMethod> coloring_method{ "coloring_method", ColoringMethod::Atomname, SimParamSection::Output };
 
-    // Integration parameters
-    // std::string integrator = "md";          // Integration algorithm (e.g., md, sd) (critical)
+    SimParam<bool> stepwise{ "stepwise", false, SimParamSection::Debug,
+        "Wait for user to input key 'N' before each step" };
 
-    // Constraints
-    // int constraints = 0;                    // Constraint type (0: none, 1: bonds, etc.) (important)
+    auto Params() {
+        return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
+            bc_select, enable_electrostatics, cutoff_nm, snf_select,
+            steps_per_temperature_measurement, apply_thermostat, ref_t,
+            data_logging_interval, save_energy, coloring_method, stepwise);
+    }
 
-    // Electrostatics / PME parameters
-    // std::string coulombtype = "PME";        // Electrostatics method (PME, Reaction Field, etc.) (critical)
-    // int pme_order = 4;                      // PME interpolation order (important)
-    // float fourierspacing = 0.12f;           // Fourier grid spacing for PME [nm] (important)
-
-    // Output parameters
-    int data_logging_interval = 5;
-    bool save_energy = false;
-    ColoringMethod coloring_method = ColoringMethod::Atomname;  // TODO: THis is actually being ignored now...
-    // int nstxout = 500;                    // Frequency for writing coordinates [steps] (important)
-    // int nstvout = 500;                    // Frequency for writing velocities [steps] (unimportant)
-    // int nstenergy = 100;                  // Frequency for writing energies [steps] (critical)
-    // int nstlog = 100;                     // Frequency for writing log info [steps] (important)
-    // unsigned int gen_seed = 42;           // Random seed for stochastic thermostats (unimportant)
-    // int nstcomm = 10;                     // Frequency for center-of-mass removal [steps] (important)
-    // std::string comm_mode = "linear";     // Center-of-mass removal mode (unimportant)
-
-    // Debug parameters
-    bool stepwise = false;                   // Wait for user input key "N" before each step
+    auto Params() const {
+        return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
+            bc_select, enable_electrostatics, cutoff_nm, snf_select,
+            steps_per_temperature_measurement, apply_thermostat, ref_t,
+            data_logging_interval, save_energy, coloring_method, stepwise);
+    }
 };

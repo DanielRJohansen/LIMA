@@ -2,344 +2,242 @@
 
 #include "Filehandling.h"
 
+#include <algorithm>
+#include <array>
+#include <charconv>
+#include <cctype>
+#include <concepts>
+#include <format>
+#include <fstream>
+#include <optional>
+#include <sstream>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
-#include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
-#include <functional>
+#include <unordered_set>
 
-using std::string;
 namespace fs = std::filesystem;
+using Dictionary = std::unordered_map<std::string, std::string>;
 
-using Dictionary = std::unordered_map<string, string>;
+namespace {
 
-void ParseMdp(const Dictionary &mdp_dict, SimParams &params);
-
-template <typename T>
-constexpr T convertStringvalueToValue(const std::vector<std::pair<string, T>> pairs, const string& key_str, const string& val_str) {
-	for (auto& pair : pairs) {
-		if (pair.first == val_str) {
-			return pair.second;
-		}
-	}
-
-	throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_str + " " + val_str);
-}
-// Helper function for overwriting templates
-template <typename T>
-constexpr void overwriteParamNonNumbers(Dictionary& dict, const std::string& key, T& val, std::function<T(const string&)> transform) {
-	if (dict.count(key)) {
-		val = transform(dict[key]);
-	}
+std::string Lowercase(std::string_view value) {
+    std::string result{ value };
+    std::ranges::transform(result, result.begin(), [](const unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return result;
 }
 
-void Readb(const Dictionary& dict, bool& value, const std::string& key_name) {
-	if (!dict.contains(key_name))
-		return;
+template<typename T>
+T ParseNumber(const std::string_view key, const std::string_view input) {
+    T value{};
+    const char* begin = input.data();
+    const char* end = begin + input.size();
+    const auto result = std::from_chars(begin, end, value);
+    if (result.ec != std::errc{} || result.ptr != end)
+        throw std::runtime_error(std::format("Invalid value for '{}': '{}'", key, input));
+    return value;
+}
 
-	std::string value_str = dict.at(key_name);
-	if (value_str != "true" && value_str != "false") {
-		throw std::runtime_error("Illegal key-value pair in sim_params.txt: " + key_name + " " + value_str);
-	}
-	
-	value = (value_str == "true");
+template<typename T>
+void ParseValue(const std::string_view key, const std::string_view input, T& value) {
+    if constexpr (std::same_as<T, bool>) {
+        if (input == "true") value = true;
+        else if (input == "false") value = false;
+        else throw std::runtime_error(std::format("Invalid boolean for '{}': '{}'", key, input));
+    }
+    else if constexpr (std::integral<T> || std::floating_point<T>) {
+        value = ParseNumber<T>(key, input);
+    }
+    else if constexpr (std::same_as<T, BoundaryConditionSelect>) {
+        if (input == "pbc") value = PBC;
+        else if (input == "nobc") value = NoBC;
+        else throw std::runtime_error(std::format("Invalid boundary condition: '{}'", input));
+    }
+    else if constexpr (std::same_as<T, ColoringMethod>) {
+        static const std::unordered_map<std::string_view, ColoringMethod> values{
+            { "atomname", ColoringMethod::Atomname },
+            { "charge", ColoringMethod::Charge },
+            { "gradientfromatomid", ColoringMethod::GradientFromAtomid },
+            { "persistentclusterid", ColoringMethod::PersistentClusterId },
+            { "forcemagnitude", ColoringMethod::ForceMagnitude },
+            { "newcartoon", ColoringMethod::NewCartoon }
+        };
+        const auto found = values.find(input);
+        if (found == values.end()) throw std::runtime_error(std::format("Invalid coloring method: '{}'", input));
+        value = found->second;
+    }
+    else if constexpr (std::same_as<T, std::set<SupernaturalForcesSelect>>) {
+        value.clear();
+        std::istringstream stream{ std::string{ input } };
+        for (std::string item; std::getline(stream, item, ',');) {
+            if (item.empty() || item == "none") continue;
+            if (item == "horizontalsqueeze") value.insert(HorizontalSqueeze);
+            else if (item == "horizontalchargefield") value.insert(HorizontalChargeField);
+            else if (item == "boxedgepotential") value.insert(BoxEdgePotential);
+            else if (item == "elasticposition") value.insert(ElasticPosition);
+            else throw std::runtime_error(std::format("Invalid supernatural force: '{}'", item));
+        }
+    }
 }
-template <std::integral T>
-constexpr void Readi(const Dictionary& dict, T& param,
-	const std::string& key, std::function<T(const T&)> transform = [](const T& v) { return v; })
-{
-	if (dict.count(key)) {
-		param = static_cast<T>(transform(std::stoll(dict.at(key))));
-	}
+
+std::string FormatValue(const bool value) { return value ? "true" : "false"; }
+std::string FormatValue(const BoundaryConditionSelect value) { return value == PBC ? "PBC" : "NoBC"; }
+
+std::string FormatValue(const ColoringMethod value) {
+    switch (value) {
+    case ColoringMethod::Atomname: return "Atomname";
+    case ColoringMethod::Charge: return "Charge";
+    case ColoringMethod::GradientFromAtomid: return "GradientFromAtomid";
+    case ColoringMethod::PersistentClusterId: return "PersistentClusterId";
+    case ColoringMethod::ForceMagnitude: return "ForceMagnitude";
+    case ColoringMethod::NewCartoon: return "NewCartoon";
+    }
+    throw std::runtime_error("Invalid coloring method");
 }
-template <std::floating_point T, typename Transform = std::function<T(const T&)>>
-constexpr void Readf(const Dictionary& dict, T& param,
-	const std::string& key, Transform transform = [](const T& v) { return v; })
-{
-	if (dict.count(key)) {
-		param = static_cast<T>(transform(std::stod(dict.at(key))));
-	}
+
+std::string FormatValue(const std::set<SupernaturalForcesSelect>& values) {
+    if (values.empty()) return "None";
+    std::string result;
+    const auto append = [&result](const std::string_view value) {
+        if (!result.empty()) result += ',';
+        result += value;
+    };
+    for (const auto value : values) {
+        switch (value) {
+        case None: break;
+        case HorizontalSqueeze: append("HorizontalSqueeze"); break;
+        case HorizontalChargeField: append("HorizontalChargeField"); break;
+        case BoxEdgePotential: append("BoxEdgePotential"); break;
+        case ElasticPosition: append("ElasticPosition"); break;
+        }
+    }
+    return result.empty() ? "None" : result;
 }
+
+std::string_view SectionName(const SimParamSection section) {
+    switch (section) {
+    case SimParamSection::Main: return "Main parameters";
+    case SimParamSection::Physics: return "Physics parameters";
+    case SimParamSection::Thermostat: return "Thermostat parameters";
+    case SimParamSection::Output: return "Output parameters";
+    case SimParamSection::Debug: return "Debug parameters";
+    }
+    throw std::runtime_error("Invalid simulation parameter section");
+}
+
+template<typename T>
+std::string FormatValue(const T value) {
+    return std::format("{}", value);
+}
+
+template<typename Function>
+void ForEachParam(SimParams& params, Function&& function) {
+    std::apply([&](auto&... param) { (function(param), ...); }, params.Params());
+}
+
+template<typename Function>
+void ForEachParam(const SimParams& params, Function&& function) {
+    std::apply([&](const auto&... param) { (function(param), ...); }, params.Params());
+}
+
+void ParseMdp(const Dictionary& mdp, SimParams& params) {
+    const auto parseIfPresent = [&mdp]<typename T>(const std::string_view key, T& target) {
+        if (const auto found = mdp.find(std::string{ key }); found != mdp.end())
+            ParseValue(key, found->second, target);
+    };
+
+    if (const auto found = mdp.find("integrator"); found != mdp.end()) {
+        if (found->second == "md-vv") params.em_variant.value = false;
+        else if (found->second == "steep") params.em_variant.value = true;
+        else throw std::runtime_error("Unsupported integrator: " + found->second);
+    }
+
+    parseIfPresent("nsteps", params.n_steps.value);
+    if (const auto found = mdp.find("dt"); found != mdp.end())
+        params.dt.value = ParseNumber<float>("dt", found->second) * PICO_TO_NANO;
+    parseIfPresent("emtol", params.em_force_tolerance.value);
+    parseIfPresent("nstlist", params.stepsPerNlistupdate.value);
+
+    if (const auto found = mdp.find("pbc"); found != mdp.end()) {
+        if (found->second == "xyz") params.bc_select.value = PBC;
+        else if (found->second == "none" || found->second == "no") params.bc_select.value = NoBC;
+        else throw std::runtime_error("Unsupported pbc value: " + found->second);
+    }
+    if (const auto found = mdp.find("coulombtype"); found != mdp.end()) {
+        if (found->second != "pme") throw std::runtime_error("Unsupported coulombtype: " + found->second);
+        params.enable_electrostatics.value = true;
+    }
+    parseIfPresent("rcoulomb", params.cutoff_nm.value);
+
+    constexpr std::array outputKeys{ "nstxout", "nstvout", "nstenergy", "nstlog", "nstcomm" };
+    std::optional<int> outputInterval;
+    for (const std::string_view key : outputKeys) {
+        if (const auto found = mdp.find(std::string{ key }); found != mdp.end()) {
+            const int interval = ParseNumber<int>(key, found->second);
+            if (outputInterval && *outputInterval != interval)
+                throw std::runtime_error(std::format("Output interval '{}' differs from earlier intervals", key));
+            outputInterval = interval;
+        }
+    }
+    if (outputInterval) params.data_logging_interval.value = *outputInterval;
+
+    if (const auto found = mdp.find("tcoupl"); found != mdp.end())
+        params.apply_thermostat.value = found->second != "no" && found->second != "none";
+    parseIfPresent("nsttcouple", params.steps_per_temperature_measurement.value);
+}
+
+} // namespace
 
 SimParams::SimParams(const fs::path& path) {
-    const bool forceKeysAndValuesLowercase = true;
-    auto dict = FileUtils::parseINIFile(path.string(), forceKeysAndValuesLowercase);
-
+    const Dictionary dictionary = FileUtils::parseINIFile(path.string(), true);
     if (path.extension() == ".mdp") {
-        ParseMdp(dict, *this);
+        ParseMdp(dictionary, *this);
         return;
     }
 
-
-    // Main parameters
-    Readi(dict, n_steps, "n_steps");
-    Readf(dict, dt, "dt", [](auto val) { return val * FEMTO_TO_NANO; }); // [ns]
-    Readb(dict, em_variant, "em");
-    Readf(dict, em_force_tolerance, "em_force_tolerance");              // [kJ/mol/nm]
-    Readi(dict, stepsPerNlistupdate, "stepsPerNlistupdate");
-
-    // Physics parameters
-    overwriteParamNonNumbers<BoundaryConditionSelect>(dict, "boundarycondition", bc_select,
-        [](const string& value) {
-            return convertStringvalueToValue<BoundaryConditionSelect>(
-                { {"pbc", PBC}, {"nobc", NoBC} }, "boundarycondition", value);
+    std::unordered_set<std::string> knownKeys;
+    ForEachParam(*this, [&](auto& param) {
+        const std::string key = Lowercase(param.name);
+        knownKeys.insert(key);
+        if (const auto found = dictionary.find(key); found != dictionary.end()) {
+            ParseValue(param.name, found->second, param.value);
+            if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>)
+                if (param.name == "dt") param.value *= FEMTO_TO_NANO;
         }
-    );
-    Readb(dict, enable_electrostatics, "enable_electrostatics");
-    Readf(dict, cutoff_nm, "cutoff_nm"); // [nm]
-    // TODO: Parse SupernaturalForcesSelect (SNF) when needed
+    });
 
-    // Thermostat parameters
-    Readi(dict, steps_per_temperature_measurement, "steps_per_temperature_measurement");
-    Readb(dict, apply_thermostat, "apply_thermostat");
-    // New thermostat parameters (commented out)
-    // Readf(dict, ref_t, "ref_t");         // Reference temperature [K] (critical)
-    // Readf(dict, tau_t, "tau_t");         // Temperature coupling constant [ps] (critical)
-    // if (dict.count("tcoupl")) {          // Temperature coupling algorithm (important)
-    //     tcoupl = dict["tcoupl"];
-    // }
-
-    // Barostat (Pressure Coupling) parameters (commented out)
-    // if (dict.count("pcoupl")) {          // Pressure coupling algorithm (critical)
-    //     pcoupl = dict["pcoupl"];
-    // }
-    // Readf(dict, ref_p, "ref_p");         // Reference pressure [bar] (critical)
-    // Readf(dict, tau_p, "tau_p");         // Pressure coupling constant [ps] (critical)
-    // Readf(dict, compressibility, "compressibility"); // Isothermal compressibility [bar^-1] (important)
-
-    // Integration parameters (commented out)
-    // if (dict.count("integrator")) {      // Integration algorithm (e.g., md, sd) (critical)
-    //     integrator = dict["integrator"];
-    // }
-
-    // Constraints (commented out)
-    // Readi(dict, constraints, "constraints"); // Constraint type (0: none, 1: bonds, etc.) (important)
-
-    // Electrostatics / PME parameters (commented out)
-    // if (dict.count("coulombtype")) {     // Electrostatics method (PME, Reaction Field, etc.) (critical)
-    //     coulombtype = dict["coulombtype"];
-    // }
-    // Readi(dict, pme_order, "pme_order"); // PME interpolation order (important)
-    // Readf(dict, fourierspacing, "fourierspacing"); // Fourier grid spacing for PME [nm] (important)
-
-    // Output parameters
-    Readi(dict, data_logging_interval, "data_logging_interval");
-    Readb(dict, save_energy, "save_energy");
-    // TODO: Parse ColoringMethod when needed (e.g., via a string-to-enum conversion)
-
-    // Additional output parameters (commented out)
-    // Readi(dict, nstxout, "nstxout");   // Frequency for writing coordinates [steps] (important)
-    // Readi(dict, nstvout, "nstvout");   // Frequency for writing velocities [steps] (unimportant)
-    // Readi(dict, nstenergy, "nstenergy"); // Frequency for writing energies [steps] (critical)
-    // Readi(dict, nstlog, "nstlog");    // Frequency for writing log info [steps] (important)
-    // Readi(dict, gen_seed, "gen_seed"); // Random seed for stochastic thermostats (unimportant)
-    // Readi(dict, nstcomm, "nstcomm");   // Frequency for center-of-mass removal [steps] (important)
-    // if (dict.count("comm_mode")) {     // Center-of-mass removal mode (unimportant)
-    //     comm_mode = dict["comm_mode"];
-    // }
-
-    // Debug parameters
-    Readb(dict, stepwise, "stepwise");
+    for (const auto& [key, value] : dictionary)
+        if (!knownKeys.contains(key))
+            throw std::runtime_error(std::format("Unknown simulation parameter '{}={}'", key, value));
 }
 
-void SimParams::dumpToFile(const fs::path& filename) {
-    std::ostringstream buffer;
+void SimParams::DumpToFile(const fs::path& filename) const {
+    std::ofstream file{ filename };
+    if (!file) throw std::runtime_error("Unable to open file: " + filename.string());
 
-    // Main parameters
-    buffer << "\n// Main params\n";
-    buffer << "n_steps=" << n_steps << "\n";
-    buffer << "dt=" << static_cast<int>(std::round(dt * NANO_TO_FEMTO)) << " # [fs]\n";
-    buffer << "em=" << (em_variant ? "true" : "false") << " # Is an energy-minimization sim\n";
-    buffer << "em_force_tolerance=" << em_force_tolerance << " # [kJ/mol/nm] - only relevant if em=true\n";
-    buffer << "stepsPerNlistupdate=" << stepsPerNlistupdate << " # [steps]\n";
-
-    // Physics parameters
-    buffer << "\n// Physics params\n";
-    buffer << "boundarycondition=" 
-           << (bc_select == PBC ? "PBC" : "NoBC") << " # (PBC, NoBC)\n";
-    buffer << "enable_electrostatics=" << (enable_electrostatics ? "true" : "false") << "\n";
-    buffer << "cutoff_nm=" << cutoff_nm << " # [nm]\n";
-    // buffer << "// SNF parameter not implemented yet\n";
-
-    // Thermostat parameters
-    buffer << "\n// Thermostat params\n";
-    buffer << "steps_per_temperature_measurement=" << steps_per_temperature_measurement << " # [steps]\n";
-    buffer << "apply_thermostat=" << (apply_thermostat ? "true" : "false") 
-           << " # Thermostat on/off\n";
-    // Uncomment the following lines when needed:
-    // buffer << "ref_t=" << ref_t << " # Reference temperature [K] (critical)\n";
-    // buffer << "tau_t=" << tau_t << " # Temperature coupling constant [ps] (critical)\n";
-    // buffer << "tcoupl=" << tcoupl << " # Temperature coupling algorithm (important)\n";
-
-    // Integration parameters
-    buffer << "\n// Integration params\n";
-    // Uncomment the following line when needed:
-    // buffer << "integrator=" << integrator << " # Integration algorithm (e.g., md, sd) (critical)\n";
-
-    // Constraints
-    buffer << "\n// Constraints\n";
-    // Uncomment the following line when needed:
-    // buffer << "constraints=" << constraints << " # Constraint type (0: none, 1: bonds, etc.) (important)\n";
-
-    // Electrostatics / PME parameters
-    buffer << "\n// Electrostatics / PME params\n";
-    // Uncomment the following lines when needed:
-    // buffer << "coulombtype=" << coulombtype << " # Electrostatics method (PME, Reaction Field, etc.) (critical)\n";
-    // buffer << "pme_order=" << pme_order << " # PME interpolation order (important)\n";
-    // buffer << "fourierspacing=" << fourierspacing << " # Fourier grid spacing for PME [nm] (important)\n";
-
-    // Output parameters
-    buffer << "\n// Output params\n";
-    buffer << "data_logging_interval=" << data_logging_interval << " # [steps]\n";
-    buffer << "save_energy=" << (save_energy ? "true" : "false") 
-           << " # Save kinetic and potential energy to file\n";
-    // Uncomment the following lines when needed:
-    // buffer << "colormethod=" << (coloring_method == ColoringMethod::Atomname ? "Atomname" : "other")
-    //        << " # Coloring method for atoms (important)\n";
-    // buffer << "nstxout=" << nstxout << " # Frequency for writing coordinates [steps] (important)\n";
-    // buffer << "nstvout=" << nstvout << " # Frequency for writing velocities [steps] (unimportant)\n";
-    // buffer << "nstenergy=" << nstenergy << " # Frequency for writing energies [steps] (critical)\n";
-    // buffer << "nstlog=" << nstlog << " # Frequency for writing log info [steps] (important)\n";
-    // buffer << "gen_seed=" << gen_seed << " # Random seed for stochastic thermostats (unimportant)\n";
-    // buffer << "nstcomm=" << nstcomm << " # Frequency for center-of-mass removal [steps] (important)\n";
-    // buffer << "comm_mode=" << comm_mode << " # Center-of-mass removal mode (unimportant)\n";
-
-    // Debug parameters
-    buffer << "\n// Debug params (for developers)\n";
-    buffer << "stepwise=" << (stepwise ? "true" : "false") 
-           << " # Wait for user to input key 'N' before each step\n";
-
-    // Write the buffer to file
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Unable to open file: " + filename.string());
-    }
-
-    file << buffer.str();
-    file.flush();
-    file.close();
-}
-
-
-
-void ParseMdp(const Dictionary &mdp_dict, SimParams &params) {
-    // --- Integrator ---
-    if (mdp_dict.find("integrator") != mdp_dict.end()) {
-        std::string integrator = mdp_dict.at("integrator");
-        if (integrator == "md-vv") {
-            params.em_variant = false;
-        } else if (integrator == "steep") {
-            params.em_variant = true;
-        } else {
-            throw std::runtime_error("Unsupported integrator: " + integrator);
+    std::optional<SimParamSection> currentSection;
+    ForEachParam(*this, [&](const auto& param) {
+        if (currentSection != param.section) {
+            if (currentSection) file << '\n';
+            currentSection = param.section;
+            file << "// " << SectionName(param.section) << '\n';
         }
-    }
-    
-    // --- Time & Steps ---
-    if (mdp_dict.find("nsteps") != mdp_dict.end()) {
-        try {
-            params.n_steps = std::stoull(mdp_dict.at("nsteps"));
-        } catch (...) {
-            throw std::runtime_error("Invalid value for nsteps: " + mdp_dict.at("nsteps"));
-        }
-    }
-    if (mdp_dict.find("dt") != mdp_dict.end()) {
-        try {
-            double dt_ps = std::stod(mdp_dict.at("dt"));
-            params.dt = dt_ps * PICO_TO_NANO; // dt stored in ns
-        } catch (...) {
-            throw std::runtime_error("Invalid value for dt: " + mdp_dict.at("dt"));
-        }
-    }
-    
-    // --- Energy Minimization ---
-    if (mdp_dict.find("emtol") != mdp_dict.end()) {
-        try {
-            params.em_force_tolerance = std::stod(mdp_dict.at("emtol"));
-        } catch (...) {
-            throw std::runtime_error("Invalid value for emtol: " + mdp_dict.at("emtol"));
-        }
-    }
-    if (mdp_dict.find("nstlist") != mdp_dict.end()) {
-        try {
-            params.stepsPerNlistupdate = std::stoi(mdp_dict.at("nstlist"));
-        } catch (...) {
-            throw std::runtime_error("Invalid value for nstlist: " + mdp_dict.at("nstlist"));
-        }
-    }
-    
-    // --- Physics ---
-    // Boundary condition: using mdp key "pbc"
-    if (mdp_dict.find("pbc") != mdp_dict.end()) {
-        std::string pbc = mdp_dict.at("pbc");
-        if (pbc == "xyz") {
-            params.bc_select = PBC;
-        } else if (pbc == "none" || pbc == "no") {
-            params.bc_select = NoBC;
-        } else {
-            throw std::runtime_error("Unsupported pbc value: " + pbc);
-        }
-    }
-    
-    // Electrostatics: only support PME
-    if (mdp_dict.find("coulombtype") != mdp_dict.end()) {
-        std::string coulombtype = mdp_dict.at("coulombtype");
-        if (coulombtype != "PME") {
-            throw std::runtime_error("Unsupported coulombtype: " + coulombtype);
-        }
-        // Set enable_electrostatics true (default is true).
-        params.enable_electrostatics = true;
-    }
-    
-    // Cutoff: using mdp key "rcoulomb"
-    if (mdp_dict.find("rcoulomb") != mdp_dict.end()) {
-        try {
-            params.cutoff_nm = std::stof(mdp_dict.at("rcoulomb"));
-        } catch (...) {
-            throw std::runtime_error("Invalid value for rcoulomb: " + mdp_dict.at("rcoulomb"));
-        }
-    }
-    
-    // --- Output Intervals ---
-    std::vector<std::string> outKeys = { "nstxout", "nstvout", "nstenergy", "nstlog", "nstcomm" };
-    int commonInterval = -1;
-    bool found = false;
-    for (const auto &key : outKeys) {
-        if (mdp_dict.find(key) != mdp_dict.end()) {
-            int interval;
-            try {
-                interval = std::stoi(mdp_dict.at(key));
-            } catch (...) {
-                throw std::runtime_error("Invalid integer for " + key + ": " + mdp_dict.at(key));
+
+        file << param.name << '=';
+        if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>) {
+            if (param.name == "dt") {
+                file << FormatValue(static_cast<float>(param.value * NANO_TO_FEMTO));
             }
-            if (!found) {
-                commonInterval = interval;
-                found = true;
-            } else if (interval != commonInterval) {
-                throw std::runtime_error("Output interval mismatch for key '" + key +
-                                         "': value " + std::to_string(interval) +
-                                         " does not match expected " + std::to_string(commonInterval));
+            else {
+                file << FormatValue(param.value);
             }
         }
-    }
-    if (found) {
-        params.data_logging_interval = commonInterval;
-    }
-    
-    // --- Thermostat ---
-    // Determine whether thermostat is applied from mdp key "tcoupl".
-    if (mdp_dict.find("tcoupl") != mdp_dict.end()) {
-        std::string tcoupl = mdp_dict.at("tcoupl");
-        if (tcoupl == "no" || tcoupl == "none") {
-            params.apply_thermostat = false;
-        } else {
-            params.apply_thermostat = true;
+        else {
+            file << FormatValue(param.value);
         }
-    }
-    // Frequency of temperature coupling: "nsttcouple"
-    if (mdp_dict.find("nsttcouple") != mdp_dict.end()) {
-        try {
-            params.steps_per_temperature_measurement = std::stoll(mdp_dict.at("nsttcouple"));
-        } catch (...) {
-            throw std::runtime_error("Invalid value for nsttcouple: " + mdp_dict.at("nsttcouple"));
-        }
-    }
+        if (param.comment) file << " # " << *param.comment;
+        file << '\n';
+    });
 }

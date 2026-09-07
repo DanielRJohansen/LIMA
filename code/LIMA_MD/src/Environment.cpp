@@ -96,7 +96,7 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(
 
 
 	SimParams simparams{};
-	simparams.dumpToFile(workDir / "sim_params.txt");
+	simparams.DumpToFile(workDir / "sim_params.txt");
 
 	return { grofile, topfile, simparams };
 }

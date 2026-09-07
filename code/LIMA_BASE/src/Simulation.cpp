@@ -44,7 +44,7 @@ Simulation::Simulation(const SimParams& params, std::unique_ptr<Box> _box) :
 
 void Simulation::PrepareDataBuffers() {
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
-	const auto n_steps = std::max(simParams.n_steps, uint64_t{ 1 });
+	const auto n_steps = std::max(simParams.n_steps.value, uint64_t{ 1 });
 	// Standard Data Buffers 
 	{
 		// Permanent Outputs for energy & trajectory analysis

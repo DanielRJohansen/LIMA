@@ -552,7 +552,7 @@ int Cli::RunMakeSimParams(int argc, char** argv) {
     ArgParser parser{ std::string{ MakeSimParamsHelp } };
     parser.Parse(argc, argv);
     SimParams params{};
-    params.dumpToFile();
+    params.DumpToFile();
     return 0;
 }
 

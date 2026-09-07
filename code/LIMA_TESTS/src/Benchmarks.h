@@ -136,8 +136,8 @@ namespace Benchmarks {
 		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
 		const bool withinBounds = *fastest >= allowedTimePerStep.min && *slowest <= allowedTimePerStep.max;
 		return LimaUnittestResult{ withinBounds,
-			std::format("{} - Time per step range: {:.3f}-{:.3f} [ms], allowed: {:.3f}-{:.3f} [ms] ({} runs)",
-				name, fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
+			std::format("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step] ({} runs)",
+				fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
 				allowedTimePerStep.max.count() / 1000., nRuns), envmode != Headless };
 	}
 

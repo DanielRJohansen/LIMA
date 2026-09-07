@@ -2,36 +2,18 @@
 
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
-#include "KernelConstants.cuh"
 
 #include <cuda_runtime.h>
 //#include <cuda_fp8.h>
 
 
-// Extra functions that require access to kernel constants
+// Extra BoxGrid functions used by engine kernels.
 namespace BoxGrid {
 
-	// This function assumes the user has used PBC
+	// This function assumes the user has used PBC.
 	template <typename NodeType>
-	__device__ constexpr NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d) { // Dont like this function, it hides using constant mem...
-		//if (index3d.x >= DeviceConstants::boxSize.boxSizeNM_i || index3d.y >= DeviceConstants::boxSize.boxSizeNM_i 
-		//	|| index3d.z >= DeviceConstants::boxSize.boxSizeNM_i
-		//	|| index3d.x < 0 || index3d.y < 0 || index3d.z < 0) {
-		//	printf("Bad 3d index for blockptr %d %d %d\n", index3d.x, index3d.y, index3d.z);
-		//	return nullptr;
-		//}
-
-		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, DeviceConstants::boxSize.boxSizeNM_i));
-	}
-
-	__device__ constexpr static NodeIndex Get3dIndex(int index1d) {
-		const Int3 bpd = NodesPerDim(DeviceConstants::boxSize.boxSizeNM_i);
-		int z = index1d / (bpd.x * bpd.y);
-		index1d -= z * bpd.x * bpd.y;
-		int y = index1d / bpd.x;
-		index1d -= y * bpd.x;
-		int x = index1d;
-		return NodeIndex{ x, y, z };
+	__device__ constexpr NodeType* GetNodePtr(NodeType* grid, const NodeIndex& index3d, const Int3& boxSize) {
+		return GetNodePtr<NodeType>(grid, Get1dIndex(index3d, boxSize));
 	}
 };
 

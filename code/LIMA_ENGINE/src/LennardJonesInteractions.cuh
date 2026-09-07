@@ -101,7 +101,7 @@ namespace LJ {
 
 	// Returns fe on p0, invert to get fe on p1
 	template<bool computePotE, bool emvariant>
-	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId)
+	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId, float ewaldKappa)
 	{
 		ForceEnergy fe{}; // on p0
 		
@@ -145,9 +145,9 @@ namespace LJ {
 				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).z
 				//);
 				//PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).print('C');
-				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff);
+				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, ewaldKappa);
 				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared());
+					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared(), ewaldKappa);
 			}
 		}
 

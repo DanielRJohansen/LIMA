@@ -11,8 +11,6 @@
 #include "DeviceAlgorithms.cuh"
 
 //#include <cuda/pipeline>
-#include "KernelConstants.cuh"
-
 #include "LennardJonesInteractions.cuh"
 #include "ParticleClusters.cuh"
 
@@ -82,7 +80,7 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 			isnan(ep.y) ? position.y : ep.y,
 			isnan(ep.z) ? position.z : ep.z
 		};
-		PeriodicBoundaryCondition::applyHyperposNM(position, elasticPosition);
+		PeriodicBoundaryCondition::applyHyperposNM(position, elasticPosition, boxSize);
 
 		const Float3 difference = elasticPosition - position;
 		const float distSq = difference.lenSquared();
@@ -240,7 +238,7 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 // blockdim=16,4,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices, 
-	const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv) {
+	const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ SuperCluster scSelf;
 	__shared__ ScScTask task; // TODO: We dont access this much, no need to store in shared mem...
@@ -281,7 +279,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 			const int indexInScSelf = (threadIdx.x + i) & 15; //% SuperCluster::maxParticles;
 			const bool skip = BoolMatrix16x16::Get(noInteractions, indexInScSelf);
 
-			ForceEnergy fe = skip ? ForceEnergy{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pdataQueryAtom, scSelf, indexInScSelf, -1, -1);
+			ForceEnergy fe = skip ? ForceEnergy{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pdataQueryAtom, scSelf, indexInScSelf, -1, -1, ewaldKappa);
 			feInQuerySc += fe;
 
 			const int sourceLane = (threadIdx.x - i) & 15;
@@ -328,7 +326,7 @@ template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, int data_logging_interval, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
 	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
-	Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in LIVEEDIT*/  /*, 
+	Float3 boxSize, float thermostatScalar, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in LIVEEDIT*/  /*,
 const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
@@ -347,7 +345,7 @@ const ForceEnergy* const nbForceenergy*/) {
 		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].Position(0);
 
 		// By applying BC here, we dont need to wait for thread0 later in the kernel
-		BoundaryCondition::applyBCNM(p0s[threadIdx.y]);// TODO: We should use either SC CoM, or a particle close to the middle..		
+		BoundaryCondition::applyBCNM(p0s[threadIdx.y], boxSize);// TODO: We should use either SC CoM, or a particle close to the middle..
 	}
 	__syncthreads();
 
@@ -367,7 +365,7 @@ const ForceEnergy* const nbForceenergy*/) {
 	}
 
 	Float3 pos = superClusters[scIdGlobal].Position(threadIdx.x);
-	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
+	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos, boxSize);
 
 	// Collect ForceEnergy from all sources
 	ForceEnergy fe{};
@@ -440,16 +438,16 @@ const ForceEnergy* const nbForceenergy*/) {
 			fe.force = Float3{};
 			vel_now = Float3{}; 			
 			const Rotation& rotation = fixedParticleRotationBuffer[pidGlobal];
-			BoundaryCondition::applyHyperposNM(rotation.center, pos_now);
+			BoundaryCondition::applyHyperposNM(rotation.center, pos_now, boxSize);
 			LAL::RotatePoint(pos_now, rotation.center, rotation.rotation);
-			BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos_now);
+			BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos_now, boxSize);
 			//LAL::RotatePoint(pos_now, Float3{}, Float3{ 0.001f, 0.f, 0.f });
 		}
 	
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 		Float3 velScaled;
-		velScaled = vel_now * DeviceConstants::thermostatScalar;
+		velScaled = vel_now * thermostatScalar;
 
 		simDev->boxState.pclusterInterimStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
 		simDev->boxState.pclusterInterimStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;

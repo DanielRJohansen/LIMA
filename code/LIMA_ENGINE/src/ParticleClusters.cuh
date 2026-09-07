@@ -155,7 +155,7 @@ __global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModul
 }
 
 template <typename BoundaryCondition>
-__global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize) {	
+__global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModule, Int3 boxSize, Float3 boxSizeFloat) {
 
 
 	static const NodeIndex directions[6]{
@@ -186,7 +186,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	for (int i = threadIdx.x; i < nPClusters; i += blockDim.x) {
 		const int pcIndex = indexOfFirstCluster + i;
 		Float3 absPos = transferModule.meanPositionOfPClustersPerBlock[pcIndex];
-		PeriodicBoundaryCondition::applyHyperposNM(blockCenter, absPos);	// TODO: OPTIM: shoudn't be necessary if pClusters are placed correctly in blocks...
+		PeriodicBoundaryCondition::applyHyperposNM(blockCenter, absPos, boxSizeFloat);	// TODO: OPTIM: shoudn't be necessary if pClusters are placed correctly in blocks...
 
 		
 
@@ -305,7 +305,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 
 // Called with 32 threads
 __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl, 
-	const PersistentClusterMeta* const persistentClusterMeta, Int3 boxSize)
+	const PersistentClusterMeta* const persistentClusterMeta, Int3 boxSize, Float3 boxSizeFloat)
 {
 	__shared__ Float3 meanPositionsOfPClusters[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
@@ -357,7 +357,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	// We've loaded positions from this a neighboring blocks, make sure there at the same hyperpos
 	{
 		for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
-			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, meanPositionsOfPClusters[i]);
+			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, meanPositionsOfPClusters[i], boxSizeFloat);
 		}
 		__syncthreads();
 	}
@@ -455,7 +455,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 			for (int indexInPc = 0; indexInPc < nParticles; indexInPc++) {
 				const int indexInSc = scMeta.nParticles + indexInPc;
 				PData pData = pClusters[pcIdGlobal].pqd[indexInPc];
-				PeriodicBoundaryCondition::applyHyperposNM(blockCenter, pData.position);
+				PeriodicBoundaryCondition::applyHyperposNM(blockCenter, pData.position, boxSizeFloat);
 				sc.SetPdata(pData, indexInSc);
 				scMeta._pclusterIds[indexInSc] = pcIdGlobal;
 				scMeta.globalParticleIds[indexInSc] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[indexInPc];
@@ -606,7 +606,7 @@ void Engine::RunClustering(bool getPclusters) {
 	}
 
 	ClusteringPretransferKernel<PeriodicBoundaryCondition>
-		<<<nBlocks, 32 >>> (*pclusterTransfermodule, boxSize);
+		<<<nBlocks, 32 >>> (*pclusterTransfermodule, boxSize, boxSizeF);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringPretransferKernel");
 
 	//DebugUtils::VerifyIdentical(pclusterTransfermodule->idsOfIncomingClusters, 6 * PClusterTransfermodule::maxOutgoingClusters * nBlocks, "idsOfIncomingCLusters", simulation->getStep());
@@ -615,7 +615,7 @@ void Engine::RunClustering(bool getPclusters) {
 	
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice.Get(), *superclusterStagingControl, pClusterMetaDevice.Get(), boxSize);
+	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice.Get(), *superclusterStagingControl, pClusterMetaDevice.Get(), boxSize, boxSizeF);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 	//DebugUtils::VerifyIdentical(superclusterStagingControl->scData, nBlocks * SuperClustersControl::maxClustersPerBlock, "RunClustering_SCData", simulation->getStep());
 

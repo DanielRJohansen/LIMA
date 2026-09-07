@@ -5,7 +5,6 @@
 #include "Bodies.cuh"
 #include "EngineUtils.cuh"
 #include "DeviceAlgorithms.cuh"
-#include "KernelConstants.cuh"
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
 
@@ -27,7 +26,7 @@
 //
 //	const int solventblockId = blockIdx.x;
 //	const int stepToLoadFrom = _step + 1;
-//	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
+//	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, boxSize, solventblockId, stepToLoadFrom);
 //	const int nBondgroupsInBlock = solventblockGlobalPtr->nBondgroups;
 //
 //	__shared__ int nParticlesInBondgroups[SolventBlock::maxBondgroups];
@@ -83,16 +82,16 @@
 //	// Now all threads loop over the direction, and if they have a particle, they push it directy to the incoming queue in global memory
 //	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
 //		const NodeIndex direction = directions[directionIndex];
-//		const NodeIndex blockOrigo = BoxGrid::Get3dIndex(blockIdx.x, DeviceConstants::boxSize.boxSizeNM_i);
-//		const NodeIndex targetBlock = BoundaryCondition::applyBC(blockOrigo + direction, DeviceConstants::boxSize.blocksPerDim);
-//		const int targetBlockId = BoxGrid::Get1dIndex(targetBlock, DeviceConstants::boxSize.boxSizeNM_i);
+//		const NodeIndex blockOrigo = BoxGrid::Get3dIndex(blockIdx.x, boxSize);
+//		const NodeIndex targetBlock = BoundaryCondition::applyBC(blockOrigo + direction, gridDim);
+//		const int targetBlockId = BoxGrid::Get1dIndex(targetBlock, boxSize);
 //		if constexpr (INDEXING_CHECKS)
-//			if (targetBlockId < 0 || targetBlockId > BoxGrid::BlocksTotal(DeviceConstants::boxSize.blocksPerDim))
+//			if (targetBlockId < 0 || targetBlockId > BoxGrid::BlocksTotal(gridDim))
 //				printf("Target block was out of bounds");
 //		
 //		const Coord relposShift = Coord{ -direction.toFloat3() };
 //
-//		if (targetBlockId >= DeviceConstants::boxSize.blocksPerDim.x * DeviceConstants::boxSize.blocksPerDim.y * DeviceConstants::boxSize.blocksPerDim.z)
+//		if (targetBlockId >= gridDim.x * gridDim.y * gridDim.z)
 //			printf("Target block was out of bounds");
 //
 //		// Write results directly to global mem
@@ -186,7 +185,7 @@
 //
 //	const int solventblockId = blockIdx.x;
 //	const int stepToLoadFrom = _step + 1;
-//	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, DeviceConstants::boxSize.boxSizeNM_i, solventblockId, stepToLoadFrom);
+//	SolventBlock* const solventblockGlobalPtr = SolventBlocksCircularQueue::getBlockPtr(sim->boxState.solventblockgrid_circularqueue, boxSize, solventblockId, stepToLoadFrom);
 //
 //	if (threadIdx.x == 0) {
 //		nParticlesInBlock = solventblockGlobalPtr->nParticles;
@@ -253,7 +252,7 @@
 //		/*sim->boxState.solventsRelposNm[index] = solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos();
 //		sim->boxState.solventsAtomtypeIds[index] = solventblockGlobalPtr->atomtypeIds[threadIdx.x];*/
 //		
-//		const NodeIndex blockIndex3D = BoxGrid::Get3dIndex(solventblockId, DeviceConstants::boxSize.boxSizeNM_i);		
+//		const NodeIndex blockIndex3D = BoxGrid::Get3dIndex(solventblockId, boxSize);
 //		sim->boxState.solventsParticleQuickData[index] = ParticleQuickData{
 //			solventblockGlobalPtr->rel_pos[threadIdx.x].ToRelpos(),
 //			{(int8_t)blockIndex3D.x, (int8_t)blockIndex3D.y, (int8_t)blockIndex3D.z},

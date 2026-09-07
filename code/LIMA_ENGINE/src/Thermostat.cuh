@@ -2,7 +2,6 @@
 
 #include "LimaTypes.cuh"
 #include "PhysicsUtilsDevice.cuh"
-#include "KernelConstants.cuh"
 #include "SimulationDevice.cuh"
 
 #include <thrust/device_vector.h>

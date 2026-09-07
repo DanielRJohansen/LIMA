@@ -239,8 +239,7 @@ __device__ inline bool Warp_DoesSuperclustersInteractFine(const SuperCluster* co
 
 
 		if (eps0 != -1 && eps1 != -1) {//if (p0.Valid() && p1.Valid()) {
-			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
-			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
+			PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 
 			const Float3 delta = pos0 - pos1;
 			const float distanceSq = delta.dot(delta);
@@ -276,8 +275,7 @@ __device__ inline bool Warp_DoesSuperclustersInteract(const std::array<float4, 4
 			Float3 pos0 = Float3{ p0 };
 			Float3 pos1 = Float3{ p1 };
 
-			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
-			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
+			PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 			const Float3 delta = pos0 - pos1;
 			const float radiusSum = p0.w + p1.w;
 			const float coarseCutoff = cutoffDistance + radiusSum;

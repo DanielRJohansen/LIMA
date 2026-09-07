@@ -12,7 +12,6 @@
 #include "BoxGrid.cuh"
 #include "SimulationDevice.cuh"
 #include "KernelWarnings.cuh"
-#include "KernelConstants.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
@@ -21,10 +20,10 @@
 namespace EngineUtils {
 
 	template <typename BoundaryCondition>
-	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
-		NodeIndex new_nodeindex = transfer_direction + origo;
-		BoundaryCondition::applyBC(new_nodeindex);
-		return BoxGrid::Get1dIndex(new_nodeindex, DeviceConstants::boxSize.boxSizeNM_i);
+	__device__ int static getNewBlockId(const NodeIndex& transferDirection, const NodeIndex& origo, const Int3& boxSize) {
+		NodeIndex newNodeIndex = transferDirection + origo;
+		BoundaryCondition::applyBC(newNodeIndex, boxSize);
+		return BoxGrid::Get1dIndex(newNodeIndex, boxSize);
 	}
 
 	// returns pos_tadd1
@@ -167,23 +166,16 @@ namespace EngineUtils {
 	}
 
 
-	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
+	__device__ constexpr bool isOutsideCutoff(const float distSq, const float cutoffNmSquared) {
 		if constexpr (HARD_CUTOFF) {
-			return dist_sq > DeviceConstants::cutoffNMSquared;	// (CUTOFF_LM * CUTOFF_LM);
+			return distSq > cutoffNmSquared;	// (CUTOFF_LM * CUTOFF_LM);
 		}
 		return false;
 	}
 
-	__device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal) {
-		if constexpr (HARD_CUTOFF) {
-			return dist_sq_reciprocal < DeviceConstants::cutoffNmSquaredReciprocal;	//  1. / (CUTOFF_LM * CUTOFF_LM);
-		}
-		return false;
-	}
-
-    __device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal, const float cutoff_reciprocal) {
+    __device__ constexpr bool isOutsideCutoff_recip(const float distSqReciprocal, const float cutoffNmSquaredReciprocal) {
         if constexpr (HARD_CUTOFF) {
-            return dist_sq_reciprocal < cutoff_reciprocal;
+            return distSqReciprocal < cutoffNmSquaredReciprocal;
         }
         return false;
     }

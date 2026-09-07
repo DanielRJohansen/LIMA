@@ -1,18 +1,14 @@
 #pragma once
 
-#include "KernelConstants.cuh"
 #include "DeviceAlgorithms.cuh"
 #include "PhysicsUtils.cuh"
 
 namespace LAL {
+	//static_assert(USE_PRECOMPUTED_BSPLINES == false, "Precomputed B-spline LUT is disabled. Please set USE_PRECOMPUTED_BSPLINES to false.");
 	__device__ void CalcBspline(float f, float* w) {
-		if constexpr (!USE_PRECOMPUTED_BSPLINES) {
-			w[0] = (1.f - f) * (1.f - f) * (1.f - f) / 6.f;
-			w[1] = (4.f - 6.f * f * f + 3.f * f * f * f) / 6.f;
-			w[2] = (1.f + 3.f * f + 3.f * f * f - 3.f * f * f * f) / 6.f;
-			w[3] = (f * f * f) / 6.f;
-		}
-		else {
+		/*
+		// Disabled precomputed B-spline LUT. Keep this implementation for potential future use.
+		if constexpr (USE_PRECOMPUTED_BSPLINES) {
 			const int N = DeviceConstants::BSPLINE_LUT_SIZE;
 			const float alpha = f * (N - 1);
 			const int index = static_cast<int>(floor(alpha));
@@ -27,7 +23,13 @@ namespace LAL {
 			float fracInv = alphaInv - idxInv;
 			w[2] = lerp(DeviceConstants::bsplineTable[N + idxInv], DeviceConstants::bsplineTable[N + idxInvUp], fracInv);
 			w[3] = lerp(DeviceConstants::bsplineTable[idxInv], DeviceConstants::bsplineTable[idxInvUp], fracInv);
-		}		
+		}
+		*/		
+
+		w[0] = (1.f - f) * (1.f - f) * (1.f - f) / 6.f;
+		w[1] = (4.f - 6.f * f * f + 3.f * f * f * f) / 6.f;
+		w[2] = (1.f + 3.f * f + 3.f * f * f - 3.f * f * f * f) / 6.f;
+		w[3] = (f * f * f) / 6.f;
 	}
 
 	template<int order>
@@ -75,8 +77,10 @@ namespace PhysicsUtilsDevice {
 		return raw_ex2(t);
 	}
 
-
-	__device__ inline float CalcErfcScalar(float dist, float distSq) {
+	//static_assert(USE_PRECOMPUTED_ERFCSCALARS == false, "Precomputed ERFC scalar LUT is disabled. Please set USE_PRECOMPUTED_ERFCSCALARS to false.");
+	__device__ inline float CalcErfcScalar(float dist, float distSq, float ewaldKappa) {
+		/*
+		// Disabled precomputed ERFC scalar LUT. Keep this implementation for potential future use.
 		if constexpr (USE_PRECOMPUTED_ERFCSCALARS) {
 			const int N = DeviceConstants::ERFC_LUT_SIZE;
 			const float distanceInArray = fminf(dist * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
@@ -88,7 +92,10 @@ namespace PhysicsUtilsDevice {
 			return scalar;
 			
 		}
-		else if constexpr (ERFC_USE_CHEBYSHEV_APPROXIMATION) {
+		*/
+		
+
+		if constexpr (ERFC_USE_CHEBYSHEV_APPROXIMATION) {
 			constexpr float a0 = 1.0021710689;
 			constexpr float a1 = -0.1573428973;
 			constexpr float a2 = 2.6808707411;
@@ -115,16 +122,15 @@ namespace PhysicsUtilsDevice {
 			return scalar;
 		}
 		else {
-			float kappa = DeviceConstants::ewaldKappa;
-			float erfcTerm = fasterfc(dist * kappa);
+			float erfcTerm = fasterfc(dist * ewaldKappa);
 			//const float erfcTerm = erfc(dist * kappa);
-			float scalar = erfcTerm + 2.f * kappa / PI_sqrt * dist * exp(-kappa * kappa * distSq);
+			float scalar = erfcTerm + 2.f * ewaldKappa / PI_sqrt * dist * exp(-ewaldKappa * ewaldKappa * distSq);
 
 			return scalar;
 		}
 	}
 
-	__device__ inline Float3 CalcCoulumbForceTrueImplementation(const float chargeProduct, const Float3& diff, const float distSq)
+	__device__ inline Float3 CalcCoulumbForceTrueImplementation(const float chargeProduct, const Float3& diff, const float distSq, const float ewaldKappa)
 	{
 		const float invLen = rsqrtf(distSq);                  // Computes 1 / sqrt(lenSquared)
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
@@ -136,7 +142,7 @@ namespace PhysicsUtilsDevice {
 #endif
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			float len = 1.f / invLen;
-			force *= CalcErfcScalar(len, distSq);
+			force *= CalcErfcScalar(len, distSq, ewaldKappa);
 		}
 
 		return force;
@@ -144,10 +150,10 @@ namespace PhysicsUtilsDevice {
 
 
 	__device__ inline Float3 CalcCoulumbForceChebyshevPiecewise(
-		const float chargeProduct, const Float3& diff, const float distSq) 
+		const float chargeProduct, const Float3& diff, const float distSq, const float ewaldKappa)
 	{
 		if (distSq < 0.1f || distSq > (1.2f*1.2f)) {
-			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq);
+			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq, ewaldKappa);
 		}
 
 		const float domainCutoff = 0.5f;
@@ -182,15 +188,15 @@ namespace PhysicsUtilsDevice {
 	}
 
 	// TODO: Include modified coulumb constant here
-	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, float distSq) {
+	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, float distSq, const float ewaldKappa) {
 		if constexpr (COULUMB_USE_CHEBYSHEV_APPROXIMATION)			
-			return CalcCoulumbForceChebyshevPiecewise(chargeProduct, diff, distSq);
+			return CalcCoulumbForceChebyshevPiecewise(chargeProduct, diff, distSq, ewaldKappa);
 		else
-			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared());
+			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared(), ewaldKappa);
 	}
 
-	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff) {
-		return CalcCoulumbForce(chargeProduct, diff, diff.lenSquared());
+	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, const float ewaldKappa) {
+		return CalcCoulumbForce(chargeProduct, diff, diff.lenSquared(), ewaldKappa);
 	}
 
 
@@ -201,15 +207,14 @@ namespace PhysicsUtilsDevice {
 	// <param name="diff">[nm]</param>
 	// <returns>[J/mol   /   modifiedCoulombConstant ]</returns>
 	//constexpr float modifiedCoulombConstant = 1.f;
-	__device__ inline float CalcCoulumbPotentialTrueImplementation(const float chargeProduct, const float distSq)
+	__device__ inline float CalcCoulumbPotentialTrueImplementation(const float chargeProduct, const float distSq, const float ewaldKappa)
 	{
 		float dist = sqrtf(distSq);
 		float potential = (chargeProduct) * 1.f/dist;
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
-			if constexpr (!USE_PRECOMPUTED_ERFCSCALARS) {
-				potential *= erfc(dist * DeviceConstants::ewaldKappa);
-			}
-			else {
+			/*
+			// Disabled precomputed ERFC potential LUT. Keep this implementation for potential future use.
+			if constexpr (USE_PRECOMPUTED_ERFCSCALARS) {
 				const int N = DeviceConstants::ERFC_LUT_SIZE;
 				const float distanceInArray = fminf(dist * DeviceConstants::cutoffNmReciprocal * N - 1, N - 1);
 				const int index = static_cast<int>(std::floor(distanceInArray));
@@ -218,16 +223,21 @@ namespace PhysicsUtilsDevice {
 				const float scalar = LAL::lerp(DeviceConstants::erfcPotentialscalarTable[index], DeviceConstants::erfcForcescalarTable[indexNext], frac);// optim: look into using std::lerp
 				potential *= scalar;
 			}
+			else
+			*/
+			{
+				potential *= erfc(dist * ewaldKappa);
+			}
 		}
 
 		return potential;
 	}
 
 	__device__ inline float CalcCoulumbPotentialChebyshevPiecewise(
-		const float chargeProduct, const float distSq)
+		const float chargeProduct, const float distSq, const float ewaldKappa)
 	{
 		if (distSq < 0.1f || distSq >(1.2f * 1.2f)) {
-			return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq) * modifiedCoulombConstant * 0.5f;
+			return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa) * modifiedCoulombConstant * 0.5f;
 		}
 
 		// TODO: It's kind of an issue that these scalars are so large. It will lead to some serious imprecision
@@ -265,12 +275,12 @@ namespace PhysicsUtilsDevice {
 		return chargeProduct * potentialApproximation;
 	}
 
-	__device__ inline float CalcCoulumbPotential(const float chargeProduct, const float distSq)
+	__device__ inline float CalcCoulumbPotential(const float chargeProduct, const float distSq, const float ewaldKappa)
 	{
 		if constexpr (COULUMB_USE_CHEBYSHEV_APPROXIMATION)
-			return CalcCoulumbPotentialChebyshevPiecewise(chargeProduct, distSq);
+			return CalcCoulumbPotentialChebyshevPiecewise(chargeProduct, distSq, ewaldKappa);
 		else
-			return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq);
+			return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa);
 	}
 
 }

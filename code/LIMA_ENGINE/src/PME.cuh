@@ -515,7 +515,9 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	const float* realspaceGrid,
 	Int3 gridDim,
 	ForceEnergy* const forceEnergies,
-	float selfenergyCorrection			// [J/mol]
+	float selfenergyCorrection,			// [J/mol]
+	Float3 boxSize,
+	Float3 boxSizeInv
 )
 {
 	Float3 pos = scData[blockIdx.x].Position(threadIdx.x);
@@ -526,7 +528,7 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	if (epsSqrt == -1 || charge == 0.f)
 		return;
 
-	PeriodicBoundaryCondition::applyBCNM(pos);
+	PeriodicBoundaryCondition::ApplyBC(pos, boxSize, boxSizeInv);
 
 	const Float3 gridPos = pos * gridpointsPerNm_f;
 	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, gridPos, gridDim);
@@ -704,7 +706,7 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 //	}
 //
 //	const ParticleQuickData pqd = state.solventsParticleQuickData[blockIdx.x * SolventBlock::maxParticles + threadIdx.x];
-//	const float charge = DeviceConstants::tinymolForcefield.types[pqd.atomType].charge;
+//	const float charge = pqd.params.charge;
 //	if (charge == 0.f)
 //		return;
 //
@@ -929,7 +931,7 @@ void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* 
 
 	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));	
 
-	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::maxParticles, 0, stream >> > (scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection);
+	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::maxParticles, 0, stream >> > (scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection, boxlenNm, boxlenNm.Inv());
 	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
 
 	//PlotPotentialSlices();

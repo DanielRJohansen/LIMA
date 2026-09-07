@@ -22,6 +22,7 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box->bondgroups.size(), _sim->box->boxparams.totalParticles, _sim->box->persistentClusters.size()))
 {
 	simulation = _sim;
+	ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simParams.cutoff_nm);
 
     verifyEngine();
 
@@ -44,7 +45,13 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 		SimulationDevice simdevTemp(simulation->simParams, simulation->box.get(), BoxConfig::Create(*simulation->box), BoxState::Create(*simulation->box), *dataBuffersDevice);
 		sim_dev = GenericCopyToDevice(&simdevTemp, 1);
 	}
-	setDeviceConstantMemory();
+	/*
+	// Precomputed LUT initialization is disabled with the LUT declarations. Keep this for potential reuse.
+	const float cutoffNM = simulation->simParams.cutoff_nm;
+	cudaMemcpyToSymbol(DeviceConstants::bsplineTable, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::erfcForcescalarTable, PrecomputeErfcForcescalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcForcescalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(DeviceConstants::erfcPotentialscalarTable, PrecomputeErfcPotentialscalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcPotentialscalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
+	*/
 	boxStateCopy = std::make_unique<BoxState>(); // TODO, just plain copy it now
 	boxConfigCopy = std::make_unique<BoxConfig>();
 	cudaMemcpy(boxStateCopy.get(), &sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
@@ -87,41 +94,6 @@ Engine::~Engine() {
 }
 
 
-void Engine::setDeviceConstantMemory() {
-
-
-	BoxSize boxSize_host;
-	boxSize_host.Set(simulation->box->boxparams.boxSize);
-	cudaMemcpyToSymbol(DeviceConstants::boxSize, &boxSize_host, sizeof(BoxSize), 0, cudaMemcpyHostToDevice);
-
-	cudaMemcpyToSymbol(DeviceConstants::cutoffNM, &simulation->simParams.cutoff_nm.value, sizeof(float), 0, cudaMemcpyHostToDevice);
-	const float cutoffNmReciprocal = 1.f / simulation->simParams.cutoff_nm;
-	cudaMemcpyToSymbol(DeviceConstants::cutoffNmReciprocal, &cutoffNmReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);
-	const float cutoffNmSquaredReciprocal = 1.f / (simulation->simParams.cutoff_nm * simulation->simParams.cutoff_nm );
-	cudaMemcpyToSymbol(DeviceConstants::cutoffNmSquaredReciprocal, &cutoffNmSquaredReciprocal, sizeof(float), 0, cudaMemcpyHostToDevice);	
-	const float ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simParams.cutoff_nm);
-	cudaMemcpyToSymbol(DeviceConstants::ewaldKappa, &ewaldKappa, sizeof(float), 0, cudaMemcpyHostToDevice);
-	const float cutoffNmSquared = simulation->simParams.cutoff_nm * simulation->simParams.cutoff_nm;
-	cudaMemcpyToSymbol(DeviceConstants::cutoffNMSquared, &cutoffNmSquared, sizeof(float), 0, cudaMemcpyHostToDevice);
-
-	const float initialThermostatScalar = 1.f;
-	cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &initialThermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
-
-	/*assert(simulation->forcefieldTest.size() == ForceField_NB::MAX_TYPES * ForceField_NB::MAX_TYPES);
-	cudaMemcpyToSymbol(DeviceConstants::nonbondedinteractionParams, simulation->forcefieldTest.data(), sizeof(NonbondedInteractionParams) * simulation->forcefieldTest.size(), 0, cudaMemcpyHostToDevice);*/
-
-	// Prepare precomputed values on device
-	const float cutoffNM = simulation->simParams.cutoff_nm;
-	cudaMemcpyToSymbol(DeviceConstants::bsplineTable, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
-	cudaMemcpyToSymbol(DeviceConstants::erfcForcescalarTable, PrecomputeErfcForcescalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcForcescalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
-	cudaMemcpyToSymbol(DeviceConstants::erfcPotentialscalarTable, PrecomputeErfcPotentialscalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcPotentialscalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
-
-	LIMA_UTILS::genericErrorCheck("Error while setting CUDA __constant__ memory\n");
-}
-
-
-
-
 void Engine::step() {
 	LIMA_UTILS::genericErrorCheckNoSync("Error before step!");
 
@@ -147,12 +119,12 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % simulation->simParams.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
-			auto [temperature, thermostatScalar] = thermostat->Temperature(sim_dev, simulation->box->boxparams, simulation->simParams, simulation->getStep(), pClusterMetaDevice.Get());
+			auto [temperature, newThermostatScalar] = thermostat->Temperature(sim_dev, simulation->box->boxparams, simulation->simParams, simulation->getStep(), pClusterMetaDevice.Get());
 			simulation->temperature_buffer.push_back(temperature);
 			runstatus.current_temperature = temperature;
 
 			if (simulation->simParams.apply_thermostat)
-				cudaMemcpyToSymbol(DeviceConstants::thermostatScalar, &thermostatScalar, sizeof(float), 0, cudaMemcpyHostToDevice);
+				thermostatScalar = newThermostatScalar;
 		}		
 	}
 	HandleEarlyStoppingInEM();
@@ -373,7 +345,7 @@ void Engine::_deviceMaster() {
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, useNointeractionMatrix>
 			<<<nSuperclusters, blockDim, 0, cudaStreams[0]>>>
 			(superClustersControl->scData, scscTasksDevice.Get(), scResultsDevice.Get(), idsOfQuerySuperclustersDevice.Get(), resultIndicesDevice.Get(), 
-				noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step, boxSize, boxSize.Inv());
+				noInteractionMatricesDevice.Get(), superClustersControl->scMeta, step, boxSize, boxSize.Inv(), ewaldKappa);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
 
 		//nbGatherForceenergy.Expand(nSuperclusters * SuperCluster::nParticles, 1.2);
@@ -421,8 +393,8 @@ void Engine::_deviceMaster() {
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
 			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
 			(*forceEnergyInterims, sim_dev, simulation->simParams.data_logging_interval, scResultsDevice.Get(), superClustersControl->scData, superClustersControl->scMeta, pClusterDevice.Get(), pClusterMetaDevice.Get(), 
-				boxStateCopy->pclusterInterimStates, step, simulation->simParams.dt, totalParticlesUpperbound, nSuperclusters, forcesMagnitudeSquareDevice.Get(), fixedParticleMovementBufferPtr, 
-				forcesMaskBufferPtr, fixedParticleRotationBufferPtr);
+				boxStateCopy->pclusterInterimStates, step, simulation->simParams.dt, totalParticlesUpperbound, nSuperclusters, forcesMagnitudeSquareDevice.Get(),
+				boxSize, thermostatScalar, fixedParticleMovementBufferPtr, forcesMaskBufferPtr, fixedParticleRotationBufferPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
 		cudaDeviceSynchronize();
 	}
@@ -667,9 +639,9 @@ bool Engine::TestAlgorithms() {
 		};
 
 	// 64 values total, tested via 2x32
-	runCase(1, 64);   // effectively 1×64
-	runCase(4, 16);    // effectively 4×16
-	runCase(8, 8);   // effectively 16×4
+	runCase(1, 64);   // effectively 1x64
+	runCase(4, 16);    // effectively 4x16
+	runCase(8, 8);   // effectively 16x4
 
 	return success;
 }

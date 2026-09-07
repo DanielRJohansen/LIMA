@@ -101,7 +101,6 @@ private:
 	void SnfHandler(cudaStream_t& stream);
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
-	void setDeviceConstantMemory();
 	void verifyEngine();
 
 	// streams every n steps
@@ -132,6 +131,8 @@ private:
 
 	//size_t nTasks = 0;
 	int nSuperclusters = 0;
+	float ewaldKappa = 0.f;
+	float thermostatScalar = 1.f;
 	CudaBuffer<PersistentCluster> pClusterDevice; // TODO: Handle lifetime somethwere
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
 	CudaBuffer<BondGroup> bondgroups;

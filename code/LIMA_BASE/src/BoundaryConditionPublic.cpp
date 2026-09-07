@@ -22,11 +22,11 @@ public:
 
 	static void constexpr applyBC(Float3& position, const Float3& boxlen_nm) {
 		position.x += boxlen_nm.x * (position.x < 0.f);
-		position.x -= boxlen_nm.x * (position.x > boxlen_nm.x);
+		position.x -= boxlen_nm.x * (position.x >= boxlen_nm.x);
 		position.y += boxlen_nm.y * (position.y < 0.f);
-		position.y -= boxlen_nm.y * (position.y > boxlen_nm.y);
+		position.y -= boxlen_nm.y * (position.y >= boxlen_nm.y);
 		position.z += boxlen_nm.z * (position.z < 0.f);
-		position.z -= boxlen_nm.z * (position.z > boxlen_nm.z);
+		position.z -= boxlen_nm.z * (position.z >= boxlen_nm.z);
 	}
 
 	static void constexpr applyHyperposNM(const Float3& static_particle, Float3& movable_particle, const Float3& boxlen_nm) {
@@ -41,14 +41,15 @@ public:
 	}
 
 	static void constexpr applyHyperpos(const NodeIndex& staticNodeindex, NodeIndex& movableNodeindex, const Int3& boxlen_nm) {
-		const Int3 boxlenHalfNM = boxlen_nm / 2;
+		const Int3 gridDim = BoxGrid::NodesPerDim(boxlen_nm);
+		const Int3 gridDimHalf = gridDim / 2;
 		
-		movableNodeindex.x += BoxGrid::NodesPerDim(boxlen_nm.x) * ((staticNodeindex.x - movableNodeindex.x) > boxlenHalfNM.x);
-		movableNodeindex.x -= BoxGrid::NodesPerDim(boxlen_nm.x) * ((staticNodeindex.x - movableNodeindex.x) < -boxlenHalfNM.x);
-		movableNodeindex.y += BoxGrid::NodesPerDim(boxlen_nm.y) * ((staticNodeindex.y - movableNodeindex.y) > boxlenHalfNM.y);
-		movableNodeindex.y -= BoxGrid::NodesPerDim(boxlen_nm.y) * ((staticNodeindex.y - movableNodeindex.y) < -boxlenHalfNM.y);
-		movableNodeindex.z += BoxGrid::NodesPerDim(boxlen_nm.z) * ((staticNodeindex.z - movableNodeindex.z) > boxlenHalfNM.z);
-		movableNodeindex.z -= BoxGrid::NodesPerDim(boxlen_nm.z) * ((staticNodeindex.z - movableNodeindex.z) < -boxlenHalfNM.z);
+		movableNodeindex.x += gridDim.x * ((staticNodeindex.x - movableNodeindex.x) > gridDimHalf.x);
+		movableNodeindex.x -= gridDim.x * ((staticNodeindex.x - movableNodeindex.x) < -gridDimHalf.x);
+		movableNodeindex.y += gridDim.y * ((staticNodeindex.y - movableNodeindex.y) > gridDimHalf.y);
+		movableNodeindex.y -= gridDim.y * ((staticNodeindex.y - movableNodeindex.y) < -gridDimHalf.y);
+		movableNodeindex.z += gridDim.z * ((staticNodeindex.z - movableNodeindex.z) > gridDimHalf.z);
+		movableNodeindex.z -= gridDim.z * ((staticNodeindex.z - movableNodeindex.z) < -gridDimHalf.z);
 		
 	}
 };

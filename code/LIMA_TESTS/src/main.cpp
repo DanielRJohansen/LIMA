@@ -230,8 +230,8 @@ int main() {
 //Benchmarks::ManyT4(envmode);
 //Benchmarks::PrepareSimulation_stmv(envmode);
 		//TestBuildmembraneSmall(envmode, false);
+		// 
 		RunAllUnitTests();
-
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
@@ -329,6 +329,8 @@ void RunAllUnitTests() {
 
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif(envmode));
+	ADD_SERIAL_TEST("T4", Benchmarks::T4(envmode, 200, Benchmarks::automatedTestRuns));
+	ADD_SERIAL_TEST("stmv sim performance", Benchmarks::STMV(envmode, 200, Benchmarks::automatedTestRuns));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

@@ -5,6 +5,6 @@ int main() {
 	//Benchmarks::Psome(EnvMode::ConsoleOnly, 5);
 
 	//Benchmarks::Benchmark("stmv", std::nullopt, 2);
-	Benchmarks::STMV(300);
+	Benchmarks::STMV(EnvMode::Headless, 300);
 	return 0;
 }

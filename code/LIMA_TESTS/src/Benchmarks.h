@@ -8,6 +8,13 @@ namespace Benchmarks {
 
 	using namespace TestUtils;
 	namespace fs = std::filesystem;
+	constexpr int automatedTestRuns = 3;
+
+	template<typename Duration>
+	struct PerformanceBounds {
+		Duration min;
+		Duration max;
+	};
 	
 	const fs::path TestsDir() {
 		return HeavyTestsDir();
@@ -103,28 +110,39 @@ namespace Benchmarks {
 		////const auto status = result.first == true ? true : false;
 	}
 
-	static LimaUnittestResult Bench(const fs::path& workDir, const GroFile& grofile, const TopologyFile& topfile, SimParams ip, std::chrono::microseconds allowedTimePerStep, std::string name, std::optional<int> nSteps = std::nullopt) {
-		EnvMode envmode = ConsoleOnly;
+	static LimaUnittestResult Bench(EnvMode envmode, const fs::path& workDir, const GroFile& grofile, const TopologyFile& topfile,
+		SimParams ip, PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, std::string name,
+		std::optional<int> nSteps = std::nullopt, int nRuns = 1) {
 
 		ip.data_logging_interval = 20;
 		//ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
 		if (nSteps)
 			ip.n_steps = nSteps.value();
-		Environment env{ workDir, envmode };
-		env.CreateSimulation(grofile, topfile, ip);
-		RunOnGpu(env);
+		std::vector<std::chrono::microseconds> timesPerStep;
+		timesPerStep.reserve(nRuns);
+		for (int run = 0; run < nRuns; run++) {
+			Environment env{ workDir, EnvMode::Headless /*envmode*/ };
+			env.CreateSimulation(grofile, topfile, ip);
+			RunOnGpu(env);
 
-		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
+			ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
+			const auto duration = env.simulationTimer->GetTiming();
+			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps));
+			if (envmode == EnvMode::Full)
+				env.PrintTiming();
+		}
 
-		auto duration = env.simulationTimer->GetTiming();
-		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
-		env.PrintTiming();
-		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("{} - Time per step: {} [us] Allowed: {} [us]", name, timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
+		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
+		const bool withinBounds = *fastest >= allowedTimePerStep.min && *slowest <= allowedTimePerStep.max;
+		return LimaUnittestResult{ withinBounds,
+			std::format("{} - Time per step range: {:.3f}-{:.3f} [ms], allowed: {:.3f}-{:.3f} [ms] ({} runs)",
+				name, fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
+				allowedTimePerStep.max.count() / 1000., nRuns), envmode != Headless };
 	}
 
 
-	static LimaUnittestResult Psome(std::optional<int> nSteps=std::nullopt) {
+	static LimaUnittestResult Psome(EnvMode envmode, std::optional<int> nSteps=std::nullopt) {
 		// if (envmode== Full)
 		//	 envmode = ConsoleOnly;	// Cant go fast in Full
 
@@ -167,21 +185,29 @@ namespace Benchmarks {
 		GroFile grofile{ workDir / "molecule" / "conf.gro"};
 		TopologyFile topfile{ workDir / "molecule" / "topol.top"};
 		SimParams ip{ workDir / "sim_params.txt" };
-		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4000 }, "Psome", 30);
+		return Bench(envmode, workDir, grofile, topfile, ip,
+			{ std::chrono::microseconds{ 0 }, std::chrono::microseconds{ 4000 } }, "Psome", 30);
 	}
 
-	static LimaUnittestResult STMV(int nSteps) {
+	static LimaUnittestResult STMV(EnvMode envmode, int nSteps, int nRuns = 1) {
 		const fs::path workDir = TestsDir() / "benchmarking" / "stmv";
 		GroFile grofile{ workDir  / "conf.gro" };
 		TopologyFile topfile{ workDir  / "topol.top" };
 		SimParams ip{ workDir / "sim_params.txt" };
-		return Bench(workDir, grofile, topfile, ip, std::chrono::microseconds{ 4500 }, "STMV", nSteps);
+		return Bench(envmode, workDir, grofile, topfile, ip,
+			{ std::chrono::microseconds{ 12000 }, std::chrono::microseconds{ 13500 } }, "STMV", nSteps, nRuns);
+	}
+
+	static LimaUnittestResult T4(EnvMode envmode, int nSteps=500, int nRuns = 1) {
+		const fs::path workDir = TestsDir() / "benchmarking" / "t4";
+		GroFile grofile{ workDir  / "conf.gro" };
+		TopologyFile topfile{ workDir  / "topol.top" };
+		SimParams ip{ workDir / "../sim_params.txt" };
+		return Bench(envmode, workDir, grofile, topfile, ip,
+			{ std::chrono::microseconds{ 200 }, std::chrono::microseconds{ 300 } }, "T4", nSteps, nRuns);
 	}
 
 	static LimaUnittestResult ManyT4(EnvMode envmode) {
-		if (envmode== Full)
-		    envmode = ConsoleOnly;	// Cant go fast in Full
-
 		const fs::path workDir  = TestsDir() / "manyt4";		
 		TopologyFile topfile(workDir / "t4_many.top");
 		GroFile grofile(workDir / "t4_many_em.gro");

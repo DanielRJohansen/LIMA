@@ -38,6 +38,10 @@ struct LiveEditData {
 
 
 void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams) {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& engine = session.engine;
+	auto& simStatus = session.simStatus;
 	insertionCmd.groPath = FixPath(insertionCmd.groPath);
 	insertionCmd.topPath = FixPath(insertionCmd.topPath);
 
@@ -90,6 +94,10 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 }
 
 void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const LiveEdit::MoveMolecule& cmd) {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& engine = session.engine;
+	const auto& boximage = simulation->boxImage;
 	if (cmd.draggingForce.len() > 0 || cmd.rotation.len() > 0)
 		liveeditData->remainingStepsCount = 1;
 
@@ -126,6 +134,7 @@ void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const Li
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::AtomSelected& cmd) {
+	const auto& boximage = Session().simulation->boxImage;
 	liveeditData->selectedParticleId = cmd.particleId;
 	if (liveeditData->activeSelection.contains(cmd.particleId)) {
 		return; // This operation will just yield the same set
@@ -139,6 +148,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::At
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
+	const auto& simulation = Session().simulation;
 	liveeditData->selectedParticleId = std::nullopt;
 	liveeditData->activeSelection.clear();
 	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
@@ -171,6 +181,9 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::Se
 }
 
 void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& simStatus = session.simStatus;
 	display->SetSpinnerVisible(true);
 	Lipids::Selection lipidselection;
 	for (const auto [name, percentage] : cmd.lipids) {
@@ -194,6 +207,8 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 }
 
 void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::AddForcemaskToSelection& cmd) {
+	auto& simulation = Session().simulation;
+	auto& engine = Session().engine;
 	liveeditData->forceMask.clear();
 	if (cmd.forcemask != Float3{ 0.f } && !liveeditData->activeSelection.empty()) {
 		liveeditData->forceMask.resize(simulation->box->boxparams.totalParticles, Float3{ 1.f });
@@ -206,6 +221,8 @@ void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::Ad
 }
 
 void Environment::UpdateElasticPosition(LiveEditData* liveeditData, const LiveEdit::ElasticPosition& cmd) {
+	auto& simulation = Session().simulation;
+	auto& engine = Session().engine;
 	liveeditData->elasticPositions.clear();
 	simulation->simParams.snf_select.erase(SupernaturalForcesSelect::ElasticPosition);
 	const bool anyComponentActive = cmd.x || cmd.y || cmd.z;
@@ -226,11 +243,18 @@ void Environment::UpdateElasticPosition(LiveEditData* liveeditData, const LiveEd
 }
 
 void Environment::EM(LiveEditData* liveeditData) {
+	auto& simulation = Session().simulation;
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;
 }
 
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& engine = session.engine;
+	auto& liveEditCommandsQueue = session.liveEditCommandsQueue;
+	auto& simStatus = session.simStatus;
+	auto& forceWriteSimstatusToDisplay = session.forceWriteSimstatusToDisplay;
 	simulation->simParams.n_steps = 0;
 	simulation->simParams.data_logging_interval = 0;
 	simulation->simParams.em_variant = false;

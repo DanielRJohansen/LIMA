@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <chrono>
+#include <deque>
 
 class Display;
 struct BoxImage;
@@ -108,6 +109,9 @@ public:
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 
 	std::string getWorkdir() { return workDir.string(); }
+	const std::optional<TimeIt>& SimulationTimer() const;
+	const std::vector<float>& AverageStepTimes() const;
+	void QueueLiveEditCommand(LiveEdit::Command command);
 
 	void PrintTiming() const;
 
@@ -126,10 +130,31 @@ public:
 
 	bool prepareForRun();
 private:
+	struct SimulationSession {
+		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
+		~SimulationSession();
+
+		std::unique_ptr<Simulation> simulation;
+		std::unique_ptr<Engine> engine = nullptr;
+		LimaLogger logger;
+		std::chrono::steady_clock::time_point time0;
+		std::optional<TimeIt> simulationTimer;
+		std::vector<float> avgStepTimes;
+		std::optional<std::chrono::duration<double>> engineTime;
+		std::deque<LiveEdit::Command> liveEditCommandsQueue;
+		SimStatus simStatus{};
+		bool forceWriteSimstatusToDisplay = false;
+		int64_t stepAtLastRender = INT64_MIN;
+		std::optional<SimAnalysis::AnalyzedPackage> analyzedPackage;
+	};
+
+	SimulationSession& Session();
+	const SimulationSession& Session() const;
+	void SetSimulation(std::unique_ptr<Simulation> simulation);
 
 	fs::path FixPath(const fs::path& path) const;
 
-	void constexpr verifySimulationParameters();			// Constants before doing anything
+	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
 	void UpdateSimstatus(bool printToConsole, bool alwaysUpdate/*Performance hit*/);
@@ -144,15 +169,6 @@ private:
 
 	EnvMode m_mode;
 
-	int64_t step_at_last_render = INT64_MIN;
-
-	LimaLogger m_logger;
-
-
 	std::unique_ptr<Display> display = nullptr;
-	std::unique_ptr<Engine> engine = nullptr;
-	std::unique_ptr<Simulation> simulation = nullptr;
-	std::unique_ptr<BoxImage> boximage = nullptr;
-
-	std::optional<SimAnalysis::AnalyzedPackage> postsim_anal_package;
+	std::unique_ptr<SimulationSession> simulationSession = nullptr;
 };

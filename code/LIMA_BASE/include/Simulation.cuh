@@ -11,6 +11,7 @@
 #include <set>
 
 namespace MDFiles { struct TrrFile; }
+struct BoxImage;
 
 
 
@@ -160,6 +161,8 @@ public:
 #endif
 
 	std::unique_ptr<Box> box = nullptr;
+	// BoxImage is defined in LIMA_TOOLS. shared_ptr keeps LIMA_BASE independent of LIMA_TOOLS.
+	std::shared_ptr<BoxImage> boxImage = nullptr;
 	SimParams simParams;
 
 

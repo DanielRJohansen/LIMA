@@ -127,7 +127,7 @@ namespace Benchmarks {
 			RunOnGpu(env);
 
 			ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
-			const auto duration = env.simulationTimer->GetTiming();
+			const auto duration = env.SimulationTimer()->GetTiming();
 			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps));
 			if (envmode == EnvMode::Full)
 				env.PrintTiming();
@@ -234,7 +234,7 @@ namespace Benchmarks {
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
-		auto duration = env.simulationTimer->GetTiming();
+		auto duration = env.SimulationTimer()->GetTiming();
 		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
@@ -294,9 +294,9 @@ namespace Benchmarks {
 			throw std::runtime_error("Simulation did not run fully");
 		}
 
-		const float meanSteptime = Statistics::Mean(env.avgStepTimes);
-		const float stdDev = Statistics::StdDev(env.avgStepTimes);
-		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.simulationTimer->GetTiming()).count() / (float)params.n_steps);
+		const float meanSteptime = Statistics::Mean(env.AverageStepTimes());
+		const float stdDev = Statistics::StdDev(env.AverageStepTimes());
+		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.SimulationTimer()->GetTiming()).count() / (float)params.n_steps);
 		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
 
 		env.PrintTiming();

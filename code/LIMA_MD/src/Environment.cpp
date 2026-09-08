@@ -23,10 +23,36 @@ const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
+Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
+	: simulation(std::move(simulation))
+	, logger(LimaLogger::compact, mode, "environment", workDir.string()) {}
+
+Environment::SimulationSession::~SimulationSession() = default;
+
+Environment::SimulationSession& Environment::Session() {
+	if (!simulationSession)
+		throw std::runtime_error("Environment has no simulation session");
+	return *simulationSession;
+}
+
+const Environment::SimulationSession& Environment::Session() const {
+	if (!simulationSession)
+		throw std::runtime_error("Environment has no simulation session");
+	return *simulationSession;
+}
+
+void Environment::SetSimulation(std::unique_ptr<Simulation> simulation) {
+	if (!simulationSession) {
+		simulationSession = std::make_unique<SimulationSession>(std::move(simulation), m_mode, workDir);
+		return;
+	}
+
+	simulationSession->simulation = std::move(simulation);
+}
+
 Environment::Environment(const fs::path& workdir, EnvMode mode)
 	: workDir(workdir)
 	, m_mode(mode)
-	, m_logger{ LimaLogger::compact, m_mode, "environment", workdir.string()}	// .string() is temp
 {
 	switch (mode)
 	{
@@ -44,7 +70,7 @@ Environment::~Environment() {}
 
 void Environment::CreateSimulation(const Float3& boxsize_nm) {
 	SimParams simparams{};
-	simulation = std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm)));
+	SetSimulation(std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm))));
 }
 
 void Environment::CreateSimulation(const std::string& gro_path, const std::string& topol_path, const SimParams& params) {
@@ -55,7 +81,7 @@ void Environment::CreateSimulation(const std::string& gro_path, const std::strin
 
 void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
 {
-	boximage = LIMA_MOLECULEBUILD::buildMolecules(
+	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
 		topolfile,
 		V1,
@@ -64,20 +90,25 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 		params
 		);
 
-	simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boximage));
+	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage));
+	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
+	SetSimulation(std::move(simulation));
+	SimulationSession& session = Session();
 
 	if (display) {
 		display->Render(std::make_unique<Rendering::AtomRenderTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-			simulation->box->boxparams, simStatus, simulation->box->backboneChains
+			session.simulation->box->persistentClusters, session.simulation->box->persistentClustersMetadata,
+			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains
 		));
 	}
 }
 
 void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
 
-	simulation.reset(new Simulation(params));
+	auto simulation = std::make_unique<Simulation>(params);
 	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box), simulation_src.getStep());
+	simulation->boxImage = std::move(simulation_src.boxImage);
+	SetSimulation(std::move(simulation));
 }
 
 
@@ -101,7 +132,8 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(
 	return { grofile, topfile, simparams };
 }
 
-void constexpr Environment::verifySimulationParameters() {	// Not yet implemented
+void Environment::verifySimulationParameters() {	// Not yet implemented
+	const auto& simulation = Session().simulation;
 	if (simulation->simParams.cutoff_nm != 1.2f) {// TODO: DANGER
 		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
 	}
@@ -140,6 +172,8 @@ void Environment::verifyBox() {
 }
 
 bool Environment::prepareForRun() {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
 	if (simulation == nullptr)// TEMP, ENv should never give sim to engine
 		return true;
 
@@ -149,7 +183,7 @@ bool Environment::prepareForRun() {
 		return false; 
 	}
 
-	m_logger.startSection("Simulation started");
+	session.logger.startSection("Simulation started");
 
 	if (simulation->ready_to_run) { return true; }
 
@@ -159,10 +193,10 @@ bool Environment::prepareForRun() {
 	verifyBox();
 	simulation->ready_to_run = true;
 
-	avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
+	session.avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 
 
-	engine = std::make_unique<Engine>(
+	session.engine = std::make_unique<Engine>(
 		simulation.get(),
 		simulation->simParams.bc_select);
 
@@ -188,6 +222,13 @@ void Environment::sayHello() {
 }
 
 std::chrono::duration<double> Environment::run() {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& engine = session.engine;
+	auto& simStatus = session.simStatus;
+	auto& time0 = session.time0;
+	auto& simulationTimer = session.simulationTimer;
+	auto& engineTime = session.engineTime;
 	const bool emVariant = simulation->simParams.em_variant;
 	const bool stepwise = simulation->simParams.stepwise;
 	//simparamsCopy = simulation->simParams;
@@ -240,7 +281,7 @@ std::chrono::duration<double> Environment::run() {
 	simulation->ready_to_run = false ;
 
 	
-	m_logger.finishSection("Simulation Finished");
+	session.logger.finishSection("Simulation Finished");
 
 	engineTime = t1 - t0;
     return t1-t0;
@@ -251,6 +292,9 @@ std::chrono::duration<double> Environment::run() {
 
 
 void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& engine = session.engine;
 	int particlesUpdated = 0;
 
 	
@@ -277,6 +321,9 @@ void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int6
 	}
 }
 GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> filename) {
+	const auto& boximage = Session().simulation->boxImage;
+	if (!boximage)
+		throw std::runtime_error("Cannot write coordinates without a BoxImage");
 	GroFile outputfile{ boximage->grofile };
 
 	if (filename.has_value()) {
@@ -288,6 +335,10 @@ GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> 
 	return outputfile;
 }
 std::vector<Float3> Environment::GetForces(int64_t step) const {
+	const auto& simulation = Session().simulation;
+	const auto& boximage = simulation->boxImage;
+	if (!boximage)
+		throw std::runtime_error("Cannot get forces without a BoxImage");
 	std::vector<Float3> forces(boximage->grofile.atoms.size());		// [kJ/mol/nm]
 	const auto& forcesBuffer = *simulation->forceBuffer;			// [J/mol/nm]
 	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
@@ -305,6 +356,10 @@ std::vector<Float3> Environment::GetForces(int64_t step) const {
 }
 
 Trajectory Environment::WriteSimToTrajectory() const {
+	const auto& simulation = Session().simulation;
+	const auto& boximage = simulation->boxImage;
+	if (!boximage)
+		throw std::runtime_error("Cannot write a trajectory without a BoxImage");
 
 	const int nSteps = simulation->getStep();
 	const int nAtoms = boximage->grofile.atoms.size();
@@ -340,6 +395,10 @@ Trajectory Environment::WriteSimToTrajectory() const {
 }
 
 void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
+	const auto& simulation = Session().simulation;
+	const auto& boximage = simulation->boxImage;
+	if (!boximage)
+		throw std::runtime_error("Cannot write a trajectory without a BoxImage");
 	const int nSteps = simulation->getStep();
 	const int nAtoms = boximage->grofile.atoms.size();
 
@@ -351,6 +410,14 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 }
 
 void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& engine = session.engine;
+	auto& simStatus = session.simStatus;
+	auto& time0 = session.time0;
+	auto& avgStepTimes = session.avgStepTimes;
+	auto& simulationTimer = session.simulationTimer;
+	auto& forceWriteSimstatusToDisplay = session.forceWriteSimstatusToDisplay;
 	if (!simulation || !engine) {
 		return;
 	}
@@ -413,6 +480,10 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 
 
 bool Environment::handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
+	SimulationSession& session = Session();
+	auto& engine = session.engine;
+	auto& simStatus = session.simStatus;
+	auto& step_at_last_render = session.stepAtLastRender;
 	if (m_mode != Full) {
 		return true;
 	}
@@ -444,15 +515,19 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 }
 
 std::unique_ptr<Simulation> Environment::GetSim() {
+	SimulationSession& session = Session();
+	auto& engine = session.engine;
+	auto& simulation = session.simulation;
 	engine.reset();
 	return std::move(simulation);
 }
 
 void Environment::ReleaseEngine() {
-	engine.reset();
+	Session().engine.reset();
 }
 
 Simulation* Environment::getSimPtr() {
+	const auto& simulation = Session().simulation;
 	if (simulation) { 
 		return simulation.get(); 
 	}
@@ -461,6 +536,9 @@ Simulation* Environment::getSimPtr() {
 
 const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()
 {
+	SimulationSession& session = Session();
+	auto& simulation = session.simulation;
+	auto& postsim_anal_package = session.analyzedPackage;
 	if (simulation == nullptr)
 		throw std::runtime_error("Env has no simulation");
 	// TODO: make some check here that the simulation has finished
@@ -469,7 +547,22 @@ const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()
 	return postsim_anal_package.value();
 }
 
+const std::optional<TimeIt>& Environment::SimulationTimer() const {
+	return Session().simulationTimer;
+}
+
+const std::vector<float>& Environment::AverageStepTimes() const {
+	return Session().avgStepTimes;
+}
+
+void Environment::QueueLiveEditCommand(LiveEdit::Command command) {
+	Session().liveEditCommandsQueue.push_back(std::move(command));
+}
+
 void Environment::PrintTiming() const {	
+	const SimulationSession& session = Session();
+	const auto& simulation = session.simulation;
+	const auto& engineTime = session.engineTime;
 	if (!engineTime || !simulation)
 		return;
 

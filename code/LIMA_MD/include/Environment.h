@@ -95,13 +95,6 @@ public:
 
 	void RenderSimulation();
 	
-
-	
-	
-	void renderTrajectory(std::string trj_path);
-	
-	void makeVirtualTrajectory(std::string trj_path, std::string waterforce_path);
-
 	// Functions for dev only : TODO move to child whioch inherits all as public
 	std::unique_ptr<Simulation> GetSim();
 	void ReleaseEngine();
@@ -115,18 +108,8 @@ public:
 
 	void PrintTiming() const;
 
-	std::chrono::steady_clock::time_point time0;
 
-	const fs::path workDir = "";	// Main dir of the current simulation
-
-	std::optional<TimeIt> simulationTimer;
-	std::vector<float> avgStepTimes; // [ms] - averaged over STEP_PER_UPDATE
-	std::optional<std::chrono::duration<double>> engineTime;
-
-	std::deque<LiveEdit::Command> liveEditCommandsQueue;	
-
-	SimStatus simStatus{};
-	bool forceWriteSimstatusToDisplay = false;
+	fs::path workDir;
 
 	bool prepareForRun();
 private:
@@ -136,7 +119,6 @@ private:
 
 		std::unique_ptr<Simulation> simulation;
 		std::unique_ptr<Engine> engine = nullptr;
-		LimaLogger logger;
 		std::chrono::steady_clock::time_point time0;
 		std::optional<TimeIt> simulationTimer;
 		std::vector<float> avgStepTimes;

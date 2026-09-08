@@ -25,7 +25,7 @@ constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 
 Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
 	: simulation(std::move(simulation))
-	, logger(LimaLogger::compact, mode, "environment", workDir.string()) {}
+	{}
 
 Environment::SimulationSession::~SimulationSession() = default;
 
@@ -183,8 +183,6 @@ bool Environment::prepareForRun() {
 		return false; 
 	}
 
-	session.logger.startSection("Simulation started");
-
 	if (simulation->ready_to_run) { return true; }
 
 	simulation->PrepareDataBuffers();
@@ -279,9 +277,6 @@ std::chrono::duration<double> Environment::run() {
 
 	simulation->finished = true;
 	simulation->ready_to_run = false ;
-
-	
-	session.logger.finishSection("Simulation Finished");
 
 	engineTime = t1 - t0;
     return t1-t0;

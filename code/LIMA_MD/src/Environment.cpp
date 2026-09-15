@@ -191,8 +191,11 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 }
 
 void Environment::MainLoop() {
+	timingStarted = std::chrono::steady_clock::now();
+
 	std::jthread preprocessThread;
 	std::jthread simulationThread;
+
 	while (true) {
 		std::optional<PreparedSimulation> simulationToRun;
 		std::optional<QueuedSimulation> simulationToPreprocess;
@@ -233,6 +236,7 @@ void Environment::MainLoop() {
 }
 
 void Environment::Preprocess(QueuedSimulation next) {
+	const auto started = std::chrono::steady_clock::now();
 	try {
 		auto simulation = BuildSimulation(next.job);
 		if (next.job.configure)
@@ -246,12 +250,14 @@ void Environment::Preprocess(QueuedSimulation next) {
 	}
 	{
 		const std::lock_guard lock(schedulingMutex);
+		preprocessTime += std::chrono::steady_clock::now() - started;
 		preparingSimulation = false;
 	}
 	schedulerWakeup.notify_one();
 }
 
 void Environment::RunPreparedSimulation(PreparedSimulation next) {
+	const auto started = std::chrono::steady_clock::now();
 	try {
 		simulationSession = std::make_unique<SimulationSession>(
 			std::move(next.simulation), next.job.mode, next.job.workDir);
@@ -276,9 +282,48 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 	}
 	{
 		const std::lock_guard lock(schedulingMutex);
+		simulationTime += std::chrono::steady_clock::now() - started;
 		runningSimulation = false;
 	}
 	schedulerWakeup.notify_one();
+}
+
+void Environment::PrintDevPerformanceReport() {
+	std::chrono::duration<double> elapsed;
+	std::chrono::duration<double> preprocessing;
+	std::chrono::duration<double> simulation;
+	{
+		const std::lock_guard lock(schedulingMutex);
+		elapsed = std::chrono::steady_clock::now() - timingStarted;
+		preprocessing = preprocessTime;
+		simulation = simulationTime;
+	}
+
+	const auto Percentage = [total = elapsed.count()](double seconds) {
+		return total > 0. ? seconds / total * 100. : 0.;
+	};
+	const auto Bar = [](double percentage) {
+		constexpr int width = 30;
+		const int filled = std::clamp(static_cast<int>(std::round(percentage / 100. * width)), 0, width);
+		return std::string(filled, '#') + std::string(width - filled, '-');
+	};
+	// The GPU is the serialized resource. Preprocessing deliberately overlaps it,
+	// so idle is the wall time for which the simulation worker was not running.
+	const double idleSeconds = (std::max)(0., elapsed.count() - simulation.count());
+
+	std::printf("\n");
+	std::printf("========================================================================\n");
+	std::printf("                    LIMA ENVIRONMENT UTILIZATION\n");
+	std::printf("                    %.2f seconds observed\n", elapsed.count());
+	std::printf("------------------------------------------------------------------------\n");
+	std::printf("  GPU simulation [%s] %6.2f%%  %8.2f s\n",
+		Bar(Percentage(simulation.count())).c_str(), Percentage(simulation.count()), simulation.count());
+	std::printf("  Preprocessing  [%s] %6.2f%%  %8.2f s\n",
+		Bar(Percentage(preprocessing.count())).c_str(), Percentage(preprocessing.count()), preprocessing.count());
+	std::printf("  GPU idle       [%s] %6.2f%%  %8.2f s\n",
+		Bar(Percentage(idleSeconds)).c_str(), Percentage(idleSeconds), idleSeconds);
+	std::printf("========================================================================\n");
+	std::printf("  Preprocessing and GPU simulation can overlap.\n");
 }
 
 std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {

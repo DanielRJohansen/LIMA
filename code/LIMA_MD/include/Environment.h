@@ -103,6 +103,9 @@ public:
 
 	void QueueLiveEditCommand(LiveEdit::Command command);
 
+	// Development diagnostics for scheduler/worker utilization.
+	void PrintDevPerformanceReport();
+
 private:
 	Environment();
 	~Environment();
@@ -188,4 +191,8 @@ private:
 	bool runningSimulation = false;
 	bool stopping = false;
 	std::jthread coordinator;
+
+	std::chrono::steady_clock::time_point timingStarted;
+	std::chrono::duration<double> preprocessTime{};
+	std::chrono::duration<double> simulationTime{};
 };

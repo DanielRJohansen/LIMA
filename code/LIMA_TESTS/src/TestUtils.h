@@ -401,6 +401,7 @@ namespace TestUtils {
 		~LimaUnittestManager() {
 			Run();
 			WriteActualVarianceCoefficientResults();
+			Environment::Get().PrintDevPerformanceReport();
 			if (successCount == tests.size()) setConsoleTextColorGreen();
 			else setConsoleTextColorRed();
 			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successCount, tests.size());

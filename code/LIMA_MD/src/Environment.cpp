@@ -70,6 +70,45 @@ SimulationResult SimulationHandle::Get() {
 	return std::move(*state->result);
 }
 
+void SimulationResult::WriteCoordinatesTo(GroFile& grofile, std::optional<int64_t>) const {
+	if (!simulation)
+		throw std::runtime_error("Cannot write coordinates without a simulation result");
+
+	int particlesUpdated = 0;
+	for (int clusterId = 0; clusterId < simulation->box->persistentClusters.size(); clusterId++) {
+		const auto& metadata = simulation->box->persistentClustersMetadata[clusterId];
+		const auto& cluster = simulation->box->persistentClusters[clusterId];
+		for (int particleId = 0; particleId < PersistentCluster::maxParticles; particleId++) {
+			const int globalId = metadata.particleIdsGlobal[particleId];
+			if (globalId >= 0) {
+				grofile.atoms[globalId].position = cluster.pqd[particleId].position;
+				particlesUpdated++;
+			}
+		}
+	}
+	if (AllAtom && particlesUpdated != grofile.atoms.size())
+		throw std::runtime_error(std::format(
+			"Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
+}
+
+Trajectory SimulationResult::MakeTrajectory() const {
+	if (!simulation || !simulation->boxImage)
+		throw std::runtime_error("Cannot write a trajectory without a simulation result and BoxImage");
+	return Trajectory{ static_cast<int>(simulation->getStep()),
+		static_cast<int>(simulation->boxImage->grofile.atoms.size()),
+		simulation->boxImage->grofile.box_size, simulation->simParams.dt };
+}
+
+void SimulationResult::WriteTrajectoryAsUff(const fs::path& path) const {
+	if (!simulation || !simulation->boxImage)
+		throw std::runtime_error("Cannot write a trajectory without a simulation result and BoxImage");
+	UpgradeableFileFormat file(path);
+	file.WriteSection("numAtoms", std::vector{ static_cast<int>(simulation->boxImage->grofile.atoms.size()) });
+	file.WriteSection("numFrames", std::vector{
+		static_cast<int>(simulation->getStep() / simulation->simParams.data_logging_interval) });
+	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
+}
+
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
 const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
@@ -121,10 +160,30 @@ Environment::Environment(const fs::path& workdir, EnvMode mode)
 	case EnvMode::Headless:
 		break;
 	}
+	StartScheduling();
 }
 
 Environment::~Environment() {
 	StopScheduling();
+}
+
+void Environment::StartScheduling() {
+	const std::lock_guard lock(schedulingMutex);
+	stopping = false;
+	coordinator = std::jthread([this] { MainLoop(); });
+}
+
+void Environment::StopScheduling() {
+	{
+		const std::lock_guard lock(schedulingMutex);
+		stopping = true;
+	}
+
+	// MainLoop may be asleep with an empty queue. Wake it so it can observe
+	// stopping; accepted jobs are drained before the thread exits.
+	schedulerWakeup.notify_one();
+	if (coordinator.joinable())
+		coordinator.join();
 }
 
 SimulationHandle Environment::Submit(SimulationJob job) {
@@ -137,26 +196,6 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 	}
 	schedulerWakeup.notify_one();
 	return SimulationHandle{ std::move(state) };
-}
-
-void Environment::StartScheduling() {
-	const std::lock_guard lock(schedulingMutex);
-	if (coordinator.joinable())
-		return;
-	stopping = false;
-	coordinator = std::jthread([this] { MainLoop(); });
-}
-
-void Environment::StopScheduling() {
-	{
-		const std::lock_guard lock(schedulingMutex);
-		stopping = true;
-	}
-	// MainLoop may be asleep with an empty queue. Wake it so it can observe
-	// stopping; accepted jobs are drained before the thread exits.
-	schedulerWakeup.notify_one();
-	if (coordinator.joinable())
-		coordinator.join();
 }
 
 void Environment::MainLoop() {
@@ -225,7 +264,7 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 		workDir = next.job.workDir;
 		m_mode = next.job.mode;
 		simulationSession = std::make_unique<SimulationSession>(std::move(next.simulation), m_mode, workDir);
-		const auto elapsed = run();
+		const auto elapsed = next.job.run ? RunSimulation() : std::chrono::duration<double>{};
 		SimulationSession& session = Session();
 		if (session.engine) {
 			CudaBuffer<PersistentCluster>& deviceState = session.engine->OffloadPclusterState();
@@ -236,7 +275,9 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 		if (next.job.analyze)
 			analysis.emplace(getAnalyzedPackage());
 
-		SimulationResult result{ GetSim(), std::move(analysis), elapsed };
+		session.engine.reset();
+		SimulationResult result{
+			std::move(session.simulation), std::move(analysis), elapsed, std::move(session.avgStepTimes) };
 		next.state->SetResult(std::move(result));
 	}
 	catch (...) {
@@ -265,8 +306,8 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 
 	const fs::path groPath = job.groPath.is_absolute() ? job.groPath : job.workDir / job.groPath;
 	const fs::path topPath = job.topPath.is_absolute() ? job.topPath : job.workDir / job.topPath;
-	GroFile grofile{ groPath };
-	TopologyFile topolfile{ topPath };
+	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ groPath };
+	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ topPath };
 	job.configureInput(grofile, topolfile, *job.simParams);
 
 	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
@@ -279,18 +320,7 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 }
 
 
-void Environment::CreateSimulation(const Float3& boxsize_nm) {
-	SimParams simparams{};
-	SetSimulation(std::make_unique<Simulation>(simparams, std::make_unique<Box>(Float3(boxsize_nm))));
-}
-
-void Environment::CreateSimulation(const std::string& gro_path, const std::string& topol_path, const SimParams& params) {
-	const auto groFile = std::make_unique<GroFile>(gro_path);
-	const auto topFile = std::make_unique<TopologyFile>(topol_path);
-	CreateSimulation(*groFile, *topFile, params);
-}
-
-void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params) 
+void Environment::InitializeSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params)
 {
 	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
@@ -314,16 +344,7 @@ void Environment::CreateSimulation(const GroFile& grofile, const TopologyFile& t
 	}
 }
 
-void Environment::CreateSimulation(Simulation& simulation_src, const SimParams params) {
-
-	auto simulation = std::make_unique<Simulation>(params);
-	BoxBuilder::copyBoxState(*simulation, std::move(simulation_src.box), simulation_src.getStep());
-	simulation->boxImage = std::move(simulation_src.boxImage);
-	SetSimulation(std::move(simulation));
-}
-
-
-std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(Float3 boxlen) {
+std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateLiveEditSimulationFiles(Float3 boxlen) {
 	GroFile grofile{};
 	grofile.m_path = workDir / "conf.gro";
 	grofile.box_size = Float3{ boxlen };
@@ -341,6 +362,19 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateSimulationFiles(
 	simparams.DumpToFile(workDir / "sim_params.txt");
 
 	return { grofile, topfile, simparams };
+}
+
+void Environment::UpdateLiveEditCoordinates(GroFile& grofile) {
+	SimulationSession& session = Session();
+	if (session.engine) {
+		CudaBuffer<PersistentCluster>& deviceState = session.engine->OffloadPclusterState();
+		session.simulation->box->persistentClusters = GenericCopyToHost(
+			deviceState.Get(), session.simulation->box->persistentClusters.size());
+	}
+	SimulationResult view;
+	view.simulation = std::move(session.simulation);
+	view.WriteCoordinatesTo(grofile);
+	session.simulation = std::move(view.simulation);
 }
 
 void Environment::verifySimulationParameters() {	// Not yet implemented
@@ -430,7 +464,7 @@ void Environment::sayHello() {
 	std::cout << file_contents;
 }
 
-std::chrono::duration<double> Environment::run() {
+std::chrono::duration<double> Environment::RunSimulation() {
 	SimulationSession& session = Session();
 	auto& simulation = session.simulation;
 	auto& engine = session.engine;
@@ -497,49 +531,6 @@ std::chrono::duration<double> Environment::run() {
 
 
 
-void Environment::WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> _step) {	 	 
-	SimulationSession& session = Session();
-	auto& simulation = session.simulation;
-	auto& engine = session.engine;
-	int particlesUpdated = 0;
-
-	
-	// First offload the current state from engine to host - if there is no engine, the state in the current boxhost IS the current state
-	if (engine) {
-		CudaBuffer<PersistentCluster>& pcBuffer = engine->OffloadPclusterState();
-		simulation->box->persistentClusters = GenericCopyToHost(pcBuffer.Get(), simulation->box->persistentClusters.size()); // TODO: Reuse mem here somehow, this'll be slow..
-	}
-
-	for (int pcId = 0; pcId < simulation->box->persistentClusters.size(); pcId++) {
-		const PersistentClusterMeta& pcMeta = simulation->box->persistentClustersMetadata[pcId];
-		const PersistentCluster& pcData = simulation->box->persistentClusters[pcId];
-		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
-			const int pidGlobal = pcMeta.particleIdsGlobal[pid];
-			if (pidGlobal != -1) {
-				grofile.atoms[pidGlobal].position = pcData.pqd[pid].position;
-				particlesUpdated++;
-			}
-		}
-	}
-
-	if (AllAtom && particlesUpdated != grofile.atoms.size()) {
-		throw std::runtime_error(std::format("Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
-	}
-}
-GroFile Environment::WriteBoxCoordinatesToFile(const std::optional<std::string> filename) {
-	const auto& boximage = Session().simulation->boxImage;
-	if (!boximage)
-		throw std::runtime_error("Cannot write coordinates without a BoxImage");
-	GroFile outputfile{ boximage->grofile };
-
-	if (filename.has_value()) {
-		outputfile.m_path = workDir / "molecule" / (filename.value() + ".gro");
-	}
-
-	WriteBoxCoordinatesToFile(outputfile);
-
-	return outputfile;
-}
 std::vector<Float3> Environment::GetForces(int64_t step) const {
 	const auto& simulation = Session().simulation;
 	const auto& boximage = simulation->boxImage;
@@ -718,26 +709,6 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 	}
 
 	return !display->DisplaySelfTerminated();
-}
-
-std::unique_ptr<Simulation> Environment::GetSim() {
-	SimulationSession& session = Session();
-	auto& engine = session.engine;
-	auto& simulation = session.simulation;
-	engine.reset();
-	return std::move(simulation);
-}
-
-void Environment::ReleaseEngine() {
-	Session().engine.reset();
-}
-
-Simulation* Environment::getSimPtr() {
-	const auto& simulation = Session().simulation;
-	if (simulation) { 
-		return simulation.get(); 
-	}
-	return nullptr;
 }
 
 const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()

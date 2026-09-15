@@ -65,7 +65,7 @@ int Cli::RunMdrun(int argc, char** argv) {
 
     EnvMode envmode = render ? Full : ConsoleOnly;
 
-    auto env = std::make_unique<Environment>(workDir, envmode);
+    Environment env;
 
     const SimParams ip(simpar);
     GroFile grofile{ conf };
@@ -78,21 +78,27 @@ int Cli::RunMdrun(int argc, char** argv) {
         grofile.box_size = Float3(newSize, newSize, newSize);
     }
 
-    env->CreateSimulation(grofile, topfile, ip);
+    SimulationJob job;
+    job.workDir = workDir;
+    job.grofile = grofile;
+    job.topfile.emplace(topfile);
+    job.simParams = ip;
+    job.mode = envmode;
+    auto result = env.Submit(std::move(job)).Get();
 
-    const std::chrono::duration<double> enginetime = env->run(); // [s]
+    const std::chrono::duration<double> enginetime = result.engineTime; // [s]
     printf("Engine time %f\n", enginetime.count());
-    env->WriteBoxCoordinatesToFile(grofile);
+    result.WriteCoordinatesTo(grofile);
     grofile.printToFile(conf_out);
 
     if (!trajOut.empty()) {
-        Trajectory traj = env->WriteSimToTrajectory();
+        Trajectory traj = result.MakeTrajectory();
 		MDFiles::Dump(traj, trajOut);
     }
 
     if (uff) {
 		fs::path path = workDir / "trajectory.uff";
-        env->WriteTrajectoryAsUff(path);
+        result.WriteTrajectoryAsUff(path);
     }
 
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
@@ -254,9 +260,14 @@ int Cli::RunRender(int argc, char** argv) {
 				std::ceil(simulationGrofile.box_size.z)
 			};
 
-			Environment environment(simulationGrofile.m_path.parent_path(), EnvMode::Headless);
-			environment.CreateSimulation(simulationGrofile, *topology, SimParams{});
-			std::unique_ptr<Simulation> simulation = environment.GetSim();
+			Environment environment;
+			SimulationJob job;
+			job.workDir = simulationGrofile.m_path.parent_path();
+			job.grofile = std::move(simulationGrofile);
+			job.topfile.emplace(*topology);
+			job.simParams = SimParams{};
+			job.run = false;
+			std::unique_ptr<Simulation> simulation = environment.Submit(std::move(job)).Get().simulation;
 			renderTask = std::make_unique<Rendering::AtomRenderTask>(
 				simulation->box->persistentClusters,
 				simulation->box->persistentClustersMetadata,

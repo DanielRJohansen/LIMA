@@ -115,26 +115,6 @@ namespace TestUtils {
 		}
 	}
 
-	// Creates a simulation from the folder which should contain a molecule with conf and topol
-	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
-	// yet been moved to device. I should find a way to enforce this...
-	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, std::optional<SimParams> simparams, EnvMode envmode) {
-		
-		const fs::path work_folder = AutomatedTestsDir() / foldername;
-		const GroFile conf{getMostSuitableGroFile(work_folder)};
-		const TopologyFile topol {work_folder / "molecule/topol.top"};
-		const fs::path simpar = work_folder / "sim_params.txt";
-
-		auto env = std::make_unique<Environment>(work_folder, envmode);
-
-		const SimParams ip = simparams.value_or(SimParams{ simpar });
-
-
-		env->CreateSimulation(conf, topol, ip);
-
-		return std::move(env);
-	}
-
 	// assumes that all the values are positive
 	bool isOutsideAllowedRange(float value, float target, float maxError=0.1) {
 		if (isnan(value)) 
@@ -529,8 +509,8 @@ namespace TestUtils {
 	}
 
 
-	void CompareForces1To1(const fs::path& workDir, Environment& env, bool overwriteRef) {
-		const ParticleDataBuffer<Float3>* forcebuffer = env.getSimPtr()->forceBuffer.get();
+	void CompareForces1To1(const fs::path& workDir, const Simulation& simulation, bool overwriteRef) {
+		const ParticleDataBuffer<Float3>* forcebuffer = simulation.forceBuffer.get();
 		std::vector<Float3> forces(forcebuffer->GetBufferAtStep(0), forcebuffer->GetBufferAtStep(0) + forcebuffer->n_particles_upperbound);
 
 		if (overwriteRef)

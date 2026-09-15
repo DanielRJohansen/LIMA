@@ -122,16 +122,17 @@ namespace Benchmarks {
 		std::vector<std::chrono::microseconds> timesPerStep;
 		timesPerStep.reserve(nRuns);
 		for (int run = 0; run < nRuns; run++) {
-			Environment env{ workDir, EnvMode::Headless /*envmode*/ };
-			env.CreateSimulation(grofile, topfile, ip);
-			env.run();
-			env.ReleaseEngine();
+			Environment environment;
+			SimulationJob job;
+			job.workDir = workDir;
+			job.grofile = grofile;
+			job.topfile.emplace(topfile);
+			job.simParams = ip;
+			job.mode = EnvMode::Headless;
+			auto result = environment.Submit(std::move(job)).Get();
 
-			ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
-			const auto duration = env.SimulationTimer()->GetTiming();
-			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps));
-			if (envmode == EnvMode::Full)
-				env.PrintTiming();
+			ASSERT(result.simulation->getStep() == result.simulation->simParams.n_steps, "Simulation did not run fully");
+			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(result.engineTime / ip.n_steps));
 		}
 
 		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
@@ -283,15 +284,18 @@ namespace Benchmarks {
 		ip.data_logging_interval = 50;
 		ip.dt = 1.f * FEMTO_TO_NANO;
 		ip.n_steps = 4000;
-		Environment env{ workDir , envmode };
-		env.CreateSimulation(grofile, topfile, ip);
-		env.run();
-		env.ReleaseEngine();
+		Environment environment;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile = std::move(grofile);
+		job.topfile.emplace(std::move(topfile));
+		job.simParams = ip;
+		job.mode = envmode;
+		auto result = environment.Submit(std::move(job)).Get();
 
-		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
-
-		auto duration = env.SimulationTimer()->GetTiming();
-		const std::chrono::microseconds timePerStep = std::chrono::duration_cast<std::chrono::microseconds>(duration / ip.n_steps);
+		ASSERT(result.simulation->getStep() == result.simulation->simParams.n_steps, "Simulation did not run fully");
+		const std::chrono::microseconds timePerStep =
+			std::chrono::duration_cast<std::chrono::microseconds>(result.engineTime / ip.n_steps);
 		const std::chrono::microseconds allowedTimePerStep{ 4000 };
 
 		return LimaUnittestResult{ timePerStep < allowedTimePerStep, std::format("Time per step: {} [us] Allowed: {} [us]", timePerStep.count(), allowedTimePerStep.count()), envmode != Headless };
@@ -341,22 +345,24 @@ namespace Benchmarks {
 		if (nSteps) 
 			params.n_steps = *nSteps;
 		//params.dt = 1.f * FEMTO_TO_NANO; 		
-		Environment env{ workDir , ConsoleOnly };
-		//Environment env{ workDir , Full };
-		env.CreateSimulation(grofile, topfile, params);
-		env.run();
-		env.ReleaseEngine();
+		Environment environment;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile = std::move(grofile);
+		job.topfile.emplace(std::move(topfile));
+		job.simParams = params;
+		job.mode = ConsoleOnly;
+		auto result = environment.Submit(std::move(job)).Get();
 
-		if (env.getSimPtr()->getStep() != env.getSimPtr()->simParams.n_steps) {
+		if (result.simulation->getStep() != result.simulation->simParams.n_steps) {
 			throw std::runtime_error("Simulation did not run fully");
 		}
 
-		const float meanSteptime = Statistics::Mean(env.AverageStepTimes());
-		const float stdDev = Statistics::StdDev(env.AverageStepTimes());
-		printf("Env time: %f [ms/step]\n", std::chrono::duration_cast<std::chrono::milliseconds>(env.SimulationTimer()->GetTiming()).count() / (float)params.n_steps);
+		const float meanSteptime = Statistics::Mean(result.averageStepTimes);
+		const float stdDev = Statistics::StdDev(result.averageStepTimes);
+		printf("Env time: %f [ms/step]\n",
+			std::chrono::duration_cast<std::chrono::milliseconds>(result.engineTime).count() / (float)params.n_steps);
 		printf("Average step time: %f [ms] StdDev: %f [ms]\n", meanSteptime, stdDev);
-
-		env.PrintTiming();
 
 		return { meanSteptime, stdDev};
 	}
@@ -390,10 +396,15 @@ namespace Benchmarks {
 		ip.n_steps = 1;
 		ip.data_logging_interval = 20;
 		ip.enable_electrostatics = true;
-		Environment env{ workDir, envmode };
-		env.CreateSimulation(grofile, topfile, ip);
-		env.prepareForRun();
-		env.ReleaseEngine();
+		Environment environment;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile = std::move(grofile);
+		job.topfile.emplace(std::move(topfile));
+		job.simParams = ip;
+		job.mode = envmode;
+		job.run = false;
+		environment.Submit(std::move(job)).Get();
 		const std::chrono::duration<double> elapsedTime = timer.elapsed();
 		
 		const std::chrono::duration<double> maxTime{ 8. }; // [s]

@@ -174,13 +174,15 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	params.n_steps = 20000;
 	params.bc_select = BoundaryConditionSelect::PBC;
 
-	if (mayOverlapEdges && false)
-		env.CreateSimulation(*env.GetSim(), params);
-	else
-		env.CreateSimulation(grofile, topfile, params);
-	env.run();
+	SimulationJob job;
+	job.workDir = workDir;
+	job.grofile = grofile;
+	job.topfile.emplace(topfile);
+	job.simParams = params;
+	job.mode = envmode;
+	auto result = env.Submit(std::move(job)).Get();
 
-	const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
+	const auto& maxForceBuffer = result.simulation->maxForceBuffer;
 	if (maxForceBuffer.empty())
 		throw (std::runtime_error("No data in maxForceBuffer after energy minimization, happens for small EM's. This should be solved..."));
 	auto [minForceStep, minForce] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
@@ -190,13 +192,13 @@ std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const Top
 	);
 
 	if (writePositionsToGrofile) {
-		env.WriteBoxCoordinatesToFile(grofile, minForceStep);
+		result.WriteCoordinatesTo(grofile, minForceStep);
 	}
 	
 	if (envmode == Full)
 		printf("Min force reached: %f\n", minForce);
 
-	return env.GetSim();
+	return std::move(result.simulation);
 }
 
 

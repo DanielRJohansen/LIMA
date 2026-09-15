@@ -29,11 +29,14 @@ struct SimulationJob {
 	fs::path topPath{ "molecule/topol.top" };
 	fs::path simParamsPath{ "sim_params.txt" };
 	std::optional<SimParams> simParams;
+	std::optional<GroFile> grofile;
+	std::optional<TopologyFile> topfile;
 	std::unique_ptr<Simulation> initialSimulation;
 	EnvMode mode = EnvMode::Headless;
 	std::function<void(SimParams&)> configureParams = [](SimParams&) {};
 	std::function<void(GroFile&, TopologyFile&, SimParams&)> configureInput = [](GroFile&, TopologyFile&, SimParams&) {};
 	std::function<void(Simulation&)> configure = [](Simulation&) {};
+	bool run = true;
 	bool analyze = false;
 };
 
@@ -41,6 +44,11 @@ struct SimulationResult {
 	std::unique_ptr<Simulation> simulation;
 	std::optional<SimAnalysis::AnalyzedPackage> analysis;
 	std::chrono::duration<double> engineTime{};
+	std::vector<float> averageStepTimes;
+
+	void WriteCoordinatesTo(GroFile& grofile, std::optional<int64_t> step = std::nullopt) const;
+	Trajectory MakeTrajectory() const;
+	void WriteTrajectoryAsUff(const fs::path& path) const;
 };
 
 class SimulationHandle {
@@ -76,41 +84,12 @@ public:
 	// GPU work is performed by Environment's bounded worker pipeline.
 	[[nodiscard]] SimulationHandle Submit(SimulationJob job);
 
-	/// <summary>
-	/// Create a simulation, and create the necessary files in process, if the defaults
-	/// (conf.gro and topol.top and simparams.txt) are not available
-	/// </summary>
-	void CreateSimulation(const Float3& boxsize_nm);
-
-	/// <summary>
-	/// Create a simulation from existing files
-	/// </summary>
-	void CreateSimulation(const std::string& conf_filename, const std::string& topol_filename, const SimParams&);
-
-	// The basic createSim
-	void CreateSimulation(const GroFile&, const TopologyFile&, const SimParams&);
-
-	/// <summary>
-	/// Create a simulation that starts from where boxorigin is currently
-	/// </summary>
-	void CreateSimulation(Simulation& simulation_src, SimParams);
-
-	/// <summary>
-	/// Create .gro .top and simparams.txt files in the current directory, and returns them in memory for optional use
-	/// </summary>
-	std::tuple<GroFile, TopologyFile, SimParams> CreateSimulationFiles(Float3 boxlen);
-
-	// Run a standard MD sim
-    /// <returns>Elapsed Engine time in seconds</returns>
-    std::chrono::duration<double> run();
-
-
-
 	////////////////// LIVE EDIT //////////////////
 
 	/// <summary>
 	/// A mode where the user can continously give inputs to the program
 	/// </summary>
+	std::tuple<GroFile, TopologyFile, SimParams> BeginLiveEdit(Float3 boxlen);
 	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
 private:
 	void InsertMolecule(LiveEditData*, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
@@ -126,15 +105,6 @@ public:
 
 
 
-	/// <summary>
-	/// Intended to be called after a sim run, uses the BoxImage to write new coordinates for the
-	/// atoms in the input coordinate file.
-	/// </summary>
-	/// <param name="filename">New name of the file. Defaults to same name as it was as input</param>
-	/// <returns></returns>
-	GroFile WriteBoxCoordinatesToFile(const std::optional<std::string> filename= "out");
-	void WriteBoxCoordinatesToFile(GroFile& grofile, std::optional<int64_t> step=std::nullopt);
-
 	// Returns a vector of forces (in kJ/mol/nm) for each particle, in the order they were in the gro file
 	std::vector<Float3> GetForces(int64_t step) const;
 
@@ -143,10 +113,6 @@ public:
 
 	void RenderSimulation();
 	
-	// Functions for dev only : TODO move to child whioch inherits all as public
-	std::unique_ptr<Simulation> GetSim();
-	void ReleaseEngine();
-	Simulation* getSimPtr();
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 
 	std::string getWorkdir() { return workDir.string(); }
@@ -184,6 +150,10 @@ private:
 
 
 	std::unique_ptr<Simulation> BuildSimulation(SimulationJob& job) const;
+	void InitializeSimulation(const GroFile&, const TopologyFile&, const SimParams&);
+	std::tuple<GroFile, TopologyFile, SimParams> CreateLiveEditSimulationFiles(Float3 boxlen);
+	void UpdateLiveEditCoordinates(GroFile& grofile);
+	std::chrono::duration<double> RunSimulation();
 
 	struct SimulationSession {
 		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);

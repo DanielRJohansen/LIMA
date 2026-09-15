@@ -26,10 +26,15 @@ using namespace VerletintegrationTesting;
 void RunAllUnitTests();
 
 void TestDisplayT4() {
-	auto env = TestUtils::basicSetup("T4Lysozyme", std::nullopt, EnvMode::Full);
+	const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
+	Environment environment;
+	SimulationJob job;
+	job.workDir = workDir;
+	job.run = false;
+	auto result = environment.Submit(std::move(job)).Get();
 	Display display{};
 
-	auto& box = env->getSimPtr()->box;
+	auto& box = result.simulation->box;
 
 	std::vector<Float3> positions;
 
@@ -47,8 +52,7 @@ void TestDisplayT4() {
 
 void LiveEditTest() {
 	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(25.f));
-	env.CreateSimulation(grofile, topfile, simparams);
+	auto [grofile, topfile, simparams] = env.BeginLiveEdit(Float3(25.f));
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
 	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
@@ -74,8 +78,7 @@ void LiveEditTest() {
 
 void BuildCellTest() {
 	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3(30, 30, 40));
-	env.CreateSimulation(grofile, topfile, simparams);
+	auto [grofile, topfile, simparams] = env.BeginLiveEdit(Float3(30, 30, 40));
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
 	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");

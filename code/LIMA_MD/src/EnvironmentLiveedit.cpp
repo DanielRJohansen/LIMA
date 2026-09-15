@@ -36,6 +36,12 @@ struct LiveEditData {
 	bool runContinous = false;
 };
 
+std::tuple<GroFile, TopologyFile, SimParams> Environment::BeginLiveEdit(Float3 boxlen) {
+	auto files = CreateLiveEditSimulationFiles(boxlen);
+	InitializeSimulation(std::get<0>(files), std::get<1>(files), std::get<2>(files));
+	return files;
+}
+
 
 void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams) {
 	SimulationSession& session = Session();
@@ -54,7 +60,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 
 
 	// Save the current state to current files
-	WriteBoxCoordinatesToFile(grofile);
+	UpdateLiveEditCoordinates(grofile);
 	Float3 defaultInsertSite = Float3{ grofile.box_size.x / 2, grofile.box_size.y / 2, grofile.box_size.z - (newmolBb.Dimensions().z / 2.f) };
 	Float3 insertionPosition = insertionCmd.position.value_or(defaultInsertSite);
 
@@ -62,7 +68,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	SimulationBuilder::InsertSubmoleculeInSimulation(grofile, topfile, newmolGro, newmolTop, insertionPosition);
 	if (!topfile.forcefieldInclude.has_value())
 		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
-	CreateSimulation(grofile, topfile, simparams);
+	InitializeSimulation(grofile, topfile, simparams);
 
 	
 	if (!liveeditData->fixedMovements.empty())
@@ -193,7 +199,7 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 		MembraneGeometry::Plane{ grofile.box_size.z / 2.f });
 	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry);
 	SimParams simparams = simulation->simParams;
-	CreateSimulation(grofile, topfile, simparams);
+	InitializeSimulation(grofile, topfile, simparams);
 
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;

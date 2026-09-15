@@ -311,8 +311,15 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment env(workDir, envmode);
-		env.CreateSimulation(newGro, newTop, params);
+		Environment environment;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile = std::move(newGro);
+		job.topfile.emplace(std::move(newTop));
+		job.simParams = params;
+		job.mode = envmode;
+		job.run = false;
+		environment.Submit(std::move(job)).Get();
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}

@@ -116,6 +116,8 @@ constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 
 Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
 	: simulation(std::move(simulation))
+	, mode(mode)
+	, workDir(workDir)
 	{}
 
 Environment::SimulationSession::~SimulationSession() = default;
@@ -132,17 +134,19 @@ const Environment::SimulationSession& Environment::Session() const {
 	return *simulationSession;
 }
 
-void Environment::SetSimulation(std::unique_ptr<Simulation> simulation) {
+void Environment::SetSimulation(
+	std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir) {
 	if (!simulationSession) {
-		simulationSession = std::make_unique<SimulationSession>(std::move(simulation), m_mode, workDir);
+		simulationSession = std::make_unique<SimulationSession>(std::move(simulation), mode, workDir);
 		return;
 	}
 
 	simulationSession->simulation = std::move(simulation);
+	simulationSession->mode = mode;
+	simulationSession->workDir = workDir;
 }
 
-Environment::Environment()
-	: m_mode(EnvMode::Headless) {
+Environment::Environment() {
 	StartScheduling();
 }
 
@@ -249,9 +253,8 @@ void Environment::Preprocess(QueuedSimulation next) {
 
 void Environment::RunPreparedSimulation(PreparedSimulation next) {
 	try {
-		workDir = next.job.workDir;
-		m_mode = next.job.mode;
-		simulationSession = std::make_unique<SimulationSession>(std::move(next.simulation), m_mode, workDir);
+		simulationSession = std::make_unique<SimulationSession>(
+			std::move(next.simulation), next.job.mode, next.job.workDir);
 		const auto elapsed = next.job.run ? RunSimulation() : std::chrono::duration<double>{};
 		SimulationSession& session = Session();
 		if (session.engine) {
@@ -308,20 +311,22 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 }
 
 
-void Environment::InitializeSimulation(const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params)
+void Environment::InitializeSimulation(
+	const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params,
+	EnvMode mode, const fs::path& workDir)
 {
 	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
 		topolfile,
 		V1,
-		std::make_unique<LimaLogger>(LimaLogger::normal, m_mode, "moleculebuilder", workDir),
+		std::make_unique<LimaLogger>(LimaLogger::normal, mode, "moleculebuilder", workDir),
 		IGNORE_HYDROGEN,
 		params
 		);
 
 	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
-	SetSimulation(std::move(simulation));
+	SetSimulation(std::move(simulation), mode, workDir);
 	SimulationSession& session = Session();
 
 	if (display) {
@@ -332,7 +337,8 @@ void Environment::InitializeSimulation(const GroFile& grofile, const TopologyFil
 	}
 }
 
-std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateLiveEditSimulationFiles(Float3 boxlen) {
+std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateLiveEditSimulationFiles(
+	Float3 boxlen, const fs::path& workDir) {
 	GroFile grofile{};
 	grofile.m_path = workDir / "conf.gro";
 	grofile.box_size = Float3{ boxlen };
@@ -375,8 +381,8 @@ void Environment::verifySimulationParameters() {	// Not yet implemented
 fs::path Environment::FixPath(const fs::path& path) const {
 	if (path.is_absolute())
 		return path;
-	if (fs::exists(workDir / path))
-		return workDir / path;
+	if (fs::exists(Session().workDir / path))
+		return Session().workDir / path;
 	if (fs::exists( "./" / path))
 		return "./" / path;
 	return path;
@@ -468,7 +474,7 @@ std::chrono::duration<double> Environment::RunSimulation() {
 
 	std::unique_ptr<Display> display = nullptr;
 
-	if (m_mode == Full) {
+	if (session.mode == Full) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 		display->Render(std::make_unique<Rendering::AtomRenderTask>(
@@ -519,65 +525,7 @@ std::chrono::duration<double> Environment::RunSimulation() {
 
 
 
-std::vector<Float3> Environment::GetForces(int64_t step) const {
-	const auto& simulation = Session().simulation;
-	const auto& boximage = simulation->boxImage;
-	if (!boximage)
-		throw std::runtime_error("Cannot get forces without a BoxImage");
-	std::vector<Float3> forces(boximage->grofile.atoms.size());		// [kJ/mol/nm]
-	const auto& forcesBuffer = *simulation->forceBuffer;			// [J/mol/nm]
-	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
-		for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
-			const int gpid = simulation->box->persistentClustersMetadata[pcid].particleIdsGlobal[pid]; 			
-			if (gpid == -1)
-				continue;
 
-			const Float3 force = forcesBuffer.GetDatapointAtStep(pcid, pid, step);
-			forces[gpid] = force / KILO;
-		}
-	}
-
-	return forces;
-}
-
-Trajectory Environment::WriteSimToTrajectory() const {
-	const auto& simulation = Session().simulation;
-	const auto& boximage = simulation->boxImage;
-	if (!boximage)
-		throw std::runtime_error("Cannot write a trajectory without a BoxImage");
-
-	const int nSteps = simulation->getStep();
-	const int nAtoms = boximage->grofile.atoms.size();
-
-	Trajectory trajectory(nSteps, nAtoms, boximage->grofile.box_size, simulation->simParams.dt);
-
-	// TODO!!
-	//for (int step = 0; step < nSteps; step += simulation->simParams.data_logging_interval) {
-
-	//	for (int cid = 0; cid < boximage->compounds.size(); cid++) {
-	//		for (int pid = 0; pid < boximage->compounds[cid].n_particles; pid++) {
-	//			const int atomIndex = boximage->compounds[cid].indicesInGrofile[pid];
-	//			trajectory.Set(step, atomIndex, simulation->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, step));
-	//		}
-	//	}
-
-	//	for (int tinymolId = 0; tinymolId < simulation->box->boxparams.nTinymols; tinymolId++) {
-	//		const TinyMolFactory tinymol = boximage->solvent_positions[tinymolId];
-	//		const int nAtomsInTinymol = tinymol.nParticles;
-
-	//		const Float3 new_position = simulation->traj_buffer->GetMostRecentSolventparticleDatapointAtIndex(tinymolId, step);
-	//		const Float3 deltaPos = new_position - boximage->grofile.atoms[tinymol.firstParticleIdInGrofile].position;
-
-	//		for (int i = 0; i < nAtomsInTinymol; i++) {
-	//			const int atomId = tinymol.firstParticleIdInGrofile + i;
-	//			const Float3 newPos = boximage->grofile.atoms[atomId].position + deltaPos;
-	//			trajectory.Set(step, atomId, newPos);
-	//		}
-	//	}
-	//}
-
-	return trajectory;
-}
 
 void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	const auto& simulation = Session().simulation;
@@ -614,7 +562,7 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
 
-		if (printToConsole && m_mode == Full) {
+		if (printToConsole && session.mode == Full) {
 			//// First clear the current line
 			//printf("\r\033[K");
 			// Move cursor to the beginning of the line and clear it
@@ -669,7 +617,7 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 	auto& engine = session.engine;
 	auto& simStatus = session.simStatus;
 	auto& step_at_last_render = session.stepAtLastRender;
-	if (m_mode != Full) {
+	if (session.mode != Full) {
 		return true;
 	}
 
@@ -712,37 +660,6 @@ const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()
 	return postsim_anal_package.value();
 }
 
-const std::optional<TimeIt>& Environment::SimulationTimer() const {
-	return Session().simulationTimer;
-}
-
-const std::vector<float>& Environment::AverageStepTimes() const {
-	return Session().avgStepTimes;
-}
-
 void Environment::QueueLiveEditCommand(LiveEdit::Command command) {
 	Session().liveEditCommandsQueue.push_back(std::move(command));
-}
-
-void Environment::PrintTiming() const {	
-	const SimulationSession& session = Session();
-	const auto& simulation = session.simulation;
-	const auto& engineTime = session.engineTime;
-	if (!engineTime || !simulation)
-		return;
-
-	const double wall_time_sec = engineTime->count();
-	const double totalNsSimulated = static_cast<double>(simulation->getStep()) * simulation->simParams.dt;
-
-	// Calculate performance metrics
-	const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-	const double hr_per_ns = (wall_time_sec / totalNsSimulated) / 3600.0;    // convert to hours per ns
-
-	// Print time and performance info in the GROMACS-like format
-	printf("\n");
-	printf("               Wall t (s)\n");
-	printf("       Time:    %10.3f\n", wall_time_sec);
-	printf("                 (ns/day)    (hour/ns)\n");
-	printf("Performance:    %10.3f     %10.3f\n", ns_per_day, hr_per_ns);
-
 }

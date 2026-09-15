@@ -29,6 +29,7 @@ namespace SimAnalysis {
 	};
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
+	std::vector<Float3> GetForces(const Simulation& simulation, int64_t step);
 
 
 	void PlotPotentialEnergyDistribution(const Simulation& sim, const std::filesystem::path& dir, const std::vector<int>& stepsToPlot);

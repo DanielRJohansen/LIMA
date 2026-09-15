@@ -15,6 +15,25 @@ using namespace LIMA_Print;
 
 const int THREADS_PER_SOLVENTBLOCK_ANALYZER = 128;
 
+std::vector<Float3> SimAnalysis::GetForces(const Simulation& simulation, int64_t step) {
+	int atomCount = 0;
+	for (const auto& metadata : simulation.box->persistentClustersMetadata)
+		for (const int globalId : metadata.particleIdsGlobal)
+			atomCount = (std::max)(atomCount, globalId + 1);
+
+	std::vector<Float3> forces(atomCount); // [kJ/mol/nm]
+	for (int clusterId = 0; clusterId < simulation.box->persistentClusters.size(); clusterId++) {
+		for (int particleId = 0; particleId < PersistentCluster::maxParticles; particleId++) {
+			const int globalId =
+				simulation.box->persistentClustersMetadata[clusterId].particleIdsGlobal[particleId];
+			if (globalId >= 0)
+				forces[globalId] =
+					simulation.forceBuffer->GetDatapointAtStep(clusterId, particleId, step) / KILO;
+		}
+	}
+	return forces;
+}
+
 
 
 // everything here breaks if not all compounds are identical in particle count and particle mass!!!!!!!

@@ -38,12 +38,11 @@ struct LiveEditData {
 
 std::tuple<GroFile, TopologyFile, SimParams> Environment::BeginLiveEdit(
 	const fs::path& newWorkDir, EnvMode mode, Float3 boxlen) {
-	workDir = newWorkDir;
-	m_mode = mode;
 	if (mode != EnvMode::Headless)
 		sayHello();
-	auto files = CreateLiveEditSimulationFiles(boxlen);
-	InitializeSimulation(std::get<0>(files), std::get<1>(files), std::get<2>(files));
+	auto files = CreateLiveEditSimulationFiles(boxlen, newWorkDir);
+	InitializeSimulation(
+		std::get<0>(files), std::get<1>(files), std::get<2>(files), mode, newWorkDir);
 	return files;
 }
 
@@ -73,7 +72,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	SimulationBuilder::InsertSubmoleculeInSimulation(grofile, topfile, newmolGro, newmolTop, insertionPosition);
 	if (!topfile.forcefieldInclude.has_value())
 		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
-	InitializeSimulation(grofile, topfile, simparams);
+	InitializeSimulation(grofile, topfile, simparams, session.mode, session.workDir);
 
 	
 	if (!liveeditData->fixedMovements.empty())
@@ -198,13 +197,13 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	display->SetSpinnerVisible(true);
 	Lipids::Selection lipidselection;
 	for (const auto [name, percentage] : cmd.lipids) {
-		lipidselection.emplace_back(Lipids::Select(name, workDir, percentage));
+		lipidselection.emplace_back(Lipids::Select(name, session.workDir, percentage));
 	}
 	const MembraneGeometry::Figure geometry = cmd.geometry.value_or(
 		MembraneGeometry::Plane{ grofile.box_size.z / 2.f });
 	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry);
 	SimParams simparams = simulation->simParams;
-	InitializeSimulation(grofile, topfile, simparams);
+	InitializeSimulation(grofile, topfile, simparams, session.mode, session.workDir);
 
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;

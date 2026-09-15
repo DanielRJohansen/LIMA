@@ -101,27 +101,8 @@ public:
 
 
 
-	// Returns a vector of forces (in kJ/mol/nm) for each particle, in the order they were in the gro file
-	std::vector<Float3> GetForces(int64_t step) const;
-
-	Trajectory WriteSimToTrajectory() const;
-	void WriteTrajectoryAsUff(const fs::path& path) const;
-
-	void RenderSimulation();
-	
-	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
-
-	std::string getWorkdir() { return workDir.string(); }
-	const std::optional<TimeIt>& SimulationTimer() const;
-	const std::vector<float>& AverageStepTimes() const;
 	void QueueLiveEditCommand(LiveEdit::Command command);
 
-	void PrintTiming() const;
-
-
-	fs::path workDir;
-
-	bool prepareForRun();
 private:
 	Environment();
 	~Environment();
@@ -149,8 +130,10 @@ private:
 
 
 	std::unique_ptr<Simulation> BuildSimulation(SimulationJob& job) const;
-	void InitializeSimulation(const GroFile&, const TopologyFile&, const SimParams&);
-	std::tuple<GroFile, TopologyFile, SimParams> CreateLiveEditSimulationFiles(Float3 boxlen);
+	void InitializeSimulation(
+		const GroFile&, const TopologyFile&, const SimParams&, EnvMode mode, const fs::path& workDir);
+	std::tuple<GroFile, TopologyFile, SimParams> CreateLiveEditSimulationFiles(
+		Float3 boxlen, const fs::path& workDir);
 	void UpdateLiveEditCoordinates(GroFile& grofile);
 	std::chrono::duration<double> RunSimulation();
 
@@ -169,14 +152,18 @@ private:
 		bool forceWriteSimstatusToDisplay = false;
 		int64_t stepAtLastRender = INT64_MIN;
 		std::optional<SimAnalysis::AnalyzedPackage> analyzedPackage;
+		EnvMode mode;
+		fs::path workDir;
 	};
 
 	SimulationSession& Session();
 	const SimulationSession& Session() const;
-	void SetSimulation(std::unique_ptr<Simulation> simulation);
-
+	void SetSimulation(
+		std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
+	bool prepareForRun();
+	void WriteTrajectoryAsUff(const fs::path& path) const;
 	fs::path FixPath(const fs::path& path) const;
-
+	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 	void verifySimulationParameters();			// Constants before doing anything
 	void verifyBox();							// Checks wheter the box will break
 	
@@ -189,8 +176,6 @@ private:
 
 	
 
-
-	EnvMode m_mode;
 
 	std::unique_ptr<Display> display = nullptr;
 	std::unique_ptr<SimulationSession> simulationSession = nullptr;

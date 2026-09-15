@@ -101,7 +101,7 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 		//TestDisplayT4();
 		//ProgramsTests::TestToGmx_ciffile(envmode);
-		//LiveEditTest();
+		LiveEditTest();
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 

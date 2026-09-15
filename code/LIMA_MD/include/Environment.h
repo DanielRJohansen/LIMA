@@ -163,17 +163,14 @@ private:
 	const SimulationSession& Session() const;
 	void SetSimulation(
 		std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
-	bool prepareForRun();
 	void WriteTrajectoryAsUff(const fs::path& path) const;
 	fs::path FixPath(const fs::path& path) const;
 	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
-	void verifySimulationParameters();			// Constants before doing anything
-	void verifyBox();							// Checks wheter the box will break
 	
-	void UpdateSimstatus(bool printToConsole, bool alwaysUpdate/*Performance hit*/);
+	void UpdateSimstatus(Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
+	bool handleDisplay(Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
 
 	void sayHello();
 

@@ -241,6 +241,8 @@ void Environment::Preprocess(QueuedSimulation next) {
 		auto simulation = BuildSimulation(next.job);
 		if (next.job.configure)
 			next.job.configure(*simulation);
+		if (next.job.run)
+			simulation->PrepareDataBuffers();
 		const std::lock_guard lock(schedulingMutex);
 		preparedSimulation.emplace(PreparedSimulation{
 			std::move(next.job), std::move(next.state), std::move(simulation) });
@@ -263,16 +265,10 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 			std::move(next.simulation), next.job.mode, next.job.workDir);
 		const auto elapsed = next.job.run ? RunSimulation() : std::chrono::duration<double>{};
 		SimulationSession& session = Session();
-		if (session.engine) {
-			CudaBuffer<PersistentCluster>& deviceState = session.engine->OffloadPclusterState();
-			session.simulation->box->persistentClusters = GenericCopyToHost(
-				deviceState.Get(), session.simulation->box->persistentClusters.size());
-		}
 		std::optional<SimAnalysis::AnalyzedPackage> analysis;
 		if (next.job.analyze)
 			analysis.emplace(getAnalyzedPackage());
 
-		session.engine.reset();
 		SimulationResult result{
 			std::move(session.simulation), std::move(analysis), elapsed, std::move(session.avgStepTimes) };
 		next.state->SetResult(std::move(result));
@@ -416,13 +412,6 @@ void Environment::UpdateLiveEditCoordinates(GroFile& grofile) {
 	session.simulation = std::move(view.simulation);
 }
 
-void Environment::verifySimulationParameters() {	// Not yet implemented
-	const auto& simulation = Session().simulation;
-	if (simulation->simParams.cutoff_nm != 1.2f) {// TODO: DANGER
-		//throw std::runtime_error("Currently only cutoff 1.2 nm is supported, as that is hardcoded into the Coulumbforce Chebyshev Coefficients"); // TODO: figure out how to support other cutoff's again
-	}
-}
-
 fs::path Environment::FixPath(const fs::path& path) const {
 	if (path.is_absolute())
 		return path;
@@ -432,59 +421,6 @@ fs::path Environment::FixPath(const fs::path& path) const {
 		return "./" / path;
 	return path;
 }
-
-void Environment::verifyBox() {
-
-
-	
-
-	
-
-
-
-
-//#ifdef LIMAKERNELDEBUGMODE
-//	if (print_compound_positions) {
-//		for (int c = 0; c < simulation->boxparams_host.n_compounds; c++) {
-//			Compound* comp = &simulation->compounds_host[c];
-//			for (int p = 0; p < comp->n_particles; p++) {
-//				printf("%d   ", comp->particle_global_ids[p]);
-//			}
-//		}
-//	}
-//#endif
-}
-
-bool Environment::prepareForRun() {
-	SimulationSession& session = Session();
-	auto& simulation = session.simulation;
-	if (simulation == nullptr)// TEMP, ENv should never give sim to engine
-		return true;
-
-	if (simulation->finished) { 
-		printf("Cannot prepare run, since simulation has already finished");
-		assert(false);
-		return false; 
-	}
-
-	if (simulation->ready_to_run) { return true; }
-
-	simulation->PrepareDataBuffers();
-	
-	verifySimulationParameters();
-	verifyBox();
-	simulation->ready_to_run = true;
-
-	session.avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
-
-
-	session.engine = std::make_unique<Engine>(
-		simulation.get(),
-		simulation->simParams.bc_select);
-
-	return true;
-}
-
 
 void Environment::sayHello() {
 	static bool hasSaidHello = false;
@@ -506,16 +442,19 @@ void Environment::sayHello() {
 std::chrono::duration<double> Environment::RunSimulation() {
 	SimulationSession& session = Session();
 	auto& simulation = session.simulation;
-	auto& engine = session.engine;
 	auto& simStatus = session.simStatus;
 	auto& time0 = session.time0;
 	auto& simulationTimer = session.simulationTimer;
 	auto& engineTime = session.engineTime;
+	if (!simulation)
+		throw std::runtime_error("Cannot run without a simulation");
+	if (simulation->finished)
+		throw std::runtime_error("Cannot run a simulation that has already finished");
 	const bool emVariant = simulation->simParams.em_variant;
 	const bool stepwise = simulation->simParams.stepwise;
-	//simparamsCopy = simulation->simParams;
 
-    if (!prepareForRun()) { return {}; }
+	session.avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
+	Engine engine(simulation.get(), simulation->simParams.bc_select);
 
 	std::unique_ptr<Display> display = nullptr;
 
@@ -533,17 +472,17 @@ std::chrono::duration<double> Environment::RunSimulation() {
     auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(simulation->box->boxparams, display.get(), emVariant, stepwise)) {
+		if (!handleDisplay(engine, simulation->box->boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
 		auto stepStartTime = std::chrono::steady_clock::now();
 		
-		engine->step();
+		engine.step();
 
-		UpdateSimstatus(true, true);
+		UpdateSimstatus(engine, true, true);
 		
-		if (engine->runstatus.simulation_finished) {
+		if (engine.runstatus.simulation_finished) {
 			break;
 		}
 
@@ -554,13 +493,12 @@ std::chrono::duration<double> Environment::RunSimulation() {
 	simulationTimer->stop();
 
 	// Transfers the remaining traj data and more
-	engine->terminateSimulation();
-
-	//simulation = engine->takeBackSim();
-	//simparamsCopy.reset();
+	engine.terminateSimulation();
+	CudaBuffer<PersistentCluster>& deviceState = engine.OffloadPclusterState();
+	simulation->box->persistentClusters = GenericCopyToHost(
+		deviceState.Get(), simulation->box->persistentClusters.size());
 
 	simulation->finished = true;
-	simulation->ready_to_run = false ;
 
 	engineTime = t1 - t0;
     return t1-t0;
@@ -587,16 +525,15 @@ void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
-void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
+void Environment::UpdateSimstatus(Engine& engine, bool printToConsole, bool alwaysUpdate) {
 	SimulationSession& session = Session();
 	auto& simulation = session.simulation;
-	auto& engine = session.engine;
 	auto& simStatus = session.simStatus;
 	auto& time0 = session.time0;
 	auto& avgStepTimes = session.avgStepTimes;
 	auto& simulationTimer = session.simulationTimer;
 	auto& forceWriteSimstatusToDisplay = session.forceWriteSimstatusToDisplay;
-	if (!simulation || !engine) {
+	if (!simulation) {
 		return;
 	}
 
@@ -623,7 +560,7 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 
 
 
-		const int nStepsSinceLast = engine->runstatus.current_step - *simStatus.step;
+		const int nStepsSinceLast = engine.runstatus.current_step - *simStatus.step;
 		const double totalNsSimulated = nStepsSinceLast * simulation->simParams.dt; // [ns]
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
@@ -633,7 +570,7 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 			: std::nullopt;
 
 		SimStatus newStatus{};
-		newStatus.step = engine->runstatus.current_step;
+		newStatus.step = engine.runstatus.current_step;
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		newStatus.expectedTimeToFinish = expectedTimeToFinish;
 		if (simulation->simParams.em_variant) {
@@ -647,19 +584,18 @@ void Environment::UpdateSimstatus(bool printToConsole, bool alwaysUpdate) {
 
 	// "Free" updates
 	if (simulation->simParams.em_variant) {
-		simStatus.maxForce = engine->runstatus.greatestForce;
+		simStatus.maxForce = engine.runstatus.greatestForce;
 	}
 	else {
-		if (!std::isnan(engine->runstatus.current_temperature))
-			simStatus.temperature = engine->runstatus.current_temperature;
+		if (!std::isnan(engine.runstatus.current_temperature))
+			simStatus.temperature = engine.runstatus.current_temperature;
 	}
 }
 
 
 
-bool Environment::handleDisplay(const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
+bool Environment::handleDisplay(Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
 	SimulationSession& session = Session();
-	auto& engine = session.engine;
 	auto& simStatus = session.simStatus;
 	auto& step_at_last_render = session.stepAtLastRender;
 	if (session.mode != Full) {
@@ -671,15 +607,11 @@ bool Environment::handleDisplay(const BoxParams& boxparams, Display* const displ
 		std::rethrow_exception(displayException);
 	}
 
-	int64_t stepForMostRecentData = engine ? engine->runstatus.stepForMostRecentData : -1;
-	Float3* renderPositions = engine ? engine->runstatus.most_recent_positions : nullptr;
-	std::string info{};
-
-	if (engine) {
-		info = emVariant
-			? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.greatestForce))
-			: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine->runstatus.current_step), static_cast<float>(engine->runstatus.current_temperature));
-	}
+	int64_t stepForMostRecentData = engine.runstatus.stepForMostRecentData;
+	Float3* renderPositions = engine.runstatus.most_recent_positions;
+	const std::string info = emVariant
+		? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine.runstatus.current_step), static_cast<float>(engine.runstatus.greatestForce))
+		: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine.runstatus.current_step), static_cast<float>(engine.runstatus.current_temperature));
 
 	if (stepForMostRecentData > step_at_last_render) {
 		display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(

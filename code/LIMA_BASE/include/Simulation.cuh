@@ -143,7 +143,6 @@ public:
 	std::unique_ptr<MDFiles::TrrFile> ToTracjectoryFile() const;
 
 	
-	bool ready_to_run = false;
 	bool finished = false;
 
 

@@ -85,7 +85,7 @@ namespace ElectrostaticsTests {
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 
 
-		Environment environment;
+		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = work_folder;
 		job.grofile = std::move(grofile);
@@ -148,7 +148,7 @@ namespace ElectrostaticsTests {
 		simparams.data_logging_interval = 1;
 		simparams.snf_select.insert(HorizontalChargeField);
 		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
-		Environment environment;
+		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
 		job.groPath = workDir / "conf.gro";
@@ -310,7 +310,7 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestLongrangeEsNoLJTwoParticles(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment environment;
+		Environment& environment = Environment::Get();
 
 		struct TestSetup {
 			Float3 p0, p1;
@@ -412,7 +412,7 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment environment;
+		Environment& environment = Environment::Get();
 
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
 		GroFile grofile{ work_folder / "molecule/conf.gro" };
@@ -482,7 +482,7 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestConsistentEnergyWhenGoingFromLresToSres(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment environment;
+		Environment& environment = Environment::Get();
 
 
 		TopologyFile topfile{ work_folder / "molecule/topol.top" };
@@ -553,7 +553,7 @@ namespace ElectrostaticsTests {
 			);
 
 		const fs::path work_folder = HeavyTestsDir() / "ShortrangeElectrostaticsCompoundOnly/";
-		Environment environment;
+		Environment& environment = Environment::Get();
 
 		
 		

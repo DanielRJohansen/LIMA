@@ -36,7 +36,12 @@ struct LiveEditData {
 	bool runContinous = false;
 };
 
-std::tuple<GroFile, TopologyFile, SimParams> Environment::BeginLiveEdit(Float3 boxlen) {
+std::tuple<GroFile, TopologyFile, SimParams> Environment::BeginLiveEdit(
+	const fs::path& newWorkDir, EnvMode mode, Float3 boxlen) {
+	workDir = newWorkDir;
+	m_mode = mode;
+	if (mode != EnvMode::Headless)
+		sayHello();
 	auto files = CreateLiveEditSimulationFiles(boxlen);
 	InitializeSimulation(std::get<0>(files), std::get<1>(files), std::get<2>(files));
 	return files;

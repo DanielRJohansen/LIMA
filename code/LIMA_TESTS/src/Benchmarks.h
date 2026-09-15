@@ -114,6 +114,7 @@ namespace Benchmarks {
 		SimParams ip, PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, std::string name,
 		std::optional<int> nSteps = std::nullopt, int nRuns = 1) {
 
+		Environment& environment = Environment::Get();
 		ip.data_logging_interval = 20;
 		//ip.dt = 0.5f * FEMTO_TO_NANO;
 		ip.enable_electrostatics = true;
@@ -121,8 +122,7 @@ namespace Benchmarks {
 			ip.n_steps = nSteps.value();
 		std::vector<std::chrono::microseconds> timesPerStep;
 		timesPerStep.reserve(nRuns);
-		for (int run = 0; run < nRuns; run++) {
-			Environment environment;
+		for (int run = 0; run < nRuns; run++) {			
 			SimulationJob job;
 			job.workDir = workDir;
 			job.grofile = grofile;
@@ -284,7 +284,7 @@ namespace Benchmarks {
 		ip.data_logging_interval = 50;
 		ip.dt = 1.f * FEMTO_TO_NANO;
 		ip.n_steps = 4000;
-		Environment environment;
+		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile = std::move(grofile);
@@ -345,7 +345,7 @@ namespace Benchmarks {
 		if (nSteps) 
 			params.n_steps = *nSteps;
 		//params.dt = 1.f * FEMTO_TO_NANO; 		
-		Environment environment;
+		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile = std::move(grofile);
@@ -396,7 +396,7 @@ namespace Benchmarks {
 		ip.n_steps = 1;
 		ip.data_logging_interval = 20;
 		ip.enable_electrostatics = true;
-		Environment environment;
+		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile = std::move(grofile);

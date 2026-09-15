@@ -146,21 +146,9 @@ Environment::Environment()
 	StartScheduling();
 }
 
-Environment::Environment(const fs::path& workdir, EnvMode mode)
-	: workDir(workdir)
-	, m_mode(mode)
-{
-	switch (mode)
-	{
-	case EnvMode::Full:
-		[[fallthrough]];
-	case EnvMode::ConsoleOnly:
-		sayHello();
-		[[fallthrough]];
-	case EnvMode::Headless:
-		break;
-	}
-	StartScheduling();
+Environment& Environment::Get() {
+	static Environment environment;
+	return environment;
 }
 
 Environment::~Environment() {

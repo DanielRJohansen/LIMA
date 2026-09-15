@@ -65,7 +65,7 @@ int Cli::RunMdrun(int argc, char** argv) {
 
     EnvMode envmode = render ? Full : ConsoleOnly;
 
-    Environment env;
+    Environment& env = Environment::Get();
 
     const SimParams ip(simpar);
     GroFile grofile{ conf };
@@ -260,7 +260,7 @@ int Cli::RunRender(int argc, char** argv) {
 				std::ceil(simulationGrofile.box_size.z)
 			};
 
-			Environment environment;
+			Environment& environment = Environment::Get();
 			SimulationJob job;
 			job.workDir = simulationGrofile.m_path.parent_path();
 			job.grofile = std::move(simulationGrofile);

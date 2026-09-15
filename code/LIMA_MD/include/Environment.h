@@ -73,12 +73,7 @@ private:
 class Environment
 {
 public:
-	Environment();
-	Environment(const Environment&) = delete;
-	Environment& operator=(const Environment&) = delete;
-	Environment(const fs::path& workdir, EnvMode mode);
-
-	~Environment();
+	static Environment& Get();
 
 	// Queues a lightweight simulation description. All expensive construction and
 	// GPU work is performed by Environment's bounded worker pipeline.
@@ -89,7 +84,8 @@ public:
 	/// <summary>
 	/// A mode where the user can continously give inputs to the program
 	/// </summary>
-	std::tuple<GroFile, TopologyFile, SimParams> BeginLiveEdit(Float3 boxlen);
+	std::tuple<GroFile, TopologyFile, SimParams> BeginLiveEdit(
+		const fs::path& workDir, EnvMode mode, Float3 boxlen);
 	void LiveEdit(GroFile& grofile, TopologyFile& topfile);
 private:
 	void InsertMolecule(LiveEditData*, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
@@ -127,6 +123,9 @@ public:
 
 	bool prepareForRun();
 private:
+	Environment();
+	~Environment();
+
 	struct QueuedSimulation {
 		SimulationJob job;
 		std::shared_ptr<ScheduledSimulationState> state;

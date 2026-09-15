@@ -154,7 +154,7 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 
 std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, 
 	const fs::path& workDir, EnvMode envmode, bool mayOverlapEdges, float emtol) {
-	Environment env{ workDir, envmode};
+	Environment& env = Environment::Get();
 	SimParams params;
 	params.em_variant = true;	
 	params.dt = 1.5f * FEMTO_TO_NANO;

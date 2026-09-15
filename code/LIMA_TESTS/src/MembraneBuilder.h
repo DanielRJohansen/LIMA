@@ -311,7 +311,7 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment environment;
+		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile = std::move(newGro);

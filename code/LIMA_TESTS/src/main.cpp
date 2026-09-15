@@ -27,7 +27,7 @@ void RunAllUnitTests();
 
 void TestDisplayT4() {
 	const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
-	Environment environment;
+	Environment& environment = Environment::Get();
 	SimulationJob job;
 	job.workDir = workDir;
 	job.run = false;
@@ -51,8 +51,9 @@ void TestDisplayT4() {
 }
 
 void LiveEditTest() {
-	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.BeginLiveEdit(Float3(25.f));
+	Environment& env = Environment::Get();
+	auto [grofile, topfile, simparams] = env.BeginLiveEdit(
+		R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)", EnvMode::Full, Float3(25.f));
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
 	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
@@ -77,8 +78,9 @@ void LiveEditTest() {
 }
 
 void BuildCellTest() {
-	Environment env({ R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)" }, EnvMode::Full);
-	auto [grofile, topfile, simparams] = env.BeginLiveEdit(Float3(30, 30, 40));
+	Environment& env = Environment::Get();
+	auto [grofile, topfile, simparams] = env.BeginLiveEdit(
+		R"(C:\Users\Daniel\git_repo\LIMA_data\LiveEditTest)", EnvMode::Full, Float3(30, 30, 40));
 
 	//// TODO: Being able to set this is like super dangerous, and the ff is then not parsed... Always need a file reset..
 	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("combined/forcefield.itp");
@@ -221,7 +223,7 @@ int main() {
 
 		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
 		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
-		Environment env(R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv)", EnvMode::Full);
+		Environment& env = Environment::Get();
 		env.CreateSimulation(grofile, topfile, SimParams{});
 		env.run();*/
 		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
@@ -260,7 +262,7 @@ int main() {
 // Runs all unit tests with the fastest/crucial ones first
 void RunAllUnitTests() {
 	TimeIt timer("RunAllUnitTests", true);
-	Environment environment;
+	Environment& environment = Environment::Get();
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 

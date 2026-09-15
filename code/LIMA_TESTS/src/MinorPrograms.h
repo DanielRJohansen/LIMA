@@ -21,9 +21,7 @@ namespace TestMinorPrograms {
 			GroFile groSrc(workDir / "t4.gro");
 			auto topSrc = std::make_shared<TopologyFile>(workDir / "t4.top");
 			MoleculeUtils::CenterMolecule(groSrc, topSrc->GetMoleculeType());
-			WithGpu([&] {
-				Programs::EnergyMinimize(groSrc, *topSrc, true, workDir, envmode, false);
-			});
+			Programs::EnergyMinimize(groSrc, *topSrc, true, workDir, envmode, false);
 			groSrc.printToFile(workDir / "t4_em.gro");
 		}
 		
@@ -54,9 +52,7 @@ namespace TestMinorPrograms {
 
 		GroFile grofile(workDir / "t4_many.gro");
 		TopologyFile topfile(workDir / "t4_many.top");		
-		WithGpu([&] {
-			Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false, 2000.f);
-		});
+		Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false, 2000.f);
 		grofile.printToFile(workDir / "t4_many_em.gro");
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };

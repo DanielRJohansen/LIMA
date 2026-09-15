@@ -9,24 +9,72 @@
 
 #include <memory>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
+#include <functional>
+#include <mutex>
+#include <thread>
 
 class Display;
 struct BoxImage;
 class Engine;
 struct LiveEditData;
+struct ScheduledSimulationState;
 
 namespace fs = std::filesystem;
+
+struct SimulationJob {
+	fs::path workDir;
+	fs::path groPath{ "molecule/conf.gro" };
+	fs::path topPath{ "molecule/topol.top" };
+	fs::path simParamsPath{ "sim_params.txt" };
+	std::optional<SimParams> simParams;
+	std::unique_ptr<Simulation> initialSimulation;
+	EnvMode mode = EnvMode::Headless;
+	std::function<void(SimParams&)> configureParams = [](SimParams&) {};
+	std::function<void(GroFile&, TopologyFile&, SimParams&)> configureInput = [](GroFile&, TopologyFile&, SimParams&) {};
+	std::function<void(Simulation&)> configure = [](Simulation&) {};
+	bool analyze = false;
+};
+
+struct SimulationResult {
+	std::unique_ptr<Simulation> simulation;
+	std::optional<SimAnalysis::AnalyzedPackage> analysis;
+	std::chrono::duration<double> engineTime{};
+};
+
+class SimulationHandle {
+public:
+	SimulationHandle() = default;
+	SimulationHandle(const SimulationHandle&) = default;
+	SimulationHandle& operator=(const SimulationHandle&) = default;
+	SimulationHandle(SimulationHandle&&) noexcept = default;
+	SimulationHandle& operator=(SimulationHandle&&) noexcept = default;
+
+	void Wait() const;
+	bool IsReady() const;
+	SimulationResult Get();
+
+private:
+	explicit SimulationHandle(std::shared_ptr<ScheduledSimulationState> state);
+	std::shared_ptr<ScheduledSimulationState> state;
+	friend class Environment;
+};
 
 
 class Environment
 {
 public:
-	Environment() = delete;
+	Environment();
 	Environment(const Environment&) = delete;
+	Environment& operator=(const Environment&) = delete;
 	Environment(const fs::path& workdir, EnvMode mode);
 
 	~Environment();
+
+	// Queues a lightweight simulation description. All expensive construction and
+	// GPU work is performed by Environment's bounded worker pipeline.
+	[[nodiscard]] SimulationHandle Submit(SimulationJob job);
 
 	/// <summary>
 	/// Create a simulation, and create the necessary files in process, if the defaults
@@ -113,6 +161,30 @@ public:
 
 	bool prepareForRun();
 private:
+	struct QueuedSimulation {
+		SimulationJob job;
+		std::shared_ptr<ScheduledSimulationState> state;
+	};
+
+	struct PreparedSimulation {
+		SimulationJob job;
+		std::shared_ptr<ScheduledSimulationState> state;
+		std::unique_ptr<Simulation> simulation;
+	};
+
+	void StartScheduling();
+	void StopScheduling();
+	void MainLoop();
+
+
+	// Functions that are only run by their own dedicated worker thread
+	void Preprocess(QueuedSimulation next);					// preprocessor thread	
+	void RunPreparedSimulation(PreparedSimulation next);	// simulation thread
+	//
+
+
+	std::unique_ptr<Simulation> BuildSimulation(SimulationJob& job) const;
+
 	struct SimulationSession {
 		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
 		~SimulationSession();
@@ -153,4 +225,13 @@ private:
 
 	std::unique_ptr<Display> display = nullptr;
 	std::unique_ptr<SimulationSession> simulationSession = nullptr;
+
+	std::mutex schedulingMutex;
+	std::condition_variable schedulerWakeup;
+	std::deque<QueuedSimulation> pendingSimulations;
+	std::optional<PreparedSimulation> preparedSimulation;
+	bool preparingSimulation = false;
+	bool runningSimulation = false;
+	bool stopping = false;
+	std::jthread coordinator;
 };

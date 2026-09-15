@@ -124,7 +124,8 @@ namespace Benchmarks {
 		for (int run = 0; run < nRuns; run++) {
 			Environment env{ workDir, EnvMode::Headless /*envmode*/ };
 			env.CreateSimulation(grofile, topfile, ip);
-			RunOnGpu(env);
+			env.run();
+			env.ReleaseEngine();
 
 			ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 			const auto duration = env.SimulationTimer()->GetTiming();
@@ -139,6 +140,60 @@ namespace Benchmarks {
 			std::format("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step] ({} runs)",
 				fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
 				allowedTimePerStep.max.count() / 1000., nRuns), envmode != Headless };
+	}
+
+	static std::function<LimaUnittestResult()> Bench(Environment& environment, EnvMode envmode, fs::path workDir,
+		fs::path groPath, fs::path topPath, fs::path simParamsPath,
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns)
+	{
+		std::vector<SimulationHandle> handles;
+		handles.reserve(nRuns);
+		for (int run = 0; run < nRuns; run++) {
+			SimulationJob job;
+			job.workDir = workDir;
+			job.groPath = groPath;
+			job.topPath = topPath;
+			job.simParamsPath = simParamsPath;
+			job.mode = EnvMode::Headless;
+			job.configureParams = [nSteps](SimParams& params) {
+				params.data_logging_interval = 20;
+				params.enable_electrostatics = true;
+				params.n_steps = nSteps;
+			};
+
+			handles.push_back(environment.Submit(std::move(job)));
+		}
+		return [handles = std::move(handles), allowedTimePerStep, nSteps, nRuns, envmode]() mutable {
+		std::vector<std::chrono::microseconds> timesPerStep;
+		timesPerStep.reserve(nRuns);
+		for (auto& handle : handles) {
+			auto completed = handle.Get();
+			if (!completed.simulation || completed.simulation->getStep() != completed.simulation->simParams.n_steps)
+				return LimaUnittestResult{ false, "Simulation did not run fully", envmode != Headless };
+			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(completed.engineTime / nSteps));
+		}
+
+		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
+		const bool withinBounds = *fastest >= allowedTimePerStep.min && *slowest <= allowedTimePerStep.max;
+		return LimaUnittestResult{ withinBounds,
+			std::format("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step] ({} runs)",
+				fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
+				allowedTimePerStep.max.count() / 1000., nRuns), envmode != Headless };
+		};
+	}
+
+	static std::function<LimaUnittestResult()> STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
+		const fs::path workDir = TestsDir() / "benchmarking/stmv";
+		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
+			workDir / "sim_params.txt", { std::chrono::microseconds{ 12000 }, std::chrono::microseconds{ 13500 } },
+			nSteps, nRuns);
+	}
+
+	static std::function<LimaUnittestResult()> T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
+		const fs::path workDir = TestsDir() / "benchmarking/t4";
+		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
+			workDir / "../sim_params.txt", { std::chrono::microseconds{ 200 }, std::chrono::microseconds{ 300 } },
+			nSteps, nRuns);
 	}
 
 
@@ -230,7 +285,8 @@ namespace Benchmarks {
 		ip.n_steps = 4000;
 		Environment env{ workDir , envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		RunOnGpu(env);
+		env.run();
+		env.ReleaseEngine();
 
 		ASSERT(env.getSimPtr()->getStep() == env.getSimPtr()->simParams.n_steps, "Simulation did not run fully");
 
@@ -288,7 +344,8 @@ namespace Benchmarks {
 		Environment env{ workDir , ConsoleOnly };
 		//Environment env{ workDir , Full };
 		env.CreateSimulation(grofile, topfile, params);
-		RunOnGpu(env);
+		env.run();
+		env.ReleaseEngine();
 
 		if (env.getSimPtr()->getStep() != env.getSimPtr()->simParams.n_steps) {
 			throw std::runtime_error("Simulation did not run fully");
@@ -335,10 +392,8 @@ namespace Benchmarks {
 		ip.enable_electrostatics = true;
 		Environment env{ workDir, envmode };
 		env.CreateSimulation(grofile, topfile, ip);
-		WithGpu([&] {
-			env.prepareForRun();
-			env.ReleaseEngine();
-		});
+		env.prepareForRun();
+		env.ReleaseEngine();
 		const std::chrono::duration<double> elapsedTime = timer.elapsed();
 		
 		const std::chrono::duration<double> maxTime{ 8. }; // [s]

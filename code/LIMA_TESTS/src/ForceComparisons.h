@@ -1,5 +1,8 @@
+#pragma once
+
 #include "TestUtils.h"
 #include "Filehandling.h"
+#include "BoxImageBuilder.h"
 
 
 
@@ -7,77 +10,47 @@
 namespace ForceComparisons {
 	using namespace TestUtils;
 
-
-	const float Error(const Float3& value, const Float3& ref) {
-		return std::abs((value - ref).len() / ref.len());
-	}
-
-	std::unique_ptr<Environment> LoadAndRunSim(const fs::path& workdir) {
-		GroFile grofile{ workdir / "conf.gro" };
-		TopologyFile topfile{ workdir / "topol.top" };
-		const fs::path paramsPath = fs::exists(workdir / "sim_params.txt") ? workdir / "sim_params.txt" : workdir.parent_path() / "sim_params.txt";
-		SimParams simparams{ paramsPath };
-		auto env = std::make_unique<Environment>( workdir, Headless ); 
-		env->CreateSimulation(grofile, topfile, simparams);
-		RunOnGpu(*env);
-
-		return env;
-	}
-
-	bool CompareForces(const std::string& dir, float errorThreshold=1e-3) {
-		const fs::path workdir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / dir;
-		auto env = LoadAndRunSim(workdir);
-
-		const std::vector<Float3> gromacsForces = FileUtils::ReadCsvAsVectorOfFloat3(workdir / "forces.csv");
-		const std::vector<Float3> limaForces = env->GetForces(0);
-
-		if (gromacsForces.size() != limaForces.size()) {
-			printf("Lima force count %d Gromacs force count %d\n", limaForces.size(), gromacsForces.size());
-			return false;
-		}
-
-		for (int i = 0; i < limaForces.size(); i++) {
-			if (Error(limaForces[i], gromacsForces[i]) > errorThreshold) {
-				limaForces[i].print("limaForce");
-				gromacsForces[i].print("gromacsForce");
-				return false;
+	std::vector<Float3> GetForces(const Simulation& simulation, int64_t step) {
+		const auto& boxImage = simulation.boxImage;
+		std::vector<Float3> forces(boxImage->grofile.atoms.size());
+		for (int clusterId = 0; clusterId < simulation.box->persistentClusters.size(); clusterId++) {
+			for (int particleId = 0; particleId < PersistentCluster::maxParticles; particleId++) {
+				const int globalId = simulation.box->persistentClustersMetadata[clusterId].particleIdsGlobal[particleId];
+				if (globalId >= 0)
+					forces[globalId] = simulation.forceBuffer->GetDatapointAtStep(clusterId, particleId, step) / KILO;
 			}
 		}
-		return true;
-
+		return forces;
 	}
 
-	bool T4RmsdAndRmsf() {
-		const fs::path workdir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / "T4Lysozyme";
-		auto env = LoadAndRunSim(workdir);
-
-		Trajectory traj = env->WriteSimToTrajectory();
-		MDFiles::Dump(traj, workdir / "limaTraj.trr");
-
-		const fs::path scriptPath = FileUtils::GetLimaDir() / "dev" / "PyTools" / "CompareRMSD.py";
-		const std::string arguments =
-			" " + (workdir / "gromacsTraj.trr").string() +
-			" " + (workdir / "limaTraj.trr").string() +			
-			" " + (workdir / "conf.gro").string();
-		const std::string command = "python " + scriptPath.string() + arguments;
-		std::system(command.c_str());
-
-		// Call maybe a python script to compare the rmsd and rmsf?
-		return true;
+	std::function<LimaUnittestResult()> DoAllForceComparisons(Environment& environment, EnvMode envmode) {
+		const std::array<std::string, 4> directories{ "PoolNoES", "Singlebond", "Anglebond", "Dihedralbond" };
+		std::vector<SimulationHandle> handles;
+		handles.reserve(directories.size());
+		for (const auto& directory : directories) {
+			const fs::path workDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / directory;
+			SimulationJob job;
+			job.workDir = workDir;
+			job.groPath = workDir / "conf.gro";
+			job.topPath = workDir / "topol.top";
+			job.simParamsPath = fs::exists(workDir / "sim_params.txt")
+				? workDir / "sim_params.txt" : workDir.parent_path() / "sim_params.txt";
+			handles.push_back(environment.Submit(std::move(job)));
+		}
+		return [handles = std::move(handles), directories, envmode]() mutable {
+		for (std::size_t index = 0; index < handles.size(); index++) {
+			auto completed = handles[index].Get();
+			const fs::path workDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / directories[index];
+			const auto reference = FileUtils::ReadCsvAsVectorOfFloat3(workDir / "forces.csv");
+			const auto actual = GetForces(*completed.simulation, 0);
+			if (actual.size() != reference.size())
+				return LimaUnittestResult{ false, directories[index] + " force count mismatch", envmode == Full };
+			for (std::size_t force = 0; force < actual.size(); force++) {
+				if ((actual[force] - reference[force]).len() / reference[force].len() > 1e-3f)
+					return LimaUnittestResult{ false, directories[index] + " force mismatch", envmode == Full };
+			}
+		}
+		return LimaUnittestResult{ true, "Success", envmode == Full };
+		};
 	}
-
-
-	LimaUnittestResult DoAllForceComparisons(EnvMode envmode) {
-		ASSERT(CompareForces("PoolNoES"), "PoolNoES failed");
-		//ASSERT(CompareForces("PoolES"), "PoolES failed"); /// gromacs part is wrong
-		ASSERT(CompareForces("Singlebond"), "Singlebond failed");
-		ASSERT(CompareForces("Anglebond"), "Anglebond failed");
-		ASSERT(CompareForces("Dihedralbond"), "Dihedralbond failed");
-
-
-		//ASSERT(T4RmsdAndRmsf(), "T4RmsdAndRmsf failed");
-
-		return LimaUnittestResult{ true, "", envmode==Full };
-	}
-
 }

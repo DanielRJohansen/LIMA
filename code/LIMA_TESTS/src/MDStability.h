@@ -12,50 +12,81 @@
 namespace TestMDStability {
 	using namespace TestUtils;
 
-	static LimaUnittestResult loadAndEMAndRunBasicSimulation(
-		const string& folder_name,
-		EnvMode envmode,
-		const std::string& test_name) {
-		const fs::path workDir= AutomatedTestsDir() / folder_name; // TODO: folder name isnt even, should call with full path..
+	static std::function<LimaUnittestResult()> loadAndEMAndRunBasicSimulation(
+		Environment& environment, std::string folderName, EnvMode envmode, std::string testName)
+	{
+		const fs::path workDir = AutomatedTestsDir() / folderName;
+		SimParams emParams;
+		emParams.em_variant = true;
+		emParams.dt = 1.5f * FEMTO_TO_NANO;
+		emParams.em_force_tolerance = 100.f;
+		emParams.data_logging_interval = 50;
+		emParams.enable_electrostatics = true;
+		emParams.n_steps = 20000;
+		emParams.bc_select = BoundaryConditionSelect::PBC;
 
-		GroFile grofile{ workDir / "molecule"/"conf.gro" };
-		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
+		SimulationJob emJob;
+		emJob.workDir = workDir;
+		emJob.groPath = workDir / "molecule/conf.gro";
+		emJob.topPath = workDir / "molecule/topol.top";
+		emJob.simParams = std::move(emParams);
+		emJob.mode = envmode;
+		auto emHandle = environment.Submit(std::move(emJob));
+		return [emHandle = std::move(emHandle), &environment, workDir, testName = std::move(testName), envmode]() mutable {
+		auto minimized = emHandle.Get();
 
-		auto sim = WithGpu([&] {
-			return Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
-		});
+		SimulationJob simulationJob;
+		simulationJob.workDir = workDir;
+		simulationJob.simParamsPath = workDir / "sim_params.txt";
+		simulationJob.initialSimulation = std::move(minimized.simulation);
+		simulationJob.mode = envmode;
+		simulationJob.analyze = true;
+		auto completed = environment.Submit(std::move(simulationJob)).Get();
+		if (!completed.analysis)
+			return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
 
-		SimParams params{ workDir/"sim_params.txt"};
-		Environment env{ workDir, envmode };
-
-
-
-		env.CreateSimulation(*sim, params);
-		
-		//env.CreateSimulation(grofile, topfile, params);
-		RunOnGpu(env);
-		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
-
-		const auto analytics = AnalyzeOnGpu(env);
-		
-		if (envmode != Headless) {
-			analytics.Print();
-			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics.variance_coefficient});
-			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics.energy_gradient});
-		}		
-
-		//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
-		//LIMA_Print::printPythonVec("kinE", analytics.kin_energy);
-		//LIMA_Print::printPythonVec("totE", analytics.total_energy);
-		//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
-
-		const auto result = evaluateTest(test_name, { analytics.variance_coefficient }, { analytics.energy_gradient });
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		const auto evaluation = evaluateTest(testName,
+			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
+		return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
+		};
 	}
 
-	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		return loadAndRunBasicSimulation("8ResNoSol", envmode, "doEightResiduesNoSolvent");
+	static std::function<LimaUnittestResult()> TestDeterministic(Environment& environment, EnvMode envmode) {
+		return [&environment, envmode]() {
+		std::optional<float> referenceVc;
+		std::optional<float> referenceGradient;
+		for (int run = 0; run < 2; run++) {
+			const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
+			SimulationJob emJob;
+			emJob.workDir = workDir;
+			emJob.groPath = workDir / "molecule/conf.gro";
+			emJob.topPath = workDir / "molecule/topol.top";
+			emJob.simParams = SimParams{};
+			emJob.simParams->em_variant = true;
+			emJob.simParams->dt = 1.5f * FEMTO_TO_NANO;
+			emJob.simParams->em_force_tolerance = 100.f;
+			emJob.simParams->data_logging_interval = 50;
+			emJob.simParams->enable_electrostatics = true;
+			emJob.simParams->n_steps = 20000;
+			emJob.simParams->bc_select = BoundaryConditionSelect::PBC;
+			auto minimized = environment.Submit(std::move(emJob)).Get();
+
+			SimulationJob mdJob;
+			mdJob.workDir = workDir;
+			mdJob.simParamsPath = workDir / "sim_params.txt";
+			mdJob.initialSimulation = std::move(minimized.simulation);
+			mdJob.mode = envmode;
+			mdJob.analyze = true;
+			auto completed = environment.Submit(std::move(mdJob)).Get();
+			const float vc = completed.analysis->variance_coefficient;
+			const float gradient = completed.analysis->energy_gradient;
+			if (referenceVc && (vc != *referenceVc || gradient != *referenceGradient))
+				return LimaUnittestResult{ false, "Simulation results were not deterministic", envmode == Full };
+			referenceVc = vc;
+			referenceGradient = gradient;
+		}
+		return LimaUnittestResult{ true, "Success", envmode == Full };
+		};
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {
@@ -123,4 +154,3 @@ namespace TestMDStability {
 		Viscosity Calculation Test: This test measures the viscosity of the system, which is related to diffusion and can be important for understanding the behavior of complex fluids.
 	*/
 }
-

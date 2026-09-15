@@ -2,591 +2,312 @@
 
 #include "TestUtils.h"
 #include "PhysicsUtils.cuh"
-#include "format"
-
+#include <format>
 
 namespace ForceCorrectness {
 	using namespace TestUtils;
 
 	const fs::path TestsDir() { return AutomatedTestsDir(); }
 
-	void RunAndRecord(Environment& env, EnvMode envmode,
-		std::vector<float>& varcoffs, std::vector<float>& energy_gradients) {
-		RunOnGpu(env);
-		const auto analytics = AnalyzeOnGpu(env);
-		varcoffs.push_back(analytics.variance_coefficient);
-		energy_gradients.push_back(analytics.energy_gradient);
-		if (envmode != Headless) {
-			analytics.Print();
-		}
+	// Construct only the lightweight job description here. Environment performs all
+	// file parsing, molecule construction, and GPU work on its bounded worker threads.
+	SimulationJob MakeJob(const fs::path& workDir, EnvMode envmode, bool analyze = false) {
+		SimulationJob job;
+		job.workDir = workDir;
+		job.mode = envmode;
+		job.analyze = analyze;
+		return job;
 	}
 
-	LimaUnittestResult FinishStabilitySweep(const std::string& name, EnvMode envmode,
-		const std::string& xLabel, const std::vector<float>& xValues,
-		const std::vector<float>& varcoffs, const std::vector<float>& energy_gradients) {
-		if (envmode != Headless) {
-			LIMA_Print::printMatlabVec(xLabel, xValues);
-			LIMA_Print::printMatlabVec("varcoffs", varcoffs);
-			LIMA_Print::printMatlabVec("energy_gradients", energy_gradients);
-		}
-		const auto result = evaluateTest(name, varcoffs, energy_gradients);
-		return { result.first, result.second, envmode == Full };
-	}
-
-	//Test assumes two carbons particles in conf
-	LimaUnittestResult doPoolBenchmark(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Pool/";
-		Environment env{ work_folder, envmode};
-
-		const float particle_mass = 12.011000f / 1000.f;	// kg/mol
-		std::vector<float> particle_temps{ 400 };
-		std::vector<float> varcoffs;
-		std::vector<float> energy_gradients;
-
-		for (auto temp : particle_temps) {
-			const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [nm/ns]
-			int64_t steps_for_full_interaction = 3000000 / static_cast<int>(vel);
-
-			SimParams params{};
-			params.enable_electrostatics = false;
-			params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-			env.CreateSimulation(grofile, topfile, params);
-
-			Box* box = env.getSimPtr()->box.get();
-			box->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
-			box->pclusterInterimStates[1].vels_prev[0] = Float3(-1, 0, 0) * vel;
-
-			RunAndRecord(env, envmode, varcoffs, energy_gradients);
-		}
-
-		return FinishStabilitySweep("doPoolBenchmark", envmode, "temperature", particle_temps, varcoffs, energy_gradients);
-	}
-
-	LimaUnittestResult doPoolCompSolBenchmark(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "PoolCompSol/";
-		Environment env{ work_folder, envmode};
-		SimParams params{ work_folder / "sim_params.txt"};
-		const float dt = params.dt;
-		params.data_logging_interval = 1;
-
-		std::vector<float> particle_temps{ 400, 1200 };
-		std::vector<float> varcoffs;
-		std::vector<float> energy_gradients;
-
-		for (auto temp : particle_temps) {
-			// Give the carbon a velocity
-			{
-				const float particle_mass = 12.011000f / 1000.f;	// kg/mol
-				const float vel = PhysicsUtils::tempToVelocity(temp, particle_mass);	// [m/s] <=> [nm/ns]
-				const int64_t steps_for_full_interaction = 6000000 / static_cast<int>(vel);
-
-				params.n_steps = LIMA_UTILS::roundUp(steps_for_full_interaction, 100);
-				GroFile grofile{ work_folder / "molecule/conf.gro" };
-				TopologyFile topfile{ work_folder / "molecule/topol.top" };
-				env.CreateSimulation(grofile, topfile, params);
-
-
-				Box* box = env.getSimPtr()->box.get();
-				box->pclusterInterimStates[0].vels_prev[0] = Float3(1, 0, 0) * vel;
-			}
-
-			// Give the solvent a velocty
-			// TODO: Impl this!
-			//{
-			//	float solventMass = 0;
-			//	for (int i = 0; i < env.getSimPtr()->box->boxparams.nTinymolParticles; i++) {
-			//		solventMass += env.getSimPtr()->forcefieldTinymol.types[env.getSimPtr()->box->tinyMolParticlesState[i].tinymolTypeIndex].mass;
-			//	}
-			//	const float vel = PhysicsUtils::tempToVelocity(temp, solventMass);	// [m/s] <=> [nm/ns]
-			//	for (int i = 0; i < env.getSimPtr()->box->boxparams.nTinymolParticles; i++) {
-			//		env.getSimPtr()->box->tinyMolParticlesState[i].vel_prev = Float3{ -vel, 0.f, 0.f };
-			//	}
-			//}
-
-
-			RunAndRecord(env, envmode, varcoffs, energy_gradients);
-		}
-
-		return FinishStabilitySweep("doPoolCompSolBenchmark", envmode, "temperature", particle_temps, varcoffs, energy_gradients);
-	}
-
-
-
-	LimaUnittestResult SinglebondForceAndPotentialSanityCheck(EnvMode envmode) {		
-		const fs::path work_folder = TestsDir() / "Singlebond/";
-		Environment env{ work_folder, envmode};
-
-		SimParams params{ work_folder / "sim_params.txt" };
-		params.n_steps = 1;
-		params.data_logging_interval = 1;
-		const float expectedB0 = 0.133499995f;
-		const float bondlenErrorNM = 0.02f; //(r-r0) [nm]
-
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-
-		grofile.atoms[1].position = grofile.atoms[0].position + Float3{ bondlenErrorNM + expectedB0, 0.f, 0.f }; // Just so we dont get an 0 dist error as we load the simulation
-		env.CreateSimulation(grofile, topfile, params);
-
-		Box& box = *env.getSimPtr()->box.get();
-
-		const SingleBond::Parameters bondparams = box.bondgroups[0].singlebonds[0].params;
-		assert(bondparams.b0 == expectedB0);
-
-
-		// Now figure the expected force and potential
-		const double kB = bondparams.kb / 2.;									// [J/mol/nm^2]
-		const Float3 dir{ 1,0,0 };
-		const Float3 expectedForce = dir * 2.f * kB * bondlenErrorNM;			// [J/mol/nm)]
-		const float expectedPotential = kB * bondlenErrorNM * bondlenErrorNM;	// [J/mol]
-
-
-		RunOnGpu(env);
-		LIMA_UTILS::genericErrorCheck("Error during test");
-
-		const auto sim = env.GetSim();
-		// Fetch the potE from a buffer. Remember the potE is split between the 2 particles, so we need to sum them here
-		const float actualPotE = sim->potE_buffer->GetDatapoint(0, 0, 0) + sim->potE_buffer->GetDatapoint(0, 1, 0);
-
-		const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[0];
-
-
-		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
-		ASSERT(forceError < 0.0001f, std::format("Expected force: {:.2e} {:.2e} {:.2e} Actual force: {:.2e} {:.2e} {:.2e} Error: {:.2e}", 
-			expectedForce.x, expectedForce.y, expectedForce.z, actualForce.x, actualForce.y, actualForce.z, forceError));
-
-		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
-		ASSERT(potEError < 0.0001f, std::format("Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2f}", expectedPotential, actualPotE, potEError));
-
-
-		return LimaUnittestResult{ true, "Success", envmode == Full };
-	}
-
-
-	// Test that a singlebond oscillates at the correct frequency
-	LimaUnittestResult SinglebondOscillationTest(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Singlebond/";
-		const fs::path conf = work_folder / "molecule/conf.gro";
-		const fs::path topol = work_folder / "molecule/topol.top";
-		const fs::path simpar = work_folder / "sim_params.txt";
-		Environment env{ work_folder, envmode};
-
-		const float particle_mass = 12.011000f * 1e-3f;
-
-		SimParams params{ simpar };
-		// Set time to 1000 [fs]
-		params.dt = 1.f * FEMTO_TO_NANO;
-		params.n_steps = 1000; 
-		params.data_logging_interval = 1;
-		const float timeElapsed = params.dt * params.n_steps * NANO_TO_FEMTO; // [fs]
-		float bond_len_error = 0.04f ; //(r-r0) [nm]
-		const float expectedB0 = 0.133499995f;
-
-
-		GroFile grofile{ conf };
-		grofile.atoms[1].position.x = grofile.atoms[0].position.x + bond_len_error + expectedB0;
-		TopologyFile topfile{ topol };
-		env.CreateSimulation(grofile, topfile, params);
-
-		Box& box = *env.getSimPtr()->box.get();
-
-		const SingleBond::Parameters bondparams = box.bondgroups[0].singlebonds[0].params;
-		assert(bondparams.b0 == expectedB0);
-
-
-
-
-		// Now figure out how fast the bond should oscillate
-		const float massA = box.persistentClustersMetadata[0].mass[0];
-		const float massB = box.persistentClustersMetadata[0].mass[1];
-		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
-		const double kB = bondparams.kb / NANO / NANO; // [J/(mol m^2)]
-
-		const double expectedFrequency = sqrt(kB / reducedMass) / (2.f * PI) * FEMTO;	// [1/fs]
-
-
-		RunOnGpu(env);
-
-		const auto sim = env.GetSim();
-
-		std::vector<float> bondlenOverTime(params.n_steps);	// [nm]
-		for (int i = 0; i < params.n_steps; i++) {
-			//bondlenOverTime[i] = (sim->traj_buffer->getCompoundparticleDatapointAtIndex(0, 0, i) - sim->traj_buffer->getCompoundparticleDatapointAtIndex(0, 1, i)).len();
-			bondlenOverTime[i] = (sim->traj_buffer->GetDatapoint(0, 0, i) - sim->traj_buffer->GetDatapoint(0, 1, i)).len();
-		}
-
-		const int nOscillations = SimAnalysis::CountOscillations(bondlenOverTime);
-		const float actualFrequency = static_cast<float>(nOscillations) / timeElapsed; // [1/fs]
-
-		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
-		const float errorThreshold = 1e-2;
-
-		return LimaUnittestResult{ error < errorThreshold ? true : false, 
-			std::format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency, error),
-			envmode == Full };
-	}
-
-	LimaUnittestResult UreyBradleyForceAndPotentialSanityCheck(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Anglebond/";
-		Environment env{ work_folder, envmode };
-
-		SimParams params{ work_folder / "sim_params.txt" };
-		params.n_steps = 1;
-		params.data_logging_interval = 1;
-		
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-
-		// Initialize positions to avoid zero distance errors (temporary setup)
-		grofile.atoms[0].position = Float3{ -0.13f, 0.0f, 0.0f };
-		grofile.atoms[1].position = Float3{ 0.f, 0.0f, 0.0f };
-		grofile.atoms[2].position = Float3{ 0.13f, 0.0f, 0.0f };
-
-		// Create the sim twice. First to get the params, so we can overwrite the grofile positions, then again with with the new positions
-		{
-			env.CreateSimulation(grofile, topfile, params);
-			Box& box = *env.getSimPtr()->box.get();
-
-			// First equilibrilize the singlebond
-			{
-				const SingleBond::Parameters bondParams = box.bondgroups[0].singlebonds[0].params;
-				grofile.atoms[0].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
-				grofile.atoms[2].position = grofile.atoms[1].position + Float3{ bondParams.b0, 0.0f, 0.0f };
-			}
-
-			// Now set the angle error
-			const float angleErrorRad = 0.1f;    // [radians]
-			const AngleUreyBradleyBond::Parameters angleparams = box.bondgroups[0].anglebonds[0].params;
-			{
-				const Float3 p2Pos = grofile.atoms[2].position;
-				const Float3 p2Rotated = Float3::rodriguesRotatation(p2Pos, Float3{ 0.f, 1.f, 0.f }, -(angleparams.theta0 + angleErrorRad));
-				grofile.atoms[2].position = p2Rotated;
-			}
-		}
-
-		env.CreateSimulation(grofile, topfile, params);
-		Box& box = *env.getSimPtr()->box.get();
-		const float angleErrorRad = 0.1f;    // [radians]
-		const AngleUreyBradleyBond::Parameters angleparams = box.bondgroups[0].anglebonds[0].params;
-		// Now calculate expected forces and potential energy
-
-		const Float3 p0 = box.persistentClusters[0].pqd[0].position;
-		const Float3 p1 = box.persistentClusters[0].pqd[1].position;
-		const Float3 p2 = box.persistentClusters[0].pqd[2].position;
-
-		// Angular component
-		const float potAngle = angleparams.kTheta * angleErrorRad * angleErrorRad * 0.5f;		// Energy [J/mol]			
-		const float torque = angleparams.kTheta * (angleErrorRad);				// Torque [J/(mol*rad)]
-		// We know p0 will point directly up
-		const Float3 forceAngle = Float3{ 0.f,0.f,1.f } *(torque / (p0 - p1).len());
-
-
-
-		// Urey-Bradley component
-		const float error = (p0-p2).len() - angleparams.ub0;
-		ASSERT(error > 0.001, "UB error too small for test to be meaningful");
-		const Float3 forceUB = (p0-p2).norm() * -angleparams.kUB * error;
-		const float potUB = angleparams.kUB * error * error * 0.5f;
-
-
-		// Total expected force on the middle atom (atom 1)
-		const Float3 expectedForce = forceAngle + forceUB;
-		const float expectedPotential = potAngle + potUB;
-
-		RunOnGpu(env);
-		LIMA_UTILS::genericErrorCheck("Error during test");
-
-		const auto sim = env.GetSim();
-
-		// Fetch the potential energy from the buffer, summing over all three atoms
-		const float actualPotE =
-			sim->potE_buffer->GetDatapoint(0, 0, 0) +
-			sim->potE_buffer->GetDatapoint(0, 1, 0) +
-			sim->potE_buffer->GetDatapoint(0, 2, 0);
-
-		// Fetch the actual force on the middle atom (atom 1)
-		const Float3 actualForce = sim->box->pclusterInterimStates[0].forces_prev[0];
-
-		// Validate force and potential
-		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
-		ASSERT(forceError < 0.0001f, std::format(
-			"Expected force: {:.2e} {:.2e} {:.2e} Actual force: {:.2e} {:.2e} {:.2e} Error: {:.2e}",
-			expectedForce.x, expectedForce.y, expectedForce.z,
-			actualForce.x, actualForce.y, actualForce.z, forceError));
-
-		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
-		ASSERT(potEError < 0.0001f, std::format(
-			"Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2e}",
-			expectedPotential, actualPotE, potEError));
-
-		return LimaUnittestResult{ true, "Success", envmode == Full };
-	}
-
-
-	LimaUnittestResult PairbondForceAndPotentialSanityCheck(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Pairbond/";
-		Environment env{ work_folder, envmode };
-
-		SimParams params{ work_folder / "sim_params.txt" };
-		params.n_steps = 1;
-		params.data_logging_interval = 1;
-
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-
-		env.CreateSimulation(grofile, topfile, params);
-
-		Box& box = *env.getSimPtr()->box.get();
-
-		ASSERT(box.bondgroups[0].nPairbonds == 1, std::format("Expected sim to contain 1 pairbond, found {}", box.bondgroups[0].nPairbonds));
-
-		// Neutralize singlebonds
-		box.bondgroups[0].nSinglebonds = 0;
-		ASSERT(box.bondgroups[0].nAnglebonds == 0, "Expected 0 anglebonds");
-		box.bondgroups[0].nDihedralbonds = 0;
-		ASSERT(box.bondgroups[0].nImproperdihedralbonds == 0, "Expected 0 improperdihedralbonds");
-
-
-		// Now calculate expected forces and potential energy
-		const int pidInPcluster0 = box.bondgroups[0].particles[box.bondgroups[0].pairbonds[0].atom_indexes[0]].pid;
-		const int pidInPcluster1 = box.bondgroups[0].particles[box.bondgroups[0].pairbonds[0].atom_indexes[1]].pid;
-
-
-		const Float3 pos0 = box.persistentClusters[0].pqd[pidInPcluster0].position;
-		const Float3 pos1 = box.persistentClusters[0].pqd[pidInPcluster1].position;	
-		const Float3 diff = pos1 - pos0;
-
-		const PairBond::Parameters bondparams = box.bondgroups[0].pairbonds[0].params;
-		const float s = std::powf(bondparams.sigma / (diff.len()), 6.f);
-		float force_scalar = 24.f * bondparams.epsilon * s / diff.lenSquared() * (1.f - 2.f * s);
-		const Float3 expectedForce = diff * force_scalar;
-		const float expectedPotential = 4.f * bondparams.epsilon * s * (s - 1.f) * 0.5f;
-
-		RunOnGpu(env);
-		LIMA_UTILS::genericErrorCheck("Error during test");
-
-		const auto sim = env.GetSim();
-
-
-		const float actualPotE = sim->potE_buffer->GetDatapoint(0, pidInPcluster0, 0);
-		const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, pidInPcluster0, 0);
-
-		ASSERT(expectedForce.len() > 1.f, "Force too small for test to be meaningful");
-		ASSERT(expectedPotential > 1.f, "Potential energy too small for test to be meaningful");
-
-		// Validate force and potential
-		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
-		ASSERT(forceError < 0.0001f, std::format(
-			"Expected force: {:.2e} {:.2e} {:.2e} Actual force: {:.2e} {:.2e} {:.2e} Error: {:.2e}",
-			expectedForce.x, expectedForce.y, expectedForce.z,
-			actualForce.x, actualForce.y, actualForce.z, forceError));
-
-		const float potEError = std::abs(actualPotE - expectedPotential) / expectedPotential;
-		ASSERT(potEError < 0.0001f, std::format(
-			"Expected potential: {:.2e} Actual potential: {:.2e} Error: {:.2e}",
-			expectedPotential, actualPotE, potEError));
-
-		return LimaUnittestResult{ true, "Success", envmode == Full };
-	}
-
-
-
-
-
-	LimaUnittestResult doSinglebondBenchmark(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Singlebond/";
-		Environment env{ work_folder, envmode};
-
-		SimParams params{ work_folder / "sim_params.txt" };
-		params.data_logging_interval = 1;
-		params.n_steps = 5000;
-		std::vector<float> bond_len_errors{ 0.02f }; //(r-r0) [nm]
-		std::vector<float> varcoffs;
-		std::vector<float> energy_gradients;
-
-		const float bondEquilibrium = 0.1335; // [nm]
-
-		for (auto bond_len_error : bond_len_errors) {
-			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			grofile.atoms[1].position.x += bondEquilibrium + bond_len_error;
-
-			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-			env.CreateSimulation(grofile, topfile, params);
-
-			RunAndRecord(env, envmode, varcoffs, energy_gradients);
-
-		}
-
-		return FinishStabilitySweep("doSinglebondBenchmark", envmode, "bond_len_errors", bond_len_errors, varcoffs, energy_gradients);
-	}
-
-	// Benchmarks anglebonds + singlebonds (for stability)
-	LimaUnittestResult doAnglebondBenchmark(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Anglebond/";
-
-		Environment env{ work_folder, envmode};
-		SimParams params{ work_folder / "sim_params.txt" };
-
-		const float relaxed_angle = 1.8849f; // [rad]
-		std::vector<float> angle_errors{ 0.5f, 0.7f }; //(t-t0) [rad]
-		std::vector<float> varcoffs;
-		std::vector<float> energy_gradients;
-
-		for (auto angle_error : angle_errors) {
-			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			Float3& p3Pos = grofile.atoms[2].position;
-			p3Pos.rotateAroundOrigo(Float3{ 0.f, relaxed_angle + angle_error, 0.f });
-			for (auto& atom : grofile.atoms)
-				atom.position += Float3{ 3.f };
-
-			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-			env.CreateSimulation(grofile, topfile, params);
-
-			RunAndRecord(env, envmode, varcoffs, energy_gradients);
-		}
-
-		return FinishStabilitySweep("doAnglebondBenchmark", envmode, "bond_angle_errors", angle_errors, varcoffs, energy_gradients);
-	}
-
-	LimaUnittestResult doDihedralbondBenchmark(EnvMode envmode) {
-		return TestUtils::loadAndRunBasicSimulation("Dihedralbond", envmode, "doDihedralbondBenchmark");
-	}
-
-	LimaUnittestResult doImproperDihedralBenchmark(EnvMode envmode) {
-		const fs::path work_folder = TestsDir() / "Improperbond/";
-
-		Environment env{ work_folder, envmode};
-		SimParams params{ work_folder / "sim_params.txt" };
-		std::vector<float> angle_errors{ 0.4f, -0.4f, 1.f }; //(t-t0) [rad]
-		std::vector<float> varcoffs;
-		std::vector<float> energy_gradients;
-
-		for (auto angle_error : angle_errors) {
-			GroFile grofile{ work_folder / "molecule/conf.gro" };
-			TopologyFile topfile{ work_folder / "molecule/topol.top" };
-
-
-
-			auto atom_ids = topfile.GetMoleculeType().improperdihedralbonds[0].ids;			
-			Float3 i = grofile.atoms[atom_ids[0]].position;
-			Float3 j = grofile.atoms[atom_ids[1]].position;
-			Float3 k = grofile.atoms[atom_ids[2]].position;
-			Float3 l = grofile.atoms[atom_ids[3]].position;
-
-			// Move i to origo
-			j -= i;
-			k -= i;
-			l -= i;
-			i -= i;	// Do this one last
-
-			const Float3 plane_normal = (j - i).cross(k - i).norm();
-			const Float3 l_vec = (l - i).norm();
-
-			const Float3 rotatevec = (plane_normal.cross(l_vec)).norm();
-
-			const Float3 l_point = l / l.len();
-			const Float3 l_rotated = Float3::rodriguesRotatation(l_point, rotatevec, angle_error);
-
-
-			Float3 l_diff = (l_rotated - l_point) * l.len();
-
-			//coordarray_ptr[0].rel_positions[atom_ids[3]] += Coord{ l_diff };
-			grofile.atoms[atom_ids[3]].position += l_diff;
-
-
-			env.CreateSimulation(grofile, topfile, params);
-
-			Box* box = env.getSimPtr()->box.get();
-
-			RunAndRecord(env, envmode, varcoffs, energy_gradients);
-		}
-
-
-		return FinishStabilitySweep("doImproperDihedralBenchmark", envmode, "angle_errors", angle_errors, varcoffs, energy_gradients);
-	}
-
-
-
-
-	void TestForces1To1(EnvMode envmode) {
-		const fs::path workDir = TestsDir() / "T4Lysozyme";
-		GroFile grofile{ workDir / "molecule" / "conf.gro" };
-		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
-		SimParams params{ workDir / "sim_params.txt" };
-		Environment env{ workDir, envmode };
-		params.n_steps = 11;
-		params.data_logging_interval = 1;
-		env.CreateSimulation(grofile, topfile, params);
-		RunOnGpu(env);
-
-		TestUtils::CompareForces1To1(workDir, env, false);
-	}
-
-}
-
-
-
-namespace StressTesting {
-	bool doPool50x(EnvMode envmode) {
-		const fs::path work_folder = "C:/PROJECTS/Quantom/Simulation/Pool/";
-
-		SimParams params{ work_folder / "sim_params.txt" };
-		params.n_steps = 100;
-
-		auto func = [&]() {
-			TestUtils::loadAndRunBasicSimulation("Pool", envmode, "doPoolBenchmark", params);
+	std::function<LimaUnittestResult()> FinishStabilityTest(Environment& environment, std::string name, EnvMode envmode,
+		SimulationJob job) {
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), name = std::move(name), envmode]() mutable {
+		auto completed = handle.Get();
+		const auto evaluation = evaluateTest(name,
+			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
+		return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 		};
-		TestUtils::stressTest(func, 50);
-		return true;
+	}
+
+	
+	std::function<LimaUnittestResult()> doPoolBenchmark(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Pool";
+		// Test assumes two carbon particles in conf.gro.
+		constexpr float mass = 12.011000f / 1000.f; // [kg/mol]
+		constexpr float temperature = 400.f;
+		const float velocity = PhysicsUtils::tempToVelocity(temperature, mass); // [m/s] == [nm/ns]
+		auto job = MakeJob(workDir, envmode, true);
+		job.simParams = SimParams{};
+		job.simParams->enable_electrostatics = false;
+		job.simParams->n_steps = LIMA_UTILS::roundUp(3000000 / static_cast<int>(velocity), 100);
+		job.configure = [velocity](Simulation& simulation) {
+			simulation.box->pclusterInterimStates[0].vels_prev[0] = Float3{ velocity, 0.f, 0.f };
+			simulation.box->pclusterInterimStates[1].vels_prev[0] = Float3{ -velocity, 0.f, 0.f };
+			};
+		return FinishStabilityTest(environment, "doPoolBenchmark", envmode, std::move(job));
+	}
+	std::function<LimaUnittestResult()> SinglebondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Singlebond";
+		constexpr float expectedB0 = 0.133499995f; // [nm]
+		constexpr float bondLengthError = 0.02f;   // (r-r0) [nm]
+
+		// Displace the second carbon from equilibrium along x.
+		auto job = MakeJob(workDir, envmode);
+		job.configureParams = [](SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+			grofile.atoms[1].position = grofile.atoms[0].position + Float3{ expectedB0 + bondLengthError, 0.f, 0.f };
+		};
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), envmode]() mutable {
+		auto completed = handle.Get();
+		auto& simulation = *completed.simulation;
+		const auto parameters = simulation.box->bondgroups[0].singlebonds[0].params;
+
+		// Analytic harmonic-bond force and potential.
+		const double kB = parameters.kb / 2.; // [J/mol/nm^2]
+		const Float3 expectedForce = Float3{ 1, 0, 0 } * 2.f * kB * bondLengthError; // [J/mol/nm]
+		const float expectedPotential = kB * bondLengthError * bondLengthError;      // [J/mol]
+
+		// Potential energy is split between the two particles, so sum both entries.
+		const Float3 actualForce = simulation.box->pclusterInterimStates[0].forces_prev[0];
+		const float actualPotential = simulation.potE_buffer->GetDatapoint(0, 0, 0)
+			+ simulation.potE_buffer->GetDatapoint(0, 1, 0);
+		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
+		if (forceError >= 0.0001f)
+			return LimaUnittestResult{ false, std::format("Force error {:.2e}", forceError), envmode == Full };
+		const float potentialError = std::abs(actualPotential - expectedPotential) / expectedPotential;
+		return LimaUnittestResult{ potentialError < 0.0001f,
+			std::format("Potential error {:.2e}", potentialError), envmode == Full };
+		};
+	}
+
+	std::function<LimaUnittestResult()> SinglebondOscillationTest(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Singlebond";
+		constexpr float expectedB0 = 0.133499995f; // [nm]
+		constexpr float bondLengthError = 0.04f;   // (r-r0) [nm]
+
+		// Simulate 1000 fs and record every step so oscillations can be counted.
+		auto job = MakeJob(workDir, envmode);
+		job.configureParams = [](SimParams& params) {
+			params.dt = 1.f * FEMTO_TO_NANO; params.n_steps = 1000; params.data_logging_interval = 1;
+		};
+		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+			grofile.atoms[1].position.x = grofile.atoms[0].position.x + expectedB0 + bondLengthError;
+		};
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), envmode]() mutable {
+		auto completed = handle.Get();
+		auto& simulation = *completed.simulation;
+		const auto parameters = simulation.box->bondgroups[0].singlebonds[0].params;
+		const float massA = simulation.box->persistentClustersMetadata[0].mass[0];
+		const float massB = simulation.box->persistentClustersMetadata[0].mass[1];
+		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
+		const double springConstant = parameters.kb / NANO / NANO;  // [J/(mol m^2)]
+		const double expectedFrequency = std::sqrt(springConstant / reducedMass) / (2.f * PI) * FEMTO; // [1/fs]
+
+		std::vector<float> lengths(simulation.simParams.n_steps); // [nm]
+		for (int i = 0; i < simulation.simParams.n_steps; i++)
+			lengths[i] = (simulation.traj_buffer->GetDatapoint(0, 0, i) - simulation.traj_buffer->GetDatapoint(0, 1, i)).len();
+		const float elapsed = simulation.simParams.dt * simulation.simParams.n_steps * NANO_TO_FEMTO; // [fs]
+		const float actualFrequency = static_cast<float>(SimAnalysis::CountOscillations(lengths)) / elapsed; // [1/fs]
+		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
+		return LimaUnittestResult{ error < 1e-2f,
+			std::format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency), envmode == Full };
+		};
+	}
+
+	struct ExpectedForceEnergy { Float3 force{}; float potential = 0.f; };
+
+	std::function<LimaUnittestResult()> UreyBradleyForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Anglebond";
+		auto expected = std::make_shared<ExpectedForceEnergy>();
+		auto job = MakeJob(workDir, envmode);
+		job.configureParams = [](SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.configure = [expected](Simulation& simulation) {
+			// This used to require creating the simulation twice: once to discover
+			// force-field parameters and again after adjusting the coordinates.
+			// configure() runs after construction and gives direct access to both.
+			auto& box = *simulation.box;
+			const auto single = box.bondgroups[0].singlebonds[0].params;
+			const auto angle = box.bondgroups[0].anglebonds[0].params;
+			constexpr float angleError = 0.1f; // [rad]
+
+			// First equilibrate both single bonds, then introduce only the angle error.
+			auto& cluster = box.persistentClusters[0];
+			cluster.pqd[1].position = Float3{};
+			cluster.pqd[0].position = Float3{ single.b0, 0.f, 0.f };
+			cluster.pqd[2].position = Float3::rodriguesRotatation(Float3{ single.b0, 0.f, 0.f },
+				Float3{ 0.f, 1.f, 0.f }, -(angle.theta0 + angleError));
+			const Float3 p0 = cluster.pqd[0].position, p1 = cluster.pqd[1].position, p2 = cluster.pqd[2].position;
+
+			// Angular component.
+			const Float3 angleForce = Float3{ 0.f, 0.f, 1.f }
+				* (angle.kTheta * angleError / (p0 - p1).len()); // [J/mol/nm]
+			const float anglePotential = angle.kTheta * angleError * angleError * .5f; // [J/mol]
+
+			// Urey-Bradley 1-3 distance component.
+			const float ubError = (p0 - p2).len() - angle.ub0; // [nm]
+			const Float3 ubForce = (p0 - p2).norm() * -angle.kUB * ubError; // [J/mol/nm]
+			const float ubPotential = angle.kUB * ubError * ubError * .5f;  // [J/mol]
+
+			expected->force = angleForce + ubForce;
+			expected->potential = anglePotential + ubPotential;
+		};
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), expected, envmode]() mutable {
+		auto completed = handle.Get();
+		auto& simulation = *completed.simulation;
+		// Potential energy is distributed over all three atoms.
+		const Float3 actualForce = simulation.box->pclusterInterimStates[0].forces_prev[0]; // [J/mol/nm]
+		const float actualPotential = simulation.potE_buffer->GetDatapoint(0, 0, 0)
+			+ simulation.potE_buffer->GetDatapoint(0, 1, 0) + simulation.potE_buffer->GetDatapoint(0, 2, 0);
+		const float forceError = (actualForce - expected->force).len() / expected->force.len();
+		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
+		return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
+			std::format("Force error {:.2e}, potential error {:.2e}", forceError, potentialError), envmode == Full };
+		};
+	}
+
+	std::function<LimaUnittestResult()> PairbondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Pairbond";
+		auto expected = std::make_shared<ExpectedForceEnergy>();
+		auto particleId = std::make_shared<int>(0);
+		auto job = MakeJob(workDir, envmode);
+		job.configureParams = [](SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.configure = [expected, particleId](Simulation& simulation) {
+			auto& group = simulation.box->bondgroups[0];
+
+			// Isolate the pairbond by disabling the other bonded interactions.
+			group.nSinglebonds = 0;
+			group.nDihedralbonds = 0;
+			const auto& pair = group.pairbonds[0];
+			const int p0 = group.particles[pair.atom_indexes[0]].pid;
+			const int p1 = group.particles[pair.atom_indexes[1]].pid;
+			*particleId = p0;
+			const Float3 diff = simulation.box->persistentClusters[0].pqd[p1].position
+				- simulation.box->persistentClusters[0].pqd[p0].position;
+			// Analytic Lennard-Jones 1-4 force and the per-particle potential.
+			const float s = std::pow(pair.params.sigma / diff.len(), 6.f);
+			const float forceScalar = 24.f * pair.params.epsilon * s
+				/ diff.lenSquared() * (1.f - 2.f * s);
+			expected->force = diff * forceScalar; // [J/mol/nm]
+			expected->potential = 4.f * pair.params.epsilon * s * (s - 1.f) * .5f; // [J/mol]
+		};
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), expected, particleId, envmode]() mutable {
+		auto completed = handle.Get();
+		auto& simulation = *completed.simulation;
+		const Float3 actualForce = simulation.forceBuffer->GetDatapoint(0, *particleId, 0);
+		const float actualPotential = simulation.potE_buffer->GetDatapoint(0, *particleId, 0);
+		const float forceError = (actualForce - expected->force).len() / expected->force.len();
+		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
+		return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
+			std::format("Force error {:.2e}, potential error {:.2e}", forceError, potentialError), envmode == Full };
+		};
+	}
+
+
+
+	std::function<LimaUnittestResult()> doPoolCompSolBenchmark(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "PoolCompSol";
+		constexpr float mass = 12.011000f / 1000.f; // [kg/mol]
+		const float velocity = PhysicsUtils::tempToVelocity(400.f, mass); // [m/s] == [nm/ns]
+		auto job = MakeJob(workDir, envmode, true);
+		job.configureParams = [velocity](SimParams& params) {
+			params.data_logging_interval = 1;
+			params.n_steps = LIMA_UTILS::roundUp(6000000 / static_cast<int>(velocity), 100);
+		};
+		job.configure = [velocity](Simulation& simulation) {
+			simulation.box->pclusterInterimStates[0].vels_prev[0] = Float3{ velocity, 0.f, 0.f };
+		};
+		return FinishStabilityTest(environment, "doPoolCompSolBenchmark", envmode, std::move(job));
+	}
+
+	std::function<LimaUnittestResult()> doSinglebondBenchmark(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Singlebond";
+		auto job = MakeJob(workDir, envmode, true);
+		job.configureParams = [](SimParams& params) { params.data_logging_interval = 1; params.n_steps = 5000; };
+		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+			constexpr float equilibriumLength = .1335f; // [nm]
+			constexpr float bondLengthError = .02f;     // (r-r0) [nm]
+			grofile.atoms[1].position.x += equilibriumLength + bondLengthError;
+		};
+		return FinishStabilityTest(environment, "doSinglebondBenchmark", envmode, std::move(job));
+	}
+
+	std::function<LimaUnittestResult()> doAnglebondBenchmark(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Anglebond";
+		auto job = MakeJob(workDir, envmode, true);
+		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+			constexpr float relaxedAngle = 1.8849f; // [rad]
+			constexpr float angleError = .5f;       // (theta-theta0) [rad]
+			grofile.atoms[2].position.rotateAroundOrigo(
+				Float3{ 0.f, relaxedAngle + angleError, 0.f });
+			// Keep every atom comfortably inside the test box.
+			for (auto& atom : grofile.atoms) atom.position += Float3{ 3.f };
+		};
+		return FinishStabilityTest(environment, "doAnglebondBenchmark", envmode, std::move(job));
+	}
+
+	std::function<LimaUnittestResult()> doDihedralbondBenchmark(Environment& environment, EnvMode envmode) {
+		return loadAndRunBasicSimulation(environment, "Dihedralbond", envmode, "doDihedralbondBenchmark");
+	}
+
+	std::function<LimaUnittestResult()> doImproperDihedralBenchmark(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "Improperbond";
+		auto job = MakeJob(workDir, envmode, true);
+		job.configureInput = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			const auto ids = topfile.GetMoleculeType().improperdihedralbonds[0].ids;
+			// Translate the three vectors so atom i is the origin.
+			const Float3 i = grofile.atoms[ids[0]].position;
+			const Float3 j = grofile.atoms[ids[1]].position - i;
+			const Float3 k = grofile.atoms[ids[2]].position - i;
+			const Float3 l = grofile.atoms[ids[3]].position - i;
+			// Rotate atom l about an axis in the i-j-k plane, introducing a
+			// controlled improper-dihedral error of 0.4 rad.
+			const Float3 axis = (j.cross(k).norm().cross(l.norm())).norm();
+			const Float3 point = l / l.len();
+			grofile.atoms[ids[3]].position += (Float3::rodriguesRotatation(point, axis, .4f) - point) * l.len();
+		};
+		return FinishStabilityTest(environment, "doImproperDihedralBenchmark", envmode, std::move(job));
 	}
 }
 
+namespace StressTesting {}
 
 namespace VerletintegrationTesting {
 	using namespace TestUtils;
 
-	// Apply a constant force on a particle, and check that the particles achieves the expected kinetic energy
-	LimaUnittestResult TestIntegration(EnvMode envmode) {
-		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-
-		Environment env{ work_folder, envmode};
-
-		SimParams params{};
-		params.n_steps = 1000;
-		params.enable_electrostatics = true;
-		params.data_logging_interval = 1;
-		params.snf_select.insert(HorizontalChargeField);
-
-		const double timeElapsed = params.dt * static_cast<double>(params.n_steps) * NANO; // [s]
-
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		grofile.atoms.pop_back();
-		topfile.GetMoleculeType().atoms.pop_back();
-
-		env.CreateSimulation(grofile, topfile, params);
-		const float electricFieldStrength = .5f ; // [V/nm]
-		env.getSimPtr()->box->uniformElectricField = UniformElectricField{ Float3{1.f, 0.f, 0.f }, electricFieldStrength };
-
-
-		const float particleCharge = env.getSimPtr()->box->persistentClusters[0].pqd[0].params.charge * KILO; // [C/mol]
-		const float particleMass = env.getSimPtr()->box->persistentClustersMetadata[0].mass[0]; // [kg/mol]
-
-		const float expectedVelocity = particleCharge * electricFieldStrength / NANO * timeElapsed / particleMass; // [m/s]
-		const float expectedKinE = PhysicsUtils::calcKineticEnergy(expectedVelocity, particleMass); // [J/mol]
-
-		RunOnGpu(env);
-
-
-		const float actualKineticEnergy = AnalyzeOnGpu(env).kin_energy.back();
-		const float error = std::abs(actualKineticEnergy - expectedKinE) / expectedKinE;
-		ASSERT(error < 0.01f, std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedKinE, actualKineticEnergy));
-
-
-
-		return LimaUnittestResult{ true, "", envmode == Full};
+	// Apply a constant electric force and verify the resulting kinetic energy.
+	std::function<LimaUnittestResult()> TestIntegration(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = AutomatedTestsDir() / "Pool";
+		constexpr float fieldStrength = .5f; // [V/nm]
+		auto job = ForceCorrectness::MakeJob(workDir, envmode, true);
+		job.simParams = SimParams{};
+		job.simParams->n_steps = 1000;
+		job.simParams->enable_electrostatics = true;
+		job.simParams->data_logging_interval = 1;
+		job.simParams->snf_select.insert(HorizontalChargeField);
+		job.configureInput = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			grofile.atoms.pop_back(); topfile.GetMoleculeType().atoms.pop_back();
+		};
+		job.configure = [](Simulation& simulation) {
+			simulation.box->uniformElectricField = UniformElectricField{ Float3{ 1.f, 0.f, 0.f }, fieldStrength };
+		};
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), envmode]() mutable {
+		auto completed = handle.Get();
+		const auto& simulation = *completed.simulation;
+		const float charge = simulation.box->persistentClusters[0].pqd[0].params.charge * KILO; // [C/mol]
+		const float mass = simulation.box->persistentClustersMetadata[0].mass[0]; // [kg/mol]
+		const double elapsed = simulation.simParams.dt
+			* static_cast<double>(simulation.simParams.n_steps) * NANO; // [s]
+		const float expectedVelocity = charge * fieldStrength / NANO * elapsed / mass; // [m/s]
+		const float expectedEnergy = PhysicsUtils::calcKineticEnergy(expectedVelocity, mass); // [J/mol]
+		const float actualEnergy = completed.analysis->kin_energy.back();
+		return LimaUnittestResult{ std::abs(actualEnergy - expectedEnergy) / expectedEnergy < .01f,
+			std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedEnergy, actualEnergy), envmode == Full };
+		};
 	}
-
 }

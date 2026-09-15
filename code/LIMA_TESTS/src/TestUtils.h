@@ -22,40 +22,8 @@
 #include <utility>
 
 namespace TestUtils {
-	std::mutex& GpuTestMutex() {
-		static std::mutex mutex;
-		return mutex;
-	}
-
-	[[nodiscard]] std::unique_lock<std::mutex> AcquireGpu() {
-		return std::unique_lock{ GpuTestMutex() };
-	}
-
-	template<typename Callback>
-	decltype(auto) WithGpu(Callback&& callback) {
-		auto gpuLock = AcquireGpu();
-		return std::forward<Callback>(callback)();
-	}
-
-	std::chrono::duration<double> RunOnGpu(Environment& environment) {
-		auto gpuLock = AcquireGpu();
-		try {
-			const auto elapsed = environment.run();
-			environment.ReleaseEngine();
-			return elapsed;
-		}
-		catch (...) {
-			environment.ReleaseEngine();
-			throw;
-		}
-	}
-
 	// Analysis accesses CUDA-backed simulation data; keep it inside the GPU lease
 	// and return an owning copy so callers can aggregate results without the lock.
-	SimAnalysis::AnalyzedPackage AnalyzeOnGpu(Environment& environment) {
-		return WithGpu([&]() { return environment.getAnalyzedPackage(); });
-	}
-
 	fs::path AutomatedTestsDir() { return FileUtils::GetLimaDir() / "tests" / "automatedtests"; }
 	fs::path HeavyTestsDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
 
@@ -411,13 +379,10 @@ namespace TestUtils {
     } while (0)
 
 	struct LimaUnittest {
-		LimaUnittest(const std::string& name, std::function<LimaUnittestResult()> test, bool parallelizable = true) :
-			name(name),
-			test(test),
-			parallelizable(parallelizable)
-		{}
+		LimaUnittest(std::string name, std::function<LimaUnittestResult()> test)
+			: name(std::move(name)), test(std::move(test)) {}
 
-		void execute() noexcept {
+		void Execute() noexcept {
 			auto*& activeResults = ActiveVarianceCoefficientResults();
 			auto* previousResults = activeResults;
 			activeResults = &varianceResults;
@@ -427,8 +392,7 @@ namespace TestUtils {
 				elapsed = timer.Elapsed();
 			}
 			catch (const std::exception& ex) {
-				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
-				testresult = std::make_unique<LimaUnittestResult>(false, err_desc, false);
+				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw exception: " + std::string(ex.what()), false);
 			}
 			catch (...) {
 				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw an unknown exception", false);
@@ -436,142 +400,93 @@ namespace TestUtils {
 			activeResults = previousResults;
 		}
 
-		void printResult() const {
+		void Print() const {
 			std::cout << "Test " << name << " ";
-			int str_len = 6 + static_cast<int>(name.length());
-			while (str_len++ < 61) { std::cout << " "; }
+			int length = 6 + static_cast<int>(name.length());
+			while (length++ < 61) std::cout << ' ';
 			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed, 1, 2) + ")");
+			std::cout << std::flush;
 		}
 
-		const std::function<LimaUnittestResult()> test;
+		std::string name;
+		std::function<LimaUnittestResult()> test;
 		std::unique_ptr<LimaUnittestResult> testresult;
-		const std::string name;
-		const bool parallelizable;
 		std::chrono::duration<double> elapsed{};
 		std::map<std::string, VarianceCoefficientThresholds> varianceResults;
 	};
 
-
 	class LimaUnittestManager {
 	public:
-		explicit LimaUnittestManager(std::size_t nParallelTests = 6)
-			: maxParallelTests(std::min<std::size_t>(nParallelTests, std::max(std::thread::hardware_concurrency(), 1u))) {
-			ResetVarianceCoefficientResults();
-		}
+		LimaUnittestManager() { ResetVarianceCoefficientResults(); }
 		~LimaUnittestManager() {
 			Run();
 			WriteActualVarianceCoefficientResults();
-			if (successCount == tests.size()) {
-				setConsoleTextColorGreen();
-			}
-			else {
-				setConsoleTextColorRed();
-			}
-			
+			if (successCount == tests.size()) setConsoleTextColorGreen();
+			else setConsoleTextColorRed();
 			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successCount, tests.size());
-
-			for (const auto& test : tests) {
-				if (!test->testresult->success) {
-					test->testresult->printStatus();
-				}
-			}
-
+			for (const auto& test : tests)
+				if (!test->testresult->success) test->testresult->printStatus();
 			setConsoleTextColorDefault();
 		}
 
-		void addTest(std::unique_ptr<LimaUnittest> test) {
-			tests.push_back(std::move(test));
+		void addTest(std::unique_ptr<LimaUnittest> test) { 
+			tests.push_back(std::move(test)); 
+		}
+		void AddTest(std::string name, std::function<LimaUnittestResult()> test) {
+			addTest(std::make_unique<LimaUnittest>(std::move(name), std::move(test)));
 		}
 
 	private:
-		void PublishResult(const LimaUnittest& test) {
-			PublishVarianceCoefficientResults(test.varianceResults);
-			test.printResult();
-			if (test.testresult->success) ++successCount;
-		}
-
-		void RunParallelRange(std::size_t begin, std::size_t end) {
-			if (begin == end) return;
-			std::atomic<std::size_t> next{ begin };
-			std::vector<char> completed(tests.size());
-			std::mutex completionMutex;
-			std::condition_variable completionChanged;
-			std::mutex serialTestMutex;
-			const std::size_t workerCount = std::min(maxParallelTests, end - begin);
-			std::vector<std::jthread> workers;
-			workers.reserve(workerCount);
-			for (std::size_t worker = 0; worker < workerCount; ++worker) {
-				workers.emplace_back([&] {
-					while (true) {
-						const std::size_t index = next.fetch_add(1);
-						if (index >= end) break;
-						if (tests[index]->parallelizable) {
-							tests[index]->execute();
-						}
-						else {
-							const std::lock_guard serialLock(serialTestMutex);
-							tests[index]->execute();
-						}
-						{
-							const std::lock_guard lock(completionMutex);
-							completed[index] = true;
-						}
-						completionChanged.notify_all();
-					}
-				});
-			}
-
-			for (std::size_t index = begin; index < end; ++index) {
-				std::unique_lock lock(completionMutex);
-				completionChanged.wait(lock, [&] { return completed[index]; });
-				lock.unlock();
-				PublishResult(*tests[index]);
-			}
-		}
-
 		void Run() {
 			if (hasRun) return;
 			hasRun = true;
-			RunParallelRange(0, tests.size());
+			for (auto& test : tests) {
+				test->Execute();
+				PublishVarianceCoefficientResults(test->varianceResults);
+				test->Print();
+				if (test->testresult->success) successCount++;
+			}
 		}
 
 		std::vector<std::unique_ptr<LimaUnittest>> tests;
 		int successCount = 0;
-		std::size_t maxParallelTests;
 		bool hasRun = false;
 	};
 
-
-
-
-	static LimaUnittestResult loadAndRunBasicSimulation(
-		const string& folder_name,
+	static std::function<LimaUnittestResult()> loadAndRunBasicSimulation(
+		Environment& environment,
+		std::string folderName,
 		EnvMode envmode,
-		const std::string& test_name,
-		std::optional<SimParams> ip = {}
-	)
+		std::string testName,
+		std::optional<SimParams> simParams = {})
 	{
-		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
-		RunOnGpu(*env);
+		const fs::path workDir = AutomatedTestsDir() / folderName;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.groPath = getMostSuitableGroFile(workDir);
+		job.topPath = workDir / "molecule/topol.top";
+		job.simParamsPath = workDir / "sim_params.txt";
+		job.simParams = std::move(simParams);
+		job.mode = envmode;
+		job.analyze = true;
 
-		const auto analytics = AnalyzeOnGpu(*env);
-		
-		float varcoff = analytics.variance_coefficient;
-		
-
-		if (envmode != Headless) {
-			analytics.Print();
-			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics.pot_energy});
-			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics.kin_energy});
-			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics.total_energy});
-			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), testName = std::move(testName), envmode]() mutable {
+		auto completed = handle.Get();
+		if (!completed.simulation)
+			return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
+		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
+			return LimaUnittestResult{ false,
+				std::format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
+				envmode == Full };
 		}
-		ASSERT(env->getSimPtr()->getStep() == env->getSimPtr()->simParams.n_steps, std::format("Simulation did not finish {}/{}",
-			env->getSimPtr()->getStep(), env->getSimPtr()->simParams.n_steps));
+		if (!completed.analysis)
+			return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
 
-		const auto result = evaluateTest(test_name, { varcoff }, {analytics.energy_gradient});
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		const auto evaluation = evaluateTest(testName,
+			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
+		return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
+		};
 	}
 
 	void stressTest(std::function<void()> func, size_t reps) {
@@ -738,5 +653,3 @@ namespace TestUtils {
 	}
 
 } // namespace TestUtils
-
-

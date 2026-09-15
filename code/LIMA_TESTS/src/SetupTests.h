@@ -2,29 +2,31 @@
 
 using namespace TestUtils;
 
-LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
-	//const fs::path workDir = simulations_dir / "pool";
+std::function<LimaUnittestResult()> TestBoxIsSavedCorrectlyBetweenSimulations(Environment& environment, EnvMode envmode) {
 	const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
+	SimulationJob first;
+	first.workDir = workDir;
+	first.groPath = workDir / "molecule/conf.gro";
+	first.topPath = workDir / "molecule/topol.top";
+	first.simParams = SimParams{};
+	first.simParams->n_steps = 100;
+	first.simParams->dt = 1.f * FEMTO_TO_NANO;
+	first.simParams->data_logging_interval = 1;
+	auto firstHandle = environment.Submit(std::move(first));
+	return [firstHandle = std::move(firstHandle), &environment, workDir, envmode]() mutable {
+	auto firstResult = firstHandle.Get();
 
-	Environment env{ workDir , envmode};
+	SimulationJob second;
+	second.workDir = workDir;
+	second.initialSimulation = std::move(firstResult.simulation);
+	second.simParams = SimParams{};
+	second.simParams->dt = 0.f;
+	second.simParams->n_steps = 1;
+	auto secondResult = environment.Submit(std::move(second)).Get();
+	return LimaUnittestResult{ static_cast<bool>(secondResult.simulation), "Success", envmode == Full };
 
-	SimParams simparams;
-	simparams.n_steps = 100;
-	simparams.dt = 1.f * FEMTO_TO_NANO;
-	simparams.data_logging_interval = 1;
-
-	env.CreateSimulation(GroFile{workDir / "molecule/conf.gro"}, TopologyFile{workDir / "molecule/topol.top"}, simparams);
-	//env.getSimPtr()->box->compounds[0].vels_prev[0] = Float3(1, 0, 0) * 2000.f;
-	RunOnGpu(env);
-	auto sim1 = env.GetSim();
-
-
-	simparams.dt = 0.f;
-	simparams.n_steps = 1;
-	env.CreateSimulation(*sim1, simparams);
-	RunOnGpu(env);
-	auto sim2 = env.GetSim();
-	/*for (int cid = 0; cid < sim2->box->boxparams.n_compounds; cid++) {
+	// TODO: Wtf is this test??
+		/*for (int cid = 0; cid < sim2->box->boxparams.n_compounds; cid++) {
 		for (int pid = 0; pid < sim2->box->compounds[cid].n_particles; pid++) {
 			Float3 pos1 = sim1->traj_buffer->GetMostRecentCompoundparticleDatapoint(cid, pid, 100-1);
 
@@ -33,8 +35,5 @@ LimaUnittestResult TestBoxIsSavedCorrectlyBetweenSimulations(EnvMode envmode) {
 			ASSERT(pos1 == pos2, "Position of compound " + std::to_string(cid) + " particle " + std::to_string(pid) + " is not the same between simulations");
 		}
 	}*/
-
-
-	return LimaUnittestResult{ true , "Success", envmode == Full };
-	//return LimaUnittestResult{ true, "Success", envmode == Full };
+	};
 }

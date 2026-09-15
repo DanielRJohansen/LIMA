@@ -252,11 +252,12 @@ int main() {
     testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;} }))
 
 #define ADD_SERIAL_TEST(description, execution_function) \
-    testman.addTest(std::make_unique<LimaUnittest>(LimaUnittest{ description, [](){ return execution_function;}, false }))
+    ADD_TEST(description, execution_function)
 
 // Runs all unit tests with the fastest/crucial ones first
 void RunAllUnitTests() {
 	TimeIt timer("RunAllUnitTests", true);
+	Environment environment;
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
 
@@ -274,28 +275,28 @@ void RunAllUnitTests() {
 
 
 	// Isolated forces sanity checks
-	ADD_TEST("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(envmode));
-	ADD_TEST("SinglebondOscillationTest", SinglebondOscillationTest(envmode));
-	ADD_TEST("UreyBradleyForceAndPotentialSanityCheck", UreyBradleyForceAndPotentialSanityCheck(envmode));
-	ADD_TEST("PairbondForceAndPotentialSanityCheck", PairbondForceAndPotentialSanityCheck(envmode));
-	ADD_TEST("TestIntegration", TestIntegration(envmode));
+	testman.AddTest("SinglebondForceAndPotentialSanityCheck", SinglebondForceAndPotentialSanityCheck(environment, envmode));
+	testman.AddTest("SinglebondOscillationTest", SinglebondOscillationTest(environment, envmode));
+	testman.AddTest("UreyBradleyForceAndPotentialSanityCheck", UreyBradleyForceAndPotentialSanityCheck(environment, envmode));
+	testman.AddTest("PairbondForceAndPotentialSanityCheck", PairbondForceAndPotentialSanityCheck(environment, envmode));
+	testman.AddTest("TestIntegration", TestIntegration(environment, envmode));
 
 	// Stability tests
-	ADD_TEST("doPoolBenchmark", doPoolBenchmark(envmode));
-	ADD_TEST("doPoolCompSolBenchmark", doPoolCompSolBenchmark(envmode));
-	ADD_TEST("doSinglebondBenchmark", doSinglebondBenchmark(envmode));
-	ADD_TEST("doAnglebondBenchmark", doAnglebondBenchmark(envmode));
-	ADD_TEST("doDihedralbondBenchmark", doDihedralbondBenchmark(envmode));
-	ADD_TEST("doImproperDihedralBenchmark", doImproperDihedralBenchmark(envmode));
+	testman.AddTest("doPoolBenchmark", doPoolBenchmark(environment, envmode));
+	testman.AddTest("doPoolCompSolBenchmark", doPoolCompSolBenchmark(environment, envmode));
+	testman.AddTest("doSinglebondBenchmark", doSinglebondBenchmark(environment, envmode));
+	testman.AddTest("doAnglebondBenchmark", doAnglebondBenchmark(environment, envmode));
+	testman.AddTest("doDihedralbondBenchmark", doDihedralbondBenchmark(environment, envmode));
+	testman.AddTest("doImproperDihedralBenchmark", doImproperDihedralBenchmark(environment, envmode));
 
 	// Smaller compound tests
-	ADD_TEST("doMethionineBenchmark", loadAndRunBasicSimulation("Met", envmode, "doMethionineBenchmark"));
-	ADD_TEST("doEightResiduesNoSolvent", doEightResiduesNoSolvent(envmode));
+	testman.AddTest("doMethionineBenchmark", loadAndRunBasicSimulation(environment, "Met", envmode, "doMethionineBenchmark"));
+	testman.AddTest("doEightResiduesNoSolvent", loadAndRunBasicSimulation(environment, "8ResNoSol", envmode, "doEightResiduesNoSolvent"));
 
 	// Larger tests
-	ADD_TEST("SolventBenchmark", loadAndRunBasicSimulation("Solvents", envmode, "SolventBenchmark"));
-	ADD_TEST("T4Lysozyme", loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, "T4Lysozyme"));
-	ADD_SERIAL_TEST("Deterministic Simulations", TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, "Deterministic Simulations"); }, 2, envmode));
+	testman.AddTest("SolventBenchmark", loadAndRunBasicSimulation(environment, "Solvents", envmode, "SolventBenchmark"));
+	testman.AddTest("T4Lysozyme", loadAndEMAndRunBasicSimulation(environment, "T4Lysozyme", envmode, "T4Lysozyme"));
+	testman.AddTest("Deterministic Simulations", TestDeterministic(environment, envmode));
 
 
 	// Electrostatics
@@ -309,7 +310,8 @@ void RunAllUnitTests() {
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));
 
 	// Test Setup
-	ADD_SERIAL_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations(envmode));
+	testman.AddTest("TestBoxIsSavedCorrectlyBetweenSimulations",
+		TestBoxIsSavedCorrectlyBetweenSimulations(environment, envmode));
 
 	// Programs test
 	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile(envmode));
@@ -321,7 +323,7 @@ void RunAllUnitTests() {
 	ADD_SERIAL_TEST("TestAllStockholmlipids", TestAllStockholmlipids(envmode));
 
 	// Gromacs correctness
-	ADD_TEST("ForceComparisons", ForceComparisons::DoAllForceComparisons(envmode));
+	testman.AddTest("ForceComparisons", ForceComparisons::DoAllForceComparisons(environment, envmode));
 
 	//ADD_TEST("InsertMoleculesAndDoStaticbodyEM", TestMinorPrograms::InsertMoleculesAndDoStaticbodyEM(envmode));
 
@@ -330,8 +332,8 @@ void RunAllUnitTests() {
 
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif(envmode));
-	ADD_SERIAL_TEST("T4", Benchmarks::T4(envmode, 200, Benchmarks::automatedTestRuns));
-	ADD_SERIAL_TEST("stmv sim performance", Benchmarks::STMV(envmode, 200, Benchmarks::automatedTestRuns));
+	testman.AddTest("T4", Benchmarks::T4(environment, envmode, 200, Benchmarks::automatedTestRuns));
+	testman.AddTest("stmv sim performance", Benchmarks::STMV(environment, envmode, 200, Benchmarks::automatedTestRuns));
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

@@ -3,7 +3,6 @@
 #include <string>
 #include <optional>
 #include <numeric>
-
 #include "Environment.h"
 #include "MDFiles.h"
 #include "BoxImageBuilder.h"
@@ -17,6 +16,59 @@
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
 
+struct ScheduledSimulationState {
+	mutable std::mutex mutex;
+	std::condition_variable completed;
+	std::optional<SimulationResult> result;
+	std::exception_ptr error;
+	bool consumed = false;
+
+	void SetResult(SimulationResult value) {
+		{
+			const std::lock_guard lock(mutex);
+			result.emplace(std::move(value));
+		}
+		completed.notify_all();
+	}
+
+	void SetError(std::exception_ptr value) {
+		{
+			const std::lock_guard lock(mutex);
+			error = std::move(value);
+		}
+		completed.notify_all();
+	}
+
+	bool Ready() const {
+		const std::lock_guard lock(mutex);
+		return result.has_value() || error;
+	}
+};
+
+SimulationHandle::SimulationHandle(std::shared_ptr<ScheduledSimulationState> state)
+	: state(std::move(state)) {}
+
+void SimulationHandle::Wait() const {
+	if (!state)
+		throw std::runtime_error("Cannot wait for an empty simulation handle");
+	std::unique_lock lock(state->mutex);
+	state->completed.wait(lock, [&] { return state->result.has_value() || state->error; });
+}
+
+bool SimulationHandle::IsReady() const {
+	return state && state->Ready();
+}
+
+SimulationResult SimulationHandle::Get() {
+	Wait();
+	std::lock_guard lock(state->mutex);
+	if (state->consumed)
+		throw std::runtime_error("Simulation result has already been consumed");
+	state->consumed = true;
+	if (state->error)
+		std::rethrow_exception(state->error);
+	return std::move(*state->result);
+}
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
 const int STEPS_PER_UPDATE = 100;
@@ -50,6 +102,11 @@ void Environment::SetSimulation(std::unique_ptr<Simulation> simulation) {
 	simulationSession->simulation = std::move(simulation);
 }
 
+Environment::Environment()
+	: m_mode(EnvMode::Headless) {
+	StartScheduling();
+}
+
 Environment::Environment(const fs::path& workdir, EnvMode mode)
 	: workDir(workdir)
 	, m_mode(mode)
@@ -66,7 +123,161 @@ Environment::Environment(const fs::path& workdir, EnvMode mode)
 	}
 }
 
-Environment::~Environment() {}
+Environment::~Environment() {
+	StopScheduling();
+}
+
+SimulationHandle Environment::Submit(SimulationJob job) {
+	auto state = std::make_shared<ScheduledSimulationState>();
+	{
+		const std::lock_guard lock(schedulingMutex);
+		if (stopping)
+			throw std::runtime_error("Cannot submit a simulation while Environment is stopping");
+		pendingSimulations.push_back({ std::move(job), state });
+	}
+	schedulerWakeup.notify_one();
+	return SimulationHandle{ std::move(state) };
+}
+
+void Environment::StartScheduling() {
+	const std::lock_guard lock(schedulingMutex);
+	if (coordinator.joinable())
+		return;
+	stopping = false;
+	coordinator = std::jthread([this] { MainLoop(); });
+}
+
+void Environment::StopScheduling() {
+	{
+		const std::lock_guard lock(schedulingMutex);
+		stopping = true;
+	}
+	// MainLoop may be asleep with an empty queue. Wake it so it can observe
+	// stopping; accepted jobs are drained before the thread exits.
+	schedulerWakeup.notify_one();
+	if (coordinator.joinable())
+		coordinator.join();
+}
+
+void Environment::MainLoop() {
+	std::jthread preprocessThread;
+	std::jthread simulationThread;
+	while (true) {
+		std::optional<PreparedSimulation> simulationToRun;
+		std::optional<QueuedSimulation> simulationToPreprocess;
+		{
+			std::unique_lock lock(schedulingMutex);
+			schedulerWakeup.wait(lock, [this] {
+				return (!runningSimulation && preparedSimulation)
+					|| (!preparingSimulation && !preparedSimulation && !pendingSimulations.empty())
+					|| (stopping && pendingSimulations.empty() && !preparingSimulation
+						&& !preparedSimulation && !runningSimulation);
+			});
+
+			if (stopping && pendingSimulations.empty() && !preparingSimulation
+				&& !preparedSimulation && !runningSimulation)
+				break;
+
+			if (!runningSimulation && preparedSimulation) {
+				simulationToRun.emplace(std::move(*preparedSimulation));
+				preparedSimulation.reset();
+				runningSimulation = true;
+			}
+			if (!preparingSimulation && !preparedSimulation && !pendingSimulations.empty()) {
+				simulationToPreprocess.emplace(std::move(pendingSimulations.front()));
+				pendingSimulations.pop_front();
+				preparingSimulation = true;
+			}
+		}
+
+		if (simulationToRun) {
+			simulationThread = std::jthread(
+				[this, next = std::move(*simulationToRun)]() mutable { RunPreparedSimulation(std::move(next)); });
+		}
+		if (simulationToPreprocess) {
+			preprocessThread = std::jthread(
+				[this, next = std::move(*simulationToPreprocess)]() mutable { Preprocess(std::move(next)); });
+		}
+	}
+}
+
+void Environment::Preprocess(QueuedSimulation next) {
+	try {
+		auto simulation = BuildSimulation(next.job);
+		if (next.job.configure)
+			next.job.configure(*simulation);
+		const std::lock_guard lock(schedulingMutex);
+		preparedSimulation.emplace(PreparedSimulation{
+			std::move(next.job), std::move(next.state), std::move(simulation) });
+	}
+	catch (...) {
+		next.state->SetError(std::current_exception());
+	}
+	{
+		const std::lock_guard lock(schedulingMutex);
+		preparingSimulation = false;
+	}
+	schedulerWakeup.notify_one();
+}
+
+void Environment::RunPreparedSimulation(PreparedSimulation next) {
+	try {
+		workDir = next.job.workDir;
+		m_mode = next.job.mode;
+		simulationSession = std::make_unique<SimulationSession>(std::move(next.simulation), m_mode, workDir);
+		const auto elapsed = run();
+		SimulationSession& session = Session();
+		if (session.engine) {
+			CudaBuffer<PersistentCluster>& deviceState = session.engine->OffloadPclusterState();
+			session.simulation->box->persistentClusters = GenericCopyToHost(
+				deviceState.Get(), session.simulation->box->persistentClusters.size());
+		}
+		std::optional<SimAnalysis::AnalyzedPackage> analysis;
+		if (next.job.analyze)
+			analysis.emplace(getAnalyzedPackage());
+
+		SimulationResult result{ GetSim(), std::move(analysis), elapsed };
+		next.state->SetResult(std::move(result));
+	}
+	catch (...) {
+		next.state->SetError(std::current_exception());
+	}
+	{
+		const std::lock_guard lock(schedulingMutex);
+		runningSimulation = false;
+	}
+	schedulerWakeup.notify_one();
+}
+
+std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {
+	const fs::path simParamsPath = job.simParamsPath.is_absolute() ? job.simParamsPath : job.workDir / job.simParamsPath;
+	if (!job.simParams)
+		job.simParams.emplace(simParamsPath);
+	job.configureParams(*job.simParams);
+	const SimParams& simParams = *job.simParams;
+
+	if (job.initialSimulation) {
+		auto simulation = std::make_unique<Simulation>(simParams);
+		BoxBuilder::copyBoxState(*simulation, std::move(job.initialSimulation->box), job.initialSimulation->getStep());
+		simulation->boxImage = std::move(job.initialSimulation->boxImage);
+		return simulation;
+	}
+
+	const fs::path groPath = job.groPath.is_absolute() ? job.groPath : job.workDir / job.groPath;
+	const fs::path topPath = job.topPath.is_absolute() ? job.topPath : job.workDir / job.topPath;
+	GroFile grofile{ groPath };
+	TopologyFile topolfile{ topPath };
+	job.configureInput(grofile, topolfile, *job.simParams);
+
+	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
+		grofile, topolfile, V1,
+		std::make_unique<LimaLogger>(LimaLogger::normal, job.mode, "moleculebuilder", job.workDir),
+		IGNORE_HYDROGEN, simParams);
+	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage));
+	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
+	return simulation;
+}
+
 
 void Environment::CreateSimulation(const Float3& boxsize_nm) {
 	SimParams simparams{};

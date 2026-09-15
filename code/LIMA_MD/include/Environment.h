@@ -59,8 +59,11 @@ public:
 	SimulationHandle(SimulationHandle&&) noexcept = default;
 	SimulationHandle& operator=(SimulationHandle&&) noexcept = default;
 
+	// Blocks the calling thread until the job finishes; does not consume the result.
 	void Wait() const;
+	// Checks completion without blocking or consuming the result.
 	bool IsReady() const;
+	// Blocks until completion, rethrows job errors, and transfers the result; may only be called once across all handle copies.
 	SimulationResult Get();
 
 private:

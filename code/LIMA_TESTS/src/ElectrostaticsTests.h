@@ -78,21 +78,17 @@ namespace ElectrostaticsTests {
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		params.cutoff_nm = 2.f;
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 8.f, 4.f, 4.f };
-		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
-		grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-
-
 		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = work_folder;
-		job.grofile = std::move(grofile);
-		job.topfile.emplace(std::move(topfile));
 		job.simParams = params;
 		job.mode = envmode;
 		job.analyze = true;
+		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+			grofile.box_size = Float3{ 8.f, 4.f, 4.f };
+			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
+			grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
+		};
 		auto result = environment.Submit(std::move(job)).Get();
 
 		const float actualVC = result.analysis->variance_coefficient;
@@ -102,12 +98,11 @@ namespace ElectrostaticsTests {
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
-	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
-		const fs::path workDir = AutomatedTestsDir() / dirName;
-		GroFile grofile{};
+	static void MakeChargeParticlesSim(
+		GroFile& grofile, TopologyFile& topfile, const fs::path& workDir,
+		const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
 		grofile.m_path = workDir / "conf.gro";
 		grofile.box_size = Float3{ boxLen };
-		TopologyFile topfile{};
 		topfile.SetSystem("MySystem");
 		topfile.path = workDir / "topol.top";
 
@@ -130,36 +125,39 @@ namespace ElectrostaticsTests {
 		topfile.printToFile();
 	}
 
-	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
-		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
-			AtomsSelection{
+	static std::function<LimaUnittestResult()> TestChargedParticlesVelocityInUniformElectricField(
+		Environment& environment, EnvMode envmode) {
+		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
+		AtomsSelection atoms{
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx1", 0, -1.f, 10.f}, 15},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx2", 0, -.5f, 10.f}, 15},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx3", 0, -0.f, 10.f}, 40},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx4", 0, 0.5f, 10.f}, 15},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx5", 0, 1.f, 10.f},  15}
-			}, 
-			5.f
-			);
+			};
 
 		SimParams simparams;
 		simparams.dt = 0.2f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select.insert(HorizontalChargeField);
-		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
-		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
-		job.groPath = workDir / "conf.gro";
-		job.topPath = workDir / "topol.top";
+		job.grofile.emplace();
+		job.topfile.emplace();
 		job.simParams = simparams;
 		job.mode = envmode;
+		job.configureInput = [workDir, atoms = std::move(atoms)](
+			GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			MakeChargeParticlesSim(grofile, topfile, workDir, 7.f, atoms, 5.f);
+		};
 		job.configure = [](Simulation& simulation) {
 			simulation.box->uniformElectricField =
 				UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f };
 		};
-		auto result = environment.Submit(std::move(job)).Get();
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), workDir, envmode]() mutable {
+		auto result = handle.Get();
 
 		if (envmode == Full)
 			TestUtils::CompareForces1To1(workDir, *result.simulation, false);
@@ -221,6 +219,7 @@ namespace ElectrostaticsTests {
 		}
 
 		return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
+		};
 	}
 
 	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -308,19 +307,15 @@ namespace ElectrostaticsTests {
 	//}
 
 
-	LimaUnittestResult TestLongrangeEsNoLJTwoParticles(EnvMode envmode) {
+	std::function<LimaUnittestResult()> TestLongrangeEsNoLJTwoParticles(
+		Environment& environment, EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment& environment = Environment::Get();
 
 		struct TestSetup {
 			Float3 p0, p1;
 			std::string name{};
 			Float3 mirrorDir{ -1,0, 0 };
 		};
-
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 30.f };
 
 		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
 		std::vector<TestSetup> testSetups{
@@ -329,7 +324,7 @@ namespace ElectrostaticsTests {
 			,{Float3{ 4.025f, 11.025f, 9.025f }, Float3{ 10.025f, 10.025f, 10.025f }, "3d force"}
 			,{Float3{ 9.6f, 10.f, 10.f }, Float3{ 10.f, 10.f, 10.f}, "Within SR range"}
 			,{Float3{ .1f, 10.f, 10.f }, Float3{ 5.6f, 10.f, 10.f }, "Close to boundary"}
-			,{Float3{ .1f, 10.f, 10.f }, Float3{ grofile.box_size.x - 2.f, 10.f, 10.f }, "With hyperpos closest", {0.f,0.f, 0.f}}
+			,{Float3{ .1f, 10.f, 10.f }, Float3{ 28.f, 10.f, 10.f }, "With hyperpos closest", {0.f,0.f, 0.f}}
 		};
 
 
@@ -341,37 +336,34 @@ namespace ElectrostaticsTests {
 		params.data_logging_interval = 1;
 		const float c0 = -1.f * elementaryChargeToKiloCoulombPerMole;
 		const float c1 = 1.f * elementaryChargeToKiloCoulombPerMole;
-		for (int testIndex = 0; testIndex < testSetups.size(); testIndex++) {
-			const auto setup = testSetups[testIndex];
-
-			grofile.atoms[0].position = setup.p0;
-			grofile.atoms[1].position = setup.p1;
-
+		std::vector<SimulationHandle> handles;
+		handles.reserve(testSetups.size());
+		for (const auto& setup : testSetups) {
 			SimulationJob job;
 			job.workDir = work_folder;
-			job.grofile = grofile;
-			job.topfile.emplace(topfile);
 			job.simParams = params;
 			job.mode = envmode;
+			job.configureInput = [setup](GroFile& grofile, TopologyFile&, SimParams&) {
+				grofile.box_size = Float3{ 30.f };
+				grofile.atoms[0].position = setup.p0;
+				grofile.atoms[1].position = setup.p1;
+			};
 			job.configure = [c0, c1](Simulation& simulation) {
 				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
 				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
 			};
+			handles.push_back(environment.Submit(std::move(job)));
+		}
 
-
-
-			/*std::vector<ForceEnergy> forceEnergy(2);
-			PMEtest::computePME({ setup.p0, setup.p1 }, { c0, c1 }, grofile.box_size.x, 2.5f, forceEnergy);*/
-
-
-
-
-			Float3 hyperposOther = grofile.atoms[1].position;
-			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
+		return [handles = std::move(handles), testSetups = std::move(testSetups), c0, c1, envmode]() mutable {
+		for (size_t testIndex = 0; testIndex < testSetups.size(); testIndex++) {
+			const auto& setup = testSetups[testIndex];
+			Float3 hyperposOther = setup.p1;
+			BoundaryConditionPublic::applyHyperposNM(setup.p0, hyperposOther, Float3{ 30.f }, PBC);
 			
-			const Float3 diff = grofile.atoms[0].position - hyperposOther;
+			const Float3 diff = setup.p0 - hyperposOther;
 
-			const Float3 diffFromMirror = setup.p0 - (setup.p1 + (Float3(grofile.box_size) * setup.mirrorDir));
+			const Float3 diffFromMirror = setup.p0 - (setup.p1 + (Float3{ 30.f } * setup.mirrorDir));
 			const Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diffFromMirror);
 			const float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diffFromMirror.len()) * 0.5f;
 
@@ -380,7 +372,7 @@ namespace ElectrostaticsTests {
 			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff) + mirrorForce;
 
 
-			auto sim = environment.Submit(std::move(job)).Get().simulation;
+			auto sim = handles[testIndex].Get().simulation;
 
 			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
@@ -408,15 +400,12 @@ namespace ElectrostaticsTests {
 		}
 
 		return LimaUnittestResult{ true, "Success", envmode == Full };
+		};
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 		Environment& environment = Environment::Get();
-
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 30.f };
 
 		SimParams params{};
 		params.n_steps = 1;
@@ -430,29 +419,32 @@ namespace ElectrostaticsTests {
 		std::vector<float> distances;
 
 		for (float dist = 15.f; dist > 0.4; dist -= 1.13f) {
-			grofile.atoms[0].position = Float3{ 15.025f, 10.025f, 10.025f };
-			grofile.atoms[1].position = grofile.atoms[0].position - Float3{ dist, 0.f, 0.f };
+			const Float3 p0{ 15.025f, 10.025f, 10.025f };
+			const Float3 p1 = p0 - Float3{ dist, 0.f, 0.f };
 
 			SimulationJob job;
 			job.workDir = work_folder;
-			job.grofile = grofile;
-			job.topfile.emplace(topfile);
 			job.simParams = params;
 			job.mode = envmode;
+			job.configureInput = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
+				grofile.box_size = Float3{ 30.f };
+				grofile.atoms[0].position = p0;
+				grofile.atoms[1].position = p1;
+			};
 			job.configure = [c0, c1](Simulation& simulation) {
 				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
 				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
 			};
 
 
-			Float3 hyperposOther = grofile.atoms[1].position;
-			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
-			const Float3 diff = grofile.atoms[0].position - hyperposOther;
+			Float3 hyperposOther = p1;
+			BoundaryConditionPublic::applyHyperposNM(p0, hyperposOther, Float3{ 30.f }, PBC);
+			const Float3 diff = p0 - hyperposOther;
 
-//			Float3 ghostforce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - grofile.box_size.x , 0.f, 0.f });
+
 			//ForceEnergy mirrorFE = CalcImmediateMirrorForceEnergy(diff, c0 * c1, grofile.box_size);
-			Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - grofile.box_size.x , 0.f, 0.f });
-			float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, (Float3{ diff.x - grofile.box_size.x , 0.f, 0.f }).len()) * 0.5f;
+			Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - 30.f, 0.f, 0.f });
+			float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, (Float3{ diff.x - 30.f, 0.f, 0.f }).len()) * 0.5f;
 			Float3 force = PhysicsUtils::CalcCoulumbForce(c0, c1, diff);
 			float pot = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f;
 
@@ -485,32 +477,31 @@ namespace ElectrostaticsTests {
 		Environment& environment = Environment::Get();
 
 
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 20.f };
-
 		SimParams params{};
 		params.n_steps = 500;
 		params.data_logging_interval = 1;
 		params.dt = 1.f * FEMTO_TO_NANO;
 
-		grofile.atoms[0].position = Float3{ 7.0f, 10.f, 10.f };
-		grofile.atoms[1].position = Float3{ 9.f, 10.f, 10.f };
+		const Float3 p0{ 7.0f, 10.f, 10.f };
+		const Float3 p1{ 9.f, 10.f, 10.f };
 
 		const float c0 = 1.f * elementaryChargeToKiloCoulombPerMole;
 		const float c1 = -c0;
 
 		SimulationJob job;
 		job.workDir = work_folder;
-		job.grofile = grofile;
-		job.topfile.emplace(topfile);
 		job.simParams = params;
 		job.mode = envmode;
 		job.analyze = true;
+		job.configureInput = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
+			grofile.box_size = Float3{ 20.f };
+			grofile.atoms[0].position = p0;
+			grofile.atoms[1].position = p1;
+		};
 
-		Float3 hyperposOther = grofile.atoms[1].position;
-		BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
-		const Float3 diff = grofile.atoms[0].position - hyperposOther;
+		Float3 hyperposOther = p1;
+		BoundaryConditionPublic::applyHyperposNM(p0, hyperposOther, Float3{ 20.f }, PBC);
+		const Float3 diff = p0 - hyperposOther;
 		const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f;
 		const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff);
 
@@ -541,37 +532,38 @@ namespace ElectrostaticsTests {
 
 
 	// Create many pos charged Ions as compounds. Set all LJ to 0. Compute exact SR and LR interactions between all particles. Run simulation 1 step, and compare the errors
-	LimaUnittestResult TestLongrangeEsNoLJManyParticles(EnvMode envmode) {
+	std::function<LimaUnittestResult()> TestLongrangeEsNoLJManyParticles(
+		Environment& environment, EnvMode envmode) {
 		const Float3 boxlen{ 20.f };
 		const float chargeExtern = 1.f;
 		const float charge = chargeExtern * elementaryChargeToKiloCoulombPerMole;
-		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", boxlen.x,
-			AtomsSelection{
+		AtomsSelection atoms{
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
-			},
-			1.f
-			);
+			};
 
 		const fs::path work_folder = HeavyTestsDir() / "ShortrangeElectrostaticsCompoundOnly/";
-		Environment& environment = Environment::Get();
 
 		
 		
 		SimParams params{};
 		params.n_steps = 2;
 		params.data_logging_interval = 1;
-		GroFile grofile{ work_folder / "conf.gro" };
-
-		TopologyFile topfile{ work_folder / "topol.top" };
-		//topfile.GetSystemMutable().molecules.resize(3);
-
 		SimulationJob job;
 		job.workDir = work_folder;
-		job.grofile = grofile;
-		job.topfile.emplace(topfile);
+		job.grofile.emplace();
+		job.topfile.emplace();
 		job.simParams = params;
 		job.mode = envmode;
-		auto result = environment.Submit(std::move(job)).Get();
+		auto generatedGrofile = std::make_shared<GroFile>();
+		job.configureInput = [work_folder, boxlen, atoms = std::move(atoms), generatedGrofile](
+			GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			MakeChargeParticlesSim(grofile, topfile, work_folder, boxlen.x, atoms, 1.f);
+			*generatedGrofile = grofile;
+		};
+		auto handle = environment.Submit(std::move(job));
+		return [handle = std::move(handle), generatedGrofile, boxlen, charge, envmode]() mutable {
+		auto result = handle.Get();
+		const GroFile& grofile = *generatedGrofile;
 
 
 		// Now compute all expected forces and potentials
@@ -633,6 +625,7 @@ namespace ElectrostaticsTests {
 		//ASSERT(maxForceError < 0.8f, std::format("Max Force Error {:.3e}", maxForceError));
 
 		return LimaUnittestResult{ true, "", envmode == Full };
+		};
 	}
 }
 

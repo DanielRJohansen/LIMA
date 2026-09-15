@@ -101,7 +101,7 @@ int main() {
 		constexpr auto envmode = EnvMode::Full;
 		//TestDisplayT4();
 		//ProgramsTests::TestToGmx_ciffile(envmode);
-		LiveEditTest();
+		//LiveEditTest();
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
@@ -300,16 +300,19 @@ void RunAllUnitTests() {
 
 	// Larger tests
 	testman.AddTest("SolventBenchmark", loadAndRunBasicSimulation(environment, "Solvents", envmode, "SolventBenchmark"));
-	testman.AddTest("T4Lysozyme", loadAndEMAndRunBasicSimulation(environment, "T4Lysozyme", envmode, "T4Lysozyme"));
+	testman.AddTest("T4Lysozyme", LoadEnergyMinAndRunBasicSimulation(environment, "T4Lysozyme", envmode, "T4Lysozyme"));
 	testman.AddTest("Deterministic Simulations", TestDeterministic(environment, envmode));
 
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck(envmode));
-	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles(envmode));
-	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles(envmode));
+	testman.AddTest("TestLongrangeEsNoLJTwoParticles",
+		TestLongrangeEsNoLJTwoParticles(environment, envmode));
+	testman.AddTest("TestLongrangeEsNoLJManyParticles",
+		TestLongrangeEsNoLJManyParticles(environment, envmode));
 	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
-	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField(envmode));
+	testman.AddTest("TestChargedParticlesVelocityInUniformElectricField",
+		TestChargedParticlesVelocityInUniformElectricField(environment, envmode));
 
 	// Test Forcefield and compoundbuilder
 	ADD_TEST("TestLimaChosesSameBondparametersAsGromacs", TestLimaChosesSameBondparametersAsGromacs(envmode));

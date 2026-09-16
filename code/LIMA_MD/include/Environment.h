@@ -191,7 +191,8 @@ private:
 	std::mutex schedulingMutex;
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
-	std::optional<PreparedSimulation> preparedSimulation;
+	static constexpr size_t maxPreparedSimulations = 3;
+	std::deque<PreparedSimulation> preparedSimulations;
 	bool preparingSimulation = false;
 	bool runningSimulation = false;
 	bool stopping = false;

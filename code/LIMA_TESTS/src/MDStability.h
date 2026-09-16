@@ -13,20 +13,11 @@ namespace TestMDStability {
 	using namespace TestUtils;
 
 	static SimulationJob MakeEnergyMinJob(const fs::path& workDir, EnvMode envmode) {
-		SimParams emParams;
-		emParams.em_variant = true;
-		emParams.dt = 1.5f * FEMTO_TO_NANO;
-		emParams.em_force_tolerance = 100.f;
-		emParams.data_logging_interval = 50;
-		emParams.enable_electrostatics = true;
-		emParams.n_steps = 20000;
-		emParams.bc_select = BoundaryConditionSelect::PBC;
-
 		SimulationJob emJob;
 		emJob.workDir = workDir;
 		emJob.groPath = workDir / "molecule/conf.gro";
 		emJob.topPath = workDir / "molecule/topol.top";
-		emJob.simParams = std::move(emParams);
+		emJob.simParams = SimParams::BasicEMSimParams();
 		emJob.mode = envmode;
 		return emJob;
 	}
@@ -54,17 +45,27 @@ namespace TestMDStability {
 
 	static TestRoutine TestDeterministic(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
-		std::optional<float> referenceVc;
-		std::optional<float> referenceGradient;
-		for (int run = 0; run < 2; run++) {
-			auto minimized = co_await environment.Submit(MakeEnergyMinJob(workDir, envmode));
+		constexpr int nRuns = 2;
+		std::array<SimulationHandle, nRuns> emHandles;
+		for (auto& handle : emHandles)
+			handle = environment.Submit(MakeEnergyMinJob(workDir, envmode));
+
+		std::array<SimulationHandle, nRuns> mdHandles;
+		for (int run = 0; run < nRuns; run++) {
+			auto minimized = co_await std::move(emHandles[run]);
 			SimulationJob mdJob;
 			mdJob.workDir = workDir;
 			mdJob.simParamsPath = workDir / "sim_params.txt";
 			mdJob.initialSimulation = std::move(minimized.simulation);
 			mdJob.mode = envmode;
 			mdJob.analyze = true;
-			auto completed = co_await environment.Submit(std::move(mdJob));
+			mdHandles[run] = environment.Submit(std::move(mdJob));
+		}
+
+		std::optional<float> referenceVc;
+		std::optional<float> referenceGradient;
+		for (auto& handle : mdHandles) {
+			auto completed = co_await std::move(handle);
 			const float vc = completed.analysis->variance_coefficient;
 			const float gradient = completed.analysis->energy_gradient;
 			if (referenceVc && (vc != *referenceVc || gradient != *referenceGradient))

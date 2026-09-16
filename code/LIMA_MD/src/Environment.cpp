@@ -196,28 +196,33 @@ void Environment::MainLoop() {
 	std::jthread preprocessThread;
 	std::jthread simulationThread;
 
+
+	auto MayPreprocessNextJob = [this]() -> bool {
+		bool canStartNewSim = (!runningSimulation && !preparedSimulations.empty());
+		bool canPrepareSimulation = !preparingSimulation && preparedSimulations.size() < maxPreparedSimulations && !pendingSimulations.empty();
+		bool finishedStopping = stopping && pendingSimulations.empty() && !preparingSimulation && preparedSimulations.empty() && !runningSimulation;
+
+		return canStartNewSim || canPrepareSimulation || finishedStopping;
+		};
+
 	while (true) {
 		std::optional<PreparedSimulation> simulationToRun;
 		std::optional<QueuedSimulation> simulationToPreprocess;
 		{
 			std::unique_lock lock(schedulingMutex);
-			schedulerWakeup.wait(lock, [this] {
-				return (!runningSimulation && preparedSimulation)
-					|| (!preparingSimulation && !preparedSimulation && !pendingSimulations.empty())
-					|| (stopping && pendingSimulations.empty() && !preparingSimulation
-						&& !preparedSimulation && !runningSimulation);
-			});
+			schedulerWakeup.wait(lock, MayPreprocessNextJob);
 
 			if (stopping && pendingSimulations.empty() && !preparingSimulation
-				&& !preparedSimulation && !runningSimulation)
+				&& preparedSimulations.empty() && !runningSimulation)
 				break;
 
-			if (!runningSimulation && preparedSimulation) {
-				simulationToRun.emplace(std::move(*preparedSimulation));
-				preparedSimulation.reset();
+			if (!runningSimulation && !preparedSimulations.empty()) {
+				simulationToRun.emplace(std::move(preparedSimulations.front()));
+				preparedSimulations.pop_front();
 				runningSimulation = true;
 			}
-			if (!preparingSimulation && !preparedSimulation && !pendingSimulations.empty()) {
+			if (!preparingSimulation && preparedSimulations.size() < maxPreparedSimulations
+				&& !pendingSimulations.empty()) {
 				simulationToPreprocess.emplace(std::move(pendingSimulations.front()));
 				pendingSimulations.pop_front();
 				preparingSimulation = true;
@@ -244,7 +249,7 @@ void Environment::Preprocess(QueuedSimulation next) {
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
 		const std::lock_guard lock(schedulingMutex);
-		preparedSimulation.emplace(PreparedSimulation{
+		preparedSimulations.emplace_back(PreparedSimulation{
 			std::move(next.job), std::move(next.state), std::move(simulation) });
 	}
 	catch (...) {

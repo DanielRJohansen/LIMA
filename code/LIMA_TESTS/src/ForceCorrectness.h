@@ -19,19 +19,16 @@ namespace ForceCorrectness {
 		return job;
 	}
 
-	std::function<LimaUnittestResult()> FinishStabilityTest(Environment& environment, std::string name, EnvMode envmode,
+	TestRoutine FinishStabilityTest(Environment& environment, std::string name, EnvMode envmode,
 		SimulationJob job) {
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), name = std::move(name), envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		const auto evaluation = evaluateTest(name,
 			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
-		return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
-		};
+		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 	}
 
 	
-	std::function<LimaUnittestResult()> doPoolBenchmark(Environment& environment, EnvMode envmode) {
+	TestRoutine doPoolBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Pool";
 		// Test assumes two carbon particles in conf.gro.
 		constexpr float mass = 12.011000f / 1000.f; // [kg/mol]
@@ -47,7 +44,7 @@ namespace ForceCorrectness {
 			};
 		return FinishStabilityTest(environment, "doPoolBenchmark", envmode, std::move(job));
 	}
-	std::function<LimaUnittestResult()> SinglebondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
+	TestRoutine SinglebondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Singlebond";
 		constexpr float expectedB0 = 0.133499995f; // [nm]
 		constexpr float bondLengthError = 0.02f;   // (r-r0) [nm]
@@ -58,9 +55,7 @@ namespace ForceCorrectness {
 		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
 			grofile.atoms[1].position = grofile.atoms[0].position + Float3{ expectedB0 + bondLengthError, 0.f, 0.f };
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		auto& simulation = *completed.simulation;
 		const auto parameters = simulation.box->bondgroups[0].singlebonds[0].params;
 
@@ -75,14 +70,13 @@ namespace ForceCorrectness {
 			+ simulation.potE_buffer->GetDatapoint(0, 1, 0);
 		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
 		if (forceError >= 0.0001f)
-			return LimaUnittestResult{ false, std::format("Force error {:.2e}", forceError), envmode == Full };
+			co_return LimaUnittestResult{ false, std::format("Force error {:.2e}", forceError), envmode == Full };
 		const float potentialError = std::abs(actualPotential - expectedPotential) / expectedPotential;
-		return LimaUnittestResult{ potentialError < 0.0001f,
+		co_return LimaUnittestResult{ potentialError < 0.0001f,
 			std::format("Potential error {:.2e}", potentialError), envmode == Full };
-		};
 	}
 
-	std::function<LimaUnittestResult()> SinglebondOscillationTest(Environment& environment, EnvMode envmode) {
+	TestRoutine SinglebondOscillationTest(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Singlebond";
 		constexpr float expectedB0 = 0.133499995f; // [nm]
 		constexpr float bondLengthError = 0.04f;   // (r-r0) [nm]
@@ -95,9 +89,7 @@ namespace ForceCorrectness {
 		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
 			grofile.atoms[1].position.x = grofile.atoms[0].position.x + expectedB0 + bondLengthError;
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		auto& simulation = *completed.simulation;
 		const auto parameters = simulation.box->bondgroups[0].singlebonds[0].params;
 		const float massA = simulation.box->persistentClustersMetadata[0].mass[0];
@@ -112,14 +104,13 @@ namespace ForceCorrectness {
 		const float elapsed = simulation.simParams.dt * simulation.simParams.n_steps * NANO_TO_FEMTO; // [fs]
 		const float actualFrequency = static_cast<float>(SimAnalysis::CountOscillations(lengths)) / elapsed; // [1/fs]
 		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
-		return LimaUnittestResult{ error < 1e-2f,
+		co_return LimaUnittestResult{ error < 1e-2f,
 			std::format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency), envmode == Full };
-		};
 	}
 
 	struct ExpectedForceEnergy { Float3 force{}; float potential = 0.f; };
 
-	std::function<LimaUnittestResult()> UreyBradleyForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
+	TestRoutine UreyBradleyForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Anglebond";
 		auto expected = std::make_shared<ExpectedForceEnergy>();
 		auto job = MakeJob(workDir, envmode);
@@ -154,9 +145,7 @@ namespace ForceCorrectness {
 			expected->force = angleForce + ubForce;
 			expected->potential = anglePotential + ubPotential;
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), expected, envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		auto& simulation = *completed.simulation;
 		// Potential energy is distributed over all three atoms.
 		const Float3 actualForce = simulation.box->pclusterInterimStates[0].forces_prev[0]; // [J/mol/nm]
@@ -164,12 +153,11 @@ namespace ForceCorrectness {
 			+ simulation.potE_buffer->GetDatapoint(0, 1, 0) + simulation.potE_buffer->GetDatapoint(0, 2, 0);
 		const float forceError = (actualForce - expected->force).len() / expected->force.len();
 		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
-		return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
+		co_return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
 			std::format("Force error {:.2e}, potential error {:.2e}", forceError, potentialError), envmode == Full };
-		};
 	}
 
-	std::function<LimaUnittestResult()> PairbondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
+	TestRoutine PairbondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Pairbond";
 		auto expected = std::make_shared<ExpectedForceEnergy>();
 		auto particleId = std::make_shared<int>(0);
@@ -194,22 +182,19 @@ namespace ForceCorrectness {
 			expected->force = diff * forceScalar; // [J/mol/nm]
 			expected->potential = 4.f * pair.params.epsilon * s * (s - 1.f) * .5f; // [J/mol]
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), expected, particleId, envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		auto& simulation = *completed.simulation;
 		const Float3 actualForce = simulation.forceBuffer->GetDatapoint(0, *particleId, 0);
 		const float actualPotential = simulation.potE_buffer->GetDatapoint(0, *particleId, 0);
 		const float forceError = (actualForce - expected->force).len() / expected->force.len();
 		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
-		return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
+		co_return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
 			std::format("Force error {:.2e}, potential error {:.2e}", forceError, potentialError), envmode == Full };
-		};
 	}
 
 
 
-	std::function<LimaUnittestResult()> doPoolCompSolBenchmark(Environment& environment, EnvMode envmode) {
+	TestRoutine doPoolCompSolBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "PoolCompSol";
 		constexpr float mass = 12.011000f / 1000.f; // [kg/mol]
 		const float velocity = PhysicsUtils::tempToVelocity(400.f, mass); // [m/s] == [nm/ns]
@@ -224,7 +209,7 @@ namespace ForceCorrectness {
 		return FinishStabilityTest(environment, "doPoolCompSolBenchmark", envmode, std::move(job));
 	}
 
-	std::function<LimaUnittestResult()> doSinglebondBenchmark(Environment& environment, EnvMode envmode) {
+	TestRoutine doSinglebondBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Singlebond";
 		auto job = MakeJob(workDir, envmode, true);
 		job.configureParams = [](SimParams& params) { params.data_logging_interval = 1; params.n_steps = 5000; };
@@ -236,7 +221,7 @@ namespace ForceCorrectness {
 		return FinishStabilityTest(environment, "doSinglebondBenchmark", envmode, std::move(job));
 	}
 
-	std::function<LimaUnittestResult()> doAnglebondBenchmark(Environment& environment, EnvMode envmode) {
+	TestRoutine doAnglebondBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Anglebond";
 		auto job = MakeJob(workDir, envmode, true);
 		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
@@ -250,11 +235,11 @@ namespace ForceCorrectness {
 		return FinishStabilityTest(environment, "doAnglebondBenchmark", envmode, std::move(job));
 	}
 
-	std::function<LimaUnittestResult()> doDihedralbondBenchmark(Environment& environment, EnvMode envmode) {
-		return loadAndRunBasicSimulation(environment, "Dihedralbond", envmode, "doDihedralbondBenchmark");
+	TestRoutine doDihedralbondBenchmark(Environment& environment, EnvMode envmode) {
+		return LoadAndRunBasicSimulation(environment, envmode, "Dihedralbond", "doDihedralbondBenchmark");
 	}
 
-	std::function<LimaUnittestResult()> doImproperDihedralBenchmark(Environment& environment, EnvMode envmode) {
+	TestRoutine doImproperDihedralBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Improperbond";
 		auto job = MakeJob(workDir, envmode, true);
 		job.configureInput = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
@@ -280,7 +265,7 @@ namespace VerletintegrationTesting {
 	using namespace TestUtils;
 
 	// Apply a constant electric force and verify the resulting kinetic energy.
-	std::function<LimaUnittestResult()> TestIntegration(Environment& environment, EnvMode envmode) {
+	TestRoutine TestIntegration(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "Pool";
 		constexpr float fieldStrength = .5f; // [V/nm]
 		auto job = ForceCorrectness::MakeJob(workDir, envmode, true);
@@ -295,9 +280,7 @@ namespace VerletintegrationTesting {
 		job.configure = [](Simulation& simulation) {
 			simulation.box->uniformElectricField = UniformElectricField{ Float3{ 1.f, 0.f, 0.f }, fieldStrength };
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		const auto& simulation = *completed.simulation;
 		const float charge = simulation.box->persistentClusters[0].pqd[0].params.charge * KILO; // [C/mol]
 		const float mass = simulation.box->persistentClustersMetadata[0].mass[0]; // [kg/mol]
@@ -306,8 +289,7 @@ namespace VerletintegrationTesting {
 		const float expectedVelocity = charge * fieldStrength / NANO * elapsed / mass; // [m/s]
 		const float expectedEnergy = PhysicsUtils::calcKineticEnergy(expectedVelocity, mass); // [J/mol]
 		const float actualEnergy = completed.analysis->kin_energy.back();
-		return LimaUnittestResult{ std::abs(actualEnergy - expectedEnergy) / expectedEnergy < .01f,
+		co_return LimaUnittestResult{ std::abs(actualEnergy - expectedEnergy) / expectedEnergy < .01f,
 			std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedEnergy, actualEnergy), envmode == Full };
-		};
 	}
 }

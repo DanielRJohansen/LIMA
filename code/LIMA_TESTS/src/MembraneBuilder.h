@@ -51,7 +51,7 @@ namespace TestMembraneBuilder {
 		return minimumSpacing;
 	}
 
-	static LimaUnittestResult TestSphericalMembraneBuilder(EnvMode envmode) {
+	static TestRoutine TestSphericalMembraneBuilder(Environment&, EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "BuildMembraneSphere";
 		Lipids::Selection lipids;
 		lipids.emplace_back(Lipids::Select{ "DMPC", workDir, 100. });
@@ -197,11 +197,11 @@ namespace TestMembraneBuilder {
 			&& parsedEllipsoid.radii == Float3{ 4.f, 5.f, 6.f }),
 			"Live-edit ellipsoid geometry had incorrect values");
 
-		return LimaUnittestResult{ true, "", envmode == Full };
+		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
 	// This test checks topology compatibility and physically bounded coordinate generation, NOT considering EM.
-	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)
+	static TestRoutine TestBuildmembraneSmall(Environment&, EnvMode envmode, bool do_em)
 	{		
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 		const fs::path mol_dir = workDir / "molecule";
@@ -239,7 +239,7 @@ namespace TestMembraneBuilder {
 
 		LimaUnittestResult topTestResults = TestUtils::CompareTopologyFiles(newTop, refTop, envmode);
 		if (!topTestResults.success)
-			return topTestResults;
+			co_return topTestResults;
 		
 		// Test the conf is identical to reference
 		GroFile newGro{ mol_dir / "membrane.gro" };
@@ -266,10 +266,10 @@ namespace TestMembraneBuilder {
 		auto sim = Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, emtol);
 		float finalMaxForce = sim->maxForceBuffer.back().second;
 
-		return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
+		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
 	}
 
-	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
+	static TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneCustom";
 		const fs::path mol_dir = workDir / "molecule";
 
@@ -311,7 +311,6 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment& environment = Environment::Get();
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile = std::move(newGro);
@@ -319,12 +318,12 @@ namespace TestMembraneBuilder {
 		job.simParams = params;
 		job.mode = envmode;
 		job.run = false;
-		environment.Submit(std::move(job)).Get();
+		co_await environment.Submit(std::move(job));
 
-		return LimaUnittestResult{ true , "No error", envmode == Full };
+		co_return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
 
-	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
+	TestRoutine TestAllStockholmlipids(Environment&, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 
 		const fs::path path = FileUtils::GetLimaDir() / "resources/Slipids";
@@ -361,7 +360,7 @@ namespace TestMembraneBuilder {
 
 		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
 
-		return LimaUnittestResult{ true , "", envmode == Full };
+		co_return LimaUnittestResult{ true , "", envmode == Full };
 	}
 
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {

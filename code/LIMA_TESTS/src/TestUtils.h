@@ -17,6 +17,7 @@
 #include <map>
 #include <atomic>
 #include <condition_variable>
+#include <coroutine>
 #include <thread>
 #include <sstream>
 #include <utility>
@@ -350,26 +351,141 @@ namespace TestUtils {
 		std::string error_description;		
 	};
 
+	struct TestFailure {
+		std::string message;
+	};
+
+	// Coroutine used only by the test runner. A test runs immediately until it
+	// awaits a SimulationHandle; LimaUnittestManager resumes it when that handle
+	// becomes ready. This keeps sequences of dependent submissions linear without
+	// adding continuations, threads, or test-specific behavior to Environment.
+	class TestRoutine {
+	public:
+		struct promise_type;
+
+		TestRoutine(const TestRoutine&) = delete;
+		TestRoutine& operator=(const TestRoutine&) = delete;
+		TestRoutine(TestRoutine&& other) noexcept : coroutine(std::exchange(other.coroutine, {})) {}
+		TestRoutine& operator=(TestRoutine&& other) noexcept {
+			if (this != &other) {
+				if (coroutine)
+					coroutine.destroy();
+				coroutine = std::exchange(other.coroutine, {});
+			}
+			return *this;
+		}
+		~TestRoutine() {
+			if (coroutine)
+				coroutine.destroy();
+		}
+
+		bool IsComplete() const { return coroutine.done(); }
+		bool ResumeIfReady();
+		LimaUnittestResult TakeResult();
+		std::chrono::duration<double> Elapsed() const;
+
+		struct promise_type {
+			struct SimulationAwaiter {
+				promise_type& promise;
+				SimulationHandle handle;
+
+				bool await_ready() const { return handle.IsReady(); }
+				void await_suspend(std::coroutine_handle<>) { promise.awaitedSimulation = handle; }
+				SimulationResult await_resume() {
+					promise.awaitedSimulation.reset();
+					return handle.Get();
+				}
+			};
+
+			TestRoutine get_return_object() {
+				return TestRoutine{ std::coroutine_handle<promise_type>::from_promise(*this) };
+			}
+			// Start during ADD_TEST so every test can enqueue its first simulation
+			// before LimaUnittestManager begins waiting for results.
+			std::suspend_never initial_suspend() noexcept { return {}; }
+			// Keep the completed frame alive until the manager has collected its result.
+			std::suspend_always final_suspend() noexcept { return {}; }
+			// This promise-local conversion is why SimulationHandle itself does not need
+			// coroutine support: co_await is available only inside test routines.
+			SimulationAwaiter await_transform(SimulationHandle handle) {
+				return SimulationAwaiter{ *this, std::move(handle) };
+			}
+			void return_value(LimaUnittestResult value) {
+				result.emplace(std::move(value));
+				finished = std::chrono::steady_clock::now();
+			}
+			void unhandled_exception() {
+				try {
+					throw;
+				}
+				catch (const TestFailure& failure) {
+					result.emplace(false, failure.message, false);
+				}
+				catch (...) {
+					error = std::current_exception();
+				}
+				finished = std::chrono::steady_clock::now();
+			}
+
+			std::optional<SimulationHandle> awaitedSimulation;
+			std::optional<LimaUnittestResult> result;
+			std::exception_ptr error;
+			std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point finished{};
+		};
+
+	private:
+		explicit TestRoutine(std::coroutine_handle<promise_type> coroutine) : coroutine(coroutine) {}
+		std::coroutine_handle<promise_type> coroutine;
+	};
+
+	inline bool TestRoutine::ResumeIfReady() {
+		if (IsComplete())
+			return false;
+		auto& awaited = coroutine.promise().awaitedSimulation;
+		if (!awaited || !awaited->IsReady())
+			return false;
+		coroutine.resume();
+		return true;
+	}
+
+	inline LimaUnittestResult TestRoutine::TakeResult() {
+		if (!IsComplete())
+			throw std::runtime_error("Cannot take the result of an incomplete test");
+		auto& promise = coroutine.promise();
+		if (promise.error)
+			std::rethrow_exception(promise.error);
+		return std::move(*promise.result);
+	}
+
+	inline std::chrono::duration<double> TestRoutine::Elapsed() const {
+		const auto& promise = coroutine.promise();
+		return promise.finished - promise.started;
+	}
+
 #define ASSERT(condition, errorMsg) \
     do { \
         if (!(condition)) { \
             std::string msg = errorMsg; \
-            return LimaUnittestResult{ false, msg, (envmode) == Full }; \
+            throw TestFailure{ std::move(msg) }; \
         } \
     } while (0)
 
+#define TEST_ASSERT(condition, errorMsg) ASSERT(condition, errorMsg)
+
 	struct LimaUnittest {
-		LimaUnittest(std::string name, std::function<LimaUnittestResult()> test)
+		LimaUnittest(std::string name, TestRoutine test)
 			: name(std::move(name)), test(std::move(test)) {}
 
-		void Execute() noexcept {
+		void CollectResult() noexcept {
+			if (!test.IsComplete() || testresult)
+				return;
 			auto*& activeResults = ActiveVarianceCoefficientResults();
 			auto* previousResults = activeResults;
 			activeResults = &varianceResults;
-			try {
-				TimeIt timer{};
-				testresult = std::make_unique<LimaUnittestResult>(test());
-				elapsed = timer.Elapsed();
+		try {
+				testresult = std::make_unique<LimaUnittestResult>(test.TakeResult());
+				elapsed = test.Elapsed();
 			}
 			catch (const std::exception& ex) {
 				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw exception: " + std::string(ex.what()), false);
@@ -389,7 +505,7 @@ namespace TestUtils {
 		}
 
 		std::string name;
-		std::function<LimaUnittestResult()> test;
+		TestRoutine test;
 		std::unique_ptr<LimaUnittestResult> testresult;
 		std::chrono::duration<double> elapsed{};
 		std::map<std::string, VarianceCoefficientThresholds> varianceResults;
@@ -410,34 +526,70 @@ namespace TestUtils {
 			setConsoleTextColorDefault();
 		}
 
-		void addTest(std::unique_ptr<LimaUnittest> test) { 
-			tests.push_back(std::move(test)); 
-		}
-		void AddTest(std::string name, std::function<LimaUnittestResult()> test) {
-			addTest(std::make_unique<LimaUnittest>(std::move(name), std::move(test)));
+		template<typename Factory>
+		void AddTest(std::string name, Factory&& factory) {
+			auto*& activeResults = ActiveVarianceCoefficientResults();
+			auto* previousResults = activeResults;
+			std::map<std::string, VarianceCoefficientThresholds> initialResults;
+			activeResults = &initialResults;
+			auto routine = std::forward<Factory>(factory)();
+			activeResults = previousResults;
+			auto test = std::make_unique<LimaUnittest>(std::move(name), std::move(routine));
+			test->varianceResults = std::move(initialResults);
+			tests.push_back(std::move(test));
+			PumpReadyTests();
 		}
 
 	private:
+		bool PumpReadyTests() {
+			bool madeProgress = false;
+			for (auto& test : tests) {
+				if (!test->test.IsComplete()) {
+					auto*& activeResults = ActiveVarianceCoefficientResults();
+					auto* previousResults = activeResults;
+					activeResults = &test->varianceResults;
+					madeProgress |= test->test.ResumeIfReady();
+					activeResults = previousResults;
+				}
+				if (test->test.IsComplete() && !test->testresult) {
+					test->CollectResult();
+					completedCount++;
+					madeProgress = true;
+				}
+			}
+
+			while (nextToPrint < tests.size() && tests[nextToPrint]->testresult) {
+				auto& test = tests[nextToPrint++];
+				PublishVarianceCoefficientResults(test->varianceResults);
+				test->Print();
+				if (test->testresult->success)
+					successCount++;
+			}
+			return madeProgress;
+		}
+
 		void Run() {
 			if (hasRun) return;
 			hasRun = true;
-			for (auto& test : tests) {
-				test->Execute();
-				PublishVarianceCoefficientResults(test->varianceResults);
-				test->Print();
-				if (test->testresult->success) successCount++;
+			// Drive every ready test forward by one or more sequential Submit() calls.
+			// Results may complete in any order, but nextToPrint preserves registration order.
+			while (completedCount < tests.size()) {
+				if (!PumpReadyTests())
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 		}
 
 		std::vector<std::unique_ptr<LimaUnittest>> tests;
+		size_t completedCount = 0;
+		size_t nextToPrint = 0;
 		int successCount = 0;
 		bool hasRun = false;
 	};
 
-	static std::function<LimaUnittestResult()> loadAndRunBasicSimulation(
+	static TestRoutine LoadAndRunBasicSimulation(
 		Environment& environment,
-		std::string folderName,
 		EnvMode envmode,
+		std::string folderName,
 		std::string testName,
 		std::optional<SimParams> simParams = {})
 	{
@@ -451,23 +603,20 @@ namespace TestUtils {
 		job.mode = envmode;
 		job.analyze = true;
 
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), testName = std::move(testName), envmode]() mutable {
-		auto completed = handle.Get();
+		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation)
-			return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
+			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
 		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
-			return LimaUnittestResult{ false,
+			co_return LimaUnittestResult{ false,
 				std::format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
 				envmode == Full };
 		}
 		if (!completed.analysis)
-			return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
+			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
 
 		const auto evaluation = evaluateTest(testName,
 			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
-		return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
-		};
+		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 	}
 
 	void stressTest(std::function<void()> func, size_t reps) {

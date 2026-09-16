@@ -6,22 +6,13 @@
 #include "LimaTypes.cuh"
 #include "Programs.h"
 
-#include <future> // TODO: REmove
 #include <string>
 
 
 namespace TestMDStability {
 	using namespace TestUtils;
 
-	using PendingSimulation = std::shared_ptr<std::future<SimulationResult>>;
-
-	// Schedule energy minimization now, then automatically submit the MD job as soon
-	// as minimization finishes. std::async is used only as a test-side continuation:
-	// its thread waits and submits jobs, while Environment still performs all costly
-	// preprocessing and simulation work. The shared_ptr makes the move-only future
-	// usable from LimaUnittest's copyable std::function callback.
-	static PendingSimulation EnergyMinAndRun(
-		Environment& environment, const fs::path& workDir, EnvMode envmode) {
+	static SimulationJob MakeEnergyMinJob(const fs::path& workDir, EnvMode envmode) {
 		SimParams emParams;
 		emParams.em_variant = true;
 		emParams.dt = 1.5f * FEMTO_TO_NANO;
@@ -37,65 +28,51 @@ namespace TestMDStability {
 		emJob.topPath = workDir / "molecule/topol.top";
 		emJob.simParams = std::move(emParams);
 		emJob.mode = envmode;
-		auto emHandle = environment.Submit(std::move(emJob));
-
-		return std::make_shared<std::future<SimulationResult>>(std::async(std::launch::async,
-			[emHandle = std::move(emHandle), &environment, workDir, envmode]() mutable {
-				auto minimized = emHandle.Get();
-
-				SimulationJob mdJob;
-				mdJob.workDir = workDir;
-				mdJob.simParamsPath = workDir / "sim_params.txt";
-				mdJob.initialSimulation = std::move(minimized.simulation);
-				mdJob.mode = envmode;
-				mdJob.analyze = true;
-				return environment.Submit(std::move(mdJob)).Get();
-			}));
+		return emJob;
 	}
 
-	static std::function<LimaUnittestResult()> LoadEnergyMinAndRunBasicSimulation(
-		Environment& environment, std::string folderName, EnvMode envmode, std::string testName)
+	static TestRoutine LoadEnergyMinAndRunBasicSimulation(
+		Environment& environment, EnvMode envmode, std::string folderName, std::string testName)
 	{
 		const fs::path workDir = AutomatedTestsDir() / folderName;
+		auto minimized = co_await environment.Submit(MakeEnergyMinJob(workDir, envmode));
 
-		// This starts both stages without running them on the TestManager thread:
-		// EnergyMinAndRun submits EM immediately, and submits MD when EM completes.
-		auto simulation = EnergyMinAndRun(environment, workDir, envmode);
+		SimulationJob mdJob;
+		mdJob.workDir = workDir;
+		mdJob.simParamsPath = workDir / "sim_params.txt";
+		mdJob.initialSimulation = std::move(minimized.simulation);
+		mdJob.mode = envmode;
+		mdJob.analyze = true;
+		auto completed = co_await environment.Submit(std::move(mdJob));
+		if (!completed.analysis)
+			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
 
-		// TestManager invokes this callback later, in scheduled test order. By then the
-		// simulation is normally complete; get() only waits if Environment is still busy.
-		// All result validation deliberately stays on the TestManager thread.
-		return [simulation = std::move(simulation), testName = std::move(testName), envmode]() mutable {
-			auto completed = simulation->get();
-			if (!completed.analysis)
-				return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
-
-			const auto evaluation = evaluateTest(testName,
-				{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
-			return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
-		};
+		const auto evaluation = evaluateTest(testName,
+			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
+		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 	}
 
-	static std::function<LimaUnittestResult()> TestDeterministic(Environment& environment, EnvMode envmode) {
+	static TestRoutine TestDeterministic(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
-		std::vector<PendingSimulation> simulations;
-		for (int run = 0; run < 2; run++)
-			simulations.push_back(EnergyMinAndRun(environment, workDir, envmode));
-
-		return [simulations = std::move(simulations), envmode]() mutable {
 		std::optional<float> referenceVc;
 		std::optional<float> referenceGradient;
-		for (auto& simulation : simulations) {
-			auto completed = simulation->get();
+		for (int run = 0; run < 2; run++) {
+			auto minimized = co_await environment.Submit(MakeEnergyMinJob(workDir, envmode));
+			SimulationJob mdJob;
+			mdJob.workDir = workDir;
+			mdJob.simParamsPath = workDir / "sim_params.txt";
+			mdJob.initialSimulation = std::move(minimized.simulation);
+			mdJob.mode = envmode;
+			mdJob.analyze = true;
+			auto completed = co_await environment.Submit(std::move(mdJob));
 			const float vc = completed.analysis->variance_coefficient;
 			const float gradient = completed.analysis->energy_gradient;
 			if (referenceVc && (vc != *referenceVc || gradient != *referenceGradient))
-				return LimaUnittestResult{ false, "Simulation results were not deterministic", envmode == Full };
+				co_return LimaUnittestResult{ false, "Simulation results were not deterministic", envmode == Full };
 			referenceVc = vc;
 			referenceGradient = gradient;
 		}
-		return LimaUnittestResult{ true, "Success", envmode == Full };
-		};
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {

@@ -16,13 +16,14 @@ namespace ElectrostaticsTests {
 	using namespace TestUtils;
 
 
-	static LimaUnittestResult CoulombForceSanityCheck(EnvMode envmode) {
+	static TestRoutine CoulombForceSanityCheck(Environment&, EnvMode envmode) {
 		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
-		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce));
+		if (std::abs(calcedForce - expectedForce) / expectedForce >= 0.0001f)
+			co_return LimaUnittestResult{ false, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
 		// TODO: add potE to this also
-		return LimaUnittestResult{ true, "Success", envmode == Full};
+		co_return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
 
 	//static ForceEnergy CalcImmediateMirrorForceEnergy(const Float3& diff, const float chargeProduct, Float3 boxSize) {
@@ -125,7 +126,7 @@ namespace ElectrostaticsTests {
 		topfile.printToFile();
 	}
 
-	static std::function<LimaUnittestResult()> TestChargedParticlesVelocityInUniformElectricField(
+	static TestRoutine TestChargedParticlesVelocityInUniformElectricField(
 		Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
 		AtomsSelection atoms{
@@ -155,9 +156,7 @@ namespace ElectrostaticsTests {
 			simulation.box->uniformElectricField =
 				UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f };
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), workDir, envmode]() mutable {
-		auto result = handle.Get();
+		auto result = co_await environment.Submit(std::move(job));
 
 		if (envmode == Full)
 			TestUtils::CompareForces1To1(workDir, *result.simulation, false);
@@ -203,23 +202,23 @@ namespace ElectrostaticsTests {
 
 		if (slope >= 0.f) {
 			std::string errorMsg = std::format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
-			return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 		if (std::abs(intercept) > 50.f) {
 			std::string errorMsg = std::format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
-			return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
-		ASSERT(!std::isnan(r2), "R2 value is nan");
+		if (std::isnan(r2))
+			co_return LimaUnittestResult{ false, "R2 value is nan", envmode == Full };
 		if (r2 < 0.5f) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
-			return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
-		return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
-		};
+		co_return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
 	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -307,7 +306,7 @@ namespace ElectrostaticsTests {
 	//}
 
 
-	std::function<LimaUnittestResult()> TestLongrangeEsNoLJTwoParticles(
+	TestRoutine TestLongrangeEsNoLJTwoParticles(
 		Environment& environment, EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
 
@@ -355,7 +354,6 @@ namespace ElectrostaticsTests {
 			handles.push_back(environment.Submit(std::move(job)));
 		}
 
-		return [handles = std::move(handles), testSetups = std::move(testSetups), c0, c1, envmode]() mutable {
 		for (size_t testIndex = 0; testIndex < testSetups.size(); testIndex++) {
 			const auto& setup = testSetups[testIndex];
 			Float3 hyperposOther = setup.p1;
@@ -372,7 +370,8 @@ namespace ElectrostaticsTests {
 			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff) + mirrorForce;
 
 
-			auto sim = handles[testIndex].Get().simulation;
+			auto completed = co_await std::move(handles[testIndex]);
+			auto sim = std::move(completed.simulation);
 
 			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
@@ -389,18 +388,20 @@ namespace ElectrostaticsTests {
 				printf("Expected pot %.3e GPU %.3e mirror %.3e\n", expectedPotential, actualPotential, mirrorPotential);
 			}
 
-			ASSERT(forceError < 0.07f, std::format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError));
+			if (forceError >= 0.07f)
+				co_return LimaUnittestResult{ false, std::format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError), envmode == Full };
 			// Potential is hopeless to match realspace and kspace
-			ASSERT(potEError < 3.f, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError));
+			if (potEError >= 3.f)
+				co_return LimaUnittestResult{ false, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError), envmode == Full };
 
 			const Float3 actualForceP1 = sim->forceBuffer->GetDatapoint(1, 0, 0);
-			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.001f,
-				std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
-					actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));			
+			if ((actualForce + actualForceP1).len() / actualForce.len() >= 0.001f)
+				co_return LimaUnittestResult{ false,
+					std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
+						actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z), envmode == Full };
 		}
 
-		return LimaUnittestResult{ true, "Success", envmode == Full };
-		};
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
@@ -532,7 +533,7 @@ namespace ElectrostaticsTests {
 
 
 	// Create many pos charged Ions as compounds. Set all LJ to 0. Compute exact SR and LR interactions between all particles. Run simulation 1 step, and compare the errors
-	std::function<LimaUnittestResult()> TestLongrangeEsNoLJManyParticles(
+	TestRoutine TestLongrangeEsNoLJManyParticles(
 		Environment& environment, EnvMode envmode) {
 		const Float3 boxlen{ 20.f };
 		const float chargeExtern = 1.f;
@@ -560,9 +561,7 @@ namespace ElectrostaticsTests {
 			MakeChargeParticlesSim(grofile, topfile, work_folder, boxlen.x, atoms, 1.f);
 			*generatedGrofile = grofile;
 		};
-		auto handle = environment.Submit(std::move(job));
-		return [handle = std::move(handle), generatedGrofile, boxlen, charge, envmode]() mutable {
-		auto result = handle.Get();
+		auto result = co_await environment.Submit(std::move(job));
 		const GroFile& grofile = *generatedGrofile;
 
 
@@ -621,11 +620,11 @@ namespace ElectrostaticsTests {
 		
 		const float maxForceError = *std::max_element(forceErrors.begin(), forceErrors.end());
 		const float meanForceError = Statistics::Mean(forceErrors);
-		ASSERT(meanForceError < 0.18f, std::format("Mean Force Error {:.3f}", meanForceError));
+		if (meanForceError >= 0.18f)
+			co_return LimaUnittestResult{ false, std::format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
 		//ASSERT(maxForceError < 0.8f, std::format("Max Force Error {:.3e}", maxForceError));
 
-		return LimaUnittestResult{ true, "", envmode == Full };
-		};
+		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}
 }
 

@@ -99,6 +99,7 @@ void BuildCellTest() {
 int main() {
 	try {
 		constexpr auto envmode = EnvMode::Full;
+		Environment& env = Environment::Get();
 		//TestDisplayT4();
 		//ProgramsTests::TestToGmx_ciffile(envmode);
 		//LiveEditTest();
@@ -146,9 +147,9 @@ int main() {
 		//TestIntegration(envmode);
 
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
-		//loadAndEMAndRunBasicSimulation("T4Lysozyme", envmode, 2.8e-2, 5e-4);
+		//LoadEnergyMinAndRunBasicSimulation(env, envmode, "T4Lysozyme", "T4Lysozyme");
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode,"T4Lysozyme");
-
+		LoadAndRunBasicSimulation(env, envmode, "Solvents", "SolventBenchmark");
 
 		//const fs::path workDir = simulations_dir / "test";
 		//Lipids::Selection lipids;

@@ -149,7 +149,7 @@ int main() {
 		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
 		//LoadEnergyMinAndRunBasicSimulation(env, envmode, "T4Lysozyme", "T4Lysozyme");
 		//loadAndRunBasicSimulation("T4Lysozyme", envmode,"T4Lysozyme");
-		LoadAndRunBasicSimulation(env, envmode, "Solvents", "SolventBenchmark");
+		//LoadAndRunBasicSimulation(env, envmode, "Solvents", "SolventBenchmark");
 
 		//const fs::path workDir = simulations_dir / "test";
 		//Lipids::Selection lipids;

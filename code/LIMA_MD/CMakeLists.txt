@@ -12,7 +12,7 @@ add_library(LIMA_MD STATIC
     #imgui/backends/imgui_impl_glfw.cpp
     #imgui/backends/imgui_impl_opengl3.cpp
 
-    src/Analyzer.cu
+    src/Analyzer.cpp
     src/BoxBuilder.cpp
     src/Display.cpp
     src/DisplayInternal.cpp

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Analyzer.cuh"
+#include "Analyzer.h"
 #include "Bodies.cuh"
 #include "TimeIt.h"
 #include "MDFiles.h"

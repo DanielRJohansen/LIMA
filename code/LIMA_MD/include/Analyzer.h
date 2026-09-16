@@ -11,7 +11,7 @@
 namespace SimAnalysis {
 	struct AnalyzedPackage {
 		AnalyzedPackage() = default;
-		AnalyzedPackage(std::vector<Float3>& avg_energy, std::vector<float> temperature);
+		AnalyzedPackage(std::vector<Float3> avgEnergy, std::vector<float> temperature);
 
 		void Print() const;
 

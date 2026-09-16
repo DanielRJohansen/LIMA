@@ -3,10 +3,10 @@
 #include "Display.h"
 #include "Programs.h"
 #include "SimulationBuilder.h"
-#include "Environment.h"
 #include "Forcefield.h"
 #include "ConvexHullEngine.cuh"
 #include "BoxImageBuilder.h"
+#include "TimeIt.h"
 
 #include <glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -151,56 +151,6 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 
 	return mhCol;
 }
-
-std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, 
-	const fs::path& workDir, EnvMode envmode, bool mayOverlapEdges, float emtol) {
-	Environment& env = Environment::Get();
-	SimParams params;
-	params.em_variant = true;	
-	params.dt = 1.5f * FEMTO_TO_NANO;
-	params.em_force_tolerance = emtol;
-	params.data_logging_interval = 50;
-
-	//if (mayOverlapEdges) {
-	//	params.n_steps = 2000;
-	//	params.bc_select = BoundaryConditionSelect::NoBC;
-	//	params.snf_select = BoxEdgePotential;
-	//	params.enable_electrostatics = false;
-	//	env.CreateSimulation(grofile, topfile, params);
-	//	env.run(false);
-	//}
-
-	params.enable_electrostatics = true;
-	params.n_steps = 20000;
-	params.bc_select = BoundaryConditionSelect::PBC;
-
-	SimulationJob job;
-	job.workDir = workDir;
-	job.grofile = grofile;
-	job.topfile.emplace(topfile);
-	job.simParams = params;
-	job.mode = envmode;
-	auto result = env.Submit(std::move(job)).Get();
-
-	const auto& maxForceBuffer = result.simulation->maxForceBuffer;
-	if (maxForceBuffer.empty())
-		throw (std::runtime_error("No data in maxForceBuffer after energy minimization, happens for small EM's. This should be solved..."));
-	auto [minForceStep, minForce] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
-		[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
-			return a.second < b.second;
-		}
-	);
-
-	if (writePositionsToGrofile) {
-		result.WriteCoordinatesTo(grofile, minForceStep);
-	}
-	
-	if (envmode == Full)
-		printf("Min force reached: %f\n", minForce);
-
-	return std::move(result.simulation);
-}
-
 
 void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool render) {
 	std::vector<MoleculeHullFactory> moleculeContainers;

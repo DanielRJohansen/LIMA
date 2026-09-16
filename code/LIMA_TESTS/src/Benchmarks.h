@@ -65,7 +65,6 @@ namespace Benchmarks {
 		//	GroFile psomeGrofile{ workDir / "molecule/psome.gro" };
 		//	auto psomeTopFile = std::make_shared<TopologyFile>(workDir / "molecule/psome.top");
 		//	Programs::SetMoleculeCenter(psomeGrofile, Float3{ boxlen / 2.f, boxlen / 2.f, 17.f });
-		//	Programs::EnergyMinimize(env, psomeGrofile, *psomeTopFile, true, boxlen);
 		//	
 		//	MDFiles::MergeFiles(*membraneGrofile, *membraneTopfile, psomeGrofile, psomeTopFile);
 
@@ -211,7 +210,6 @@ namespace Benchmarks {
 
 		//	MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
 		//	//SimulationBuilder::SolvateGrofile(grofile);
-		//	auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
 		//	grofile.printToFile(std::string{ "em.gro" });
 
 		//	SimAnalysis::PlotPotentialEnergyDistribution(*sim, workDir, {0,1000, 2000, 3000, 4000 - 1});
@@ -275,7 +273,6 @@ namespace Benchmarks {
 
 		//	MoleculeUtils::CenterMolecule(grofile, topfile.GetMoleculeType());
 		//	//SimulationBuilder::SolvateGrofile(grofile);
-		//	auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir , envmode, false);
 		//	grofile.printToFile(std::string{ "em.gro" });
 
 		//	SimAnalysis::PlotPotentialEnergyDistribution(*sim, workDir , { 0,1000, 2000, 3000, 4000 - 1 });

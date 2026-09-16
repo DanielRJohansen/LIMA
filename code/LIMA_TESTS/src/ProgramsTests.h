@@ -52,7 +52,9 @@ namespace ProgramsTests {
 		TopologyFile topfile;
 		topfile.SetSystem("Membrane");
 		SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 3.f);
-		Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, true, 50.f);
+		auto emResult = Environment::Get().Submit(SimulationJob{
+			workDir, grofile, topfile, SimParams::BasicEMSimParams(50.f), envmode }).Get();
+		emResult.WriteCoordinatesTo(grofile);
 
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}

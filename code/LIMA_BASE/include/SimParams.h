@@ -72,6 +72,9 @@ struct SimParams {
     explicit SimParams(const std::filesystem::path& path);
     SimParams(std::initializer_list<int>) = delete;
 
+    // Generate the default SimParams for basic EM.
+    static SimParams BasicEMSimParams(float forceTolerance = 100.f);
+
     void DumpToFile(const std::filesystem::path& filename = "sim_params.txt") const;
 
     SimParam<uint64_t> n_steps{ "n_steps", 1000, SimParamSection::Main };

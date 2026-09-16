@@ -24,6 +24,11 @@ struct ScheduledSimulationState;
 namespace fs = std::filesystem;
 
 struct SimulationJob {
+	SimulationJob() = default;
+	SimulationJob(fs::path workDir, GroFile grofile, TopologyFile topfile, SimParams simParams, EnvMode mode)
+		: workDir(std::move(workDir)), simParams(std::move(simParams)), grofile(std::move(grofile)),
+		topfile(std::move(topfile)), mode(mode) {}
+
 	fs::path workDir;
 	fs::path groPath{ "molecule/conf.gro" };
 	fs::path topPath{ "molecule/topol.top" };

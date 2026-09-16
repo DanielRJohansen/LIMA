@@ -159,12 +159,14 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
     TopologyFile topfile;
     topfile.SetSystem("Membrane");
     SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ.value_or(boxsize.z/2.f));
-    auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, true, emtol);
+    auto emResult = Environment::Get().Submit(SimulationJob{
+        workDir, grofile, topfile, SimParams::BasicEMSimParams(emtol), envmode }).Get();
+    emResult.WriteCoordinatesTo(grofile);
 
     grofile.printToFile(workDir / "membrane.gro");
     topfile.printToFile(workDir / "membrane.top");
 
-    auto [step, force] = *std::min_element(sim->maxForceBuffer.begin(), sim->maxForceBuffer.end(),
+    auto [step, force] = *std::min_element(emResult.simulation->maxForceBuffer.begin(), emResult.simulation->maxForceBuffer.end(),
         [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
             return a.second < b.second;
         }
@@ -400,7 +402,9 @@ int Cli::RunInsertMolecules(int argc, char** argv) {
     topTgt.SetSystem(topSrc->GetSystem().title + " " + std::to_string(nInsertions));
 
 
-    Programs::EnergyMinimize(groSrc, *topSrc, true, fs::current_path(), display ? Full : Headless, false);
+    auto emResult = Environment::Get().Submit(SimulationJob{
+        fs::current_path(), groSrc, *topSrc, SimParams::BasicEMSimParams(), display ? Full : Headless }).Get();
+    emResult.WriteCoordinatesTo(groSrc);
 
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
     Programs::StaticbodyEnergyMinimize(groTgt, topTgt, display);
@@ -483,7 +487,9 @@ int Cli::RunEnergyMinimization(int argc, char** argv) {
     GroFile grofile{ fs::canonical(confPath) };
     TopologyFile topfile{ fs::canonical(topPath) };
 
-    Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), render ? Full : ConsoleOnly, false, emtol);
+    auto emResult = Environment::Get().Submit(SimulationJob{
+        fs::current_path(), grofile, topfile, SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
+    emResult.WriteCoordinatesTo(grofile);
 
     grofile.printToFile(fs::absolute(confPathOut));
 
@@ -554,7 +560,8 @@ void SelfTest() {
 	TopologyFile top;
 	top.SetSystem("Membrane");
 	SimulationBuilder::CreateMembrane(gro, top, lipidselection, 5.f);
-	Programs::EnergyMinimize(gro, top, false, workDir, Full, true, 5000.f);
+	Environment::Get().Submit(SimulationJob{
+		workDir, std::move(gro), std::move(top), SimParams::BasicEMSimParams(5000.f), Full }).Get();
 
 	printf("Selftest successful"); // Otherwise we'd have thrown by now
 }

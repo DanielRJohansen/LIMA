@@ -19,6 +19,17 @@
 namespace fs = std::filesystem;
 using Dictionary = std::unordered_map<std::string, std::string>;
 
+SimParams SimParams::BasicEMSimParams(float forceTolerance) {
+    SimParams params{};
+    params.em_variant = true;
+    params.dt = 1.5f * FEMTO_TO_NANO;
+    params.em_force_tolerance = forceTolerance;
+    params.data_logging_interval = 50;
+    params.enable_electrostatics = true;
+    params.n_steps = 20000;
+    return params;
+}
+
 namespace {
 
 std::string Lowercase(std::string_view value) {

@@ -4,9 +4,7 @@
 
 #include <string_view>
 
-class Environment;
 class MoleculeHullCollection;
-class Simulation;
 
 namespace Programs {
 	enum class WaterModel { Tip3p, Tip4p, Tips3p, Tip5p, Spc, Spce };
@@ -27,14 +25,6 @@ namespace Programs {
 		Float3 vesicleCenter, std::optional<int> numLipids=std::nullopt);
 
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize, bool renderProgress);
-
-	/// <summary></summary>
-	/// <param name="writePositionsToGrofile">If false, the grofile will not be modified</param>
-	/// <param name="mayOverlapEdges">If the box contents may spill over the edge, set this to true.
-	/// Then we will first run a pre-EM with boxEdgePotential enabled</param>
-	/// <returns>Can be discarded if not needed. Only makes sense to discard if overwriting grofile</returns>
-	std::unique_ptr<Simulation> EnergyMinimize(GroFile&, const TopologyFile&,
-		bool writePositionsToGrofile, const fs::path& workDir, EnvMode, bool mayOverlapEdges, float emtol=100.f);
 
 	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&, bool render);
 

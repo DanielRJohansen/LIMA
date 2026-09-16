@@ -162,7 +162,6 @@ int main() {
 		//topfile.SetSystem("Membrane");
 		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 5.f);
 		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 15.f);
-		//Programs::EnergyMinimize(*grofile, *topfile, true, workDir, envmode, true);
 		//grofile->printToFile(workDir / "membrane.gro");
 		//topfile->printToFile(workDir / "membrane.top");
 
@@ -211,7 +210,6 @@ int main() {
 		//{
 		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.gro)" };
 		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.top)" };
-		//	Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 
 		//	grofile.printToFile("membranesolvated_em.gro");
 		//	topfile.printToFile("membranesolvated_em.top");
@@ -226,7 +224,6 @@ int main() {
 		Environment& env = Environment::Get();
 		env.CreateSimulation(grofile, topfile, SimParams{});
 		env.run();*/
-		//Programs::EnergyMinimize(grofile, topfile, true, fs::current_path(), Full, false, 800.f);
 		
 		//ForceComparisons::DoAllForceComparisons(envmode);
 

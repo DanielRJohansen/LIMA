@@ -601,7 +601,7 @@ namespace TestUtils {
 		job.simParamsPath = workDir / "sim_params.txt";
 		job.simParams = std::move(simParams);
 		job.mode = envmode;
-		job.analyze = true;
+		job.postprocess = SimAnalysis::AnalyzeEnergy;
 
 		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation)

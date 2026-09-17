@@ -15,7 +15,8 @@ namespace ForceCorrectness {
 		SimulationJob job;
 		job.workDir = workDir;
 		job.mode = envmode;
-		job.analyze = analyze;
+		if (analyze)
+			job.postprocess = SimAnalysis::AnalyzeEnergy;
 		return job;
 	}
 
@@ -38,7 +39,7 @@ namespace ForceCorrectness {
 		job.simParams = SimParams{};
 		job.simParams->enable_electrostatics = false;
 		job.simParams->n_steps = LIMA_UTILS::roundUp(3000000 / static_cast<int>(velocity), 100);
-		job.configure = [velocity](Simulation& simulation) {
+		job.configureSimulation = [velocity](Simulation& simulation) {
 			simulation.box->pclusterInterimStates[0].vels_prev[0] = Float3{ velocity, 0.f, 0.f };
 			simulation.box->pclusterInterimStates[1].vels_prev[0] = Float3{ -velocity, 0.f, 0.f };
 			};
@@ -51,8 +52,8 @@ namespace ForceCorrectness {
 
 		// Displace the second carbon from equilibrium along x.
 		auto job = MakeJob(workDir, envmode);
-		job.configureParams = [](SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
-		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams& params) {
+			params.n_steps = 1; params.data_logging_interval = 1;
 			grofile.atoms[1].position = grofile.atoms[0].position + Float3{ expectedB0 + bondLengthError, 0.f, 0.f };
 		};
 		auto completed = co_await environment.Submit(std::move(job));
@@ -83,10 +84,8 @@ namespace ForceCorrectness {
 
 		// Simulate 1000 fs and record every step so oscillations can be counted.
 		auto job = MakeJob(workDir, envmode);
-		job.configureParams = [](SimParams& params) {
+		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams& params) {
 			params.dt = 1.f * FEMTO_TO_NANO; params.n_steps = 1000; params.data_logging_interval = 1;
-		};
-		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
 			grofile.atoms[1].position.x = grofile.atoms[0].position.x + expectedB0 + bondLengthError;
 		};
 		auto completed = co_await environment.Submit(std::move(job));
@@ -114,8 +113,8 @@ namespace ForceCorrectness {
 		const fs::path workDir = TestsDir() / "Anglebond";
 		auto expected = std::make_shared<ExpectedForceEnergy>();
 		auto job = MakeJob(workDir, envmode);
-		job.configureParams = [](SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
-		job.configure = [expected](Simulation& simulation) {
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.configureSimulation = [expected](Simulation& simulation) {
 			// This used to require creating the simulation twice: once to discover
 			// force-field parameters and again after adjusting the coordinates.
 			// configure() runs after construction and gives direct access to both.
@@ -162,8 +161,8 @@ namespace ForceCorrectness {
 		auto expected = std::make_shared<ExpectedForceEnergy>();
 		auto particleId = std::make_shared<int>(0);
 		auto job = MakeJob(workDir, envmode);
-		job.configureParams = [](SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
-		job.configure = [expected, particleId](Simulation& simulation) {
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.configureSimulation = [expected, particleId](Simulation& simulation) {
 			auto& group = simulation.box->bondgroups[0];
 
 			// Isolate the pairbond by disabling the other bonded interactions.
@@ -199,11 +198,11 @@ namespace ForceCorrectness {
 		constexpr float mass = 12.011000f / 1000.f; // [kg/mol]
 		const float velocity = PhysicsUtils::tempToVelocity(400.f, mass); // [m/s] == [nm/ns]
 		auto job = MakeJob(workDir, envmode, true);
-		job.configureParams = [velocity](SimParams& params) {
+		job.preprocess = [velocity](GroFile&, TopologyFile&, SimParams& params) {
 			params.data_logging_interval = 1;
 			params.n_steps = LIMA_UTILS::roundUp(6000000 / static_cast<int>(velocity), 100);
 		};
-		job.configure = [velocity](Simulation& simulation) {
+		job.configureSimulation = [velocity](Simulation& simulation) {
 			simulation.box->pclusterInterimStates[0].vels_prev[0] = Float3{ velocity, 0.f, 0.f };
 		};
 		return FinishStabilityTest(environment, "doPoolCompSolBenchmark", envmode, std::move(job));
@@ -212,8 +211,8 @@ namespace ForceCorrectness {
 	TestRoutine doSinglebondBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Singlebond";
 		auto job = MakeJob(workDir, envmode, true);
-		job.configureParams = [](SimParams& params) { params.data_logging_interval = 1; params.n_steps = 5000; };
-		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams& params) {
+			params.data_logging_interval = 1; params.n_steps = 5000;
 			constexpr float equilibriumLength = .1335f; // [nm]
 			constexpr float bondLengthError = .02f;     // (r-r0) [nm]
 			grofile.atoms[1].position.x += equilibriumLength + bondLengthError;
@@ -224,7 +223,7 @@ namespace ForceCorrectness {
 	TestRoutine doAnglebondBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Anglebond";
 		auto job = MakeJob(workDir, envmode, true);
-		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams&) {
 			constexpr float relaxedAngle = 1.8849f; // [rad]
 			constexpr float angleError = .5f;       // (theta-theta0) [rad]
 			grofile.atoms[2].position.rotateAroundOrigo(
@@ -242,7 +241,7 @@ namespace ForceCorrectness {
 	TestRoutine doImproperDihedralBenchmark(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Improperbond";
 		auto job = MakeJob(workDir, envmode, true);
-		job.configureInput = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
+		job.preprocess = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
 			const auto ids = topfile.GetMoleculeType().improperdihedralbonds[0].ids;
 			// Translate the three vectors so atom i is the origin.
 			const Float3 i = grofile.atoms[ids[0]].position;
@@ -274,10 +273,10 @@ namespace VerletintegrationTesting {
 		job.simParams->enable_electrostatics = true;
 		job.simParams->data_logging_interval = 1;
 		job.simParams->snf_select.insert(HorizontalChargeField);
-		job.configureInput = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
+		job.preprocess = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
 			grofile.atoms.pop_back(); topfile.GetMoleculeType().atoms.pop_back();
 		};
-		job.configure = [](Simulation& simulation) {
+		job.configureSimulation = [](Simulation& simulation) {
 			simulation.box->uniformElectricField = UniformElectricField{ Float3{ 1.f, 0.f, 0.f }, fieldStrength };
 		};
 		auto completed = co_await environment.Submit(std::move(job));

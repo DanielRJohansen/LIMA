@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 
+struct SimulationResult;
 
 namespace SimAnalysis {
 	struct AnalyzedPackage {
@@ -29,6 +30,7 @@ namespace SimAnalysis {
 	};
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
+	void AnalyzeEnergy(SimulationResult& result);
 	std::vector<Float3> GetForces(const Simulation& simulation, int64_t step);
 
 

@@ -1,5 +1,6 @@
 #include "Analyzer.h"
 
+#include "Environment.h"
 #include "PhysicsUtils.cuh"
 #include "Printer.h"
 #include "Statistics.h"
@@ -77,6 +78,10 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 	}
 
 	return AnalyzedPackage(std::move(averageEnergies), simulation->temperature_buffer);
+}
+
+void SimAnalysis::AnalyzeEnergy(SimulationResult& result) {
+	result.analysis = analyzeEnergy(result.simulation.get());
 }
 
 namespace {

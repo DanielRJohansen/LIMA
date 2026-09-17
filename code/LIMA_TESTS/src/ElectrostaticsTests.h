@@ -84,8 +84,8 @@ namespace ElectrostaticsTests {
 		job.workDir = work_folder;
 		job.simParams = params;
 		job.mode = envmode;
-		job.analyze = true;
-		job.configureInput = [](GroFile& grofile, TopologyFile&, SimParams&) {
+		job.postprocess = SimAnalysis::AnalyzeEnergy;
+		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams&) {
 			grofile.box_size = Float3{ 8.f, 4.f, 4.f };
 			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
 			grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
@@ -148,11 +148,11 @@ namespace ElectrostaticsTests {
 		job.topfile.emplace();
 		job.simParams = simparams;
 		job.mode = envmode;
-		job.configureInput = [workDir, atoms = std::move(atoms)](
+		job.preprocess = [workDir, atoms = std::move(atoms)](
 			GroFile& grofile, TopologyFile& topfile, SimParams&) {
 			MakeChargeParticlesSim(grofile, topfile, workDir, 7.f, atoms, 5.f);
 		};
-		job.configure = [](Simulation& simulation) {
+		job.configureSimulation = [](Simulation& simulation) {
 			simulation.box->uniformElectricField =
 				UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f };
 		};
@@ -342,12 +342,12 @@ namespace ElectrostaticsTests {
 			job.workDir = work_folder;
 			job.simParams = params;
 			job.mode = envmode;
-			job.configureInput = [setup](GroFile& grofile, TopologyFile&, SimParams&) {
+			job.preprocess = [setup](GroFile& grofile, TopologyFile&, SimParams&) {
 				grofile.box_size = Float3{ 30.f };
 				grofile.atoms[0].position = setup.p0;
 				grofile.atoms[1].position = setup.p1;
 			};
-			job.configure = [c0, c1](Simulation& simulation) {
+			job.configureSimulation = [c0, c1](Simulation& simulation) {
 				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
 				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
 			};
@@ -427,12 +427,12 @@ namespace ElectrostaticsTests {
 			job.workDir = work_folder;
 			job.simParams = params;
 			job.mode = envmode;
-			job.configureInput = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
+			job.preprocess = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
 				grofile.box_size = Float3{ 30.f };
 				grofile.atoms[0].position = p0;
 				grofile.atoms[1].position = p1;
 			};
-			job.configure = [c0, c1](Simulation& simulation) {
+			job.configureSimulation = [c0, c1](Simulation& simulation) {
 				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
 				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
 			};
@@ -493,8 +493,8 @@ namespace ElectrostaticsTests {
 		job.workDir = work_folder;
 		job.simParams = params;
 		job.mode = envmode;
-		job.analyze = true;
-		job.configureInput = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
+		job.postprocess = SimAnalysis::AnalyzeEnergy;
+		job.preprocess = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
 			grofile.box_size = Float3{ 20.f };
 			grofile.atoms[0].position = p0;
 			grofile.atoms[1].position = p1;
@@ -556,7 +556,7 @@ namespace ElectrostaticsTests {
 		job.simParams = params;
 		job.mode = envmode;
 		auto generatedGrofile = std::make_shared<GroFile>();
-		job.configureInput = [work_folder, boxlen, atoms = std::move(atoms), generatedGrofile](
+		job.preprocess = [work_folder, boxlen, atoms = std::move(atoms), generatedGrofile](
 			GroFile& grofile, TopologyFile& topfile, SimParams&) {
 			MakeChargeParticlesSim(grofile, topfile, work_folder, boxlen.x, atoms, 1.f);
 			*generatedGrofile = grofile;

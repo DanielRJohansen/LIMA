@@ -20,6 +20,7 @@ struct BoxImage;
 class Engine;
 struct LiveEditData;
 struct ScheduledSimulationState;
+struct SimulationResult;
 
 namespace fs = std::filesystem;
 
@@ -38,11 +39,10 @@ struct SimulationJob {
 	std::optional<TopologyFile> topfile;
 	std::unique_ptr<Simulation> initialSimulation;
 	EnvMode mode = EnvMode::Headless;
-	std::function<void(SimParams&)> configureParams = [](SimParams&) {};
-	std::function<void(GroFile&, TopologyFile&, SimParams&)> configureInput = [](GroFile&, TopologyFile&, SimParams&) {};
-	std::function<void(Simulation&)> configure = [](Simulation&) {};
+	std::function<void(GroFile&, TopologyFile&, SimParams&)> preprocess;
+	std::function<void(Simulation&)> configureSimulation;
+	std::function<void(SimulationResult&)> postprocess;
 	bool run = true;
-	bool analyze = false;
 };
 
 struct SimulationResult {
@@ -128,6 +128,11 @@ private:
 		std::shared_ptr<ScheduledSimulationState> state;
 		std::unique_ptr<Simulation> simulation;
 	};
+	struct ProcessedSimulation {
+		SimulationJob job;
+		std::shared_ptr<ScheduledSimulationState> state;
+		SimulationResult result;
+	};
 
 	void StartScheduling();
 	void StopScheduling();
@@ -137,6 +142,7 @@ private:
 	// Functions that are only run by their own dedicated worker thread
 	void Preprocess(QueuedSimulation next);					// preprocessor thread	
 	void RunPreparedSimulation(PreparedSimulation next);	// simulation thread
+	void Postprocess(ProcessedSimulation next);				// postprocessor thread
 	//
 
 
@@ -162,7 +168,6 @@ private:
 		SimStatus simStatus{};
 		bool forceWriteSimstatusToDisplay = false;
 		int64_t stepAtLastRender = INT64_MIN;
-		std::optional<SimAnalysis::AnalyzedPackage> analyzedPackage;
 		EnvMode mode;
 		fs::path workDir;
 	};
@@ -173,7 +178,6 @@ private:
 		std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
 	void WriteTrajectoryAsUff(const fs::path& path) const;
 	fs::path FixPath(const fs::path& path) const;
-	const SimAnalysis::AnalyzedPackage& getAnalyzedPackage();
 	
 	void UpdateSimstatus(Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/);
 
@@ -192,13 +196,17 @@ private:
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
 	static constexpr size_t maxPreparedSimulations = 3;
+	static constexpr size_t maxProcessedSimulations = 1;
 	std::deque<PreparedSimulation> preparedSimulations;
+	std::deque<ProcessedSimulation> processedSimulations;
 	bool preparingSimulation = false;
 	bool runningSimulation = false;
+	bool postprocessingSimulation = false;
 	bool stopping = false;
 	std::jthread coordinator;
 
 	std::chrono::steady_clock::time_point timingStarted;
 	std::chrono::duration<double> preprocessTime{};
 	std::chrono::duration<double> simulationTime{};
+	std::chrono::duration<double> postprocessTime{};
 };

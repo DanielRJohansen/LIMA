@@ -33,7 +33,7 @@ namespace TestMDStability {
 		mdJob.simParamsPath = workDir / "sim_params.txt";
 		mdJob.initialSimulation = std::move(minimized.simulation);
 		mdJob.mode = envmode;
-		mdJob.analyze = true;
+		mdJob.postprocess = SimAnalysis::AnalyzeEnergy;
 		auto completed = co_await environment.Submit(std::move(mdJob));
 		if (!completed.analysis)
 			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
@@ -58,7 +58,7 @@ namespace TestMDStability {
 			mdJob.simParamsPath = workDir / "sim_params.txt";
 			mdJob.initialSimulation = std::move(minimized.simulation);
 			mdJob.mode = envmode;
-			mdJob.analyze = true;
+			mdJob.postprocess = SimAnalysis::AnalyzeEnergy;
 			mdHandles[run] = environment.Submit(std::move(mdJob));
 		}
 

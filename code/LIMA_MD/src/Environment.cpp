@@ -195,28 +195,36 @@ void Environment::MainLoop() {
 
 	std::jthread preprocessThread;
 	std::jthread simulationThread;
+	std::jthread postprocessThread;
 
 
-	auto MayPreprocessNextJob = [this]() -> bool {
-		bool canStartNewSim = (!runningSimulation && !preparedSimulations.empty());
+	auto MayScheduleWork = [this]() -> bool {
+		bool canStartNewSim = !runningSimulation && !preparedSimulations.empty()
+			&& processedSimulations.size() < maxProcessedSimulations;
 		bool canPrepareSimulation = !preparingSimulation && preparedSimulations.size() < maxPreparedSimulations && !pendingSimulations.empty();
-		bool finishedStopping = stopping && pendingSimulations.empty() && !preparingSimulation && preparedSimulations.empty() && !runningSimulation;
+		bool canPostprocessSimulation = !postprocessingSimulation && !processedSimulations.empty();
+		bool finishedStopping = stopping && pendingSimulations.empty() && !preparingSimulation
+			&& preparedSimulations.empty() && !runningSimulation
+			&& processedSimulations.empty() && !postprocessingSimulation;
 
-		return canStartNewSim || canPrepareSimulation || finishedStopping;
+		return canStartNewSim || canPrepareSimulation || canPostprocessSimulation || finishedStopping;
 		};
 
 	while (true) {
 		std::optional<PreparedSimulation> simulationToRun;
 		std::optional<QueuedSimulation> simulationToPreprocess;
+		std::optional<ProcessedSimulation> simulationToPostprocess;
 		{
 			std::unique_lock lock(schedulingMutex);
-			schedulerWakeup.wait(lock, MayPreprocessNextJob);
+			schedulerWakeup.wait(lock, MayScheduleWork);
 
 			if (stopping && pendingSimulations.empty() && !preparingSimulation
-				&& preparedSimulations.empty() && !runningSimulation)
+				&& preparedSimulations.empty() && !runningSimulation
+				&& processedSimulations.empty() && !postprocessingSimulation)
 				break;
 
-			if (!runningSimulation && !preparedSimulations.empty()) {
+			if (!runningSimulation && !preparedSimulations.empty()
+				&& processedSimulations.size() < maxProcessedSimulations) {
 				simulationToRun.emplace(std::move(preparedSimulations.front()));
 				preparedSimulations.pop_front();
 				runningSimulation = true;
@@ -226,6 +234,11 @@ void Environment::MainLoop() {
 				simulationToPreprocess.emplace(std::move(pendingSimulations.front()));
 				pendingSimulations.pop_front();
 				preparingSimulation = true;
+			}
+			if (!postprocessingSimulation && !processedSimulations.empty()) {
+				simulationToPostprocess.emplace(std::move(processedSimulations.front()));
+				processedSimulations.pop_front();
+				postprocessingSimulation = true;
 			}
 		}
 
@@ -237,6 +250,10 @@ void Environment::MainLoop() {
 			preprocessThread = std::jthread(
 				[this, next = std::move(*simulationToPreprocess)]() mutable { Preprocess(std::move(next)); });
 		}
+		if (simulationToPostprocess) {
+			postprocessThread = std::jthread(
+				[this, next = std::move(*simulationToPostprocess)]() mutable { Postprocess(std::move(next)); });
+		}
 	}
 }
 
@@ -244,8 +261,8 @@ void Environment::Preprocess(QueuedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
 		auto simulation = BuildSimulation(next.job);
-		if (next.job.configure)
-			next.job.configure(*simulation);
+		if (next.job.configureSimulation)
+			next.job.configureSimulation(*simulation);
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
 		const std::lock_guard lock(schedulingMutex);
@@ -270,13 +287,11 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 			std::move(next.simulation), next.job.mode, next.job.workDir);
 		const auto elapsed = next.job.run ? RunSimulation() : std::chrono::duration<double>{};
 		SimulationSession& session = Session();
-		std::optional<SimAnalysis::AnalyzedPackage> analysis;
-		if (next.job.analyze)
-			analysis.emplace(getAnalyzedPackage());
-
 		SimulationResult result{
-			std::move(session.simulation), std::move(analysis), elapsed, std::move(session.avgStepTimes) };
-		next.state->SetResult(std::move(result));
+			std::move(session.simulation), std::nullopt, elapsed, std::move(session.avgStepTimes) };
+		const std::lock_guard lock(schedulingMutex);
+		processedSimulations.emplace_back(ProcessedSimulation{
+			std::move(next.job), std::move(next.state), std::move(result) });
 	}
 	catch (...) {
 		next.state->SetError(std::current_exception());
@@ -289,15 +304,35 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 	schedulerWakeup.notify_one();
 }
 
+void Environment::Postprocess(ProcessedSimulation next) {
+	const auto started = std::chrono::steady_clock::now();
+	try {
+		if (next.job.postprocess)
+			next.job.postprocess(next.result);
+		next.state->SetResult(std::move(next.result));
+	}
+	catch (...) {
+		next.state->SetError(std::current_exception());
+	}
+	{
+		const std::lock_guard lock(schedulingMutex);
+		postprocessTime += std::chrono::steady_clock::now() - started;
+		postprocessingSimulation = false;
+	}
+	schedulerWakeup.notify_one();
+}
+
 void Environment::PrintDevPerformanceReport() {
 	std::chrono::duration<double> elapsed;
 	std::chrono::duration<double> preprocessing;
 	std::chrono::duration<double> simulation;
+	std::chrono::duration<double> postprocessing;
 	{
 		const std::lock_guard lock(schedulingMutex);
 		elapsed = std::chrono::steady_clock::now() - timingStarted;
 		preprocessing = preprocessTime;
 		simulation = simulationTime;
+		postprocessing = postprocessTime;
 	}
 
 	const auto Percentage = [total = elapsed.count()](double seconds) {
@@ -321,21 +356,21 @@ void Environment::PrintDevPerformanceReport() {
 		Bar(Percentage(simulation.count())).c_str(), Percentage(simulation.count()), simulation.count());
 	std::printf("  Preprocessing  [%s] %6.2f%%  %8.2f s\n",
 		Bar(Percentage(preprocessing.count())).c_str(), Percentage(preprocessing.count()), preprocessing.count());
+	std::printf("  Postprocessing [%s] %6.2f%%  %8.2f s\n",
+		Bar(Percentage(postprocessing.count())).c_str(), Percentage(postprocessing.count()), postprocessing.count());
 	std::printf("  GPU idle       [%s] %6.2f%%  %8.2f s\n",
 		Bar(Percentage(idleSeconds)).c_str(), Percentage(idleSeconds), idleSeconds);
 	std::printf("========================================================================\n");
-	std::printf("  Preprocessing and GPU simulation can overlap.\n");
+	std::printf("  Preprocessing, GPU simulation, and postprocessing can overlap.\n");
 }
 
 std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {
 	const fs::path simParamsPath = job.simParamsPath.is_absolute() ? job.simParamsPath : job.workDir / job.simParamsPath;
 	if (!job.simParams)
 		job.simParams.emplace(simParamsPath);
-	job.configureParams(*job.simParams);
-	const SimParams& simParams = *job.simParams;
 
 	if (job.initialSimulation) {
-		auto simulation = std::make_unique<Simulation>(simParams);
+		auto simulation = std::make_unique<Simulation>(*job.simParams);
 		BoxBuilder::copyBoxState(*simulation, std::move(job.initialSimulation->box), job.initialSimulation->getStep());
 		simulation->boxImage = std::move(job.initialSimulation->boxImage);
 		return simulation;
@@ -345,7 +380,9 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 	const fs::path topPath = job.topPath.is_absolute() ? job.topPath : job.workDir / job.topPath;
 	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ groPath };
 	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ topPath };
-	job.configureInput(grofile, topolfile, *job.simParams);
+	if (job.preprocess)
+		job.preprocess(grofile, topolfile, *job.simParams);
+	const SimParams& simParams = *job.simParams;
 
 	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile, topolfile, V1,
@@ -627,19 +664,6 @@ bool Environment::handleDisplay(Engine& engine, const BoxParams& boxparams, Disp
 	}
 
 	return !display->DisplaySelfTerminated();
-}
-
-const SimAnalysis::AnalyzedPackage& Environment::getAnalyzedPackage()
-{
-	SimulationSession& session = Session();
-	auto& simulation = session.simulation;
-	auto& postsim_anal_package = session.analyzedPackage;
-	if (simulation == nullptr)
-		throw std::runtime_error("Env has no simulation");
-	// TODO: make some check here that the simulation has finished
-	if (!postsim_anal_package.has_value())
-		postsim_anal_package = SimAnalysis::analyzeEnergy(simulation.get());
-	return postsim_anal_package.value();
 }
 
 void Environment::QueueLiveEditCommand(LiveEdit::Command command) {

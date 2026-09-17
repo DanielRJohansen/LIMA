@@ -157,7 +157,7 @@ namespace Benchmarks {
 			job.topPath = topPath;
 			job.simParamsPath = simParamsPath;
 			job.mode = EnvMode::Headless;
-			job.configureParams = [nSteps](SimParams& params) {
+			job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
 				params.data_logging_interval = 20;
 				params.enable_electrostatics = true;
 				params.n_steps = nSteps;

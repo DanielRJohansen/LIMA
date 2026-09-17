@@ -516,7 +516,6 @@ void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently 
 
 	cudaMallocManaged(dest, bytesize);  // optim: THis shouldnt be managed
 	cudaMemcpy(*dest, &src, bytesize, cudaMemcpyHostToDevice);
-	cudaDeviceSynchronize();
 }
 
 template<typename T>

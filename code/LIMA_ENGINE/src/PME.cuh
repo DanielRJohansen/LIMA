@@ -873,11 +873,11 @@ PME::Controller::Controller(const Box& box, float cutoffNM, cudaStream_t& stream
 
 	const int nBlocks = (nGridpointsReciprocalspace + 63) / 64;
 	PrecomputeGreensFunctionKernel << <nBlocks, 64, 0, stream >> > (greensFunctionScalars, gridpointsPerDim, Double3{ boxlenNm }, ewaldKappa);
-	LIMA_UTILS::genericErrorCheck("PrecomputeGreensFunctionKernel failed!");
+	LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel failed!");
 }
 
 PME::Controller::~Controller() {
-	cudaDeviceSynchronize();
+	cudaStreamSynchronize(stream);
 
 	cufftDestroy(planForward);
 	cufftDestroy(planInverse);

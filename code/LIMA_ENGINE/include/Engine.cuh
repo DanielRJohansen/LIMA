@@ -109,6 +109,7 @@ private:
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void bootstrapTrajbufferWithCoords();
+	void Synchronize();
 
 	void BootstrapSolventblockDistributeFromDensity();
 
@@ -174,9 +175,9 @@ private:
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();
-	bool MakeSuperClusterTasksGPU();
-	void RunClustering(bool runPclustering = true);
-	void BootstrapClustering();
+	bool MakeSuperClusterTasksGPU(cudaStream_t stream);
+	void RunClustering(cudaStream_t stream, bool runPclustering = true);
+	void BootstrapClustering(cudaStream_t stream);
 };
 
  

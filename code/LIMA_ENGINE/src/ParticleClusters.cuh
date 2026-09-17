@@ -571,7 +571,7 @@ __global__ void CompressSuperclusters(SuperClustersControl scControl, const Supe
 //#pragma optimize("", on)
 
 
-void Engine::RunClustering(bool getPclusters) {
+void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	const Int3 boxSize = simulation->box->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));
 	const int nPclusters = simulation->box->persistentClusters.size();
@@ -587,12 +587,13 @@ void Engine::RunClustering(bool getPclusters) {
 	//DebugUtils::VerifyIdentical(pClusters, "PClustersBeforeClustering" + std::to_string(simulation->getStep()));
 	//DebugUtils::VerifyIdentical(pClusterDevice, nPclusters, "PClustersBeforeClustering", simulation->getStep());
 
-	ApplyBoundaryCondition << < (nPclusters + 31) / 32, 32 >> > (pClusterDevice.Get(), nPclusters, boxSizeF, boxSizeFInv);
+	ApplyBoundaryCondition << <(nPclusters + 31) / 32, 32, 0, stream >> > (
+		pClusterDevice.Get(), nPclusters, boxSizeF, boxSizeFInv);
 
 	if (getPclusters) {
 		
 		int nCudablocks = (nPclusters + 31) / 32;
-		GetPclusterPositions<<<nCudablocks, 32>>>(
+		GetPclusterPositions<<<nCudablocks, 32, 0, stream>>>(
 			*pclusterTransfermodule,
 			pClusterDevice.Get(),
 			nPclusters,
@@ -601,12 +602,12 @@ void Engine::RunClustering(bool getPclusters) {
 
 		//DebugUtils::VerifyIdentical(pclusterTransfermodule->meanPositionOfPClustersPerBlock)
 
-		SortPClusterIndicesInBlocks <<<nBlocks, 32>>> (*pclusterTransfermodule);
+		SortPClusterIndicesInBlocks <<<nBlocks, 32, 0, stream>>> (*pclusterTransfermodule);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SortPClusterIndicesInBlocks kernel");
 	}
 
 	ClusteringPretransferKernel<PeriodicBoundaryCondition>
-		<<<nBlocks, 32 >>> (*pclusterTransfermodule, boxSize, boxSizeF);
+		<<<nBlocks, 32, 0, stream >>> (*pclusterTransfermodule, boxSize, boxSizeF);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringPretransferKernel");
 
 	//DebugUtils::VerifyIdentical(pclusterTransfermodule->idsOfIncomingClusters, 6 * PClusterTransfermodule::maxOutgoingClusters * nBlocks, "idsOfIncomingCLusters", simulation->getStep());
@@ -615,7 +616,7 @@ void Engine::RunClustering(bool getPclusters) {
 	
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel <<<nBlocks, 32>>> (*pclusterTransfermodule, pClusterDevice.Get(), *superclusterStagingControl, pClusterMetaDevice.Get(), boxSize, boxSizeF);
+	ClusteringKernel <<<nBlocks, 32, 0, stream>>> (*pclusterTransfermodule, pClusterDevice.Get(), *superclusterStagingControl, pClusterMetaDevice.Get(), boxSize, boxSizeF);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 	//DebugUtils::VerifyIdentical(superclusterStagingControl->scData, nBlocks * SuperClustersControl::maxClustersPerBlock, "RunClustering_SCData", simulation->getStep());
 
@@ -629,20 +630,23 @@ void Engine::RunClustering(bool getPclusters) {
 	{
 		const int nElements = nBlocks + 1; // Extra element for total sum at end
 		//DebugUtils::VerifyIdentical(superclusterStagingControl->nClustersPerBlock, nElements, "nClustersPerBlock", simulation->getStep());
-		thrust::exclusive_scan(thrust::device, superclusterStagingControl->nClustersPerBlock, superclusterStagingControl->nClustersPerBlock + nElements, superclusterStagingControl->nClustersPrefixSum);
+		thrust::exclusive_scan(thrust::cuda::par.on(stream), superclusterStagingControl->nClustersPerBlock,
+			superclusterStagingControl->nClustersPerBlock + nElements, superclusterStagingControl->nClustersPrefixSum);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after Prefixsum");
-		nSuperclusters = GenericCopyToHost<int>(superclusterStagingControl->nClustersPrefixSum + nElements-1);
+		cudaMemcpyAsync(&nSuperclusters, superclusterStagingControl->nClustersPrefixSum + nElements - 1,
+			sizeof(int), cudaMemcpyDeviceToHost, stream);
+		cudaStreamSynchronize(stream);
 	}
 
-	CompressSuperclusters<<<nBlocks, 32>>>(*superClustersControl, *superclusterStagingControl);
+	CompressSuperclusters<<<nBlocks, 32, 0, stream>>>(*superClustersControl, *superclusterStagingControl);
 
-	pclusterTransfermodule->Reset(boxSize);
+	pclusterTransfermodule->Reset(boxSize, stream);
 
 
 	//DebugUtils::VerifyIdentical(superClustersControl->scData, nSuperclusters, "RunClustering_SCData_Compressed", simulation->getStep());
 }
 
-void Engine::BootstrapClustering() {
+void Engine::BootstrapClustering(cudaStream_t stream) {
 	Int3 boxSize = simulation->box->boxparams.boxSize;
 	const int nBlocks = BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(boxSize));;
 	const Float3 boxSizeF = Float3(boxSize.x, boxSize.y, boxSize.z);
@@ -667,12 +671,15 @@ void Engine::BootstrapClustering() {
 		nPclustersPerBlock[blockIndex]++;
 	}
 
-	cudaMemcpy(pclusterTransfermodule->meanPositionOfPClustersPerBlock, meanPositionsofPclusters.data(), meanPositionsofPclusters.size() * sizeof(Float3), cudaMemcpyHostToDevice);
-	cudaMemcpy(pclusterTransfermodule->idsOfPclustersInBlocks, idsOfPclustersInBlocks.data(), idsOfPclustersInBlocks.size() * sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(pclusterTransfermodule->nPClustersPerBlock, nPclustersPerBlock.data(), nPclustersPerBlock.size() * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpyAsync(pclusterTransfermodule->meanPositionOfPClustersPerBlock, meanPositionsofPclusters.data(),
+		meanPositionsofPclusters.size() * sizeof(Float3), cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(pclusterTransfermodule->idsOfPclustersInBlocks, idsOfPclustersInBlocks.data(),
+		idsOfPclustersInBlocks.size() * sizeof(int), cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(pclusterTransfermodule->nPClustersPerBlock, nPclustersPerBlock.data(),
+		nPclustersPerBlock.size() * sizeof(int), cudaMemcpyHostToDevice, stream);
 
 	LIMA_UTILS::genericErrorCheckNoSync("Error after uploading pCluster bootstrap data");
 
-	RunClustering(false);	
+	RunClustering(stream, false);
 }
 

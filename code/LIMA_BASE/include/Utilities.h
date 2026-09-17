@@ -34,6 +34,16 @@ namespace LIMA_UTILS {
         }
     }
 
+	static void genericErrorCheck(cudaStream_t stream, const char* text) {
+		const cudaError_t syncStatus = cudaStreamSynchronize(stream);
+		const cudaError_t cudaStatus = syncStatus == cudaSuccess ? cudaGetLastError() : syncStatus;
+		if (cudaStatus != cudaSuccess) {
+			std::cout << "\nCuda error code: " << cudaStatus << " - " << cudaGetErrorString(cudaStatus) << std::endl;
+			fprintf(stderr, text);
+			throw std::runtime_error("genericErrorCheck failed");
+		}
+	}
+
     static void genericErrorCheckNoSync(const char* text) {
         if constexpr (SYNC_ALL_KERNELS)
             cudaDeviceSynchronize();

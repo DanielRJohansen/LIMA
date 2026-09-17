@@ -13,7 +13,7 @@ void Engine::CopySimulationToHost() {
 }
 
 void Engine::verifyEngine() {
-	LIMA_UTILS::genericErrorCheck("Error before engine initialization.\n");
+	LIMA_UTILS::genericErrorCheckNoSync("Error before engine initialization.\n");
 
 	Int3 dim = simulation->box->boxparams.boxSize;
 	assert(dim.x < 1024 && dim.y < 1024 && dim.z < 1024 && "Neighborlist cannot handle such large gridnode_ids");
@@ -68,7 +68,7 @@ void ForceEnergyInterims::Free() const {
 		cudaFree(pme);
 	}
 
-	LIMA_UTILS::genericErrorCheck("Error during CompoundForceEnergyInterims destruction");
+	LIMA_UTILS::genericErrorCheckNoSync("Error during CompoundForceEnergyInterims destruction");
 }
 
 

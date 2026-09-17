@@ -94,7 +94,7 @@ SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box, const
 	cudaMemset(adamState, 0, sizeof(AdamState) * box->persistentClusters.size() * PersistentCluster::maxParticles);
 
 
-	LIMA_UTILS::genericErrorCheck("Error during creation of SimDevice");
+	LIMA_UTILS::genericErrorCheckNoSync("Error during creation of SimDevice");
 }
 
 void SimulationDevice::FreeMembers() {

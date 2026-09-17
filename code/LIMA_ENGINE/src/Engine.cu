@@ -23,6 +23,9 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 {
 	simulation = _sim;
 	ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simParams.cutoff_nm);
+	for (cudaStream_t& stream : cudaStreams)
+		cudaStreamCreate(&stream);
+	cudaStreamCreate(&pmeStream);
 
     verifyEngine();
 
@@ -57,14 +60,8 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 	cudaMemcpy(boxStateCopy.get(), &sim_dev->boxState, sizeof(BoxState), cudaMemcpyDeviceToHost);
 	cudaMemcpy(boxConfigCopy.get(), &sim_dev->boxConfig, sizeof(BoxConfig), cudaMemcpyDeviceToHost);	
 
-	BootstrapClustering();
-	MakeSuperClusterTasksGPU();
-
-
-	for (cudaStream_t& stream : cudaStreams) {
-		cudaStreamCreate(&stream);
-	}
-	cudaStreamCreate(&pmeStream);
+	BootstrapClustering(cudaStreams[0]);
+	MakeSuperClusterTasksGPU(cudaStreams[0]);
 
 	pmeController = std::make_unique<PME::Controller>(*simulation->box, simulation->simParams.cutoff_nm, pmeStream);
 
@@ -77,6 +74,7 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 }
 
 Engine::~Engine() {
+	Synchronize();
 	if (sim_dev != nullptr) {
 		sim_dev->FreeMembers();
 		cudaFree(sim_dev);
@@ -86,11 +84,18 @@ Engine::~Engine() {
 	for (cudaStream_t& stream : cudaStreams) {
 		cudaStreamDestroy(stream);
 	}
+	cudaStreamDestroy(pmeStream);
 
 	if (superClustersControl)
 		superClustersControl->Free();
 
-	LIMA_UTILS::genericErrorCheck("Error during Engine destruction");
+	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
+}
+
+void Engine::Synchronize() {
+	cudaStreamSynchronize(pmeStream);
+	for (cudaStream_t stream : cudaStreams)
+		cudaStreamSynchronize(stream);
 }
 
 
@@ -104,9 +109,9 @@ void Engine::step() {
 	
 
 	if (simulation->step % simulation->simParams.stepsPerNlistupdate == 0) {
-		superClustersControl->Reset(simulation->box->boxparams.boxSize);
-		RunClustering();
-		MakeSuperClusterTasksGPU();
+		superClustersControl->Reset(simulation->box->boxparams.boxSize, cudaStreams[0]);
+		RunClustering(cudaStreams[0]);
+		MakeSuperClusterTasksGPU(cudaStreams[0]);
 	}
 
 	LIMA_UTILS::genericErrorCheckNoSync("Error after step!");
@@ -119,7 +124,8 @@ void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the 
 		runstatus.stepForMostRecentData = simulation->getStep();
 
 		if ((simulation->getStep() % simulation->simParams.steps_per_temperature_measurement) == 0 && simulation->getStep() > 0) {
-			auto [temperature, newThermostatScalar] = thermostat->Temperature(sim_dev, simulation->box->boxparams, simulation->simParams, simulation->getStep(), pClusterMetaDevice.Get());
+			auto [temperature, newThermostatScalar] = thermostat->Temperature(sim_dev, simulation->box->boxparams,
+				simulation->simParams, simulation->getStep(), pClusterMetaDevice.Get(), cudaStreams[0]);
 			simulation->temperature_buffer.push_back(temperature);
 			runstatus.current_temperature = temperature;
 
@@ -147,7 +153,8 @@ void Engine::terminateSimulation() {
 
 	sim_dev->boxState.CopyDataToHost(*simulation->box);
 
-	LIMA_UTILS::genericErrorCheck("Error during TerminateSimulation");
+	Synchronize();
+	LIMA_UTILS::genericErrorCheckNoSync("Error during TerminateSimulation");
 }
 
 //--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
@@ -156,7 +163,7 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 	assert(steps_to_transfer <= simulation->getStep());
 	if (steps_to_transfer == 0) { return; }
 
-	cudaDeviceSynchronize();
+	cudaStreamSynchronize(cudaStreams[0]);
 
 	const int64_t startstep = simulation->getStep() - steps_to_transfer * simulation->simParams.data_logging_interval;
 	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simulation->simParams.data_logging_interval);
@@ -168,25 +175,26 @@ void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
 		simulation->potE_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->potE_buffer,
 		sizeof(float) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost);
+		cudaMemcpyDeviceToHost, cudaStreams[0]);
 	
 	cudaMemcpyAsync(
 		simulation->vel_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->vel_buffer,
 		sizeof(float) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost);
+		cudaMemcpyDeviceToHost, cudaStreams[0]);
 
 	cudaMemcpyAsync(
 		simulation->forceBuffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->forceBuffer,
 		sizeof(Float3) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost);
+		cudaMemcpyDeviceToHost, cudaStreams[0]);
 
 	cudaMemcpyAsync(
 		simulation->traj_buffer->getBufferAtIndex(startindex),
 		dataBuffersDevice->traj_buffer,
 		sizeof(Float3) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost);
+		cudaMemcpyDeviceToHost, cudaStreams[0]);
+	cudaStreamSynchronize(cudaStreams[0]);
 
 	step_at_last_traj_transfer = simulation->getStep();
 	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep() - 1, simulation->simParams.data_logging_interval));
@@ -201,7 +209,7 @@ void Engine::offloadTrainData() {
 
 	uint64_t step_offset = (simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
 	cudaMemcpy(&simulation->trainingdata[step_offset], dataBuffersDevice->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
-	LIMA_UTILS::genericErrorCheck("Cuda error during traindata offloading\n");
+	LIMA_UTILS::genericErrorCheckNoSync("Cuda error during traindata offloading\n");
 #endif
 }
 
@@ -295,7 +303,7 @@ void Engine::bootstrapTrajbufferWithCoords() {
 	step_at_last_traj_transfer = 0.f;
 	runstatus.most_recent_positions = simulation->traj_buffer->getBufferAtIndex(0);
 
-	LIMA_UTILS::genericErrorCheck("Error during bootstrapTrajbufferWithCoords");
+	LIMA_UTILS::genericErrorCheck(cudaStreams[0], "Error during bootstrapTrajbufferWithCoords");
 }
 
 void Engine::HandleEarlyStoppingInEM() {
@@ -316,7 +324,7 @@ void Engine::HandleEarlyStoppingInEM() {
 
 		stepAtLastEarlystopCheck = simulation->getStep();
 	}
-	LIMA_UTILS::genericErrorCheck("HandleEarlyStoppingInEM");
+	LIMA_UTILS::genericErrorCheck(cudaStreams[0], "HandleEarlyStoppingInEM");
 }
 
 
@@ -332,8 +340,6 @@ void Engine::_deviceMaster() {
 
 
 	// #### Initial round of force computations
-	//cudaDeviceSynchronize();
-
     if (ENABLE_ES_LR && simulation->simParams.enable_electrostatics) {
         pmeController->CalcCharges(superClustersControl->scData, superClustersControl->scMeta, nSuperclusters, forceEnergyInterims->pme, step);
     }
@@ -396,7 +402,7 @@ void Engine::_deviceMaster() {
 				boxStateCopy->pclusterInterimStates, step, simulation->simParams.dt, totalParticlesUpperbound, nSuperclusters, forcesMagnitudeSquareDevice.Get(),
 				boxSize, thermostatScalar, fixedParticleMovementBufferPtr, forcesMaskBufferPtr, fixedParticleRotationBufferPtr);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
-		cudaDeviceSynchronize();
+		cudaStreamSynchronize(cudaStreams[0]);
 	}
 
 	//DebugUtils::VerifyIdentical(superClustersControl->scData, nSuperclusters, "Engine_SCData", step);
@@ -619,7 +625,7 @@ bool Engine::TestAlgorithms() {
 				TestSortKernel32<8, 8> << <1, 32 >> > (dKeys, dIds);
 
 
-			cudaDeviceSynchronize();
+			cudaStreamSynchronize(nullptr);
 
 			cudaMemcpy(hKeys.data(), dKeys, totalValues * sizeof(float), cudaMemcpyDeviceToHost);
 			cudaMemcpy(hIds.data(), dIds, totalValues * sizeof(int), cudaMemcpyDeviceToHost);

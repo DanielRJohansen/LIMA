@@ -61,15 +61,16 @@ public:
 	}
 
 	// {temp,thermostatScalar}
-	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step, const PersistentClusterMeta* const pcMetaDevice) {
+	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step,
+		const PersistentClusterMeta* const pcMetaDevice, cudaStream_t stream) {
 		// Step 1: Calculate kinetic energy for each Pcluster and store in the intermediate buffer
-		thrust::transform(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::maxParticles),
+		thrust::transform(thrust::cuda::par.on(stream), thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::maxParticles),
 			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.pclusterInterimStates, pcMetaDevice));
 		LIMA_UTILS::genericErrorCheckNoSync("TotalKineticEnergyCompounds");
-		cudaDeviceSynchronize();
 
 		// Step 3: Sum up all kinetic energy values (compounds + solvents)
-		double totalKineticEnergy = thrust::reduce(thrust::device, intermediate, intermediate + nPclusters * PersistentCluster::maxParticles, 0.0);
+		double totalKineticEnergy = thrust::reduce(thrust::cuda::par.on(stream),
+			intermediate, intermediate + nPclusters * PersistentCluster::maxParticles, 0.0);
 
 		//printf("Total kinetic energy: %f\n", totalKineticEnergy); 
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);

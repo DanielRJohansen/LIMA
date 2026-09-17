@@ -51,10 +51,10 @@ public:
 
 		return transferModule;
 	}
-	__host__ void Reset(Int3 boxSize) {
+	__host__ void Reset(Int3 boxSize, cudaStream_t stream = nullptr) {
 		const int nBlocksTotal = boxSize.InnerProduct();
-		cudaMemset(nPClustersPerBlock, 0, sizeof(int) * nBlocksTotal);
-		cudaMemset(nIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
+		cudaMemsetAsync(nPClustersPerBlock, 0, sizeof(int) * nBlocksTotal, stream);
+		cudaMemsetAsync(nIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal, stream);
 	}
 	__host__ void Free() {
 		cudaFree(meanPositionOfPClustersPerBlock);
@@ -87,11 +87,11 @@ struct SuperClustersControl {
 
 		Reset(boxSize);
 	}
-	__host__ void Reset(Int3 boxSize/*int nSuperclustersMax*/ /*The struct does not track this number itself*/) {
+	__host__ void Reset(Int3 boxSize, cudaStream_t stream = nullptr/*int nSuperclustersMax*/ /*The struct does not track this number itself*/) {
 		//cudaMemset(scMeta, 0, sizeof(SuperClusterMeta) * nSuperclustersMax); // doesnt matter
 		//cudaMemset(scData, 0, sizeof(SuperCluster) * nSuperclustersMax);
 		//cudaMemset(nSuperclustersAtomic, 0, sizeof(int));
-		cudaMemset(nSuperclustersInBlocks, 0, sizeof(int) * boxSize.InnerProduct());
+		cudaMemsetAsync(nSuperclustersInBlocks, 0, sizeof(int) * boxSize.InnerProduct(), stream);
 	}
 	__host__ void Free() {
 		cudaFree(scMeta);

@@ -1,10 +1,7 @@
 #include "Benchmarks.h"
 
 int main() {
-	//Benchmarks::Benchmark("membrane20", "membranesolvated_em", 2);
-	//Benchmarks::Psome(EnvMode::ConsoleOnly, 5);
-
-	//Benchmarks::Benchmark("stmv", std::nullopt, 2);
-	Benchmarks::STMV(EnvMode::Headless, 300);
-	return 0;
+	auto result = Benchmarks::STMV(Environment::Get(), EnvMode::Headless, 300).RunToCompletion();
+	result.printStatus();
+	return result.success ? 0 : 1;
 }

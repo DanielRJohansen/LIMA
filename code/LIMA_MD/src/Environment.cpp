@@ -265,9 +265,10 @@ void Environment::Preprocess(QueuedSimulation next) {
 			next.job.configureSimulation(*simulation);
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
+		const auto elapsed = std::chrono::steady_clock::now() - started;
 		const std::lock_guard lock(schedulingMutex);
 		preparedSimulations.emplace_back(PreparedSimulation{
-			std::move(next.job), std::move(next.state), std::move(simulation) });
+			std::move(next.job), std::move(next.state), std::move(simulation), elapsed });
 	}
 	catch (...) {
 		next.state->SetError(std::current_exception());
@@ -285,9 +286,11 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 	try {
 		SimulationSession session(
 			std::move(next.simulation), next.job.mode, next.job.workDir);
-		const auto elapsed = next.job.run ? RunSimulation(session) : std::chrono::duration<double>{};
+		const auto engineTime = next.job.run ? RunSimulation(session) : std::chrono::duration<double>{};
+		const auto processTime = std::chrono::steady_clock::now() - started;
 		SimulationResult result{
-			std::move(session.simulation), std::nullopt, elapsed, std::move(session.avgStepTimes) };
+			std::move(session.simulation), std::nullopt, engineTime,
+			next.preprocessingTime + processTime, std::move(session.avgStepTimes) };
 		const std::lock_guard lock(schedulingMutex);
 		processedSimulations.emplace_back(ProcessedSimulation{
 			std::move(next.job), std::move(next.state), std::move(result) });
@@ -308,6 +311,7 @@ void Environment::Postprocess(ProcessedSimulation next) {
 	try {
 		if (next.job.postprocess)
 			next.job.postprocess(next.result);
+		next.result.environmentTime += std::chrono::steady_clock::now() - started;
 		next.state->SetResult(std::move(next.result));
 	}
 	catch (...) {

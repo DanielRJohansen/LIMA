@@ -7,6 +7,6 @@ doDihedralbondBenchmark,0.000631537579,4.18667803e-08
 doImproperDihedralBenchmark,0.00334577123,4.46800586e-05
 doMethionineBenchmark,0.00119898084,4.12364841e-07
 doEightResiduesNoSolvent,0.000357617246,1.69446696e-06
-SolventBenchmark,1.18600177e-07,8.23273894e-08
+SolventBenchmark,7.676e-08,8.23273894e-08
 T4Lysozyme,5.87692557e-06,9.06740372e-09
 Deterministic Simulations,5.87692557e-06,9.06740372e-09

@@ -49,6 +49,7 @@ struct SimulationResult {
 	std::unique_ptr<Simulation> simulation;
 	std::optional<SimAnalysis::AnalyzedPackage> analysis;
 	std::chrono::duration<double> engineTime{};
+	std::chrono::duration<double> environmentTime{};
 	std::vector<float> averageStepTimes;
 
 	void WriteCoordinatesTo(GroFile& grofile, std::optional<int64_t> step = std::nullopt) const;
@@ -128,6 +129,7 @@ private:
 		SimulationJob job;
 		std::shared_ptr<ScheduledSimulationState> state;
 		std::unique_ptr<Simulation> simulation;
+		std::chrono::duration<double> preprocessingTime;
 	};
 	struct ProcessedSimulation {
 		SimulationJob job;

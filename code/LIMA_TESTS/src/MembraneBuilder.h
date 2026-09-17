@@ -268,7 +268,7 @@ namespace TestMembraneBuilder {
 		emResult.WriteCoordinatesTo(gro);
 		float finalMaxForce = emResult.simulation->maxForceBuffer.back().second;
 
-		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
+		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
 	}
 
 	static TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
@@ -363,7 +363,7 @@ namespace TestMembraneBuilder {
 		auto emResult = co_await environment.Submit(SimulationJob{
 			workDir, std::move(grofile), std::move(topfile), SimParams::BasicEMSimParams(emtol), envmode });
 
-		ASSERT(emResult.simulation->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
+		ASSERT(emResult.simulation->maxForceBuffer.back().second < emtol, "Failed to EM membrane");
 
 		co_return LimaUnittestResult{ true , "", envmode == Full };
 	}

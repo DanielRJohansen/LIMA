@@ -168,7 +168,7 @@ int main() {
 
 		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
 		//TestBuildmembraneSmall(envmode, false);
-		//TestAllStockholmlipids(envmode);
+		//TestAllStockholmlipids(env, envmode);
 
 		//Lipids::_MakeLipid("cholesterol");
 

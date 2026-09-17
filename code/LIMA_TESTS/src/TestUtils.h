@@ -348,7 +348,8 @@ namespace TestUtils {
 		}
 
 		bool success;
-		std::string error_description;		
+		std::string error_description;
+		std::optional<std::chrono::duration<double>> environmentTime;
 	};
 
 	struct TestFailure {
@@ -381,6 +382,7 @@ namespace TestUtils {
 
 		bool IsComplete() const { return coroutine.done(); }
 		bool ResumeIfReady();
+		LimaUnittestResult RunToCompletion();
 		LimaUnittestResult TakeResult();
 		std::chrono::duration<double> Elapsed() const;
 
@@ -393,7 +395,9 @@ namespace TestUtils {
 				void await_suspend(std::coroutine_handle<>) { promise.awaitedSimulation = handle; }
 				SimulationResult await_resume() {
 					promise.awaitedSimulation.reset();
-					return handle.Get();
+					auto result = handle.Get();
+					promise.environmentTime += result.environmentTime;
+					return result;
 				}
 			};
 
@@ -411,6 +415,8 @@ namespace TestUtils {
 				return SimulationAwaiter{ *this, std::move(handle) };
 			}
 			void return_value(LimaUnittestResult value) {
+				if (environmentTime != std::chrono::duration<double>{})
+					value.environmentTime = environmentTime;
 				result.emplace(std::move(value));
 				finished = std::chrono::steady_clock::now();
 			}
@@ -430,6 +436,7 @@ namespace TestUtils {
 			std::optional<SimulationHandle> awaitedSimulation;
 			std::optional<LimaUnittestResult> result;
 			std::exception_ptr error;
+			std::chrono::duration<double> environmentTime{};
 			std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 			std::chrono::steady_clock::time_point finished{};
 		};
@@ -458,6 +465,14 @@ namespace TestUtils {
 		return std::move(*promise.result);
 	}
 
+	inline LimaUnittestResult TestRoutine::RunToCompletion() {
+		while (!IsComplete()) {
+			if (!ResumeIfReady())
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		return TakeResult();
+	}
+
 	inline std::chrono::duration<double> TestRoutine::Elapsed() const {
 		const auto& promise = coroutine.promise();
 		return promise.finished - promise.started;
@@ -483,9 +498,9 @@ namespace TestUtils {
 			auto*& activeResults = ActiveVarianceCoefficientResults();
 			auto* previousResults = activeResults;
 			activeResults = &varianceResults;
-		try {
+			try {
 				testresult = std::make_unique<LimaUnittestResult>(test.TakeResult());
-				elapsed = test.Elapsed();
+				elapsed = testresult->environmentTime.value_or(test.Elapsed());
 			}
 			catch (const std::exception& ex) {
 				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw exception: " + std::string(ex.what()), false);

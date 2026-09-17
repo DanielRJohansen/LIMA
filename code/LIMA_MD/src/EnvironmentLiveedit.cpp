@@ -41,19 +41,19 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::BeginLiveEdit(
 	if (mode != EnvMode::Headless)
 		sayHello();
 	auto files = CreateLiveEditSimulationFiles(boxlen, newWorkDir);
-	InitializeSimulation(
+	InitializeLiveEditSimulation(
 		std::get<0>(files), std::get<1>(files), std::get<2>(files), mode, newWorkDir);
 	return files;
 }
 
 
 void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams) {
-	SimulationSession& session = Session();
+	SimulationSession& session = LiveEditSession();
 	auto& simulation = session.simulation;
 	auto& engine = session.engine;
 	auto& simStatus = session.simStatus;
-	insertionCmd.groPath = FixPath(insertionCmd.groPath);
-	insertionCmd.topPath = FixPath(insertionCmd.topPath);
+	insertionCmd.groPath = FixLiveEditPath(insertionCmd.groPath);
+	insertionCmd.topPath = FixLiveEditPath(insertionCmd.topPath);
 
 	// First load the new data
 	GroFile newmolGro(insertionCmd.groPath);
@@ -72,7 +72,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	SimulationBuilder::InsertSubmoleculeInSimulation(grofile, topfile, newmolGro, newmolTop, insertionPosition);
 	if (!topfile.forcefieldInclude.has_value())
 		topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("charmm27.ff/forcefield.itp");
-	InitializeSimulation(grofile, topfile, simparams, session.mode, session.workDir);
+	InitializeLiveEditSimulation(grofile, topfile, simparams, session.mode, session.workDir);
 
 	
 	if (!liveeditData->fixedMovements.empty())
@@ -104,7 +104,7 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 }
 
 void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const LiveEdit::MoveMolecule& cmd) {
-	SimulationSession& session = Session();
+	SimulationSession& session = LiveEditSession();
 	auto& simulation = session.simulation;
 	auto& engine = session.engine;
 	const auto& boximage = simulation->boxImage;
@@ -144,7 +144,7 @@ void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const Li
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::AtomSelected& cmd) {
-	const auto& boximage = Session().simulation->boxImage;
+	const auto& boximage = LiveEditSession().simulation->boxImage;
 	liveeditData->selectedParticleId = cmd.particleId;
 	if (liveeditData->activeSelection.contains(cmd.particleId)) {
 		return; // This operation will just yield the same set
@@ -158,7 +158,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::At
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
-	const auto& simulation = Session().simulation;
+	const auto& simulation = LiveEditSession().simulation;
 	liveeditData->selectedParticleId = std::nullopt;
 	liveeditData->activeSelection.clear();
 	for (int pcid = 0; pcid < simulation->box->persistentClusters.size(); pcid++) {
@@ -191,7 +191,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::Se
 }
 
 void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
-	SimulationSession& session = Session();
+	SimulationSession& session = LiveEditSession();
 	auto& simulation = session.simulation;
 	auto& simStatus = session.simStatus;
 	display->SetSpinnerVisible(true);
@@ -203,7 +203,7 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 		MembraneGeometry::Plane{ grofile.box_size.z / 2.f });
 	SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry);
 	SimParams simparams = simulation->simParams;
-	InitializeSimulation(grofile, topfile, simparams, session.mode, session.workDir);
+	InitializeLiveEditSimulation(grofile, topfile, simparams, session.mode, session.workDir);
 
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;
@@ -217,8 +217,8 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 }
 
 void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::AddForcemaskToSelection& cmd) {
-	auto& simulation = Session().simulation;
-	auto& engine = Session().engine;
+	auto& simulation = LiveEditSession().simulation;
+	auto& engine = LiveEditSession().engine;
 	liveeditData->forceMask.clear();
 	if (cmd.forcemask != Float3{ 0.f } && !liveeditData->activeSelection.empty()) {
 		liveeditData->forceMask.resize(simulation->box->boxparams.totalParticles, Float3{ 1.f });
@@ -231,8 +231,8 @@ void Environment::UpdateForcemask(LiveEditData* liveeditData, const LiveEdit::Ad
 }
 
 void Environment::UpdateElasticPosition(LiveEditData* liveeditData, const LiveEdit::ElasticPosition& cmd) {
-	auto& simulation = Session().simulation;
-	auto& engine = Session().engine;
+	auto& simulation = LiveEditSession().simulation;
+	auto& engine = LiveEditSession().engine;
 	liveeditData->elasticPositions.clear();
 	simulation->simParams.snf_select.erase(SupernaturalForcesSelect::ElasticPosition);
 	const bool anyComponentActive = cmd.x || cmd.y || cmd.z;
@@ -253,13 +253,13 @@ void Environment::UpdateElasticPosition(LiveEditData* liveeditData, const LiveEd
 }
 
 void Environment::EM(LiveEditData* liveeditData) {
-	auto& simulation = Session().simulation;
+	auto& simulation = LiveEditSession().simulation;
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;
 }
 
 void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
-	SimulationSession& session = Session();
+	SimulationSession& session = LiveEditSession();
 	auto& simulation = session.simulation;
 	auto& engine = session.engine;
 	auto& liveEditCommandsQueue = session.liveEditCommandsQueue;
@@ -382,7 +382,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			// Add step logic here
 			//shouldUpdateRender = true;
 			engine->step();
-			UpdateSimstatus(*engine, false, true);
+			UpdateSimstatus(session, *engine, false, true);
 
 			auto& pcBuffer = engine->OffloadPclusterState();
 			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box->persistentClusters.size());

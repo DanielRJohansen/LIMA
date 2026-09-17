@@ -122,28 +122,28 @@ Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> si
 
 Environment::SimulationSession::~SimulationSession() = default;
 
-Environment::SimulationSession& Environment::Session() {
-	if (!simulationSession)
-		throw std::runtime_error("Environment has no simulation session");
-	return *simulationSession;
+Environment::SimulationSession& Environment::LiveEditSession() {
+	if (!liveEditSession)
+		throw std::runtime_error("Environment has no live-edit session");
+	return *liveEditSession;
 }
 
-const Environment::SimulationSession& Environment::Session() const {
-	if (!simulationSession)
-		throw std::runtime_error("Environment has no simulation session");
-	return *simulationSession;
+const Environment::SimulationSession& Environment::LiveEditSession() const {
+	if (!liveEditSession)
+		throw std::runtime_error("Environment has no live-edit session");
+	return *liveEditSession;
 }
 
-void Environment::SetSimulation(
+void Environment::SetLiveEditSimulation(
 	std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir) {
-	if (!simulationSession) {
-		simulationSession = std::make_unique<SimulationSession>(std::move(simulation), mode, workDir);
+	if (!liveEditSession) {
+		liveEditSession = std::make_unique<SimulationSession>(std::move(simulation), mode, workDir);
 		return;
 	}
 
-	simulationSession->simulation = std::move(simulation);
-	simulationSession->mode = mode;
-	simulationSession->workDir = workDir;
+	liveEditSession->simulation = std::move(simulation);
+	liveEditSession->mode = mode;
+	liveEditSession->workDir = workDir;
 }
 
 Environment::Environment() {
@@ -283,10 +283,9 @@ void Environment::Preprocess(QueuedSimulation next) {
 void Environment::RunPreparedSimulation(PreparedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
-		simulationSession = std::make_unique<SimulationSession>(
+		SimulationSession session(
 			std::move(next.simulation), next.job.mode, next.job.workDir);
-		const auto elapsed = next.job.run ? RunSimulation() : std::chrono::duration<double>{};
-		SimulationSession& session = Session();
+		const auto elapsed = next.job.run ? RunSimulation(session) : std::chrono::duration<double>{};
 		SimulationResult result{
 			std::move(session.simulation), std::nullopt, elapsed, std::move(session.avgStepTimes) };
 		const std::lock_guard lock(schedulingMutex);
@@ -394,7 +393,7 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 }
 
 
-void Environment::InitializeSimulation(
+void Environment::InitializeLiveEditSimulation(
 	const GroFile& grofile, const TopologyFile& topolfile, const SimParams& params,
 	EnvMode mode, const fs::path& workDir)
 {
@@ -409,8 +408,8 @@ void Environment::InitializeSimulation(
 
 	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
-	SetSimulation(std::move(simulation), mode, workDir);
-	SimulationSession& session = Session();
+	SetLiveEditSimulation(std::move(simulation), mode, workDir);
+	SimulationSession& session = LiveEditSession();
 
 	if (display) {
 		display->Render(std::make_unique<Rendering::AtomRenderTask>(
@@ -442,7 +441,7 @@ std::tuple<GroFile, TopologyFile, SimParams> Environment::CreateLiveEditSimulati
 }
 
 void Environment::UpdateLiveEditCoordinates(GroFile& grofile) {
-	SimulationSession& session = Session();
+	SimulationSession& session = LiveEditSession();
 	if (session.engine) {
 		CudaBuffer<PersistentCluster>& deviceState = session.engine->OffloadPclusterState();
 		session.simulation->box->persistentClusters = GenericCopyToHost(
@@ -454,11 +453,11 @@ void Environment::UpdateLiveEditCoordinates(GroFile& grofile) {
 	session.simulation = std::move(view.simulation);
 }
 
-fs::path Environment::FixPath(const fs::path& path) const {
+fs::path Environment::FixLiveEditPath(const fs::path& path) const {
 	if (path.is_absolute())
 		return path;
-	if (fs::exists(Session().workDir / path))
-		return Session().workDir / path;
+	if (fs::exists(LiveEditSession().workDir / path))
+		return LiveEditSession().workDir / path;
 	if (fs::exists( "./" / path))
 		return "./" / path;
 	return path;
@@ -481,8 +480,7 @@ void Environment::sayHello() {
 	std::cout << file_contents;
 }
 
-std::chrono::duration<double> Environment::RunSimulation() {
-	SimulationSession& session = Session();
+std::chrono::duration<double> Environment::RunSimulation(SimulationSession& session) {
 	auto& simulation = session.simulation;
 	auto& simStatus = session.simStatus;
 	auto& time0 = session.time0;
@@ -514,7 +512,7 @@ std::chrono::duration<double> Environment::RunSimulation() {
     auto t0 = std::chrono::steady_clock::now();
 	while (true) {
 
-		if (!handleDisplay(engine, simulation->box->boxparams, display.get(), emVariant, stepwise)) {
+		if (!HandleDisplay(session, engine, simulation->box->boxparams, display.get(), emVariant, stepwise)) {
 			break;
 		}
 
@@ -522,7 +520,7 @@ std::chrono::duration<double> Environment::RunSimulation() {
 		
 		engine.step();
 
-		UpdateSimstatus(engine, true, true);
+		UpdateSimstatus(session, engine, true, true);
 		
 		if (engine.runstatus.simulation_finished) {
 			break;
@@ -552,23 +550,7 @@ std::chrono::duration<double> Environment::RunSimulation() {
 
 
 
-void Environment::WriteTrajectoryAsUff(const fs::path& path) const {
-	const auto& simulation = Session().simulation;
-	const auto& boximage = simulation->boxImage;
-	if (!boximage)
-		throw std::runtime_error("Cannot write a trajectory without a BoxImage");
-	const int nSteps = simulation->getStep();
-	const int nAtoms = boximage->grofile.atoms.size();
-
-	UpgradeableFileFormat file(path);
-
-	file.WriteSection("numAtoms", std::vector{ nAtoms });
-	file.WriteSection("numFrames", std::vector{nSteps / simulation->simParams.data_logging_interval});
-	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
-}
-
-void Environment::UpdateSimstatus(Engine& engine, bool printToConsole, bool alwaysUpdate) {
-	SimulationSession& session = Session();
+void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate) {
 	auto& simulation = session.simulation;
 	auto& simStatus = session.simStatus;
 	auto& time0 = session.time0;
@@ -636,8 +618,7 @@ void Environment::UpdateSimstatus(Engine& engine, bool printToConsole, bool alwa
 
 
 
-bool Environment::handleDisplay(Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
-	SimulationSession& session = Session();
+bool Environment::HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
 	auto& simStatus = session.simStatus;
 	auto& step_at_last_render = session.stepAtLastRender;
 	if (session.mode != Full) {
@@ -667,5 +648,5 @@ bool Environment::handleDisplay(Engine& engine, const BoxParams& boxparams, Disp
 }
 
 void Environment::QueueLiveEditCommand(LiveEdit::Command command) {
-	Session().liveEditCommandsQueue.push_back(std::move(command));
+	LiveEditSession().liveEditCommandsQueue.push_back(std::move(command));
 }

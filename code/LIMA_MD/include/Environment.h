@@ -117,6 +117,7 @@ public:
 private:
 	Environment();
 	~Environment();
+	struct SimulationSession;
 
 	struct QueuedSimulation {
 		SimulationJob job;
@@ -147,12 +148,12 @@ private:
 
 
 	std::unique_ptr<Simulation> BuildSimulation(SimulationJob& job) const;
-	void InitializeSimulation(
+	void InitializeLiveEditSimulation(
 		const GroFile&, const TopologyFile&, const SimParams&, EnvMode mode, const fs::path& workDir);
 	std::tuple<GroFile, TopologyFile, SimParams> CreateLiveEditSimulationFiles(
 		Float3 boxlen, const fs::path& workDir);
 	void UpdateLiveEditCoordinates(GroFile& grofile);
-	std::chrono::duration<double> RunSimulation();
+	std::chrono::duration<double> RunSimulation(SimulationSession& session);
 
 	struct SimulationSession {
 		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
@@ -172,17 +173,17 @@ private:
 		fs::path workDir;
 	};
 
-	SimulationSession& Session();
-	const SimulationSession& Session() const;
-	void SetSimulation(
+	SimulationSession& LiveEditSession();
+	const SimulationSession& LiveEditSession() const;
+	void SetLiveEditSimulation(
 		std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
-	void WriteTrajectoryAsUff(const fs::path& path) const;
-	fs::path FixPath(const fs::path& path) const;
+	fs::path FixLiveEditPath(const fs::path& path) const;
 	
-	void UpdateSimstatus(Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/);
+	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/);
 
 	// Returns false if display has been closed by user
-	bool handleDisplay(Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise);
+	bool HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams,
+		Display* display, bool emVariant, bool stepwise);
 
 	void sayHello();
 
@@ -190,7 +191,7 @@ private:
 
 
 	std::unique_ptr<Display> display = nullptr;
-	std::unique_ptr<SimulationSession> simulationSession = nullptr;
+	std::unique_ptr<SimulationSession> liveEditSession;
 
 	std::mutex schedulingMutex;
 	std::condition_variable schedulerWakeup;

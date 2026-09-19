@@ -103,7 +103,7 @@ struct SimulationDevice {
 };
 
 struct ForceEnergyInterims {
-	ForceEnergyInterims(int nBondgroups, int nParticles, int nPclusters);
+	ForceEnergyInterims(int nBondgroupParticles, int nParticles, int nPclusters);
 	void Free() const;
 
 	// These are temp, pushed into fromSuperclusters*

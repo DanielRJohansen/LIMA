@@ -58,7 +58,7 @@ namespace ForceCorrectness {
 		};
 		auto completed = co_await environment.Submit(std::move(job));
 		auto& simulation = *completed.simulation;
-		const auto parameters = simulation.box->bondgroups[0].singlebonds[0].params;
+		const auto parameters = simulation.box->bondgroups.singlebonds[simulation.box->bondgroups.groups[0].indexOfFirstSinglebond].params;
 
 		// Analytic harmonic-bond force and potential.
 		const double kB = parameters.kb / 2.; // [J/mol/nm^2]
@@ -90,7 +90,7 @@ namespace ForceCorrectness {
 		};
 		auto completed = co_await environment.Submit(std::move(job));
 		auto& simulation = *completed.simulation;
-		const auto parameters = simulation.box->bondgroups[0].singlebonds[0].params;
+		const auto parameters = simulation.box->bondgroups.singlebonds[simulation.box->bondgroups.groups[0].indexOfFirstSinglebond].params;
 		const float massA = simulation.box->persistentClustersMetadata[0].mass[0];
 		const float massB = simulation.box->persistentClustersMetadata[0].mass[1];
 		const double reducedMass = massA * massB / (massA + massB); // [kg/mol]
@@ -119,8 +119,8 @@ namespace ForceCorrectness {
 			// force-field parameters and again after adjusting the coordinates.
 			// configure() runs after construction and gives direct access to both.
 			auto& box = *simulation.box;
-			const auto single = box.bondgroups[0].singlebonds[0].params;
-			const auto angle = box.bondgroups[0].anglebonds[0].params;
+			const auto single = box.bondgroups.singlebonds[box.bondgroups.groups[0].indexOfFirstSinglebond].params;
+			const auto angle = box.bondgroups.anglebonds[box.bondgroups.groups[0].indexOfFirstAnglebond].params;
 			constexpr float angleError = 0.1f; // [rad]
 
 			// First equilibrate both single bonds, then introduce only the angle error.
@@ -163,14 +163,15 @@ namespace ForceCorrectness {
 		auto job = MakeJob(workDir, envmode);
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
 		job.configureSimulation = [expected, particleId](Simulation& simulation) {
-			auto& group = simulation.box->bondgroups[0];
+			auto& groups = simulation.box->bondgroups;
+			auto& group = groups.groups[0];
 
 			// Isolate the pairbond by disabling the other bonded interactions.
 			group.nSinglebonds = 0;
 			group.nDihedralbonds = 0;
-			const auto& pair = group.pairbonds[0];
-			const int p0 = group.particles[pair.atom_indexes[0]].pid;
-			const int p1 = group.particles[pair.atom_indexes[1]].pid;
+			const auto& pair = groups.pairbonds[group.indexOfFirstPairbond];
+			const int p0 = groups.particles[group.indexOfFirstParticle + pair.atom_indexes[0]].pid;
+			const int p1 = groups.particles[group.indexOfFirstParticle + pair.atom_indexes[1]].pid;
 			*particleId = p0;
 			const Float3 diff = simulation.box->persistentClusters[0].pqd[p1].position
 				- simulation.box->persistentClusters[0].pqd[p0].position;
@@ -188,7 +189,7 @@ namespace ForceCorrectness {
 		const float forceError = (actualForce - expected->force).len() / expected->force.len();
 		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
 		co_return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
-			std::format("Force error {:.2e}, potential error {:.2e}", forceError, potentialError), envmode == Full };
+			std::format("Force error {:.2e}, pot. error {:.2e}", forceError, potentialError), envmode == Full };
 	}
 
 

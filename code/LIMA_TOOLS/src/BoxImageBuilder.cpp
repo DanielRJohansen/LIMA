@@ -613,7 +613,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	PersistentClusterFactory pcFactory = pcFactoryFuture.get();
 	bgFactory.AddPclusterRefs(pcFactory.particleToPclusterMap);
 
-	std::vector<BondGroup> bondGroups = bgFactory.GetBondgroups();
+	BondGroups bondGroups = bgFactory.GetBondgroups();
 	
 
 	for (int i = 0; i < pcFactory.particleToPclusterMap.size(); i++) {

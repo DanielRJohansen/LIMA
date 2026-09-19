@@ -19,7 +19,7 @@
 
 Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 	: bc_select(bc)
-	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box->bondgroups.size(), _sim->box->boxparams.totalParticles, _sim->box->persistentClusters.size()))
+	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(_sim->box->bondgroups.particles.size(), _sim->box->boxparams.totalParticles, _sim->box->persistentClusters.size()))
 {
 	simulation = _sim;
 	ewaldKappa = PhysicsUtils::CalcEwaldkappa(simulation->simParams.cutoff_nm);
@@ -65,7 +65,13 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 
 	pmeController = std::make_unique<PME::Controller>(*simulation->box, simulation->simParams.cutoff_nm, pmeStream);
 
-	bondgroups.SetData(simulation->box->bondgroups);
+	bondgroupDescriptors.SetData(simulation->box->bondgroups.groups);
+	bondgroupParticles.SetData(simulation->box->bondgroups.particles);
+	bondgroupSinglebonds.SetData(simulation->box->bondgroups.singlebonds);
+	bondgroupPairbonds.SetData(simulation->box->bondgroups.pairbonds);
+	bondgroupAnglebonds.SetData(simulation->box->bondgroups.anglebonds);
+	bondgroupDihedralbonds.SetData(simulation->box->bondgroups.dihedralbonds);
+	bondgroupImproperdihedralbonds.SetData(simulation->box->bondgroups.improperdihedralbonds);
 
 	thermostat = std::make_unique<Thermostat>(simulation->box->persistentClusters.size());			
 
@@ -366,7 +372,7 @@ void Engine::_deviceMaster() {
 
 	if (!simulation->box->bondgroups.empty()) {
 		BondgroupsKernel<BoundaryCondition, emvariant> << < simulation->box->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>
-			(bondgroups.Get(), *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice.Get(), boxSize, boxSize.Inv());
+			(BondGroupsDevice{ bondgroupDescriptors.Get(), bondgroupParticles.Get(), bondgroupSinglebonds.Get(), bondgroupPairbonds.Get(), bondgroupAnglebonds.Get(), bondgroupDihedralbonds.Get(), bondgroupImproperdihedralbonds.Get() }, *boxStateCopy, forceEnergyInterims->forceEnergiesBondgroups, pClusterDevice.Get(), boxSize, boxSize.Inv());
 		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
 
 		// Gather bondgroup ordered forces into particle ordered

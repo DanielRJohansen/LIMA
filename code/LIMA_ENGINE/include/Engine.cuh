@@ -136,7 +136,13 @@ private:
 	float thermostatScalar = 1.f;
 	CudaBuffer<PersistentCluster> pClusterDevice; // TODO: Handle lifetime somethwere
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
-	CudaBuffer<BondGroup> bondgroups;
+	CudaBuffer<BondGroup> bondgroupDescriptors;
+	CudaBuffer<BondGroup::ParticleRef> bondgroupParticles;
+	CudaBuffer<SingleBond> bondgroupSinglebonds;
+	CudaBuffer<PairBond> bondgroupPairbonds;
+	CudaBuffer<AngleUreyBradleyBond> bondgroupAnglebonds;
+	CudaBuffer<DihedralBond> bondgroupDihedralbonds;
+	CudaBuffer<ImproperDihedralBond> bondgroupImproperdihedralbonds;
 	size_t nResults = 0;
 
 	CudaBuffer<ScScTask> scscTasksDevice;

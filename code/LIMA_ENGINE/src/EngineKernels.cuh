@@ -104,24 +104,24 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 
 
 
-static const int THREADS_PER_BONDSGROUPSKERNEL = BondGroup::maxParticles;
+static const int THREADS_PER_BONDSGROUPSKERNEL = 64;
 template <typename BoundaryCondition, bool emVariant>
-__global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv) {
-	__shared__ Float3 positions[BondGroup::maxParticles];
+__global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv) {
+	__shared__ Float3 positions[THREADS_PER_BONDSGROUPSKERNEL];
 
-	__shared__ float4 forceEnergyInterrims[BondGroup::maxParticles];
+	__shared__ float4 forceEnergyInterrims[THREADS_PER_BONDSGROUPSKERNEL];
 
 	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
 	__shared__ char _bondsBuffer[largestBondBytesize * batchSize];	
 
-	const BondGroup* const bondGroup = &bondGroups[blockIdx.x];
-	const BondGroup::ParticleRef pRef = bondGroup->particles[threadIdx.x];	
+	const BondGroup* const bondGroup = &bondGroups.groups[blockIdx.x];
 
 	forceEnergyInterrims[threadIdx.x] = float4{0,0,0,0};
 
 	// Fetch positions, and hyperpos around first particle.
 	if (threadIdx.x < bondGroup->nParticles) {
+		const BondGroup::ParticleRef pRef = bondGroups.particles[bondGroup->indexOfFirstParticle + threadIdx.x];
 		positions[threadIdx.x] = pclusters[pRef.pcid].pqd[pRef.pid].position;  //boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
 	}
 	__syncthreads();
@@ -137,7 +137,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		for (int batchStart = 0; batchStart < bondGroup->nSinglebonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nSinglebonds) {
 				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroup->singlebonds[bondIndex];
+				bondsBuffer[threadIdx.x] = bondGroups.singlebonds[bondGroup->indexOfFirstSinglebond + bondIndex];
 			}
 			__syncthreads();
 
@@ -151,7 +151,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		for (int batchStart = 0; batchStart < bondGroup->nAnglebonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nAnglebonds) {
 				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroup->anglebonds[bondIndex];
+				bondsBuffer[threadIdx.x] = bondGroups.anglebonds[bondGroup->indexOfFirstAnglebond + bondIndex];
 			}
 			__syncthreads();
 
@@ -165,7 +165,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		for (int batchStart = 0; batchStart < bondGroup->nDihedralbonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nDihedralbonds) {
 				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroup->dihedralbonds[bondIndex];
+				bondsBuffer[threadIdx.x] = bondGroups.dihedralbonds[bondGroup->indexOfFirstDihedralbond + bondIndex];
 			}
 			__syncthreads();
 
@@ -179,7 +179,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		for (int batchStart = 0; batchStart < bondGroup->nImproperdihedralbonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nImproperdihedralbonds) {
 				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroup->improperdihedralbonds[bondIndex];
+				bondsBuffer[threadIdx.x] = bondGroups.improperdihedralbonds[bondGroup->indexOfFirstImproperdihedralbond + bondIndex];
 			}
 			__syncthreads();
 
@@ -195,7 +195,7 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += blockDim.x) {
 			if (batchStart + threadIdx.x < bondGroup->nPairbonds) {
 				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroup->pairbonds[bondIndex];
+				bondsBuffer[threadIdx.x] = bondGroups.pairbonds[bondGroup->indexOfFirstPairbond + bondIndex];
 			}
 			__syncthreads();
 
@@ -206,7 +206,8 @@ __global__ void BondgroupsKernel(const BondGroup* const bondGroups, const BoxSta
 	Float3 force{ forceEnergyInterrims[threadIdx.x].x, forceEnergyInterrims[threadIdx.x].y, forceEnergyInterrims[threadIdx.x].z };
 	float potE = forceEnergyInterrims[threadIdx.x].w;
 
-	forceEnergiesOut[blockIdx.x * BondGroup::maxParticles + threadIdx.x] = ForceEnergy{ force, potE };
+	if (threadIdx.x < bondGroup->nParticles)
+		forceEnergiesOut[bondGroup->indexOfFirstParticle + threadIdx.x] = ForceEnergy{ force, potE };
 }
 
 // gridDim = (nPclusters, 1, 1)
@@ -225,7 +226,7 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 		ForceEnergy fe{};
 		for (int i = 0; i < beRefs.nBondgroupApperances; i++) {
 			BondgroupRef bondgroupRef = beRefs.bondgroupApperances[i];
-			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.bondgroupId * BondGroup::maxParticles + bondgroupRef.localIndexInBondgroup];
+			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.indexInForceEnergiesBondgroups];
 		}
 
 		forceEnergies.bonded[pcId * PersistentCluster::maxParticles + pid] = fe;

@@ -111,7 +111,7 @@ struct Box {
 
 	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 
-	std::vector<BondGroup> bondgroups;
+	BondGroups bondgroups;
 
 	UniformElectricField uniformElectricField;
 

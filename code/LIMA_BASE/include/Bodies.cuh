@@ -150,14 +150,14 @@ using namespace Bondtypes;
 
 
 
-struct BondgroupRef { // A particles ref to its position in a bondgroup
+struct BondgroupRef { // A particle's reference to its bonded-force result
 	int bondgroupId;
-	int localIndexInBondgroup;
+	int indexInForceEnergiesBondgroups;
 
 	bool operator<(const BondgroupRef& other) const {
 		if (bondgroupId != other.bondgroupId)
 			return bondgroupId < other.bondgroupId;
-		return localIndexInBondgroup < other.localIndexInBondgroup;
+		return indexInForceEnergiesBondgroups < other.indexInForceEnergiesBondgroups;
 	}
 };
 
@@ -166,29 +166,45 @@ struct BondGroup {
 		int pcid;
 		int pid; // local to pcluster
 	};
-
-	static const int maxParticles = 64;	
-	static const int maxSinglebonds = 128;
-	static const int maxAnglebonds = 128 + 64;
-	static const int maxDihedralbonds = 256 + 64 + 64;
-	static const int maxPairbonds = maxDihedralbonds;
-	static const int maxImproperdihedralbonds = 32;
-
-	ParticleRef particles[maxParticles];
-	SingleBond singlebonds[maxSinglebonds];
-	PairBond pairbonds[maxPairbonds];
-	AngleUreyBradleyBond anglebonds[maxAnglebonds];
-	DihedralBond dihedralbonds[maxDihedralbonds];
-	ImproperDihedralBond improperdihedralbonds[maxImproperdihedralbonds];
-
+	int indexOfFirstParticle = 0;
 	int nParticles = 0;
+	int indexOfFirstSinglebond = 0;
 	int nSinglebonds = 0;
+	int indexOfFirstPairbond = 0;
 	int nPairbonds = 0;
+	int indexOfFirstAnglebond = 0;
 	int nAnglebonds = 0;
+	int indexOfFirstDihedralbond = 0;
 	int nDihedralbonds = 0;
+	int indexOfFirstImproperdihedralbond = 0;
 	int nImproperdihedralbonds = 0;
+};
 
-	static_assert(maxParticles < UINT8_MAX, "bonds can't index their particles!");
+// Host-side SoA storage. BondGroup remains a compact device-friendly range descriptor.
+struct BondGroups {
+	std::vector<BondGroup> groups;
+	std::vector<BondGroup::ParticleRef> particles;
+	std::vector<SingleBond> singlebonds;
+	std::vector<PairBond> pairbonds;
+	std::vector<AngleUreyBradleyBond> anglebonds;
+	std::vector<DihedralBond> dihedralbonds;
+	std::vector<ImproperDihedralBond> improperdihedralbonds;
+
+	size_t size() const { return groups.size(); }
+	bool empty() const { return groups.empty(); }
+	void clear() {
+		groups.clear(); particles.clear(); singlebonds.clear(); pairbonds.clear(); anglebonds.clear(); dihedralbonds.clear(); improperdihedralbonds.clear();
+	}
+};
+
+struct BondGroupsDevice {
+	const BondGroup* groups;
+	const BondGroup::ParticleRef* particles;
+	const SingleBond* singlebonds;
+	const PairBond* pairbonds;
+	const AngleUreyBradleyBond* anglebonds;
+	const DihedralBond* dihedralbonds;
+	const ImproperDihedralBond* improperdihedralbonds;
 };
 
 struct NBParams {

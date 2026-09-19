@@ -234,7 +234,8 @@ int main() {
 //Benchmarks::PrepareSimulation_stmv(envmode);
 		//TestBuildmembraneSmall(envmode, false);
 		// 
-		//Benchmarks::STMV(envmode, 200, 3);
+		//Benchmarks::STMV(env, envmode, 200, 3).RunToCompletion();
+		// 
 		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

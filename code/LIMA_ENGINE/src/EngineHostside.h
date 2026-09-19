@@ -29,7 +29,7 @@ void Engine::verifyEngine() {
 
 
 
-ForceEnergyInterims::ForceEnergyInterims(int nBondgroups, int nParticles, int nPclusters) {
+ForceEnergyInterims::ForceEnergyInterims(int nBondgroupParticles, int nParticles, int nPclusters) {
 	if (nPclusters > 0) {
 		const size_t byteSize = sizeof(ForceEnergy) * nPclusters * PersistentCluster::maxParticles;
 		cudaMalloc(&bonded, byteSize);
@@ -41,9 +41,9 @@ ForceEnergyInterims::ForceEnergyInterims(int nBondgroups, int nParticles, int nP
 		cudaMemset(pme, 0, byteSize);
 	}
 
-	if (nBondgroups > 0) {
-		cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * BondGroup::maxParticles * nBondgroups);
-		cudaMemset(forceEnergiesBondgroups, 0, sizeof(ForceEnergy) * BondGroup::maxParticles * nBondgroups);
+	if (nBondgroupParticles > 0) {
+		cudaMalloc(&forceEnergiesBondgroups, sizeof(ForceEnergy) * nBondgroupParticles);
+		cudaMemset(forceEnergiesBondgroups, 0, sizeof(ForceEnergy) * nBondgroupParticles);
 	}
 
 	if (nParticles > 0) {

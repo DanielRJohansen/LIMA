@@ -129,8 +129,9 @@ namespace LIMA_MOLECULEBUILD {
 
 class BondGroupFactory {
 
-	std::vector<BondGroup> bondgroups;
-	std::vector<std::array<int, BondGroup::maxParticles>> particleGlobalIds;
+	static constexpr int maxParticlesPerBondgroup = 64;
+	BondGroups bondgroups;
+	std::vector<std::vector<int>> particleGlobalIds;
 
 	int FindLocalParticleId(int bgIndex, const int globalId) const;
 	void AddBondParticles(int bgIndex, std::span<const int> globalIds, std::span<const uint8_t> localIds);
@@ -169,7 +170,7 @@ public:
 	
 	void AddPclusterRefs(const ParticleToPclusterMap& particleToPclusterMap);
 	std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(int nParticlesTotal) const;
-	std::vector<BondGroup> GetBondgroups();
+	BondGroups GetBondgroups();
 
 	//static std::vector<BondGroup> FinishBondgroups(const std::vector<BondGroupFactory>&);
 };
@@ -185,7 +186,7 @@ struct BoxImage {
 
 	std::shared_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
 
-	std::vector<BondGroup> bondgroups;
+	BondGroups bondgroups;
 
 	// Clusters
 	std::vector<PersistentCluster> persistentClusters;

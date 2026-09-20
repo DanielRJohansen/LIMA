@@ -153,7 +153,7 @@ namespace ForceCorrectness {
 		const float forceError = (actualForce - expected->force).len() / expected->force.len();
 		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
 		co_return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
-			std::format("Force error {:.2e}, potential error {:.2e}", forceError, potentialError), envmode == Full };
+			std::format("Force error {:.2e}, pot. error {:.2e}", forceError, potentialError), envmode == Full };
 	}
 
 	TestRoutine PairbondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {

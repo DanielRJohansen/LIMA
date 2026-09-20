@@ -12,6 +12,7 @@
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
 #include "AlgorithmTests.h"
+#include "BatchingTests.h"
 
 
 using namespace TestUtils;
@@ -22,6 +23,7 @@ using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
+using namespace BatchingTests;
 
 void RunAllUnitTests();
 
@@ -305,6 +307,7 @@ void RunAllUnitTests() {
 	ADD_TEST("SolventBenchmark", LoadAndRunBasicSimulation, "Solvents", "SolventBenchmark");
 	ADD_TEST("T4Lysozyme", LoadEnergyMinAndRunBasicSimulation, "T4Lysozyme", "T4Lysozyme");
 	ADD_TEST("Deterministic Simulations", TestDeterministic);
+	ADD_TEST("Four batched T4 simulations match reference", TestFourT4BatchMatchReference);
 
 
 	// Electrostatics

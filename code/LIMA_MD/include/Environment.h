@@ -14,6 +14,7 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <cstdint>
 
 class Display;
 struct BoxImage;
@@ -42,7 +43,14 @@ struct SimulationJob {
 	std::function<void(GroFile&, TopologyFile&, SimParams&)> preprocess;
 	std::function<void(Simulation&)> configureSimulation;
 	std::function<void(SimulationResult&)> postprocess;
+	// Excludes the job from batch execution. Use this for reference runs and performance measurements.
+	bool mustRunAlone = false;
 	bool run = true;
+};
+
+struct SimulationExecutionInfo {
+	int batchId = 0;
+	int batchSize = 1;
 };
 
 struct SimulationResult {
@@ -51,6 +59,7 @@ struct SimulationResult {
 	std::chrono::duration<double> engineTime{};
 	std::chrono::duration<double> environmentTime{};
 	std::vector<float> averageStepTimes;
+	SimulationExecutionInfo execution;
 
 	void WriteCoordinatesTo(GroFile& grofile, std::optional<int64_t> step = std::nullopt) const;
 	Trajectory MakeTrajectory() const;

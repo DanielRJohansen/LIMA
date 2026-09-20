@@ -16,6 +16,11 @@ add_executable(limatest
     ${RESOURCE_FILES}
 )
 
+option(ENABLE_EXPERIMENTAL_BATCH_TESTS "Enable tests that require shared-kernel batch execution" OFF)
+if (ENABLE_EXPERIMENTAL_BATCH_TESTS)
+    target_compile_definitions(limatest PRIVATE ENABLE_EXPERIMENTAL_BATCH_TESTS)
+endif()
+
 target_include_directories(limatest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

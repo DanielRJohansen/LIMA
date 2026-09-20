@@ -290,7 +290,8 @@ void Environment::RunPreparedSimulation(PreparedSimulation next) {
 		const auto processTime = std::chrono::steady_clock::now() - started;
 		SimulationResult result{
 			std::move(session.simulation), std::nullopt, engineTime,
-			next.preprocessingTime + processTime, std::move(session.avgStepTimes) };
+			next.preprocessingTime + processTime, std::move(session.avgStepTimes),
+			SimulationExecutionInfo{ 0, 1 } };
 		const std::lock_guard lock(schedulingMutex);
 		processedSimulations.emplace_back(ProcessedSimulation{
 			std::move(next.job), std::move(next.state), std::move(result) });

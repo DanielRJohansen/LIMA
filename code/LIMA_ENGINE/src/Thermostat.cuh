@@ -2,7 +2,6 @@
 
 #include "LimaTypes.cuh"
 #include "PhysicsUtilsDevice.cuh"
-#include "SimulationDevice.cuh"
 
 #include <thrust/device_vector.h>
 #include <thrust/transform.h>
@@ -61,11 +60,11 @@ public:
 	}
 
 	// {temp,thermostatScalar}
-	std::pair<float, float> Temperature(SimulationDevice* simDev, const BoxParams& boxparams, const SimParams& simparams, int step,
+	std::pair<float, float> Temperature(const PersistentclusterInterimState* states, const BoxParams& boxparams, const SimParams& simparams, int step,
 		const PersistentClusterMeta* const pcMetaDevice, cudaStream_t stream) {
 		// Step 1: Calculate kinetic energy for each Pcluster and store in the intermediate buffer
 		thrust::transform(thrust::cuda::par.on(stream), thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::maxParticles),
-			intermediate, _Thermostat::TotalKineticEnergyCompounds(simDev->boxState.pclusterInterimStates, pcMetaDevice));
+			intermediate, _Thermostat::TotalKineticEnergyCompounds(states, pcMetaDevice));
 		LIMA_UTILS::genericErrorCheckNoSync("TotalKineticEnergyCompounds");
 
 		// Step 3: Sum up all kinetic energy values (compounds + solvents)

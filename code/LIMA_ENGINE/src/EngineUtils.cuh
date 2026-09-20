@@ -4,13 +4,13 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Simulation.cuh"
+#include "SimulationData.h"
 #include "EngineUtilsWarnings.cuh"
 #include "LimaPositionSystem.cuh"
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
-#include "SimulationDevice.cuh"
 #include "KernelWarnings.cuh"
 
 #include <cooperative_groups.h>
@@ -153,16 +153,17 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
+	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound,
+		Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer) {
 		//if (threadIdx.x >= compound.n_particles) { return; }
 
 		if (data_logging_interval == 0 || step % data_logging_interval != 0) { return; }
 
 		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, data_logging_interval, totalParticlesUpperbound);
-		simDev->traj_buffer[index] = position;
-		simDev->potE_buffer[index] = potential;
-		simDev->vel_buffer[index] = speed;
-		simDev->forceBuffer[index] = force;
+		trajBuffer[index] = position;
+		potEBuffer[index] = potential;
+		velocityBuffer[index] = speed;
+		forceBuffer[index] = force;
 	}
 
 

@@ -79,7 +79,7 @@ namespace SupernaturalForces {
 	}
 
 	// Overwrites the force that is given as an argument to the function
-	__global__ void ApplyHorizontalSqueeze(SimulationDevice* simDev, int64_t step) {
+	__global__ void ApplyHorizontalSqueeze() {
 		//__shared__ Float3 avg_abspos_nm;
 		//__shared__ float avg_force_z;
 		//__shared__ Float3 relPosNm[MAX_COMPOUND_PARTICLES];
@@ -164,7 +164,7 @@ namespace SupernaturalForces {
 		return force;
 	}
 
-	__global__ void BoxEdgeForceCompounds(SimulationDevice* simDev, int64_t step) {
+	__global__ void BoxEdgeForceCompounds() {
 		//__shared__ Float3 origo;
 
 		//const auto const coords = CompoundcoordsCircularQueueUtils::getCoordarrayRef(simDev->boxState->compoundcoordsCircularQueue, step, blockIdx.x);
@@ -182,7 +182,7 @@ namespace SupernaturalForces {
 		//	simDev->boxState->compoundsInterimState[blockIdx.x].forces_interim[threadIdx.x] += force;
 	}
 
-	__global__ void BoxEdgeForceSolvents(SimulationDevice* simDev, int64_t step) {
+	__global__ void BoxEdgeForceSolvents() {
 		// TODONOW Implement
 		// 
 		// 

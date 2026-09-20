@@ -540,100 +540,100 @@ __global__ void BuildNointeractionMatricesKernel(
 
 
 bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {
-	if (nSuperclusters == 0)
+	if (simData->nSuperclusters == 0)
 		return true;
 
-	const Box& box = *simulation->box;
+	const Box& box = *simData->simulation->box;
 	Int3 boxSize = box.boxparams.boxSize;
-	Float3 boxSizeF = simulation->box->boxparams.BoxSizeFloat();
+	Float3 boxSizeF = simData->simulation->box->boxparams.BoxSizeFloat();
 
-	const int nSuperclustersUpperbound = nSuperclusters * 2;
+	const int nSuperclustersUpperbound = simData->nSuperclusters * 2;
 
-	if (!taskbuilderControl)
-		taskbuilderControl = std::make_unique<TaskBuilderControl>(
+	if (!simData->taskbuilderControl)
+		simData->taskbuilderControl = std::make_unique<TaskBuilderControl>(
 			nSuperclustersUpperbound, box.particlesBondedToParticle, box.pclustersBondedToPcluster, stream);
 
-	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel << <(nSuperclusters + 31) / 32, 32, 0, stream >> > (
-		superClustersControl->scData,
-		superClustersControl->scMeta,
-		taskbuilderControl->contents.superclusterPositionSpheres,
-		nSuperclusters
+	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel << <(simData->nSuperclusters + 31) / 32, 32, 0, stream >> > (
+		simData->superClustersControl->scData,
+		simData->superClustersControl->scMeta,
+		simData->taskbuilderControl->contents.superclusterPositionSpheres,
+		simData->nSuperclusters
 		);
 	cudaStreamSynchronize(stream);
 
 	{
-		taskbuilderControl->Reset(stream);
+		simData->taskbuilderControl->Reset(stream);
 
 		const uint32_t nGridnodes = boxSize.InnerProduct();
 
 		ReserveInteractions << <
 			dim3(nGridnodes, SuperClustersControl::maxClustersPerBlock, 1),
 			256, 0, stream >> > (
-				*superClustersControl,
+				*simData->superClustersControl,
 				boxSize,
-				taskbuilderControl->contents,
-				simulation->simParams.cutoff_nm,
+				simData->taskbuilderControl->contents,
+				simData->simulation->simParams.cutoff_nm,
 				boxSizeF,
 				Float3{ 1.0f } / boxSizeF
 				);
 
 		LIMA_UTILS::genericErrorCheck(stream, "ReserveInteractions");
 
-		SortReserveInteractionsOutput << <nSuperclusters, TaskBuilderControlContents::maxTasksPerSc, 0, stream >> > (
-			taskbuilderControl->contents
+		SortReserveInteractionsOutput << <simData->nSuperclusters, TaskBuilderControlContents::maxTasksPerSc, 0, stream >> > (
+			simData->taskbuilderControl->contents
 			);
 
 		cudaStreamSynchronize(stream);
 	}
 
-	cudaMemsetAsync(taskbuilderControl->contents.nResults + nSuperclusters, 0, sizeof(int), stream);
-	cudaMemsetAsync(taskbuilderControl->contents.nInteractionsOwned + nSuperclusters, 0, sizeof(int), stream);
+	cudaMemsetAsync(simData->taskbuilderControl->contents.nResults + simData->nSuperclusters, 0, sizeof(int), stream);
+	cudaMemsetAsync(simData->taskbuilderControl->contents.nInteractionsOwned + simData->nSuperclusters, 0, sizeof(int), stream);
 
 	thrust::exclusive_scan(
 		thrust::cuda::par.on(stream),
-		taskbuilderControl->contents.nResults,
-		taskbuilderControl->contents.nResults + nSuperclusters + 1,
-		taskbuilderControl->contents.nResultsPrefixsum
+		simData->taskbuilderControl->contents.nResults,
+		simData->taskbuilderControl->contents.nResults + simData->nSuperclusters + 1,
+		simData->taskbuilderControl->contents.nResultsPrefixsum
 	);
 
 	thrust::exclusive_scan(
 		thrust::cuda::par.on(stream),
-		taskbuilderControl->contents.nInteractionsOwned,
-		taskbuilderControl->contents.nInteractionsOwned + nSuperclusters + 1,
-		taskbuilderControl->contents.nQueryBuffersPrefixsum
+		simData->taskbuilderControl->contents.nInteractionsOwned,
+		simData->taskbuilderControl->contents.nInteractionsOwned + simData->nSuperclusters + 1,
+		simData->taskbuilderControl->contents.nQueryBuffersPrefixsum
 	);
 
-	cudaMemcpyAsync(&nResults, taskbuilderControl->contents.nResultsPrefixsum + nSuperclusters,
+	cudaMemcpyAsync(&simData->nResults, simData->taskbuilderControl->contents.nResultsPrefixsum + simData->nSuperclusters,
 		sizeof(int), cudaMemcpyDeviceToHost, stream);
-	int nTasks = nSuperclusters;
+	int nTasks = simData->nSuperclusters;
 	int nQueryBufferEntries = 0;
-	cudaMemcpyAsync(&nQueryBufferEntries, taskbuilderControl->contents.nQueryBuffersPrefixsum + nSuperclusters,
+	cudaMemcpyAsync(&nQueryBufferEntries, simData->taskbuilderControl->contents.nQueryBuffersPrefixsum + simData->nSuperclusters,
 		sizeof(int), cudaMemcpyDeviceToHost, stream);
 	cudaStreamSynchronize(stream);
 
-	scscTasksDevice.Expand(nTasks, 1.2);
-	idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
-	resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
-	noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
-	scResultsDevice.Expand(nResults, 1.2);
+	simData->scscTasksDevice.Expand(nTasks, 1.2);
+	simData->idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
+	simData->resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
+	simData->noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
+	simData->scResultsDevice.Expand(simData->nResults, 1.2);
 
-	BuildTasks << <(nSuperclusters + 31) / 32, 32, 0, stream >> > (
-		taskbuilderControl->contents,
-		superClustersControl->scMeta,
-		nSuperclusters,
-		scscTasksDevice.Get(),
-		idsOfQuerySuperclustersDevice.Get(),
-		resultIndicesDevice.Get()
+	BuildTasks << <(simData->nSuperclusters + 31) / 32, 32, 0, stream >> > (
+		simData->taskbuilderControl->contents,
+		simData->superClustersControl->scMeta,
+		simData->nSuperclusters,
+		simData->scscTasksDevice.Get(),
+		simData->idsOfQuerySuperclustersDevice.Get(),
+		simData->resultIndicesDevice.Get()
 		);
 
 	LIMA_UTILS::genericErrorCheck(stream, "BuildTasks");
 
-	BuildNointeractionMatricesKernel << <nSuperclusters, 16, 0, stream >> > (
-		superClustersControl->scMeta,
-		pClusterMetaDevice.Get(),
-		taskbuilderControl->contents,
-		noInteractionMatricesDevice.Get(),
-		nSuperclusters
+	BuildNointeractionMatricesKernel << <simData->nSuperclusters, 16, 0, stream >> > (
+		simData->superClustersControl->scMeta,
+		simData->pClusterMetaDevice.Get(),
+		simData->taskbuilderControl->contents,
+		simData->noInteractionMatricesDevice.Get(),
+		simData->nSuperclusters
 		);
 
 	LIMA_UTILS::genericErrorCheck(stream, "BuildNointeractionMatricesKernel");

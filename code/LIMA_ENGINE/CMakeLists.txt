@@ -4,7 +4,7 @@
 # in order to access __constant__ memory
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
-    src/SimulationDevice.cpp
+    src/SimulationData.cpp
   "src/ParticleClusteringCPU.cpp"
 )
 

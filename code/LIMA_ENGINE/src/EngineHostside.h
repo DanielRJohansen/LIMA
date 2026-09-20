@@ -8,18 +8,18 @@
 
 
 void Engine::CopySimulationToHost() {
-	assert(sim_dev);
-	sim_dev->boxState.CopyDataToHost(*simulation->box);	
+	assert(simData->boxState.pclusterInterimStates);
+	simData->boxState.CopyDataToHost(*simData->simulation->box);
 }
 
 void Engine::verifyEngine() {
 	LIMA_UTILS::genericErrorCheckNoSync("Error before engine initialization.\n");
 
-	Int3 dim = simulation->box->boxparams.boxSize;
+	Int3 dim = simData->simulation->box->boxparams.boxSize;
 	assert(dim.x < 1024 && dim.y < 1024 && dim.z < 1024 && "Neighborlist cannot handle such large gridnode_ids");
 
 	if constexpr (ENABLE_ES_LR) {
-		if (simulation->simParams.enable_electrostatics && simulation->simParams.bc_select != PBC) {
+		if (simData->simulation->simParams.enable_electrostatics && simData->simulation->simParams.bc_select != PBC) {
 			throw std::invalid_argument("Electrostatics only supported with PBC at the current time");
 		}
 	}

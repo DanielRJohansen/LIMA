@@ -5,7 +5,6 @@
 #include "KernelWarnings.cuh"
 #include "EngineUtils.cuh"
 
-#include "SimulationDevice.cuh"
 #include "BoundaryCondition.cuh"
 #include "SolventBlockTransfers.cuh"
 #include "DeviceAlgorithms.cuh"
@@ -324,10 +323,11 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
  
 // blockDim=(16, 4, 1)
 template<typename BoundaryCondition, bool emvariant, bool logData>
-__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, SimulationDevice* const simDev, int data_logging_interval, const SCResult* const scResults,
+__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, AdamState* adamState, int data_logging_interval, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
 	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
-	Float3 boxSize, float thermostatScalar, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer /*Only available in LIVEEDIT*/  /*,
+	Float3 boxSize, float thermostatScalar, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
+	Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer /*Only available in LIVEEDIT*/  /*,
 const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
@@ -394,8 +394,8 @@ const ForceEnergy* const nbForceenergy*/) {
 		
 		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
 
-		AdamState* const adamState = &simDev->adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
-		Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, adamState, step);
+		AdamState* const particleAdamState = &adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
+		Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, particleAdamState, step);
 		//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
 
 		// Overrule movement inferred by force, if this value is available AND nonzeory
@@ -450,8 +450,8 @@ const ForceEnergy* const nbForceenergy*/) {
 		Float3 velScaled;
 		velScaled = vel_now * thermostatScalar;
 
-		simDev->boxState.pclusterInterimStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
-		simDev->boxState.pclusterInterimStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
+		pcStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
+		pcStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
 
 		speed = velScaled.len();
 	}
@@ -460,7 +460,8 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	//BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
 
-	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound, simDev);
+	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound,
+		trajBuffer, potEBuffer, velocityBuffer, forceBuffer);
 
 	superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
 	superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;

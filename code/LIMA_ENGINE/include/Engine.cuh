@@ -14,11 +14,7 @@
 
 
 
-class SimulationDevice;
-class DatabuffersDeviceController;
 class Thermostat;
-class BoxState;
-class BoxConfig;
 class CompoundGridNode;
 struct CompoundQuickData;
 struct ForceEnergyInterims;
@@ -28,11 +24,14 @@ struct PClusterTransfermodule;
 struct PersistentCluster;
 class SuperclusterStagingControl;
 class TaskBuilderControl;
+struct EngineSimulationData;
 
 namespace NeighborList { class Controller; }
 
 namespace PME { class Controller; };
 namespace NeighborList{struct IdAndRelshift;}
+
+
 
 
 struct RunStatus {
@@ -66,8 +65,6 @@ public:
 	volatile RunStatus runstatus;
 
 	void terminateSimulation();
-
-	SimulationDevice* getSimDev() { return sim_dev; }
 
 	static bool TestAlgorithms();
 
@@ -114,70 +111,15 @@ private:
 	void BootstrapSolventblockDistributeFromDensity();
 
 	void HandleEarlyStoppingInEM();
-	int64_t stepAtLastEarlystopCheck = INT_MIN;
 
 
 	std::array<cudaStream_t, 5> cudaStreams;
 	cudaStream_t pmeStream;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
-	uint64_t step_at_last_traj_transfer = 0;
-	Simulation* simulation; // nonowning
-
-	// Owned
-	SimulationDevice* sim_dev = nullptr;
-	
-	std::unique_ptr<SuperClustersControl> superClustersControl;
-	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
-
-	//size_t nTasks = 0;
-	int nSuperclusters = 0;
-	float ewaldKappa = 0.f;
-	float thermostatScalar = 1.f;
-	CudaBuffer<PersistentCluster> pClusterDevice; // TODO: Handle lifetime somethwere
-	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
-	CudaBuffer<BondGroup> bondgroupDescriptors;
-	CudaBuffer<BondGroup::ParticleRef> bondgroupParticles;
-	CudaBuffer<SingleBond> bondgroupSinglebonds;
-	CudaBuffer<PairBond> bondgroupPairbonds;
-	CudaBuffer<AngleUreyBradleyBond> bondgroupAnglebonds;
-	CudaBuffer<DihedralBond> bondgroupDihedralbonds;
-	CudaBuffer<ImproperDihedralBond> bondgroupImproperdihedralbonds;
-	size_t nResults = 0;
-
-	CudaBuffer<ScScTask> scscTasksDevice;
-	CudaBuffer<int> idsOfQuerySuperclustersDevice;
-	CudaBuffer<int> resultIndicesDevice;
-	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
-	CudaBuffer<SCResult> scResultsDevice;
-	CudaBuffer<float> forcesMagnitudeSquareDevice;
-
-	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
-	std::unique_ptr<TaskBuilderControl> taskbuilderControl;
-
-	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
-	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
-
-	// Copies of device ptrs kept here for performance. The data array data is NOT owned here, so dont clean that up!
-	std::unique_ptr<BoxState> boxStateCopy;
-	std::unique_ptr<BoxConfig> boxConfigCopy;
-
-	std::unique_ptr<PME::Controller> pmeController;
-	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
-	std::unique_ptr<Thermostat> thermostat;
-	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;
+	std::unique_ptr<EngineSimulationData> simData;
 
 	const BoundaryConditionSelect bc_select;
-
-	// Available to be copied to, while sim is running
-	CudaBuffer<PersistentCluster> pdataCopyBuffer; 
-	CudaBuffer<float> forcesMagnitudeCopyBuffer;
-
-	// For EM only, overwrites forces in integration kernel. 
-	std::optional<CudaBuffer<Float3>> fixedParticleMovementBuffer; 
-	std::optional<CudaBuffer<Rotation>> fixedParticleRotationBuffer;
-	std::optional<CudaBuffer<Float3>> forceMaskBuffer;	// Multiplied with forces in integration kernel, for partial fixing of particles
-	std::optional<CudaBuffer<Float3>> elasticPositionsBuffer;
 
 	// Temp
 	bool MakeSuperClusterTasksCPU();

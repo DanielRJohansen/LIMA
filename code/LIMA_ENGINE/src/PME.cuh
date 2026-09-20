@@ -2,7 +2,6 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
-#include "SimulationDevice.cuh"
 #include "ChargeBlock.cuh"
 #include "DeviceAlgorithmsPrivate.cuh"
 

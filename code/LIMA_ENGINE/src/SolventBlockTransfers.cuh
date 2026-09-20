@@ -9,7 +9,7 @@
 #include <cooperative_groups/memcpy_async.h>
 
 //template <typename BoundaryCondition>
-//__global__ void SolventPretransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
+//__global__ void SolventPretransferKernel(EngineSimulationData* simulationData, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
 //	const NodeIndex directions[6]{
 //		{1, 0, 0},
 //		{-1, 0, 0},
@@ -179,7 +179,7 @@
 //	}
 //}
 //
-//__global__ void SolventTransferKernel(SimulationDevice* sim, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
+//__global__ void SolventTransferKernel(EngineSimulationData* simulationData, int64_t _step, const TinymolTransferModule tinymolTransferModule) {
 //	__shared__ int nParticlesInBlock;
 //	__shared__ int nBondgroupsInBlock;
 //

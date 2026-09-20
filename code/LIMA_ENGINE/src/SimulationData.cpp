@@ -1,24 +1,6 @@
-#include "SimulationDevice.cuh"
+#include "SimulationData.h"
+
 #include "Utilities.h"
-
-
-//BoxConfig::BoxConfig(Compound* compounds, uint8_t* compoundsAtomTypes, float* compoundsAtomcharges, BondedParticlesLUT* bpLUTs, const BoxGrid::TinymolBlockAdjacency::BlockRef* tinymolNearbyBlockIds, BoxGrid::TinymolBlockAdjacency::NearbyBlocksSequences* tinymolNearbyBlocksSequences) :
-//	compounds(compounds),
-//	compoundsAtomtypes(compoundsAtomTypes), 
-//	compoundsAtomCharges(compoundsAtomcharges),
-//	bpLUTs(bpLUTs),
-//	tinymolNearbyBlockIds(tinymolNearbyBlockIds),
-//	tinymolNearbyBlocksSequences(tinymolNearbyBlocksSequences)
-//	//boxparams(boxHost != nullptr ? boxHost->boxparams : BoxParams{}),
-//	//uniformElectricField(boxHost != nullptr ? boxHost->uniformElectricField : UniformElectricField{})
-//{}
-BoxConfig BoxConfig::Create(const Box& boxHost) {
-	return BoxConfig();
-}
-void BoxConfig::FreeMembers() const {
-
-}
-
 
 BoxState::BoxState(PersistentclusterInterimState* pclusterInterimStates) :
 	pclusterInterimStates(pclusterInterimStates)
@@ -79,30 +61,6 @@ DatabuffersDeviceController::~DatabuffersDeviceController() {
 
 
 
-
-SimulationDevice::SimulationDevice(const SimParams& params_host, Box* box, const BoxConfig& boxConfig,
-	const BoxState& boxState, const DatabuffersDeviceController& databuffers) : 
-	boxConfig(boxConfig), boxState(boxState),
-	boxparams(box != nullptr ? box->boxparams : BoxParams{})
-{
-	potE_buffer = databuffers.potE_buffer;
-	traj_buffer = databuffers.traj_buffer;
-	vel_buffer = databuffers.vel_buffer;
-	forceBuffer = databuffers.forceBuffer;
-
-	cudaMalloc(&adamState, sizeof(AdamState) * box->persistentClusters.size() * PersistentCluster::maxParticles);
-	cudaMemset(adamState, 0, sizeof(AdamState) * box->persistentClusters.size() * PersistentCluster::maxParticles);
-
-
-	LIMA_UTILS::genericErrorCheckNoSync("Error during creation of SimDevice");
-}
-
-void SimulationDevice::FreeMembers() {
-	boxConfig.FreeMembers();
-	boxState.FreeMembers();
-	if (adamState != nullptr)
-		cudaFree(adamState);
-}
 
 //CompoundQuickData* CompoundQuickData::CreateBuffer(const Simulation& simulation) {
 //	std::vector<CompoundQuickData> compoundQuickDataHost(simulation.box->boxparams.n_compounds, CompoundQuickData{});

@@ -275,8 +275,8 @@ void Display::HandleGizmo(int objectId) {
     if (!activeGizmo) {
 		activeGizmo = std::make_unique<TransformGizmo>();
     }
-    if (objectId < renderAtomsHost.size()) {
-        activeGizmo->position = glm::vec3{ renderAtomsHost[objectId].position.x, renderAtomsHost[objectId].position.y, renderAtomsHost[objectId].position.z };
+    if (activeRenderContext && objectId >= 0 && objectId < activeRenderContext->renderAtomsHost.size()) {
+        activeGizmo->position = glm::vec3{ activeRenderContext->renderAtomsHost[objectId].position.x, activeRenderContext->renderAtomsHost[objectId].position.y, activeRenderContext->renderAtomsHost[objectId].position.z };
         activeGizmo->idOfAtomAttachedTo = objectId;
     }
 }

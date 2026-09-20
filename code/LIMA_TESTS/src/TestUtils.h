@@ -618,7 +618,7 @@ namespace TestUtils {
 		job.mode = envmode;
 		job.postprocess = SimAnalysis::AnalyzeEnergy;
 
-		auto completed = co_await environment.Submit(std::move(job));
+		auto completed = envmode == EnvMode::Full ? environment.Submit(std::move(job)).Get() : co_await environment.Submit(std::move(job));
 		if (!completed.simulation)
 			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
 		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {

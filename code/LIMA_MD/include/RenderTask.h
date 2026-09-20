@@ -10,17 +10,21 @@
 #include <variant>
 #include <vector>
 
-namespace Rendering {
+using SimulationId = int;
+
+namespace Rendering {	
 	struct NoTask {};
 
-	struct AtomRenderData {
+	struct FreeTask{};
+
+	struct AtomRenderData {	
 		char atomLetter = ' ';
 		float charge = 0.f;
 		int groupId = -1;
 		bool isSolvent = false;
 	};
 
-	struct AtomRenderTask {
+	struct AtomRenderTask {	
 		std::vector<Float3> positions;
 		std::vector<AtomRenderData> atoms;
 		std::vector<int> packedPositionIndices;
@@ -45,10 +49,10 @@ namespace Rendering {
 		SimStatus simStatus;
 	};
 
-	struct MoleculehullTask {
+	struct MoleculehullTask {	
 		const MoleculeHullCollection& molCollection;
 		Float3 boxSize{};
 	};
 
-	using Task = std::variant<NoTask, std::unique_ptr<AtomRenderTask>, std::unique_ptr<SimulationTaskUpdate>, std::unique_ptr<MoleculehullTask>>;
+	using Task = std::variant<NoTask, FreeTask, std::unique_ptr<AtomRenderTask>, std::unique_ptr<SimulationTaskUpdate>, std::unique_ptr<MoleculehullTask>>;
 }

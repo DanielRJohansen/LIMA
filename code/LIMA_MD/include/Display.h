@@ -9,11 +9,13 @@
 #include <deque>
 #include <exception>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <glm.hpp>
@@ -35,16 +37,32 @@ class SSBO;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
 
+struct RenderContext {
+	RenderContext() = default;
+	RenderContext(const RenderContext&) = delete;
+	RenderContext(RenderContext&&) = default;
+
+	Rendering::Task currentRenderTask = Rendering::NoTask{};
+	std::deque<Rendering::Task> incomingRenderTasks;
+
+	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
+	std::vector<RenderAtom> renderAtomsHost;
+	std::unique_ptr<SSBO> renderAtomsBuffer;
+	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
+};
+
 class Display {
 public:
 	Display();
 	~Display();
 	void WaitForDisplayReady();
 
-	void Render(Rendering::Task, bool blocking = false);
+
+	void Submit(SimulationId, Rendering::Task, bool blocking = false);
+	void Free(SimulationId);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
-	void UpdateSelection(const std::set<int>& particleIds);
+	void UpdateSelection(SimulationId simulationId, const std::set<int>& particleIds);
 	void SetSpinnerVisible(bool visible) { spinnerVisible.store(visible); }
 
 	volatile int debugValue = 0;
@@ -54,7 +72,7 @@ public:
 	static void TestDisplay();
 	static void RenderGrofile(const GroFile& grofile, bool showSolvents = true) {
 		Display display;
-		display.Render(std::make_unique<Rendering::AtomRenderTask>(grofile, showSolvents), true);
+		display.Submit(0, std::make_unique<Rendering::AtomRenderTask>(grofile, showSolvents), true);
 	}
 
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
@@ -66,14 +84,14 @@ private:
 	bool ApplyPendingFramebufferResize();
 	bool initGLFW();
 
-	void _RenderAtoms();
-	void _Render(const MoleculeHullCollection& molCollection, Float3 boxSize);
-	void _Render(const Rendering::Task& currentRenderTask);
-	void PrepareTask(Rendering::Task& task, bool ignorePosition);
-	void PrepareNewRenderTask(Rendering::AtomRenderTask&, bool ignorePosition);
-	void PrepareNewRenderTask(Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
-	void PrepareNewRenderTask(const Rendering::MoleculehullTask&);
-	void _UpdateSelection(const std::set<int>& selection);
+	void _RenderAtoms(const RenderContext& renderContext);
+	void _Render(const RenderContext& renderContext, const MoleculeHullCollection& molCollection, Float3 boxSize);
+	void _Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask);
+	void PrepareTask(RenderContext&, Rendering::Task& task, bool ignorePosition);
+	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask&, bool ignorePosition);
+	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
+	void PrepareNewRenderTask(RenderContext&, const Rendering::MoleculehullTask&);
+	void _UpdateSelection(RenderContext&, const std::set<int>& selection);
 
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
@@ -104,9 +122,10 @@ private:
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	std::mutex incomingRenderTaskMutex;
-	std::deque<Rendering::Task> incomingRenderTasks;
+	std::deque<std::tuple<SimulationId, Rendering::Task>> incomingRenderTasksGlobal;
 	std::mutex inputMutex;
-	std::optional<std::set<int>> newSelectionInput;
+	std::deque<std::tuple<SimulationId, std::set<int>>> newSelectionInputs;
+	RenderContext* activeRenderContext = nullptr;
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawFacetsShader> drawFacetsShader;
@@ -115,11 +134,7 @@ private:
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
 	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader;
-	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
 
-	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
-	std::vector<RenderAtom> renderAtomsHost;
-	std::unique_ptr<SSBO> renderAtomsBuffer;
 	std::unique_ptr<RenderTargetControl> renderTargetControl;
 
 	std::jthread renderThread;

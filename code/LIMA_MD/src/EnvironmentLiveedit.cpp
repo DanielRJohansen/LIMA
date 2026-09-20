@@ -86,7 +86,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 
 	liveeditData->prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
 	
-	display->Render(std::make_unique<Rendering::AtomRenderTask>(
+	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 		simulation->box->boxparams, simStatus, simulation->box->backboneChains
 	));
@@ -154,7 +154,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::At
 	for (const auto& node : boximage->systemGraph->BFS(cmd.particleId)) {
 		liveeditData->activeSelection.insert(node.atomid);
 	}
-	display->UpdateSelection(liveeditData->activeSelection);
+	display->UpdateSelection(0, liveeditData->activeSelection);
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
@@ -187,7 +187,7 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::Se
 			}
 		}
 	}
-	display->UpdateSelection(liveeditData->activeSelection);
+	display->UpdateSelection(0, liveeditData->activeSelection);
 }
 
 void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile) {
@@ -207,7 +207,7 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 
 	simulation->simParams.em_variant = true;
 	liveeditData->remainingStepsCount = 4000;
-	display->Render(std::make_unique<Rendering::AtomRenderTask>(
+	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 		simulation->box->boxparams, simStatus, simulation->box->backboneChains
 	));
@@ -271,7 +271,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 
 	display = std::make_unique<Display>();
 	display->WaitForDisplayReady();
-	display->Render(std::make_unique<Rendering::AtomRenderTask>(
+	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 		simulation->box->boxparams, simStatus, simulation->box->backboneChains
 	), false);
@@ -400,7 +400,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		}
 
 		if (shouldUpdateRender) {
-			display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
+			display->Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(
 				liveeditData.positionData.data(), liveeditData.forceMagnitudeData.data(), simStatus
 			), false);
 			shouldUpdateRender = false;

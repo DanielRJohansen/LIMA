@@ -287,7 +287,7 @@ int Cli::RunRender(int argc, char** argv) {
 	}
 	renderTask->showSolvents = !hidewater;
 	renderTask->highlightedAtoms = highlightedAtoms;
-    d.Render(std::move(renderTask), true);
+    d.Submit(1, std::move(renderTask), true);
 
     return 0;
 }

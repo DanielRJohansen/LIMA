@@ -179,7 +179,7 @@ void Display::Setup() {
 
     overlay = std::make_unique<Overlay>(window, FileUtils::GetLimaDir());
 
-    renderAtomsBuffer = std::make_unique<SSBO>();
+    //renderAtomsBuffer = std::make_unique<SSBO>();
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -226,14 +226,14 @@ void Display::WaitForDisplayReady() {
 
 
 
-void Display::PrepareTask(Task& task, bool ignorePosition) {
+void Display::PrepareTask(RenderContext& renderContext, Task& task, bool ignorePosition) {
     std::visit([&](auto&& taskPtr) {
         using T = std::decay_t<decltype(taskPtr)>;
 		if constexpr (std::is_same_v<T, std::unique_ptr<AtomRenderTask>>) {
-            PrepareNewRenderTask(*taskPtr, ignorePosition);
+            PrepareNewRenderTask(renderContext, *taskPtr, ignorePosition);
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MoleculehullTask>>) {
-            PrepareNewRenderTask(*taskPtr);
+            PrepareNewRenderTask(renderContext, *taskPtr);
         }
 		else {
 			throw std::runtime_error("Unknown task type");
@@ -242,8 +242,8 @@ void Display::PrepareTask(Task& task, bool ignorePosition) {
 }
 
 void Display::Mainloop() {
-    Rendering::Task currentRenderTask = Rendering::NoTask{};
-    
+    std::map<SimulationId, RenderContext> renderContexts;
+
     TimeIt frameTime{};
 
     while (!kill) {
@@ -255,6 +255,52 @@ void Display::Mainloop() {
             printf("Window closed");
         }
         
+        // Check for new user input
+        bool newInput = false;
+        std::deque<std::tuple<SimulationId, std::set<int>>> newSelections;
+        {
+            std::lock_guard<std::mutex> lock(inputMutex);
+            newSelections.swap(newSelectionInputs);
+        }
+        for (auto& newSelection : newSelections) {
+            if (auto context = renderContexts.find(std::get<0>(newSelection)); context != renderContexts.end()) {
+				auto& renderContext = context->second;
+                _UpdateSelection(renderContext, std::get<1>(newSelection));
+                newInput = true;
+			}
+        }
+
+        // Check for newly submitted work to display
+        {
+            std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
+            if (!incomingRenderTasksGlobal.empty()) {
+				auto [simId, incomingRenderTask] = std::move(incomingRenderTasksGlobal.front());
+                incomingRenderTasksGlobal.pop_front();
+                if (std::holds_alternative<Rendering::FreeTask>(incomingRenderTask)) {
+					renderContexts.erase(simId);
+                }
+                else {
+                    auto& context = renderContexts[simId];
+                    if (context.incomingRenderTasks.size() < 10)
+					    renderContexts[simId].incomingRenderTasks.push_back(std::move(incomingRenderTask));
+                }
+            }
+        }
+
+
+
+        // Everything happening from here is specific to the active RenderContext. Currently that is the "oldest" one, but eventually the user can switch between them
+        // The RC status is not modifying externally, and thus we dont need mutexes from here onward
+		if (renderContexts.empty()) {
+			activeRenderContext = nullptr;
+			continue;
+		}
+		RenderContext& currentRenderContext = renderContexts.begin()->second;
+		activeRenderContext = &currentRenderContext;
+		auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
+        auto& currentRenderTask = currentRenderContext.currentRenderTask;
+
+        bool updatedPositions = false;
         bool shouldRecolorAtoms = false;
         ConsumeInputs(shouldRecolorAtoms);
 		if (revolveCamera) {
@@ -265,10 +311,8 @@ void Display::Mainloop() {
 		}
 
         // Check for new task
-        bool newTask = false;
-        bool updatedPositions = false;
+        bool newTask = false;        
         {
-			std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);     
             if (!incomingRenderTasks.empty()) {
                 Rendering::Task incomingRenderTask = std::move(incomingRenderTasks.front());
                 incomingRenderTasks.pop_front();
@@ -278,7 +322,7 @@ void Display::Mainloop() {
                         if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
                             int a = 0;
                         }
-						PrepareNewRenderTask(*std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
+						PrepareNewRenderTask(currentRenderContext, *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
                         //incomingRenderTask = Rendering::NoTask{};
                         updatedPositions = true;
                     }
@@ -295,20 +339,8 @@ void Display::Mainloop() {
         }
         if (newTask || shouldRecolorAtoms) {
             bool ignorePosition = !newTask;
-            PrepareTask(currentRenderTask, ignorePosition);
-        }
-        
-        // Check for new input
-        bool newInput = false;
-		std::optional<std::set<int>> newSelection;
-        {
-			std::lock_guard<std::mutex> lock(inputMutex);
-            newSelection = std::exchange(newSelectionInput, std::nullopt);
-        }
-        if (newSelection.has_value()) {
-            _UpdateSelection(newSelection.value());
-            newInput = true;
-		}
+            PrepareTask(currentRenderContext, currentRenderTask, ignorePosition);
+        }        
 
 
 
@@ -317,7 +349,7 @@ void Display::Mainloop() {
 			|| frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
-            _Render(currentRenderTask);
+            _Render(currentRenderContext, currentRenderTask);
 
 			fps->NewFrame();
             frameTime = TimeIt{};
@@ -337,7 +369,7 @@ bool Display::ApplyPendingFramebufferResize() {
 	return true;
 }
 
-void Display::Render(Rendering::Task task, bool blocking) {
+void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking) {
     {
         if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
             if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {
@@ -346,8 +378,8 @@ void Display::Render(Rendering::Task task, bool blocking) {
         }
 		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
 
-        if (incomingRenderTasks.size() < 20) // With too many tasks, drop incoming
-            incomingRenderTasks.push_back(std::move(task));
+        if (incomingRenderTasksGlobal.size() < 20) // With too many tasks, drop incoming
+            incomingRenderTasksGlobal.push_back({simId, std::move(task)});
     }
 
     if (blocking) {
@@ -359,11 +391,14 @@ void Display::Render(Rendering::Task task, bool blocking) {
         }
     }
 }
+void Display::Free(SimulationId simId) {
+	Submit(simId, Rendering::FreeTask{}, false);
+}
 
-void Display::UpdateSelection(const std::set<int>& selection) {
+void Display::UpdateSelection(SimulationId simId, const std::set<int>& selection) {
 
 	std::lock_guard<std::mutex> lock(inputMutex);
-	newSelectionInput = selection;
+    newSelectionInputs.emplace_back(simId, selection);
 }
 
 
@@ -451,6 +486,8 @@ void Display::TestDisplay() {
     std::vector<PersistentClusterMeta> pcMetas(1);
     pcMetas.front().particleIdsGlobal[0] = 0;
     pcMetas.front().atomLetter[0] = 'l';
-	display.Render(std::make_unique<Rendering::AtomRenderTask>(pclusters, pcMetas, params), true);
-	display.Render(std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), nullptr, SimStatus{}), true);
+
+
+	display.Submit(0, std::make_unique<Rendering::AtomRenderTask>(pclusters, pcMetas, params), true);
+	display.Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(position.get(), nullptr, SimStatus{}), true);
 }

@@ -107,7 +107,7 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 	auto d = renderProgress ? std::make_shared<Display>() : nullptr;
 	auto renderCallback = [&d, &mhCol, &boxSize]() mutable {
 		if (d != nullptr)
-			d->Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
+			d->Submit(0, std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 	};
 	chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize, std::ref(renderCallback));
 

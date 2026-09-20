@@ -416,7 +416,7 @@ void Environment::InitializeLiveEditSimulation(
 	SimulationSession& session = LiveEditSession();
 
 	if (display) {
-		display->Render(std::make_unique<Rendering::AtomRenderTask>(
+		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 			session.simulation->box->persistentClusters, session.simulation->box->persistentClustersMetadata,
 			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains
 		));
@@ -505,7 +505,7 @@ std::chrono::duration<double> Environment::RunSimulation(SimulationSession& sess
 	if (session.mode == Full) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
-		display->Render(std::make_unique<Rendering::AtomRenderTask>(
+		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 			simulation->box->boxparams, simStatus, simulation->box->backboneChains
 		), stepwise);
@@ -641,7 +641,7 @@ bool Environment::HandleDisplay(SimulationSession& session, Engine& engine, cons
 		: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine.runstatus.current_step), static_cast<float>(engine.runstatus.current_temperature));
 
 	if (stepForMostRecentData > step_at_last_render) {
-		display->Render(std::make_unique<Rendering::SimulationTaskUpdate>(
+		display->Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(
 			renderPositions, nullptr, simStatus
 		), stepwise);
 		step_at_last_render = stepForMostRecentData;

@@ -81,6 +81,7 @@ Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
 
 Engine::~Engine() {
 	Synchronize();
+	pmeController.reset();
 	if (sim_dev != nullptr) {
 		sim_dev->FreeMembers();
 		cudaFree(sim_dev);

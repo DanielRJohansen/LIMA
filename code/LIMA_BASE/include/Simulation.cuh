@@ -33,7 +33,7 @@ public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_steps, 
 		int loggingInterval, int nPclusters	) :
 		n_particles_upperbound(nPclusters * PersistentCluster::maxParticles),
-		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
+		n_indices(loggingInterval > 0 ? std::max(n_steps / loggingInterval + (n_steps % loggingInterval != 0), size_t{1}) : size_t{1}),
 		buffer(nPclusters* PersistentCluster::maxParticles* n_indices, T{}),
 		loggingInterval(loggingInterval)
 		,nPclusters(nPclusters)

@@ -365,8 +365,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		// Run engine
 		if (!engine && simulation->box->boxparams.totalParticles > 0) {
 			engine = std::make_unique<Engine>(
-				simulation.get(),
-				simulation->simParams.bc_select);
+				std::vector<Simulation*>{ simulation.get() }, EngineRunMode::Interactive);
 
 			engine->SetFixedParticleMovementBuffer(liveeditData.fixedMovements);
 			engine->SetFixedParticleRotationBuffer(liveeditData.fixedRotations);
@@ -393,7 +392,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				//forceWriteSimstatusToDisplay = false;
 				// check engine if we should continue..
 			}
-			if (simulation->simParams.em_variant && engine->runstatus.greatestForce < simulation->simParams.em_force_tolerance) {
+			if (simulation->simParams.em_variant && engine->GetRunStatus().greatestForce < simulation->simParams.em_force_tolerance) {
 				simulation->simParams.em_variant = false;
 				liveeditData.remainingStepsCount = 0;
 			}

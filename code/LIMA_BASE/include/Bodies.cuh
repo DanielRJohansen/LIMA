@@ -304,6 +304,11 @@ public:
 			value = noVal;
 	}
 
+	void AddOffset(int offset) {
+		for (int& value : data)
+			if (value != noVal) value += offset;
+	}
+
 	constexpr bool Contains(int value) const {
 		for (int i = 0; i < size; i++) {
 			if (data[i] == value)
@@ -444,7 +449,7 @@ struct SuperCluster {
 	//}
 };
 
-struct SuperClusterMeta {
+struct SuperClusterMeta {	
 	// Set by clustering kernel
 	int _pclusterIds[SuperCluster::maxParticles];
 	int indexInPcluster[SuperCluster::maxParticles];
@@ -456,6 +461,7 @@ struct SuperClusterMeta {
 	// Set by taskbuilder kernel
 	int resultsStartIndex; // TODO: Is int always safe here??
 	int nResults;
+	int simulationId = 0;
 	
 
 	//__host__ bool operator != (const SuperClusterMeta& other) const {

@@ -90,6 +90,29 @@ private:
 
 class Environment
 {
+	struct SimulationSession {
+		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
+		~SimulationSession();
+		SimulationSession(SimulationSession&&) noexcept;
+
+		std::unique_ptr<Simulation> simulation;
+		std::unique_ptr<Engine> engine = nullptr;
+		std::chrono::steady_clock::time_point time0;
+		std::optional<TimeIt> simulationTimer;
+		std::vector<float> avgStepTimes;
+		std::optional<std::chrono::duration<double>> engineTime;
+		std::deque<LiveEdit::Command> liveEditCommandsQueue;
+		SimStatus simStatus{};
+		bool forceWriteSimstatusToDisplay = false;
+		int64_t stepAtLastRender = INT64_MIN;
+		EnvMode mode;
+		fs::path workDir;
+	};
+
+	struct BatchSession {
+		std::vector<SimulationSession> sessions;
+	};
+
 public:
 	static Environment& Get();
 
@@ -149,11 +172,18 @@ private:
 	void StartScheduling();
 	void StopScheduling();
 	void MainLoop();
+	bool IsDrained() const; // Called with schedulingMutex held.
+	bool CanPrepare() const; // Called with schedulingMutex held.
+	bool CanPostprocess() const; // Called with schedulingMutex held.
+	size_t GetReadyBatchSize() const; // Called with schedulingMutex held.
+	bool CanStartBatch() const; // Called with schedulingMutex held.
+	std::vector<PreparedSimulation> TakeReadyBatch(); // Called with schedulingMutex held.
+	static bool MustRunAlone(const PreparedSimulation& simulation);
 
 
 	// Functions that are only run by their own dedicated worker thread
 	void Preprocess(QueuedSimulation next);					// preprocessor thread	
-	void RunPreparedSimulation(PreparedSimulation next);	// simulation thread
+	void RunPreparedSimulations(std::vector<PreparedSimulation> next, int batchId);	// simulation thread
 	void Postprocess(ProcessedSimulation next);				// postprocessor thread
 	//
 
@@ -164,25 +194,9 @@ private:
 	std::tuple<GroFile, TopologyFile, SimParams> CreateLiveEditSimulationFiles(
 		Float3 boxlen, const fs::path& workDir);
 	void UpdateLiveEditCoordinates(GroFile& grofile);
-	std::chrono::duration<double> RunSimulation(SimulationSession& session);
+	std::chrono::duration<double> RunSimulation(BatchSession& batch);
 
-	struct SimulationSession {
-		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
-		~SimulationSession();
 
-		std::unique_ptr<Simulation> simulation;
-		std::unique_ptr<Engine> engine = nullptr;
-		std::chrono::steady_clock::time_point time0;
-		std::optional<TimeIt> simulationTimer;
-		std::vector<float> avgStepTimes;
-		std::optional<std::chrono::duration<double>> engineTime;
-		std::deque<LiveEdit::Command> liveEditCommandsQueue;
-		SimStatus simStatus{};
-		bool forceWriteSimstatusToDisplay = false;
-		int64_t stepAtLastRender = INT64_MIN;
-		EnvMode mode;
-		fs::path workDir;
-	};
 
 	SimulationSession& LiveEditSession();
 	const SimulationSession& LiveEditSession() const;
@@ -190,7 +204,7 @@ private:
 		std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
 	fs::path FixLiveEditPath(const fs::path& path) const;
 	
-	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/);
+	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/, size_t simulationId = 0);
 
 	// Returns false if display has been closed by user
 	bool HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams,
@@ -207,8 +221,11 @@ private:
 	std::mutex schedulingMutex;
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
-	static constexpr size_t maxPreparedSimulations = 3;
-	static constexpr size_t maxProcessedSimulations = 1;
+	size_t unpreparedSimulations = 0; // Submitted jobs not yet finished by Preprocess.
+	static constexpr size_t maxBatchSize = 4;
+	static constexpr size_t maxPreparedSimulations = maxBatchSize * 2;
+	static constexpr size_t maxProcessedSimulations = maxBatchSize;
+	int nextBatchId = 1;
 	std::deque<PreparedSimulation> preparedSimulations;
 	std::deque<ProcessedSimulation> processedSimulations;
 	bool preparingSimulation = false;

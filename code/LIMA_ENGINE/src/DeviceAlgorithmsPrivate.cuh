@@ -36,9 +36,10 @@ namespace LAL {
 	__device__ __forceinline__
 		float EvalPoly(const float x, const std::array<float, order>& coeffs)
 	{
-		float acc = coeffs[order];
+		static_assert(order > 0);
+		float acc = coeffs[order - 1];
 #pragma unroll
-		for (int i = order - 1; i >= 0; --i)
+		for (int i = order - 2; i >= 0; --i)
 			acc = acc * x + coeffs[i];
 		return acc;
 	}

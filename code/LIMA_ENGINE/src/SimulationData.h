@@ -8,6 +8,8 @@
 #include "Bodies.cuh"
 #include "Simulation.cuh"
 #include "CudaBuffer.h"
+#include "Engine.cuh"
+#include "BatchLayout.cuh"
 
 class Thermostat;
 struct SuperClustersControl;
@@ -55,18 +57,19 @@ struct DatabuffersDeviceController {
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		if (loggingInterval == 0)
 			return false;
-		return step % (nStepsInBuffer * loggingInterval) == 0;
+		return step % (int64_t{nStepsInBuffer} * loggingInterval) == 0;
 	}
 	static int StepsReadyToTransfer(size_t step, int loggingInterval) {
-		const int64_t stepsSinceTransfer = step % (nStepsInBuffer * loggingInterval);
+		if (loggingInterval == 0) return 0;
+		const int64_t stepsSinceTransfer = step % (int64_t{nStepsInBuffer} * loggingInterval);
 		return stepsSinceTransfer / loggingInterval;
 	}
 
-	__device__ static int GetLogIndexOfParticle(int pidInPclusters, int pcId, int step,
+	__device__ static size_t GetLogIndexOfParticle(int pidInPclusters, int pcId, int64_t step,
 		int loggingInterval, const int totalParticleUpperbound) {
-		const int steps_since_transfer = step % (nStepsInBuffer * loggingInterval);
+		const int64_t steps_since_transfer = step % (int64_t{nStepsInBuffer} * loggingInterval);
 
-		const int stepOffset = steps_since_transfer / loggingInterval * totalParticleUpperbound;
+		const size_t stepOffset = size_t(steps_since_transfer / loggingInterval) * totalParticleUpperbound;
 		const int pclusterOffset = pcId * PersistentCluster::maxParticles;
 		return stepOffset + pclusterOffset + pidInPclusters;
 	}
@@ -95,24 +98,36 @@ struct ForceEnergyInterims {
 	ForceEnergy* forceEnergiesBondgroups = nullptr;
 };
 
-// All state owned by one simulation. Engine deliberately owns only execution
-// resources (streams) and orchestration; a future batch executor can own many
-// of these objects and concatenate the buffer categories.
+// Host bookkeeping for one member; GPU allocations belong to EngineBatchData.
 struct EngineSimulationData {
-	EngineSimulationData(Simulation* simulation);
-	~EngineSimulationData();
-
-	EngineSimulationData(const EngineSimulationData&) = delete;
-	EngineSimulationData& operator=(const EngineSimulationData&) = delete;
-
-	uint64_t step_at_last_traj_transfer = 0;
+	Simulation* simulation = nullptr; // nonowning; caller outlives Engine
+	SimulationDeviceData device;
+	RunStatus runstatus;
+	BatchRange superclusters;
+	int64_t step = 0;
 	int64_t stepAtLastEarlystopCheck = INT_MIN;
-	Simulation* simulation = nullptr; // nonowning
+	size_t nLogEntriesTransferred = 0;
+	bool finalized = false;
+	std::vector<float> finalForcesMagnitudeSquared;
+};
 
+struct EngineBatchData {
+	EngineBatchData() = default;
+	~EngineBatchData();
+	EngineBatchData(const EngineBatchData&) = delete;
+	EngineBatchData& operator=(const EngineBatchData&) = delete;
+
+	std::vector<EngineSimulationData> simulations;
+	SimParams params;
+	Int3 boxSize;
+	int64_t step = 0;
+	int nPclusters = 0;
+	int nBondgroups = 0;
+	int nParticles = 0;
+	int nGridnodes = 0;
 	int nSuperclusters = 0;
+	int nResults = 0;
 	float ewaldKappa = 0.f;
-	float thermostatScalar = 1.f;
-	size_t nResults = 0;
 
 	CudaBuffer<PersistentCluster> pClusterDevice;
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;

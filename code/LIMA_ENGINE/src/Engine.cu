@@ -13,420 +13,424 @@
 #include "DebugUtils.h"
 #include "EngineHostside.h"
 #include "ParticleClusters.cuh"
-#include "SuperClusterTaskBuilder.cuh"
+#include "SuperclusterTaskBuilder.cuh"
+#include "BatchData.cuh"
 
 #include <random>
+#include <numeric>
 
-EngineSimulationData::EngineSimulationData(Simulation* simulation)
-	: simulation(simulation)
-	, forceEnergyInterims(std::make_unique<ForceEnergyInterims>(
-		simulation->box->bondgroups.particles.size(),
-		simulation->box->boxparams.totalParticles,
-		simulation->box->persistentClusters.size()))
-{
+EngineBatchData::~EngineBatchData() {
+	pmeController.reset();
+	boxState.FreeMembers();
+	cudaFree(adamState);
+	if (forceEnergyInterims) forceEnergyInterims->Free();
+	if (superClustersControl) superClustersControl->Free();
+	if (pclusterTransfermodule) pclusterTransfermodule->Free();
+	if (superclusterStagingControl) superclusterStagingControl->Free();
 }
 
-EngineSimulationData::~EngineSimulationData() = default;
-
-Engine::Engine(Simulation* _sim, BoundaryConditionSelect bc)
-	: simData(std::make_unique<EngineSimulationData>(_sim))
-	, bc_select(bc)
+Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode)
+	: mode(mode), batch(std::make_unique<EngineBatchData>())
 {
-	simData->ewaldKappa = PhysicsUtils::CalcEwaldkappa(simData->simulation->simParams.cutoff_nm);
-	for (cudaStream_t& stream : cudaStreams)
-		cudaStreamCreate(&stream);
-	cudaStreamCreate(&pmeStream);
-
-    verifyEngine();
-
-	const BoxParams& boxparams = simData->simulation->box->boxparams;
-
-	simData->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(simData->simulation->box->persistentClusters.size(), simData->simulation->simParams.data_logging_interval);
-
-	simData->superClustersControl = std::make_unique<SuperClustersControl>(boxparams.boxSize, simData->simulation->box->persistentClusters.size());
-	simData->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(boxparams.boxSize));
-	simData->pClusterDevice.SetData(simData->simulation->box->persistentClusters);
-	simData->pClusterMetaDevice.SetData(simData->simulation->box->persistentClustersMetadata);
-
-	simData->forcesMagnitudeSquareDevice.Expand(boxparams.totalParticles);
-
-
-
-	simData->boxState = BoxState::Create(*simData->simulation->box);
-	cudaMalloc(&simData->adamState, sizeof(AdamState) * simData->simulation->box->persistentClusters.size() * PersistentCluster::maxParticles);
-	cudaMemset(simData->adamState, 0, sizeof(AdamState) * simData->simulation->box->persistentClusters.size() * PersistentCluster::maxParticles);
-	/*
-	// Precomputed LUT initialization is disabled with the LUT declarations. Keep this for potential reuse.
-	const float cutoffNM = simData->simulation->simParams.cutoff_nm;
-	cudaMemcpyToSymbol(DeviceConstants::bsplineTable, PrecomputeBsplineTable().data(), sizeof(float) * PrecomputeBsplineTable().size(), 0, cudaMemcpyHostToDevice);
-	cudaMemcpyToSymbol(DeviceConstants::erfcForcescalarTable, PrecomputeErfcForcescalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcForcescalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
-	cudaMemcpyToSymbol(DeviceConstants::erfcPotentialscalarTable, PrecomputeErfcPotentialscalarTable(cutoffNM).data(), sizeof(float) * PrecomputeErfcPotentialscalarTable(cutoffNM).size(), 0, cudaMemcpyHostToDevice);
-	*/
-	BootstrapClustering(cudaStreams[0]);
-	MakeSuperClusterTasksGPU(cudaStreams[0]);
-
-	simData->pmeController = std::make_unique<PME::Controller>(*simData->simulation->box, simData->simulation->simParams.cutoff_nm, pmeStream);
-
-	simData->bondgroupDescriptors.SetData(simData->simulation->box->bondgroups.groups);
-	simData->bondgroupParticles.SetData(simData->simulation->box->bondgroups.particles);
-	simData->bondgroupSinglebonds.SetData(simData->simulation->box->bondgroups.singlebonds);
-	simData->bondgroupPairbonds.SetData(simData->simulation->box->bondgroups.pairbonds);
-	simData->bondgroupAnglebonds.SetData(simData->simulation->box->bondgroups.anglebonds);
-	simData->bondgroupDihedralbonds.SetData(simData->simulation->box->bondgroups.dihedralbonds);
-	simData->bondgroupImproperdihedralbonds.SetData(simData->simulation->box->bondgroups.improperdihedralbonds);
-
-	simData->thermostat = std::make_unique<Thermostat>(simData->simulation->box->persistentClusters.size());
-
-	// To create the NLists we need to bootstrap the traj_buffer, since it has no data yet
-	bootstrapTrajbufferWithCoords();
+	if (mode == EngineRunMode::Interactive && simulations.size() != 1)
+		throw std::invalid_argument("Interactive engines require one simulation");
+	EngineBatch::Pack(*batch, simulations);
+	if (mode == EngineRunMode::Interactive) {
+		batch->simulations.front().device.active = true;
+		batch->simulations.front().runstatus.simulation_finished = false;
+	}
+	verifyEngine();
+	try {
+		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
+		cudaStreamCreate(&pmeStream);
+		batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
+		batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
+		batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
+		batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
+		BootstrapClustering(cudaStreams[0]);
+		MakeSuperClusterTasksGPU(cudaStreams[0]);
+		InitializePME();
+		bool retired = false;
+		for (auto& sim : batch->simulations) {
+			BootstrapTrajbufferWithCoords(sim);
+			if (!sim.device.active) {
+				FinalizeSimulation(sim);
+				retired = true;
+			}
+		}
+		if (retired && !IsFinished()) RebuildActiveBatch();
+	}
+	catch (...) {
+		Synchronize();
+		batch.reset();
+		for (auto stream : cudaStreams) if (stream) cudaStreamDestroy(stream);
+		if (pmeStream) cudaStreamDestroy(pmeStream);
+		throw;
+	}
 }
 
 Engine::~Engine() {
 	Synchronize();
-	simData->pmeController.reset();
-	simData->boxState.FreeMembers();
-	if (simData->adamState != nullptr)
-		cudaFree(simData->adamState);
-	simData->forceEnergyInterims->Free();
-
-	for (cudaStream_t& stream : cudaStreams) {
-		cudaStreamDestroy(stream);
-	}
+	batch.reset(); // Controllers reference streams, so destroy them first.
+	for (auto stream : cudaStreams) cudaStreamDestroy(stream);
 	cudaStreamDestroy(pmeStream);
-
-	if (simData->superClustersControl)
-		simData->superClustersControl->Free();
-
 	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
 }
 
 void Engine::Synchronize() {
 	cudaStreamSynchronize(pmeStream);
-	for (cudaStream_t stream : cudaStreams)
-		cudaStreamSynchronize(stream);
+	for (auto stream : cudaStreams) cudaStreamSynchronize(stream);
 }
 
+const RunStatus& Engine::GetRunStatus(size_t simulationId) const {
+	return batch->simulations.at(simulationId).runstatus;
+}
+
+bool Engine::IsFinished() const {
+	return std::none_of(batch->simulations.begin(), batch->simulations.end(), [](const auto& sim) { return sim.device.active; });
+}
+
+void Engine::InitializePME() {
+	if (ENABLE_ES_LR && batch->params.enable_electrostatics) {
+		batch->pmeController = std::make_unique<PME::Controller>(batch->simulations, batch->params.cutoff_nm, pmeStream);
+	}
+}
+
+namespace {
+	template<typename T>
+	void CopyParticleBuffer(const std::optional<CudaBuffer<T>>& source, std::optional<CudaBuffer<T>>& destination,
+		const EngineBatchData& oldBatch, const EngineBatchData& newBatch) {
+		if (!source) return;
+		destination.emplace();
+		destination->Expand(newBatch.nParticles);
+		for (size_t id = 0; id < newBatch.simulations.size(); ++id) {
+			const auto& oldRange = oldBatch.simulations[id].device.particles;
+			const auto& newRange = newBatch.simulations[id].device.particles;
+			if (!newBatch.simulations[id].device.active) continue;
+			cudaMemcpy(destination->Get() + newRange.offset, source->Get() + oldRange.offset,
+				sizeof(T) * newRange.count, cudaMemcpyDeviceToDevice);
+		}
+	}
+}
+
+void Engine::RebuildActiveBatch() {
+	Synchronize();
+	std::vector<Simulation*> simulations;
+	std::vector<bool> active;
+	for (auto& sim : batch->simulations) {
+		simulations.push_back(sim.simulation);
+		active.push_back(sim.device.active);
+		if (!sim.device.active) continue;
+		OffloadLoggingData(sim);
+		const auto range = sim.device.pclusters;
+		auto& box = *sim.simulation->box;
+		cudaMemcpy(box.persistentClusters.data(), batch->pClusterDevice.Get() + range.offset,
+			sizeof(PersistentCluster) * range.count, cudaMemcpyDeviceToHost);
+		cudaMemcpy(box.pclusterInterimStates.data(), batch->boxState.pclusterInterimStates + range.offset,
+			sizeof(PersistentclusterInterimState) * range.count, cudaMemcpyDeviceToHost);
+	}
+
+	auto rebuilt = std::make_unique<EngineBatchData>();
+	EngineBatch::Pack(*rebuilt, simulations, &active);
+	rebuilt->step = batch->step;
+	for (size_t id = 0; id < simulations.size(); ++id) {
+		const auto& oldSim = batch->simulations[id];
+		auto& newSim = rebuilt->simulations[id];
+		newSim.runstatus = oldSim.runstatus;
+		newSim.step = oldSim.step;
+		newSim.stepAtLastEarlystopCheck = oldSim.stepAtLastEarlystopCheck;
+		newSim.nLogEntriesTransferred = oldSim.nLogEntriesTransferred;
+		newSim.finalized = oldSim.finalized;
+		newSim.finalForcesMagnitudeSquared = oldSim.finalForcesMagnitudeSquared;
+		newSim.device.thermostatScalar = oldSim.device.thermostatScalar;
+		if (!active[id]) continue;
+		cudaMemcpy(rebuilt->adamState + newSim.device.pclusters.offset * PersistentCluster::maxParticles,
+			batch->adamState + oldSim.device.pclusters.offset * PersistentCluster::maxParticles,
+			sizeof(AdamState) * newSim.device.pclusters.count * PersistentCluster::maxParticles, cudaMemcpyDeviceToDevice);
+	}
+	CopyParticleBuffer(batch->fixedParticleMovementBuffer, rebuilt->fixedParticleMovementBuffer, *batch, *rebuilt);
+	CopyParticleBuffer(batch->fixedParticleRotationBuffer, rebuilt->fixedParticleRotationBuffer, *batch, *rebuilt);
+	CopyParticleBuffer(batch->forceMaskBuffer, rebuilt->forceMaskBuffer, *batch, *rebuilt);
+	CopyParticleBuffer(batch->elasticPositionsBuffer, rebuilt->elasticPositionsBuffer, *batch, *rebuilt);
+
+	auto oldBatch = std::move(batch);
+	batch = std::move(rebuilt);
+	batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
+	batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
+	batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
+	batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
+	if (batch->step == 0) BootstrapClustering(cudaStreams[0]);
+	else RunClustering(cudaStreams[0]);
+	MakeSuperClusterTasksGPU(cudaStreams[0]);
+	InitializePME();
+	Synchronize();
+}
 
 void Engine::step() {
-	LIMA_UTILS::genericErrorCheckNoSync("Error before step!");
-
-	deviceMaster();	// Device first, otherwise offloading data always needs the last datapoint!
-	simData->simulation->step++;
-
-	hostMaster();
-	
-
-	if (simData->simulation->step % simData->simulation->simParams.stepsPerNlistupdate == 0) {
-		simData->superClustersControl->Reset(simData->simulation->box->boxparams.boxSize, cudaStreams[0]);
+	if (IsFinished()) return;
+	LIMA_UTILS::genericErrorCheckNoSync("Error before step");
+	if (mode == EngineRunMode::Interactive) {
+		auto& sim = batch->simulations.front();
+		// Live editing changes EM/MD and force selections between steps.
+		batch->params = sim.simulation->simParams;
+		if (sim.device.dt != batch->params.dt) {
+			sim.device.dt = batch->params.dt;
+		}
+	}
+	deviceMaster();
+	++batch->step;
+	for (auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		++sim.simulation->step;
+		sim.step = sim.simulation->getStep();
+	}
+	const bool rebuilt = hostMaster();
+	if (!rebuilt && !IsFinished() && batch->step % batch->params.stepsPerNlistupdate == 0) {
+		batch->superClustersControl->Reset(batch->nGridnodes, cudaStreams[0]);
 		RunClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 	}
-
-	LIMA_UTILS::genericErrorCheckNoSync("Error after step!");
+	LIMA_UTILS::genericErrorCheckNoSync("Error after step");
 }
 
-void Engine::hostMaster() {						// This is and MUST ALWAYS be called after the deviceMaster, and AFTER incStep()!
-	auto t0 = std::chrono::high_resolution_clock::now();
-	if (DatabuffersDeviceController::IsBufferFull(simData->simulation->getStep(), simData->simulation->simParams.data_logging_interval)) {
-		offloadLoggingData(DatabuffersDeviceController::nStepsInBuffer);
-		runstatus.stepForMostRecentData = simData->simulation->getStep();
-
-		if ((simData->simulation->getStep() % simData->simulation->simParams.steps_per_temperature_measurement) == 0 && simData->simulation->getStep() > 0) {
-			auto [temperature, newThermostatScalar] = simData->thermostat->Temperature(simData->boxState.pclusterInterimStates, simData->simulation->box->boxparams,
-				simData->simulation->simParams, simData->simulation->getStep(), simData->pClusterMetaDevice.Get(), cudaStreams[0]);
-			simData->simulation->temperature_buffer.push_back(temperature);
-			runstatus.current_temperature = temperature;
-
-			if (simData->simulation->simParams.apply_thermostat)
-				simData->thermostatScalar = newThermostatScalar;
-		}		
+bool Engine::hostMaster() {
+	bool retired = false;
+	const bool measureTemperature = DatabuffersDeviceController::IsBufferFull(batch->step, batch->params.data_logging_interval)
+		&& batch->step % batch->params.steps_per_temperature_measurement == 0;
+	if (measureTemperature)
+		batch->thermostat->ComputeKineticEnergy(batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
+			batch->nPclusters, cudaStreams[0]);
+	for (auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		const auto step = sim.step;
+		const auto& params = sim.simulation->simParams;
+		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval)) {
+			OffloadLoggingData(sim);
+			// Preserve the existing measurement cadence during the storage migration.
+			if (measureTemperature) {
+				auto [temperature, scalar] = batch->thermostat->Temperature(
+					sim.simulation->box->boxparams, params, sim.device.pclusters, cudaStreams[0]);
+				sim.simulation->temperature_buffer.push_back(temperature);
+				sim.runstatus.current_temperature = temperature;
+				if (params.apply_thermostat) {
+					sim.device.thermostatScalar = scalar;
+				}
+			}
+		}
+		HandleEarlyStoppingInEM(sim);
+		sim.runstatus.current_step = step;
+		if (step >= params.n_steps || sim.runstatus.critical_error_occured) sim.runstatus.simulation_finished = true;
+		if (mode == EngineRunMode::Simulation && sim.runstatus.simulation_finished) {
+			FinalizeSimulation(sim);
+			retired = true;
+		}
 	}
-	HandleEarlyStoppingInEM();
-	/*if (simData->simulation->getStep() % simData->simulation->simParams.stepsPerNlistupdate == simData->simulation->simParams.stepsPerNlistupdate-1)
-		nlistController->UpdateNlist(sim_dev, simData->simulation->box->boxparams, simData->simulation->simParams.bc_select, cudaStreams);*/
+	if (retired && !IsFinished()) {
+		RebuildActiveBatch();
+		return true;
+	}
+	return false;
+}
 
-	// Handle status
-	runstatus.current_step = simData->simulation->getStep();
-	if (runstatus.current_step >= simData->simulation->simParams.n_steps || runstatus.critical_error_occured)
-		runstatus.simulation_finished = true;
-
-
-	const auto t1 = std::chrono::high_resolution_clock::now();
-	const int cpu_duration = (int)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+void Engine::FinalizeSimulation(EngineSimulationData& sim) {
+	if (sim.finalized) return;
+	Synchronize();
+	OffloadLoggingData(sim);
+	const auto range = sim.device.pclusters;
+	cudaMemcpy(sim.simulation->box->pclusterInterimStates.data(), batch->boxState.pclusterInterimStates + range.offset,
+		sizeof(PersistentclusterInterimState) * range.count, cudaMemcpyDeviceToHost);
+	cudaMemcpy(sim.simulation->box->persistentClusters.data(), batch->pClusterDevice.Get() + range.offset,
+		sizeof(PersistentCluster) * range.count, cudaMemcpyDeviceToHost);
+	if (sim.device.particles.count > 0)
+		sim.finalForcesMagnitudeSquared = GenericCopyToHost(batch->forcesMagnitudeSquareDevice.Get() + sim.device.particles.offset, sim.device.particles.count);
+	sim.device.active = false;
+	sim.runstatus.simulation_finished = true;
+	sim.finalized = true;
 }
 
 void Engine::terminateSimulation() {
-	const int64_t stepsReadyToTransfer = DatabuffersDeviceController::StepsReadyToTransfer(simData->simulation->getStep(), simData->simulation->simParams.data_logging_interval);
-	offloadLoggingData(stepsReadyToTransfer);
-
-	simData->boxState.CopyDataToHost(*simData->simulation->box);
-
-	Synchronize();
+	for (auto& sim : batch->simulations) FinalizeSimulation(sim);
 	LIMA_UTILS::genericErrorCheckNoSync("Error during TerminateSimulation");
 }
 
-//--------------------------------------------------------------------------	CPU workload --------------------------------------------------------------//
-
-void Engine::offloadLoggingData(const int64_t steps_to_transfer) {
-	assert(steps_to_transfer <= simData->simulation->getStep());
-	if (steps_to_transfer == 0) { return; }
-
-	cudaStreamSynchronize(cudaStreams[0]);
-
-	const int64_t startstep = simData->simulation->getStep() - steps_to_transfer * simData->simulation->simParams.data_logging_interval;
-	const int64_t startindex = LIMALOGSYSTEM::getMostRecentDataentryIndex(startstep, simData->simulation->simParams.data_logging_interval);
-	const int64_t indices_to_transfer = LIMALOGSYSTEM::getNIndicesBetweenSteps(startstep, simData->simulation->getStep(), simData->simulation->simParams.data_logging_interval);
-	//const int particlesUpperbound = simData->simulation->box->boxparams.total_particles_upperbound;
-	const int nParticlesUpperbound = simData->simulation->box->persistentClusters.size() * PersistentCluster::maxParticles;
-	
-	cudaMemcpyAsync(
-		simData->simulation->potE_buffer->getBufferAtIndex(startindex),
-		simData->dataBuffersDevice->potE_buffer,
-		sizeof(float) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost, cudaStreams[0]);
-	
-	cudaMemcpyAsync(
-		simData->simulation->vel_buffer->getBufferAtIndex(startindex),
-		simData->dataBuffersDevice->vel_buffer,
-		sizeof(float) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost, cudaStreams[0]);
-
-	cudaMemcpyAsync(
-		simData->simulation->forceBuffer->getBufferAtIndex(startindex),
-		simData->dataBuffersDevice->forceBuffer,
-		sizeof(Float3) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost, cudaStreams[0]);
-
-	cudaMemcpyAsync(
-		simData->simulation->traj_buffer->getBufferAtIndex(startindex),
-		simData->dataBuffersDevice->traj_buffer,
-		sizeof(Float3) * nParticlesUpperbound * indices_to_transfer,
-		cudaMemcpyDeviceToHost, cudaStreams[0]);
-	cudaStreamSynchronize(cudaStreams[0]);
-
-	simData->step_at_last_traj_transfer = simData->simulation->getStep();
-	runstatus.most_recent_positions = simData->simulation->traj_buffer->getBufferAtIndex(LIMALOGSYSTEM::getMostRecentDataentryIndex(simData->simulation->getStep() - 1, simData->simulation->simParams.data_logging_interval));
-}
-
-void Engine::offloadTrainData() {
-#ifdef GENERATETRAINDATA
-	uint64_t values_per_step = N_DATAGAN_VALUES * MAX_COMPOUND_PARTICLES * simData->simulation->boxparams_host.n_compounds;
-	if (values_per_step == 0) {
-		return;	// No data to transfer
+void Engine::OffloadLoggingData(EngineSimulationData& sim) {
+	const int interval = batch->params.data_logging_interval;
+	if (interval == 0 || sim.step == 0) return;
+	const size_t entries = (sim.step - 1) / interval + 1;
+	const size_t count = entries - sim.nLogEntriesTransferred;
+	if (count == 0) return;
+	if (count > DatabuffersDeviceController::nStepsInBuffer) throw std::runtime_error("Logging buffer was not drained");
+	Synchronize();
+	const size_t width = sim.device.pclusters.count * PersistentCluster::maxParticles;
+	// A full ring or its final partial segment needs only four contiguous copies.
+	for (size_t entry = sim.nLogEntriesTransferred; entry < entries;) {
+		const size_t slot = entry % DatabuffersDeviceController::nStepsInBuffer;
+		const size_t chunk = std::min(entries - entry, DatabuffersDeviceController::nStepsInBuffer - slot);
+		const size_t src = sim.device.logOffset + slot * width;
+		cudaMemcpyAsync(sim.simulation->traj_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->traj_buffer + src, sizeof(Float3) * width * chunk, cudaMemcpyDeviceToHost, cudaStreams[0]);
+		cudaMemcpyAsync(sim.simulation->potE_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->potE_buffer + src, sizeof(float) * width * chunk, cudaMemcpyDeviceToHost, cudaStreams[0]);
+		cudaMemcpyAsync(sim.simulation->vel_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->vel_buffer + src, sizeof(float) * width * chunk, cudaMemcpyDeviceToHost, cudaStreams[0]);
+		cudaMemcpyAsync(sim.simulation->forceBuffer->getBufferAtIndex(entry), batch->dataBuffersDevice->forceBuffer + src, sizeof(Float3) * width * chunk, cudaMemcpyDeviceToHost, cudaStreams[0]);
+		entry += chunk;
 	}
-
-	uint64_t step_offset = (simData->simulation->getStep() - STEPS_PER_TRAINDATATRANSFER) * values_per_step;	// fix max_compound to the actual count save LOTS of space!. Might need a file in simout that specifies cnt for loading in other programs...
-	cudaMemcpy(&simData->simulation->trainingdata[step_offset], simData->dataBuffersDevice->data_GAN, sizeof(Float3) * values_per_step * STEPS_PER_TRAINDATATRANSFER, cudaMemcpyDeviceToHost);
-	LIMA_UTILS::genericErrorCheckNoSync("Cuda error during traindata offloading\n");
-#endif
+	cudaStreamSynchronize(cudaStreams[0]);
+	sim.nLogEntriesTransferred = entries;
+	sim.runstatus.stepForMostRecentData = sim.step;
+	sim.runstatus.most_recent_positions = sim.simulation->traj_buffer->getBufferAtIndex(entries - 1);
 }
 
-//
-CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState() {
-	simData->pdataCopyBuffer.Expand(simData->simulation->box->persistentClusters.size());
-	cudaMemcpy(simData->pdataCopyBuffer.Get(), simData->pClusterDevice.Get(), sizeof(PersistentCluster) * simData->simulation->box->persistentClusters.size(), cudaMemcpyDeviceToDevice);
-	return simData->pdataCopyBuffer;
+CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState(size_t simulationId) {
+	const auto& sim = batch->simulations.at(simulationId);
+	const auto range = sim.device.pclusters;
+	Synchronize();
+	const size_t count = sim.finalized ? sim.simulation->box->persistentClusters.size() : range.count;
+	batch->pdataCopyBuffer.Expand(count);
+	if (sim.finalized) cudaMemcpy(batch->pdataCopyBuffer.Get(), sim.simulation->box->persistentClusters.data(), sizeof(PersistentCluster) * count, cudaMemcpyHostToDevice);
+	else cudaMemcpy(batch->pdataCopyBuffer.Get(), batch->pClusterDevice.Get() + range.offset, sizeof(PersistentCluster) * count, cudaMemcpyDeviceToDevice);
+	return batch->pdataCopyBuffer;
 }
 
-
-__device__ struct SqrtFloat {
-	__device__ float operator()(float x) const
-	{
-		return sqrtf(x);
-	}
+struct SqrtFloat {
+	__device__ float operator()(float x) const { return sqrtf(x); }
 };
 
-CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer() {
-	// Copy to offloading buffer
-	const int nParticles = simData->simulation->box->boxparams.totalParticles;
-	simData->forcesMagnitudeCopyBuffer.Expand(nParticles);
-	cudaMemcpy(simData->forcesMagnitudeCopyBuffer.Get(), simData->forcesMagnitudeSquareDevice.Get(), sizeof(float) * nParticles, cudaMemcpyDeviceToDevice);
-
-	// Apply sqrt 
-	thrust::device_ptr<float> begin(simData->forcesMagnitudeCopyBuffer.Get());
-	thrust::transform(
-		thrust::device,
-		begin,
-		begin + nParticles,
-		begin,
-		SqrtFloat{}
-	);
-
-	return simData->forcesMagnitudeCopyBuffer;
+CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer(size_t simulationId) {
+	const auto& sim = batch->simulations.at(simulationId);
+	const auto range = sim.device.particles;
+	Synchronize();
+	const size_t count = sim.finalized ? sim.finalForcesMagnitudeSquared.size() : range.count;
+	batch->forcesMagnitudeCopyBuffer.Expand(count);
+	if (sim.finalized) cudaMemcpy(batch->forcesMagnitudeCopyBuffer.Get(), sim.finalForcesMagnitudeSquared.data(), sizeof(float) * count, cudaMemcpyHostToDevice);
+	else cudaMemcpy(batch->forcesMagnitudeCopyBuffer.Get(), batch->forcesMagnitudeSquareDevice.Get() + range.offset, sizeof(float) * count, cudaMemcpyDeviceToDevice);
+	thrust::device_ptr<float> begin(batch->forcesMagnitudeCopyBuffer.Get());
+	thrust::transform(thrust::device, begin, begin + count, begin, SqrtFloat{});
+	return batch->forcesMagnitudeCopyBuffer;
 }
 
-void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement) {
-	if (movement.empty()) {
-		simData->fixedParticleMovementBuffer.reset();
-		return;
-	}
-	assert(movement.size() == simData->simulation->box->boxparams.totalParticles);
-	if (!simData->fixedParticleMovementBuffer.has_value())
-		simData->fixedParticleMovementBuffer.emplace();
-	simData->fixedParticleMovementBuffer->SetData(movement);
-}
-void Engine::SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotation) {
-	if (rotation.empty()) {
-		simData->fixedParticleRotationBuffer.reset();
-		return;
-	}
-	assert(rotation.size() == simData->simulation->box->boxparams.totalParticles);
-	if (!simData->fixedParticleRotationBuffer.has_value())
-		simData->fixedParticleRotationBuffer.emplace();
-	simData->fixedParticleRotationBuffer->SetData(rotation);
-}
-
-void Engine::SetForceMask(const std::vector<Float3>& mask) {
-	if (mask.empty()) {
-		simData->forceMaskBuffer.reset();
-		return;
-	}
-	assert(mask.size() == simData->simulation->box->boxparams.totalParticles);
-	if (!simData->forceMaskBuffer.has_value())
-		simData->forceMaskBuffer.emplace();
-	simData->forceMaskBuffer->SetData(mask);
-}
-
-void Engine::SetElasticPositions(const std::vector<Float3>& positions) {
-	if (positions.empty()) {
-		simData->elasticPositionsBuffer.reset();
-		return;
-	}
-	assert(positions.size() == simData->simulation->box->boxparams.totalParticles);
-	if (!simData->elasticPositionsBuffer.has_value())
-		simData->elasticPositionsBuffer.emplace();
-	simData->elasticPositionsBuffer->SetData(positions);
-}
-
-void Engine::bootstrapTrajbufferWithCoords() {
-	if (simData->simulation->simParams.n_steps == 0) return;
-
-	for (int pcid = 0; pcid < simData->simulation->box->persistentClusters.size(); pcid++) {
-		const PersistentCluster& pc = simData->simulation->box->persistentClusters[pcid];
-		for (int pid = 0; pid < 4; pid++) {
-			simData->simulation->traj_buffer->GetDatapoint(pcid, pid, 0) = pc.pqd[pid].position;
+namespace {
+	template<typename T>
+	void SetParticleBuffer(std::optional<CudaBuffer<T>>& buffer, const std::vector<T>& data, BatchRange range, int totalParticles) {
+		if (data.empty()) {
+			buffer.reset();
+			return;
 		}
-	}
-
-	simData->step_at_last_traj_transfer = 0.f;
-	runstatus.most_recent_positions = simData->simulation->traj_buffer->getBufferAtIndex(0);
-
-	LIMA_UTILS::genericErrorCheck(cudaStreams[0], "Error during bootstrapTrajbufferWithCoords");
-}
-
-void Engine::HandleEarlyStoppingInEM() {
-	if (!simData->simulation->simParams.em_variant || simData->simulation->getStep() == simData->simulation->simParams.n_steps)
-		return;
-	
-	const int minStepsPerCheck = 100;
-	if (simData->simulation->getStep() > simData->stepAtLastEarlystopCheck + minStepsPerCheck) {
-		auto forceMagSquared = simData->forcesMagnitudeSquareDevice.GetData(); // [(J/mol/nm)^2]
-		const float greatestForce = std::sqrt(Statistics::Max(forceMagSquared.data(), forceMagSquared.size()));
-		//const float greatestForce = Statistics::MaxLen(simData->simulation->forceBuffer->GetBufferAtStep(simData->simulation->getStep()-1), simData->simulation->forceBuffer->EntriesPerStep());
-		runstatus.greatestForce = greatestForce / KILO; // Convert [J/mol/nm] to [kJ/mol/nm]
-		simData->simulation->maxForceBuffer.emplace_back(std::pair<int64_t,float>{ simData->simulation->getStep(), runstatus.greatestForce });
-
-		if (runstatus.greatestForce <= simData->simulation->simParams.em_force_tolerance) {
-			runstatus.simulation_finished = true;
+		if (data.size() != range.count) throw std::invalid_argument("Particle buffer size does not match simulation");
+		if (!buffer) {
+			buffer.emplace();
+			buffer->Expand(totalParticles);
 		}
-
-		simData->stepAtLastEarlystopCheck = simData->simulation->getStep();
+		cudaMemcpy(buffer->Get() + range.offset, data.data(), sizeof(T) * data.size(), cudaMemcpyHostToDevice);
 	}
-	LIMA_UTILS::genericErrorCheck(cudaStreams[0], "HandleEarlyStoppingInEM");
 }
 
+void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement, size_t simulationId) {
+	Synchronize();
+	auto& sim = batch->simulations.at(simulationId);
+	SetParticleBuffer(batch->fixedParticleMovementBuffer, movement, sim.device.particles, batch->nParticles);
+}
 
+void Engine::SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotation, size_t simulationId) {
+	Synchronize();
+	auto& sim = batch->simulations.at(simulationId);
+	SetParticleBuffer(batch->fixedParticleRotationBuffer, rotation, sim.device.particles, batch->nParticles);
+}
 
+void Engine::SetForceMask(const std::vector<Float3>& mask, size_t simulationId) {
+	Synchronize();
+	auto& sim = batch->simulations.at(simulationId);
+	SetParticleBuffer(batch->forceMaskBuffer, mask, sim.device.particles, batch->nParticles);
+}
 
-//--------------------------------------------------------------------------	SIMULATION BEGINS HERE --------------------------------------------------------------//
+void Engine::SetElasticPositions(const std::vector<Float3>& positions, size_t simulationId) {
+	Synchronize();
+	auto& sim = batch->simulations.at(simulationId);
+	SetParticleBuffer(batch->elasticPositionsBuffer, positions, sim.device.particles, batch->nParticles);
+}
+
+void Engine::BootstrapTrajbufferWithCoords(EngineSimulationData& sim) {
+	if (batch->params.data_logging_interval == 0 || !sim.simulation->traj_buffer) return;
+	for (int pc = 0; pc < sim.device.pclusters.count; ++pc)
+		for (int lane = 0; lane < PersistentCluster::maxParticles; ++lane)
+			sim.simulation->traj_buffer->GetDatapoint(pc, lane, 0) = sim.simulation->box->persistentClusters[pc].pqd[lane].position;
+	sim.runstatus.most_recent_positions = sim.simulation->traj_buffer->getBufferAtIndex(0);
+}
+
+void Engine::HandleEarlyStoppingInEM(EngineSimulationData& sim) {
+	if (!batch->params.em_variant || sim.step == sim.simulation->simParams.n_steps) return;
+	if (sim.step <= sim.stepAtLastEarlystopCheck + 100) return;
+	Synchronize();
+	const auto range = sim.device.particles;
+	const auto forces = GenericCopyToHost(batch->forcesMagnitudeSquareDevice.Get() + range.offset, range.count);
+	sim.runstatus.greatestForce = std::sqrt(Statistics::Max(forces.data(), forces.size())) / KILO;
+	sim.simulation->maxForceBuffer.emplace_back(sim.step, sim.runstatus.greatestForce);
+	if (sim.runstatus.greatestForce <= batch->params.em_force_tolerance) sim.runstatus.simulation_finished = true;
+	sim.stepAtLastEarlystopCheck = sim.step;
+}
+
 template <typename BoundaryCondition, bool emvariant, bool logData>
 void Engine::_deviceMaster() {
-	
-	const BoxParams& boxparams = simData->simulation->box->boxparams;
-	const int step = simData->simulation->getStep();
-	const Float3 boxSize = boxparams.BoxSizeFloat();
-
-
-	// #### Initial round of force computations
-    if (ENABLE_ES_LR && simData->simulation->simParams.enable_electrostatics) {
-        simData->pmeController->CalcCharges(simData->superClustersControl->scData, simData->superClustersControl->scMeta, simData->nSuperclusters, simData->forceEnergyInterims->pme, step);
-    }
-
-
-	if (simData->nSuperclusters > 0) {
-		const bool useNointeractionMatrix = true;
-		dim3 blockDim(SuperCluster::maxParticles, 4, 1);
-		NbNonlocalKernel<BoundaryCondition, emvariant, logData, useNointeractionMatrix>
-			<<<simData->nSuperclusters, blockDim, 0, cudaStreams[0]>>>
-			(simData->superClustersControl->scData, simData->scscTasksDevice.Get(), simData->scResultsDevice.Get(), simData->idsOfQuerySuperclustersDevice.Get(), simData->resultIndicesDevice.Get(),
-				simData->noInteractionMatricesDevice.Get(), simData->superClustersControl->scMeta, step, boxSize, boxSize.Inv(), simData->ewaldKappa);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after NBNonlocalKernel");
-
-		//nbGatherForceenergy.Expand(simData->nSuperclusters * SuperCluster::nParticles, 1.2);
-		//NBGather<<<simData->nSuperclusters, dim3(16,4,1), 0, cudaStreams[0]>>>
-		//	(simData->superClustersControl->scMeta, simData->scResultsDevice.Get()/*, nbGatherForceenergy.Get()*/);
-		//LIMA_UTILS::genericErrorCheckNoSync("Error after NBGather");
+	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
+	const int nScs = batch->nSuperclusters;
+	const int nPcs = batch->nPclusters;
+	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
+		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
+			nScs, batch->forceEnergyInterims->pme);
+	if (nScs > 0) {
+		const auto* scData = batch->superClustersControl->scData;
+		const auto* scMeta = batch->superClustersControl->scMeta;
+		const Float3 boxSizeInv = boxSize.Inv();
+		NbNonlocalKernel<BoundaryCondition, emvariant, logData, true><<<nScs, dim3(16,4,1), 0, cudaStreams[0]>>>(
+			scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), batch->idsOfQuerySuperclustersDevice.Get(),
+			batch->resultIndicesDevice.Get(), batch->noInteractionMatricesDevice.Get(), scMeta, boxSize, boxSizeInv, batch->ewaldKappa);
 	}
-	if (!simData->simulation->simParams.snf_select.empty()) {
-		SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SupernaturalForces");
+	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
+	if (batch->nBondgroups > 0) {
+		const BondGroupsDevice bondGroups{
+			batch->bondgroupDescriptors.Get(), batch->bondgroupParticles.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
+			batch->bondgroupAnglebonds.Get(), batch->bondgroupDihedralbonds.Get(), batch->bondgroupImproperdihedralbonds.Get()
+		};
+		const Float3 boxSizeInv = boxSize.Inv();
+		BondgroupsKernel<BoundaryCondition, emvariant><<<batch->nBondgroups, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
+			bondGroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, batch->pClusterDevice.Get(), boxSize, boxSizeInv);
+		PclusterBondgroupsGather<<<(nPcs + 31) / 32, 32, 0, cudaStreams[4]>>>(
+			batch->pClusterMetaDevice.Get(), nPcs, *batch->forceEnergyInterims);
 	}
+	Synchronize();
+	if (nScs > 0) {
+		for (const auto& sim : batch->simulations) {
+			if (!sim.device.active) continue;
+			const int simScs = sim.superclusters.count;
+			if (simScs == 0) continue;
+			const auto& device = sim.device;
+			const int simParticles = device.pclusters.count * PersistentCluster::maxParticles;
+			Float3* fixedMovement = batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr;
+			Float3* forceMask = batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr;
+			const Rotation* fixedRotation = batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr;
+			Float3* trajectoryLog = batch->dataBuffersDevice->traj_buffer + device.logOffset;
+			float* potentialEnergyLog = batch->dataBuffersDevice->potE_buffer + device.logOffset;
+			float* velocityLog = batch->dataBuffersDevice->vel_buffer + device.logOffset;
+			Float3* forceLog = batch->dataBuffersDevice->forceBuffer + device.logOffset;
 
-	if (!simData->simulation->box->bondgroups.empty()) {
-		BondgroupsKernel<BoundaryCondition, emvariant> << < simData->simulation->box->bondgroups.size(), THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>
-			(BondGroupsDevice{ simData->bondgroupDescriptors.Get(), simData->bondgroupParticles.Get(), simData->bondgroupSinglebonds.Get(), simData->bondgroupPairbonds.Get(), simData->bondgroupAnglebonds.Get(), simData->bondgroupDihedralbonds.Get(), simData->bondgroupImproperdihedralbonds.Get() }, simData->boxState, simData->forceEnergyInterims->forceEnergiesBondgroups, simData->pClusterDevice.Get(), boxSize, boxSize.Inv());
-		LIMA_UTILS::genericErrorCheckNoSync("Error after BondgroupsKernel");
+			const int nBlocks = (simScs + 4 - 1) / 4;
+			const dim3 blockDim(16, 4, 1);
 
-		// Gather bondgroup ordered forces into particle ordered
-		const int nPclusters = simData->simulation->box->persistentClusters.size();
-		const int nBlocks = (nPclusters + 31) / 32;
-		PclusterBondgroupsGather << <nBlocks, 32, 0, cudaStreams[4] >> >
-			(simData->pClusterMetaDevice.Get(), nPclusters, *simData->forceEnergyInterims);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after PclusterBondgroupsGather");
-	}
-
-	// #### Integration and Transfer kernels
-	cudaStreamSynchronize(pmeStream);
-	for (int i = 0; i < cudaStreams.size(); i++) {
-		cudaStreamSynchronize(cudaStreams[i]);
-	}
-
-
-
-	const bool updateNlistsAfterThisStep = (simData->simulation->getStep()+1) % simData->simulation->simParams.stepsPerNlistupdate == simData->simulation->simParams.stepsPerNlistupdate-1;
-
-
-	if (simData->nSuperclusters > 0) {
-		int totalParticlesUpperbound = simData->simulation->box->persistentClusters.size() * PersistentCluster::maxParticles;
-		const int nBlocks = (simData->nSuperclusters + 4 - 1) / 4;
-		const dim3 blockDim(16, 4, 1);
-
-		Float3* fixedParticleMovementBufferPtr = simData->fixedParticleMovementBuffer.has_value() ? simData->fixedParticleMovementBuffer->Get() : nullptr;
-		Float3* forcesMaskBufferPtr = simData->forceMaskBuffer.has_value() ? simData->forceMaskBuffer->Get() : nullptr;
-		Rotation* fixedParticleRotationBufferPtr = simData->fixedParticleRotationBuffer.has_value() ? simData->fixedParticleRotationBuffer->Get() : nullptr;
-		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData>
-			<<<nBlocks, blockDim, 0, cudaStreams[0]>>>
-			(*simData->forceEnergyInterims, simData->adamState, simData->simulation->simParams.data_logging_interval, simData->scResultsDevice.Get(), simData->superClustersControl->scData, simData->superClustersControl->scMeta, simData->pClusterDevice.Get(), simData->pClusterMetaDevice.Get(),
-				simData->boxState.pclusterInterimStates, step, simData->simulation->simParams.dt, totalParticlesUpperbound, simData->nSuperclusters, simData->forcesMagnitudeSquareDevice.Get(),
-				boxSize, simData->thermostatScalar, fixedParticleMovementBufferPtr, forcesMaskBufferPtr, fixedParticleRotationBufferPtr,
-				simData->dataBuffersDevice->traj_buffer, simData->dataBuffersDevice->potE_buffer, simData->dataBuffersDevice->vel_buffer, simData->dataBuffersDevice->forceBuffer);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after SuperclusterIntegrateKernel");
+			SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, blockDim, 0, cudaStreams[0]>>>(
+				*batch->forceEnergyInterims, batch->adamState, batch->params.data_logging_interval, batch->scResultsDevice.Get(),
+				batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
+				batch->boxState.pclusterInterimStates, batch->step, device.dt, simParticles, device.thermostatScalar,
+				device.particles.offset, device.pclusters.offset, sim.superclusters.offset, simScs, batch->forcesMagnitudeSquareDevice.Get(), boxSize,
+				fixedMovement, forceMask, fixedRotation, trajectoryLog, potentialEnergyLog, velocityLog, forceLog);
+		}
 		cudaStreamSynchronize(cudaStreams[0]);
 	}
-
-	//DebugUtils::VerifyIdentical(simData->superClustersControl->scData, simData->nSuperclusters, "Engine_SCData", step);
-	//DebugUtils::VerifyIdentical(simData->pClusterDevice, simData->simulation->box->persistentClusters.size(), "Engine_PClusterDevice", step);
+	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 }
 
-
-
 void Engine::deviceMaster() {
-
-	const bool logData = simData->simulation->simParams.data_logging_interval != 0 && simData->simulation->getStep() % simData->simulation->simParams.data_logging_interval == 0;// TODO maybe log at the final step, not 0th?
-
-	switch (simData->simulation->simParams.bc_select) {
+	const bool logData = batch->params.data_logging_interval != 0 && batch->step % batch->params.data_logging_interval == 0;
+	switch (batch->params.bc_select) {
 	case NoBC:
-		if (simData->simulation->simParams.em_variant) {
+		if (batch->params.em_variant) {
 			if (logData) {
 				_deviceMaster<NoBoundaryCondition, true, true>();
 			}
@@ -444,7 +448,7 @@ void Engine::deviceMaster() {
 		}
 		break;
 	case PBC:
-		if (simData->simulation->simParams.em_variant) {
+		if (batch->params.em_variant) {
 			if (logData) {
 				_deviceMaster<PeriodicBoundaryCondition, true, true>();
 			}
@@ -467,91 +471,25 @@ void Engine::deviceMaster() {
 }
 
 
-
-
-
-// This function must not have changing template or normal arguments for it's kernels, or it will break cudaGraph
 template <typename BoundaryCondition, bool emvariant>
 void Engine::SnfHandler(cudaStream_t& stream) {
-	if (simData->simulation->simParams.snf_select.contains(HorizontalSqueeze)) {
-		//SupernaturalForces::ApplyHorizontalSqueeze << < simData->simulation->box->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simData->simulation->getStep());
-		//break;
+	const int nPcs = batch->nPclusters;
+	if (nPcs == 0) return;
+	for (const auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		const int count = sim.device.pclusters.count;
+		if (batch->params.snf_select.contains(HorizontalChargeField)) {
+			PclusterSnfKernel<BoundaryCondition, emvariant><<<(count + 31) / 32, 32, 0, stream>>>(
+				batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(), sim.device.uniformElectricField,
+				batch->forceEnergyInterims->snf, sim.device.pclusters.offset, count);
+		}
+		if (batch->params.snf_select.contains(ElasticPosition) && batch->elasticPositionsBuffer) {
+			ElasticPositionsForceKernel<<<(count + 31) / 32, 32, 0, stream>>>(
+				batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(), batch->elasticPositionsBuffer->Get(), batch->forceEnergyInterims->snf,
+				sim.device.pclusters.offset, count, NodeIndex(batch->boxSize).toFloat3());
+		}
 	}
-	if (simData->simulation->simParams.snf_select.contains(HorizontalChargeField))
-	{
-		const int nPclusters = simData->simulation->box->persistentClusters.size();
-		const int nCudablocks = (nPclusters + 31) / 32;
-		PclusterSnfKernel<BoundaryCondition, emvariant>
-			<<<nCudablocks, 32, 0, stream >> >
-			(simData->pClusterDevice.Get(), simData->pClusterMetaDevice.Get(), simData->simulation->box->uniformElectricField, simData->forceEnergyInterims->snf, nPclusters);
-	}
-	
-	if (simData->simulation->simParams.snf_select.contains(SupernaturalForcesSelect::ElasticPosition) && simData->elasticPositionsBuffer.has_value()) {
-		const int nPclusters = simData->simulation->box->persistentClusters.size();
-		const int nCudablocks = (nPclusters + 31) / 32;
-		ElasticPositionsForceKernel << <nCudablocks, 32, 0, stream >> >
-			(simData->pClusterDevice.Get(), simData->pClusterMetaDevice.Get(), simData->elasticPositionsBuffer->Get(), simData->forceEnergyInterims->snf, nPclusters, simData->simulation->box->boxparams.BoxSizeFloat());
-	}
-		
-		
-	//case BoxEdgePotential:
-	//	if (simData->simulation->box->boxparams.n_compounds > 0)
-	//		SupernaturalForces::BoxEdgeForceCompounds << < simData->simulation->box->boxparams.n_compounds, MAX_COMPOUND_PARTICLES, 0, stream >> > (sim_dev, simData->simulation->getStep());
-	//	if (simData->simulation->box->boxparams.nTinymols > 0)
-	//		SupernaturalForces::BoxEdgeForceSolvents<<<BoxGrid::BlocksTotal(BoxGrid::NodesPerDim(simData->simulation->box->boxparams.boxSize)), SolventBlock::MAX_SOLVENTS_IN_BLOCK, 0, stream>>>(sim_dev, simData->simulation->getStep());
-	//	break;
-	
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // -------------------------- TESTS: Shouldn't be here permanently ---------------------------- //
 

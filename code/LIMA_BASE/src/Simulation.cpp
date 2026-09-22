@@ -50,7 +50,7 @@ void Simulation::PrepareDataBuffers() {
 		// Permanent Outputs for energy & trajectory analysis
 		const int nPclusters = box->persistentClusters.size();
 		const int particlesUpperbound = nPclusters * PersistentCluster::maxParticles;
-		const size_t n_datapoints = particlesUpperbound * n_steps / simParams.data_logging_interval;
+		const size_t n_datapoints = simParams.data_logging_interval > 0 ? particlesUpperbound * n_steps / simParams.data_logging_interval : 0;
 		const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 		
 		//m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");

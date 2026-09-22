@@ -106,8 +106,8 @@ namespace EngineUtils {
 
 
 	// ChatGPT magic. generates a float with elements between -1 and 1
-	__device__ inline Float3 GenerateRandomForce() {
-		unsigned int seed = threadIdx.x + blockIdx.x*blockDim.x;
+	__device__ inline Float3 GenerateRandomForce(int pidGlobal) {
+		unsigned int seed = pidGlobal;
 
 		// Simple LCG (Linear Congruential Generator) for pseudo-random numbers
 		seed = (1664525 * seed + 1013904223);
@@ -123,11 +123,11 @@ namespace EngineUtils {
 	}
 
 	// Tanh activation functions that scales forces during EM
-	__device__ static Float3 ForceActivationFunction(const Float3 force, float scalar=1.f) {
+	__device__ static Float3 ForceActivationFunction(int pidGlobal /*Used as a random-seed*/, const Float3 force, float scalar = 1.f) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
 		if (isinf(force.lenSquared())) {
-			return GenerateRandomForce();
+			return GenerateRandomForce(pidGlobal);
 		}
 
 		if (isnan(force.lenSquared())) {
@@ -153,13 +153,13 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound,
+	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int64_t step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound,
 		Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer) {
 		//if (threadIdx.x >= compound.n_particles) { return; }
 
 		if (data_logging_interval == 0 || step % data_logging_interval != 0) { return; }
 
-		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, data_logging_interval, totalParticlesUpperbound);
+		const size_t index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, data_logging_interval, totalParticlesUpperbound);
 		trajBuffer[index] = position;
 		potEBuffer[index] = potential;
 		velocityBuffer[index] = speed;

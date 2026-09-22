@@ -93,7 +93,7 @@ namespace LJ {
 		}
 
 		if constexpr (emvariant)
-			return EngineUtils::ForceActivationFunction(force, 100.f);
+			return EngineUtils::ForceActivationFunction(-1, force, 100.f);
 
 
 		return force;	// [1/24 J/mol/nm]

@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
+#include "SimulationData.h"
 #include "ChargeBlock.cuh"
 #include "DeviceAlgorithmsPrivate.cuh"
 
@@ -26,31 +27,35 @@ namespace PME {
 		const int nChargeblocks;
 
 		// Always applied constant per particle
-		float selfenergyCorrection;
+		CudaBuffer<float> selfenergyCorrections;
+		CudaBuffer<int> simulationSlots;
+		std::vector<int> activeSimulationIds;
+		int batchCount = 0;
 
 		// FFT
-		float* realspaceGrid;
-		cufftComplex* fourierspaceGrid;
+		float* realspaceGrid = nullptr;
+		cufftComplex* fourierspaceGrid = nullptr;
 		float* greensFunctionScalars;
 
 		// Chargeblocks 
 		std::unique_ptr<ChargeBlock::ChargeblockBuffers> chargeblockBuffers;
 
-		cufftHandle planForward;
-		cufftHandle planInverse;
+		cufftHandle planForward = 0;
+		cufftHandle planInverse = 0;
 
 		cudaStream_t& stream;
 		// For system with a net charge, we apply to correction to each realspaceGridnode
 		//LAL::optional<float> backgroundchargeCorrection;
 
-		void CalcEnergyCorrection(const Box& box);
+		static float CalcEnergyCorrection(const Box& box, float ewaldKappa);
 
 	public:
 
-		Controller(const Box& box, float cutoffNM, cudaStream_t& stream);
+		Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, cudaStream_t& stream);
+		void SetActiveSimulations(const std::vector<EngineSimulationData>& simulations);
 		~Controller();
 
-		void CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, int step);
+		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy);
 
 	private:
 		//Just for debugging
@@ -170,8 +175,10 @@ constexpr Int3 FloorIndex3d(const Float3& relpos) {
 // --------------------------------------------------------------- PME Kernels --------------------------------------------------------------- //	
 
 // blockDim = (32, 1, 1)
-__global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* const superclusters, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim)
+__global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* const superclusters, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim, const SuperClusterMeta* metadata, const int* simulationSlots)
 {
+	const int scId = blockIdx.x;
+	const int blockOffset = simulationSlots[metadata[scId].simulationId] * blocksPerDim.InnerProduct();
 	__shared__ Float3 relPositions[SuperCluster::maxParticles];
 	__shared__ float charges[SuperCluster::maxParticles];
 
@@ -179,15 +186,15 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	__shared__ int offsetsInTarget[27];
 	__shared__ int nOutgoingParticles[27];
 
-	NodeIndex nearestGridnode = superclusters[blockIdx.x].Position(0).Floor().ToInt3();
+	NodeIndex nearestGridnode = superclusters[scId].Position(0).Floor().ToInt3();
 
 	if (threadIdx.x < SuperCluster::maxParticles) {
-		Float3 pos = superclusters[blockIdx.x].Position(threadIdx.x);
-		float charge = superclusters[blockIdx.x].charge[threadIdx.x];
-		float epsSqrt = superclusters[blockIdx.x].epsilonSqrt[threadIdx.x];// TODO OPTIM: Remove this, find another way to determine IsValid!
+		Float3 pos = superclusters[scId].Position(threadIdx.x);
+		float charge = superclusters[scId].charge[threadIdx.x];
+		float epsSqrt = superclusters[scId].epsilonSqrt[threadIdx.x];// TODO OPTIM: Remove this, find another way to determine IsValid!
 
 		if (epsSqrt != -1) {// prev PData.IsValid()
-			Float3 scNodeOrigoPos = nearestGridnode.toFloat3();// superclusters[blockIdx.x].pData[0].position.Floor();
+			Float3 scNodeOrigoPos = nearestGridnode.toFloat3();// superclusters[scId].pData[0].position.Floor();
 			relPositions[threadIdx.x] = pos - scNodeOrigoPos;// +Float3{ 0.5, 0.5, 0.5 };
 			charges[threadIdx.x] = charge;
 		}
@@ -206,7 +213,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	// The first 27 threads are assigned a direction. They then count which particles are in their node, and store the id's
 	if (threadIdx.x < 27) {
 		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
-		const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
+		const int targetBlockIndex = blockOffset + BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
 		int myCount = 0;
 
 		for (int i = 0; i < SuperCluster::maxParticles; i++) {
@@ -234,7 +241,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 			const int designatedParticleId = outgoingParticlesId[directionIndex * SuperCluster::maxParticles + threadIdx.x];
 			const Float3 relposRelativeToTargetBlock = relPositions[designatedParticleId] - direction.ToFloat3();
 
-			const int targetBlockIndex = BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
+			const int targetBlockIndex = blockOffset + BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
 			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
 
 			if constexpr (INDEXING_CHECKS) {
@@ -335,7 +342,7 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	// Transform local to global grid coordinates, and push to global memory
 	const int localCellCount = gridpointsPerNm * gridpointsPerNm * gridpointsPerNm;
 	const NodeIndex blocksFirstIndex3dInRealspacegrid =
-		BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim) * gridpointsPerNm;
+		BoxGrid::Get3dIndex(blockIdx.x % blocksPerDim.InnerProduct(), blocksPerDim) * gridpointsPerNm;
 
 	for (int localIndex = threadIdx.x; localIndex < localCellCount; localIndex += blockDim.x) {
 		const int x = localIndex % gridpointsPerNm;
@@ -345,7 +352,8 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 		const NodeIndex globalIndex3d = blocksFirstIndex3dInRealspacegrid + NodeIndex{ x, y, z };
 		const int globalIndex = BoxGrid::Get1dIndex(globalIndex3d, gridpointsPerDim);
 
-		realspaceGrid[globalIndex] = localGridAsFloat[localIndex];
+		const size_t gridOffset = size_t(blockIdx.x / blocksPerDim.InnerProduct()) * gridpointsPerDim.InnerProduct();
+		realspaceGrid[gridOffset + globalIndex] = localGridAsFloat[localIndex];
 	}
 }
 
@@ -514,15 +522,18 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	const float* realspaceGrid,
 	Int3 gridDim,
 	ForceEnergy* const forceEnergies,
-	float selfenergyCorrection,			// [J/mol]
+	const float* selfenergyCorrections,			// [J/mol]
 	Float3 boxSize,
-	Float3 boxSizeInv
+	Float3 boxSizeInv, const int* simulationSlots
 )
 {
-	Float3 pos = scData[blockIdx.x].Position(threadIdx.x);
-	float charge = scData[blockIdx.x].charge[threadIdx.x];
-	float epsSqrt = scData[blockIdx.x].epsilonSqrt[threadIdx.x];
-	//PData pqd = scData[blockIdx.x].pData[threadIdx.x];
+	const int scId = blockIdx.x;
+	const int simulationId = scMeta[scId].simulationId;
+	const size_t gridOffset = size_t(simulationSlots[simulationId]) * gridDim.InnerProduct();
+	Float3 pos = scData[scId].Position(threadIdx.x);
+	float charge = scData[scId].charge[threadIdx.x];
+	float epsSqrt = scData[scId].epsilonSqrt[threadIdx.x];
+	//PData pqd = scData[scId].pData[threadIdx.x];
 	//if (!pqd.Valid())
 	if (epsSqrt == -1 || charge == 0.f)
 		return;
@@ -530,14 +541,14 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	PeriodicBoundaryCondition::ApplyBC(pos, boxSize, boxSizeInv);
 
 	const Float3 gridPos = pos * gridpointsPerNm_f;
-	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, gridPos, gridDim);
+	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid + gridOffset, gridPos, gridDim);
 
 	// Now add self charge to calculations
 	fe.force *= charge;
 	fe.potE *= charge;
 
 	// Ewald self-energy correction
-	fe.potE += selfenergyCorrection;
+	fe.potE += selfenergyCorrections[simulationId];
 
 	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
 
@@ -549,8 +560,8 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 #endif
 
 	
-	int pcId = scMeta[blockIdx.x]._pclusterIds[threadIdx.x];
-	int indexInPc = scMeta[blockIdx.x].indexInPcluster[threadIdx.x];
+	int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
+	int indexInPc = scMeta[scId].indexInPcluster[threadIdx.x];
 	//int pid = threadIdx.x % 4;	
 	forceEnergies[pcId * PersistentCluster::maxParticles + indexInPc] = fe;
 }
@@ -672,7 +683,7 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 //		nParticles = state.nParticlesInSolventblock[blockIdx.x];
 //
 //		//const Float3 gridPos = absPos * gridpointsPerNm_f;
-//		NodeIndex tileStart = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim) * gridpointsPerNm - NodeIndex{tilePadding, tilePadding , tilePadding };
+//		NodeIndex tileStart = BoxGrid::Get3dIndex(blockIdx.x % blocksPerDim.InnerProduct(), blocksPerDim) * gridpointsPerNm - NodeIndex{tilePadding, tilePadding , tilePadding };
 //		tileStart = PeriodicBoundaryCondition::applyBC(tileStart, gridDim);
 //	}
 //	__syncthreads();
@@ -715,14 +726,14 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 //	PeriodicBoundaryCondition::applyBCNM(absPos);
 //
 //	const Float3 gridPos = absPos * gridpointsPerNm_f;
-//	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid, tile, gridPos, gridDim, tileStart);
+//	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid + gridOffset, tile, gridPos, gridDim, tileStart);
 //
 //	// Now add self charge to calculations
 //	fe.force *= charge;
 //	fe.potE *= charge;
 //
 //	// Ewald self-energy correction
-//	fe.potE += selfenergyCorrection;
+//	fe.potE += selfenergyCorrections[simulationId];
 //
 //	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
 //
@@ -816,17 +827,18 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gri
 __global__ void ApplyGreensFunctionKernel(
 	cufftComplex* const d_reciprocalFreqData,
 	const float* const d_greensFunctionArray,
-	Int3 gridpointsPerDim
+	Int3 gridpointsPerDim, int batchCount
 )
 {
 	int nGridpointsHalfdim = gridpointsPerDim.x / 2 + 1;// TODO: add comment here
 	const int index1D = blockIdx.x * blockDim.x + threadIdx.x;
-	if (index1D >= nGridpointsHalfdim * gridpointsPerDim.y * gridpointsPerDim.z)
+	const int gridSize = nGridpointsHalfdim * gridpointsPerDim.y * gridpointsPerDim.z;
+	if (index1D >= size_t(gridSize) * batchCount)
 		return;
 
 	d_reciprocalFreqData[index1D] = cufftComplex{
-		d_reciprocalFreqData[index1D].x * d_greensFunctionArray[index1D],
-		d_reciprocalFreqData[index1D].y * d_greensFunctionArray[index1D]
+		d_reciprocalFreqData[index1D].x * d_greensFunctionArray[index1D % gridSize],
+		d_reciprocalFreqData[index1D].y * d_greensFunctionArray[index1D % gridSize]
 	};
 
 }
@@ -843,119 +855,102 @@ __global__ void Normalize(float* realspaceGrid, int nGridpointsRealspace, float 
 // --------------------------------------------------------------- Controller --------------------------------------------------------------- //	
 
 
-PME::Controller::Controller(const Box& box, float cutoffNM, cudaStream_t& stream)
-	: boxlenNm(box.boxparams.BoxSizeFloat()), nChargeblocks(box.boxparams.boxSize.InnerProduct()), ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM)), stream(stream)
+namespace PME {
+	inline void CheckFft(cufftResult result) {
+		if (result != CUFFT_SUCCESS) throw std::runtime_error("cuFFT failed: " + std::to_string(static_cast<int>(result)));
+	}
+}
+
+PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, cudaStream_t& stream)
+	: boxlenNm(simulations.front().simulation->box->boxparams.BoxSizeFloat()),
+	  nChargeblocks(simulations.front().simulation->box->boxparams.boxSize.InnerProduct()),
+	  ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM)), stream(stream)
 {
-	gridpointsPerDim = box.boxparams.boxSize * gridpointsPerNm;
-	nGridpointsRealspace = gridpointsPerDim.x * gridpointsPerDim.y * gridpointsPerDim.z;
+	gridpointsPerDim = simulations.front().simulation->box->boxparams.boxSize * gridpointsPerNm;
+	nGridpointsRealspace = size_t(gridpointsPerDim.x) * gridpointsPerDim.y * gridpointsPerDim.z;
 	nGridpointsReciprocalspace = gridpointsPerDim.z * gridpointsPerDim.y * (gridpointsPerDim.x / 2 + 1);
-
-	if (nGridpointsRealspace > INT32_MAX)
-		throw std::runtime_error("Ewald grid too large to index with integers");
-
-	const size_t byteSize = nGridpointsRealspace * sizeof(float) + nGridpointsReciprocalspace * sizeof(float) * 3; // 3= 2 from cufftComplex, 1 from greensfunction
-	if (byteSize > 10'000'000'000)
-		throw std::runtime_error("Ewald grid too large");
-
-	CalcEnergyCorrection(box);
-
-	cufftPlan3d(&planForward, gridpointsPerDim.z, gridpointsPerDim.y, gridpointsPerDim.x, CUFFT_R2C);	// TODO I think this should be the opposite way around
-	cufftPlan3d(&planInverse, gridpointsPerDim.z, gridpointsPerDim.y, gridpointsPerDim.x, CUFFT_C2R);
-	cufftSetStream(planForward, stream);
-	cufftSetStream(planInverse, stream);
-
-	cudaMalloc(&realspaceGrid, nGridpointsRealspace * sizeof(float));
-	cudaMalloc(&fourierspaceGrid, nGridpointsReciprocalspace * sizeof(cufftComplex));
+	if (nGridpointsRealspace > INT_MAX || nGridpointsRealspace * simulations.size() > INT_MAX)
+		throw std::runtime_error("PME batch exceeds grid index range");
+	std::vector<float> corrections;
+	for (const auto& sim : simulations) corrections.push_back(CalcEnergyCorrection(*sim.simulation->box, ewaldKappa));
+	selfenergyCorrections.SetData(corrections);
 	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
-	chargeblockBuffers = std::make_unique<ChargeBlock::ChargeblockBuffers>(nChargeblocks);
+	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
+		greensFunctionScalars, gridpointsPerDim, Double3{boxlenNm}, ewaldKappa);
+	LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel");
+	SetActiveSimulations(simulations);
+}
 
-
-	const int nBlocks = (nGridpointsReciprocalspace + 63) / 64;
-	PrecomputeGreensFunctionKernel << <nBlocks, 64, 0, stream >> > (greensFunctionScalars, gridpointsPerDim, Double3{ boxlenNm }, ewaldKappa);
-	LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel failed!");
+void PME::Controller::SetActiveSimulations(const std::vector<EngineSimulationData>& simulations) {
+	std::vector<int> activeIds, slots(simulations.size(), -1);
+	for (int id = 0; id < simulations.size(); ++id) {
+		if (!simulations[id].device.active) continue;
+		slots[id] = static_cast<int>(activeIds.size());
+		activeIds.push_back(id);
+	}
+	if (activeIds == activeSimulationIds) return;
+	cudaStreamSynchronize(stream);
+	if (planForward) CheckFft(cufftDestroy(planForward));
+	if (planInverse) CheckFft(cufftDestroy(planInverse));
+	planForward = planInverse = 0;
+	cudaFree(realspaceGrid);
+	cudaFree(fourierspaceGrid);
+	realspaceGrid = nullptr;
+	fourierspaceGrid = nullptr;
+	if (chargeblockBuffers) chargeblockBuffers->Free();
+	chargeblockBuffers.reset();
+	activeSimulationIds = std::move(activeIds);
+	batchCount = static_cast<int>(activeSimulationIds.size());
+	simulationSlots.SetData(slots);
+	if (batchCount == 0) return;
+	int dimensions[3]{gridpointsPerDim.z, gridpointsPerDim.y, gridpointsPerDim.x};
+	int complexDimensions[3]{gridpointsPerDim.z, gridpointsPerDim.y, gridpointsPerDim.x / 2 + 1};
+	CheckFft(cufftPlanMany(&planForward, 3, dimensions, dimensions, 1, static_cast<int>(nGridpointsRealspace),
+		complexDimensions, 1, nGridpointsReciprocalspace, CUFFT_R2C, batchCount));
+	CheckFft(cufftPlanMany(&planInverse, 3, dimensions, complexDimensions, 1, nGridpointsReciprocalspace,
+		dimensions, 1, static_cast<int>(nGridpointsRealspace), CUFFT_C2R, batchCount));
+	CheckFft(cufftSetStream(planForward, stream));
+	CheckFft(cufftSetStream(planInverse, stream));
+	cudaMalloc(&realspaceGrid, nGridpointsRealspace * batchCount * sizeof(float));
+	cudaMalloc(&fourierspaceGrid, size_t(nGridpointsReciprocalspace) * batchCount * sizeof(cufftComplex));
+	chargeblockBuffers = std::make_unique<ChargeBlock::ChargeblockBuffers>(nChargeblocks * batchCount);
 }
 
 PME::Controller::~Controller() {
 	cudaStreamSynchronize(stream);
-
-	cufftDestroy(planForward);
-	cufftDestroy(planInverse);
-
+	if (planForward) cufftDestroy(planForward);
+	if (planInverse) cufftDestroy(planInverse);
 	cudaFree(realspaceGrid);
 	cudaFree(fourierspaceGrid);
 	cudaFree(greensFunctionScalars);
-
-	chargeblockBuffers->Free();
+	if (chargeblockBuffers) chargeblockBuffers->Free();
 }
 
-void PME::Controller::CalcCharges(SuperCluster* const scData, SuperClusterMeta* const scMeta, int nSuperclusters, ForceEnergy* const forceEnergy, int step) {
-	if (nSuperclusters == 0)
-		return;
-
-
-	//DebugUtils::VerifyIdentical(scData, nSuperclusters, "pme_scdata", step);
-
-	Int3 bpd = boxlenNm.ToInt3();
-	DistributeCompoundchargesToBlocksKernel << <nSuperclusters, 32, 0, stream >> > (scData, *chargeblockBuffers, bpd);
-	LIMA_UTILS::genericErrorCheckNoSync("DistributeCompoundchargesToBlocksKernel failed!");
-
-	//DebugUtils::VerifyIdentical(chargeblockBuffers->nParticlesInBlock, nChargeblocks, "pme_chargeblock_reservationkeys", step);
-	//DebugUtils::VerifyIdentical(chargeblockBuffers->chargeposBuffer, nChargeblocks * ChargeBlock::maxParticlesInBlock, "pme_chargeblock_chargepos", step);
-
-
-
-	ChargeblockDistributeToGrid<<<bpd.InnerProduct(), 32, 0, stream >> > (*chargeblockBuffers, realspaceGrid, bpd, gridpointsPerDim);
-	LIMA_UTILS::genericErrorCheckNoSync("ChargeblockDistributeToGrid failed!");
-
-	//DebugUtils::VerifyIdentical(realspaceGrid, nGridpointsRealspace, "pme_realspacegrid_beforefft", step);
-
-	// ForwardFFT
-	{
-		cufftResult result = cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid);
-		if (result != CUFFT_SUCCESS) {
-			fprintf(stderr, "cufftExecR2C failed with error code %d\n", result);
-		}
-	}
-
-	ApplyGreensFunctionKernel << <(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream >> > (fourierspaceGrid, greensFunctionScalars, gridpointsPerDim);
-	LIMA_UTILS::genericErrorCheckNoSync("ApplyGreensFunctionKernel failed!");
-
-	// InverseFFT
-	{
-		cufftResult result = cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid);
-		if (result != CUFFT_SUCCESS) {
-			fprintf(stderr, "cufftExecC2R failed with error code %d\n", result);
-		}
-	}
-
-	Normalize << <(nGridpointsRealspace + 63) / 64, 64, 0, stream >> > (realspaceGrid, nGridpointsRealspace, 1.0 / static_cast<double>(nGridpointsRealspace));	
-
-	InterpolateForcesAndPotentialCompounds << <nSuperclusters, SuperCluster::maxParticles, 0, stream >> > (scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrection, boxlenNm, boxlenNm.Inv());
-	LIMA_UTILS::genericErrorCheckNoSync("InterpolateForcesAndPotentialCompounds failed!");
-
-	//PlotPotentialSlices();
+void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy) {
+	if (nSuperclusters == 0 || batchCount == 0) return;
+	const Int3 blocksPerDim = boxlenNm.ToInt3();
+	DistributeCompoundchargesToBlocksKernel<<<nSuperclusters, 32, 0, stream>>>(
+		scData, *chargeblockBuffers, blocksPerDim, scMeta, simulationSlots.Get());
+	ChargeblockDistributeToGrid<<<nChargeblocks * batchCount, 32, 0, stream>>>(
+		*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim);
+	CheckFft(cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid));
+	ApplyGreensFunctionKernel<<<(size_t(nGridpointsReciprocalspace) * batchCount + 63) / 64, 64, 0, stream>>>(
+		fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, batchCount);
+	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid));
+	Normalize<<<(nGridpointsRealspace * batchCount + 63) / 64, 64, 0, stream>>>(
+		realspaceGrid, static_cast<int>(nGridpointsRealspace * batchCount), 1.0 / static_cast<double>(nGridpointsRealspace));
+	InterpolateForcesAndPotentialCompounds<<<nSuperclusters, SuperCluster::maxParticles, 0, stream>>>(
+		scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrections.Get(), boxlenNm, boxlenNm.Inv(),
+		simulationSlots.Get());
+	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
 }
 
-void PME::Controller::CalcEnergyCorrection(const Box& box) {
+float PME::Controller::CalcEnergyCorrection(const Box& box, float ewaldKappa) {
 	double chargeSquaredSum = 0;
-	double chargeSum = 0;
-
-
-	for (const auto& pc : box.persistentClusters) {
-		for (const auto& pqd : pc.pqd) {
-			if (!pqd.Valid())
-				continue;
-			chargeSquaredSum += pqd.params.charge * pqd.params.charge;
-			chargeSum += pqd.params.charge;
-		}
-	}
-
-    selfenergyCorrection = static_cast<float>(-ewaldKappa / std::sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
-
-	 //Only relevant for systems with a net charge
-	/*const float volume = static_cast<float>(box.boxparams.boxSize.InnerProduct());	
-	const float backgroundEnergyCorrection = static_cast<float>(-PI * chargeSum * chargeSum / (ewaldKappa * ewaldKappa * volume) * PhysicsUtils::modifiedCoulombConstant);*/
-	///return selfEnergyCorrection + backgroundEnergyCorrection;		// [J/mol]
+	for (const auto& pc : box.persistentClusters)
+		for (const auto& pqd : pc.pqd)
+			if (pqd.Valid()) chargeSquaredSum += pqd.params.charge * pqd.params.charge;
+	return static_cast<float>(-ewaldKappa / std::sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
 }
 
 void PME::Controller::PlotPotentialSlices() {

@@ -3,12 +3,14 @@
 #include <string>
 #include <optional>
 #include <numeric>
+#include <iterator>
 #include "Environment.h"
 #include "MDFiles.h"
 #include "BoxImageBuilder.h"
 #include "Display.h"
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
+#include "BatchCompatibility.h"
 #include "UpgradeableFileFormat.h"
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
@@ -121,6 +123,7 @@ Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> si
 	{}
 
 Environment::SimulationSession::~SimulationSession() = default;
+Environment::SimulationSession::SimulationSession(SimulationSession&&) noexcept = default;
 
 Environment::SimulationSession& Environment::LiveEditSession() {
 	if (!liveEditSession)
@@ -185,9 +188,73 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 		if (stopping)
 			throw std::runtime_error("Cannot submit a simulation while Environment is stopping");
 		pendingSimulations.push_back({ std::move(job), state });
+		++unpreparedSimulations;
 	}
 	schedulerWakeup.notify_one();
 	return SimulationHandle{ std::move(state) };
+}
+
+bool Environment::MustRunAlone(const PreparedSimulation& next) {
+	return next.job.mustRunAlone || !next.job.run /*|| next.job.mode == Full*/
+		|| next.simulation->simParams.stepwise;
+}
+
+bool Environment::IsDrained() const {
+	return stopping && unpreparedSimulations == 0 && !preparingSimulation
+		&& preparedSimulations.empty() && !runningSimulation
+		&& processedSimulations.empty() && !postprocessingSimulation;
+}
+
+bool Environment::CanPrepare() const {
+	return !preparingSimulation && !pendingSimulations.empty()
+		&& preparedSimulations.size() < maxPreparedSimulations;
+}
+
+bool Environment::CanPostprocess() const {
+	return !postprocessingSimulation && !processedSimulations.empty();
+}
+
+bool Environment::CanStartBatch() const {
+	if (runningSimulation || preparedSimulations.empty()
+		|| processedSimulations.size() + maxBatchSize > maxProcessedSimulations)
+		return false;
+	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == maxBatchSize)
+		return true;
+	// All already-submitted jobs must finish preparation before a partial batch
+	// starts. At capacity we must dispatch to free preparation space.
+	return unpreparedSimulations == 0 || preparedSimulations.size() == maxPreparedSimulations;
+}
+
+size_t Environment::GetReadyBatchSize() const {
+	if (preparedSimulations.empty() || MustRunAlone(preparedSimulations.front()))
+		return preparedSimulations.empty() ? 0 : 1;
+	size_t count = 1;
+	for (auto it = std::next(preparedSimulations.begin()); it != preparedSimulations.end()
+		&& count < maxBatchSize; ++it) {
+		if (MustRunAlone(*it)) break;
+		if (!EngineBatch::FindIncompatibility(*preparedSimulations.front().simulation, *it->simulation))
+			++count;
+	}
+	return count;
+}
+
+std::vector<Environment::PreparedSimulation> Environment::TakeReadyBatch() {
+	std::vector<PreparedSimulation> batch;
+	batch.reserve(maxBatchSize);
+	batch.push_back(std::move(preparedSimulations.front()));
+	preparedSimulations.pop_front();
+	if (MustRunAlone(batch.front())) return batch;
+	for (auto it = preparedSimulations.begin(); it != preparedSimulations.end()
+		&& batch.size() < maxBatchSize;) {
+		if (MustRunAlone(*it)) break;
+		if (EngineBatch::FindIncompatibility(*batch.front().simulation, *it->simulation)) {
+			++it;
+			continue;
+		}
+		batch.push_back(std::move(*it));
+		it = preparedSimulations.erase(it);
+	}
+	return batch;
 }
 
 void Environment::MainLoop() {
@@ -197,62 +264,49 @@ void Environment::MainLoop() {
 	std::jthread simulationThread;
 	std::jthread postprocessThread;
 
-
-	auto MayScheduleWork = [this]() -> bool {
-		bool canStartNewSim = !runningSimulation && !preparedSimulations.empty()
-			&& processedSimulations.size() < maxProcessedSimulations;
-		bool canPrepareSimulation = !preparingSimulation && preparedSimulations.size() < maxPreparedSimulations && !pendingSimulations.empty();
-		bool canPostprocessSimulation = !postprocessingSimulation && !processedSimulations.empty();
-		bool finishedStopping = stopping && pendingSimulations.empty() && !preparingSimulation
-			&& preparedSimulations.empty() && !runningSimulation
-			&& processedSimulations.empty() && !postprocessingSimulation;
-
-		return canStartNewSim || canPrepareSimulation || canPostprocessSimulation || finishedStopping;
-		};
-
 	while (true) {
-		std::optional<PreparedSimulation> simulationToRun;
-		std::optional<QueuedSimulation> simulationToPreprocess;
-		std::optional<ProcessedSimulation> simulationToPostprocess;
+		std::optional<QueuedSimulation> toPrepare;
+		std::optional<ProcessedSimulation> toPostprocess;
+		std::vector<PreparedSimulation> toRun;
+		int batchId = 0;
 		{
 			std::unique_lock lock(schedulingMutex);
-			schedulerWakeup.wait(lock, MayScheduleWork);
+			schedulerWakeup.wait(lock, [this] {
+				return IsDrained() || CanPrepare() || CanPostprocess() || CanStartBatch();
+			});
+			if (IsDrained()) break;
 
-			if (stopping && pendingSimulations.empty() && !preparingSimulation
-				&& preparedSimulations.empty() && !runningSimulation
-				&& processedSimulations.empty() && !postprocessingSimulation)
-				break;
-
-			if (!runningSimulation && !preparedSimulations.empty()
-				&& processedSimulations.size() < maxProcessedSimulations) {
-				simulationToRun.emplace(std::move(preparedSimulations.front()));
-				preparedSimulations.pop_front();
-				runningSimulation = true;
-			}
-			if (!preparingSimulation && preparedSimulations.size() < maxPreparedSimulations
-				&& !pendingSimulations.empty()) {
-				simulationToPreprocess.emplace(std::move(pendingSimulations.front()));
+			// Reserve worker slots while holding the lock. A later dispatch decision
+			// sees the newly reserved preparation and every submitted job still
+			// counted by unpreparedSimulations.
+			if (CanPrepare()) {
+				toPrepare.emplace(std::move(pendingSimulations.front()));
 				pendingSimulations.pop_front();
 				preparingSimulation = true;
 			}
-			if (!postprocessingSimulation && !processedSimulations.empty()) {
-				simulationToPostprocess.emplace(std::move(processedSimulations.front()));
+			if (CanPostprocess()) {
+				toPostprocess.emplace(std::move(processedSimulations.front()));
 				processedSimulations.pop_front();
 				postprocessingSimulation = true;
 			}
+			if (CanStartBatch()) {
+				toRun = TakeReadyBatch();
+				batchId = nextBatchId++;
+				runningSimulation = true;
+			}
 		}
 
-		if (simulationToRun) {
-			simulationThread = std::jthread(
-				[this, next = std::move(*simulationToRun)]() mutable { RunPreparedSimulation(std::move(next)); });
-		}
-		if (simulationToPreprocess) {
+		if (toPrepare) {
 			preprocessThread = std::jthread(
-				[this, next = std::move(*simulationToPreprocess)]() mutable { Preprocess(std::move(next)); });
+				[this, next = std::move(*toPrepare)]() mutable { Preprocess(std::move(next)); });
 		}
-		if (simulationToPostprocess) {
+		if (toPostprocess) {
 			postprocessThread = std::jthread(
-				[this, next = std::move(*simulationToPostprocess)]() mutable { Postprocess(std::move(next)); });
+				[this, next = std::move(*toPostprocess)]() mutable { Postprocess(std::move(next)); });
+		}
+		if (!toRun.empty()) {
+			simulationThread = std::jthread(
+				[this, next = std::move(toRun), batchId]() mutable { RunPreparedSimulations(std::move(next), batchId); });
 		}
 	}
 }
@@ -268,7 +322,7 @@ void Environment::Preprocess(QueuedSimulation next) {
 		const auto elapsed = std::chrono::steady_clock::now() - started;
 		const std::lock_guard lock(schedulingMutex);
 		preparedSimulations.emplace_back(PreparedSimulation{
-			std::move(next.job), std::move(next.state), std::move(simulation), elapsed });
+			std::move(next.job), next.state, std::move(simulation), elapsed });
 	}
 	catch (...) {
 		next.state->SetError(std::current_exception());
@@ -277,27 +331,38 @@ void Environment::Preprocess(QueuedSimulation next) {
 		const std::lock_guard lock(schedulingMutex);
 		preprocessTime += std::chrono::steady_clock::now() - started;
 		preparingSimulation = false;
+		--unpreparedSimulations;
 	}
 	schedulerWakeup.notify_one();
 }
 
-void Environment::RunPreparedSimulation(PreparedSimulation next) {
+void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, int batchId) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
-		SimulationSession session(
-			std::move(next.simulation), next.job.mode, next.job.workDir);
-		const auto engineTime = next.job.run ? RunSimulation(session) : std::chrono::duration<double>{};
+		BatchSession batch;
+		batch.sessions.reserve(next.size());
+		for (auto& member : next)
+			batch.sessions.emplace_back(std::move(member.simulation), member.job.mode, member.job.workDir);
+		if (next.front().job.run)
+			RunSimulation(batch);
+		// RunSimulation destroys Engine before any of its nonowning simulation
+		// pointers can be transferred to (and consumed by) postprocessing.
 		const auto processTime = std::chrono::steady_clock::now() - started;
-		SimulationResult result{
-			std::move(session.simulation), std::nullopt, engineTime,
-			next.preprocessingTime + processTime, std::move(session.avgStepTimes),
-			SimulationExecutionInfo{ 0, 1 } };
 		const std::lock_guard lock(schedulingMutex);
-		processedSimulations.emplace_back(ProcessedSimulation{
-			std::move(next.job), std::move(next.state), std::move(result) });
+		for (size_t i = 0; i < next.size(); ++i) {
+			auto& session = batch.sessions[i];
+			auto& member = next[i];
+			SimulationResult result{
+				std::move(session.simulation), std::nullopt, session.engineTime.value_or(std::chrono::duration<double>{}),
+				member.preprocessingTime + processTime, std::move(session.avgStepTimes),
+				SimulationExecutionInfo{ batchId, static_cast<int>(next.size()) } };
+			processedSimulations.emplace_back(ProcessedSimulation{
+				std::move(member.job), member.state, std::move(result) });
+		}
 	}
 	catch (...) {
-		next.state->SetError(std::current_exception());
+		for (auto& member : next)
+			member.state->SetError(std::current_exception());
 	}
 	{
 		const std::lock_guard lock(schedulingMutex);
@@ -485,77 +550,70 @@ void Environment::sayHello() {
 	std::cout << file_contents;
 }
 
-std::chrono::duration<double> Environment::RunSimulation(SimulationSession& session) {
-	auto& simulation = session.simulation;
-	auto& simStatus = session.simStatus;
-	auto& time0 = session.time0;
-	auto& simulationTimer = session.simulationTimer;
-	auto& engineTime = session.engineTime;
-	if (!simulation)
-		throw std::runtime_error("Cannot run without a simulation");
-	if (simulation->finished)
-		throw std::runtime_error("Cannot run a simulation that has already finished");
+std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch) {
+	std::vector<Simulation*> simPointers;
+	for (auto& session : batch.sessions) {
+		session.avgStepTimes.reserve((session.simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
+		simPointers.push_back(session.simulation.get());
+	}
+	Engine engine(simPointers);
+
+	auto& controlSession = batch.sessions.front();
+	auto& simulation = controlSession.simulation;
 	const bool emVariant = simulation->simParams.em_variant;
 	const bool stepwise = simulation->simParams.stepwise;
-
-	session.avgStepTimes.reserve((simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
-	Engine engine(simulation.get(), simulation->simParams.bc_select);
-
-	std::unique_ptr<Display> display = nullptr;
-
-	if (session.mode == Full) {
+	std::unique_ptr<Display> display;
+	if (controlSession.mode == Full) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-			simulation->box->boxparams, simStatus, simulation->box->backboneChains
+			simulation->box->boxparams, controlSession.simStatus, simulation->box->backboneChains
 		), stepwise);
 	}
 
-	simulationTimer.emplace(TimeIt{ "Simulation" });
-	time0 = std::chrono::steady_clock::now();
-    auto t0 = std::chrono::steady_clock::now();
-	while (true) {
-
-		if (!HandleDisplay(session, engine, simulation->box->boxparams, display.get(), emVariant, stepwise)) {
-			break;
+	const auto started = std::chrono::steady_clock::now();
+	for (size_t i = 0; i < batch.sessions.size(); ++i) {
+		auto& session = batch.sessions[i];
+		session.simulationTimer.emplace("Simulation");
+		session.time0 = started;
+		if (engine.GetRunStatus(i).simulation_finished) {
+			session.engineTime = std::chrono::duration<double>{};
+			session.simulationTimer->stop();
 		}
-
-		auto stepStartTime = std::chrono::steady_clock::now();
-		
-		engine.step();
-
-		UpdateSimstatus(session, engine, true, true);
-		
-		if (engine.runstatus.simulation_finished) {
-			break;
-		}
-
-		// Deadspin to slow down rendering for visual debugging :)
-		while ((double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stepStartTime).count() < MIN_STEP_TIME) {}
 	}
-    auto t1 = std::chrono::steady_clock::now();
-	simulationTimer->stop();
-
-	// Transfers the remaining traj data and more
+	while (!engine.IsFinished()) {
+		if (!HandleDisplay(controlSession, engine, simulation->box->boxparams, display.get(), emVariant, stepwise))
+			break;
+		const auto stepStarted = std::chrono::steady_clock::now();
+		engine.step();
+		for (size_t i = 0; i < batch.sessions.size(); ++i) {
+			auto& session = batch.sessions[i];
+			if (session.engineTime) continue;
+			UpdateSimstatus(session, engine, true, true, i);
+			if (engine.GetRunStatus(i).simulation_finished) {
+				session.engineTime = std::chrono::steady_clock::now() - started;
+				session.simulationTimer->stop();
+			}
+		}
+		// Optional rendering throttle for visual debugging.
+		while (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStarted).count() < MIN_STEP_TIME) {}
+	}
+	const auto elapsed = std::chrono::steady_clock::now() - started;
+	// Finalization copies final coordinates, integration state and remaining logs
+	// independently for every member, including when the display is closed early.
 	engine.terminateSimulation();
-	CudaBuffer<PersistentCluster>& deviceState = engine.OffloadPclusterState();
-	simulation->box->persistentClusters = GenericCopyToHost(
-		deviceState.Get(), simulation->box->persistentClusters.size());
-
-	simulation->finished = true;
-
-	engineTime = t1 - t0;
-    return t1-t0;
+	for (auto& session : batch.sessions) {
+		if (!session.engineTime) {
+			session.engineTime = elapsed;
+			session.simulationTimer->stop();
+		}
+		session.simulation->finished = true;
+	}
+	return elapsed;
 }
 
-
-
-
-
-
-
-void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate) {
+void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate, size_t simulationId) {
 	auto& simulation = session.simulation;
 	auto& simStatus = session.simStatus;
 	auto& time0 = session.time0;
@@ -589,17 +647,17 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 
 
 
-		const int nStepsSinceLast = engine.runstatus.current_step - *simStatus.step;
+		const int nStepsSinceLast = engine.GetRunStatus(simulationId).current_step - *simStatus.step;
 		const double totalNsSimulated = nStepsSinceLast * simulation->simParams.dt; // [ns]
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		const double completionFraction = (double)step / (double)simulation->simParams.n_steps;
-		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = simulation->simParams.n_steps > 0 && simulationTimer.has_value()
+		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = step > 0 && simulation->simParams.n_steps > 0 && simulationTimer.has_value()
 			? std::optional<std::chrono::duration<double>> {simulationTimer->Elapsed()* (1. / completionFraction * (1.-completionFraction))}
 			: std::nullopt;
 
 		SimStatus newStatus{};
-		newStatus.step = engine.runstatus.current_step;
+		newStatus.step = engine.GetRunStatus(simulationId).current_step;
 		newStatus.avgStepTime = avgStepTimes.empty() ? 0.f : avgStepTimes.back();
 		newStatus.expectedTimeToFinish = expectedTimeToFinish;
 		if (simulation->simParams.em_variant) {
@@ -613,11 +671,11 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 
 	// "Free" updates
 	if (simulation->simParams.em_variant) {
-		simStatus.maxForce = engine.runstatus.greatestForce;
+		simStatus.maxForce = engine.GetRunStatus(simulationId).greatestForce;
 	}
 	else {
-		if (!std::isnan(engine.runstatus.current_temperature))
-			simStatus.temperature = engine.runstatus.current_temperature;
+		if (!std::isnan(engine.GetRunStatus(simulationId).current_temperature))
+			simStatus.temperature = engine.GetRunStatus(simulationId).current_temperature;
 	}
 }
 
@@ -635,18 +693,18 @@ bool Environment::HandleDisplay(SimulationSession& session, Engine& engine, cons
 		std::rethrow_exception(displayException);
 	}
 
-	int64_t stepForMostRecentData = engine.runstatus.stepForMostRecentData;
-	Float3* renderPositions = engine.runstatus.most_recent_positions;
+	int64_t stepForMostRecentData = engine.GetRunStatus().stepForMostRecentData;
+	Float3* renderPositions = engine.GetRunStatus().most_recent_positions;
 	const std::string info = emVariant
-		? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine.runstatus.current_step), static_cast<float>(engine.runstatus.greatestForce))
-		: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine.runstatus.current_step), static_cast<float>(engine.runstatus.current_temperature));
+		? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine.GetRunStatus().current_step), static_cast<float>(engine.GetRunStatus().greatestForce))
+		: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine.GetRunStatus().current_step), static_cast<float>(engine.GetRunStatus().current_temperature));
 
 	if (stepForMostRecentData > step_at_last_render) {
 		display->Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(
 			renderPositions, nullptr, simStatus
 		), stepwise);
 		step_at_last_render = stepForMostRecentData;
-		//engine->runstatus.most_recent_positions = nullptr;
+		//engine->GetRunStatus().most_recent_positions = nullptr;
 	}
 
 	return !display->DisplaySelfTerminated();

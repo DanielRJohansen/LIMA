@@ -25,6 +25,7 @@ struct PersistentCluster;
 class SuperclusterStagingControl;
 class TaskBuilderControl;
 struct EngineSimulationData;
+struct EngineBatchData;
 
 namespace NeighborList { class Controller; }
 
@@ -37,7 +38,7 @@ namespace NeighborList{struct IdAndRelshift;}
 struct RunStatus {
 	Float3* most_recent_positions = nullptr; // TODO: Refactor this out
 	int64_t stepForMostRecentData = -1;
-	int current_step = 0;
+	int64_t current_step = 0;
 	float current_temperature = NAN;
 	float greatestForce = NAN; // measured in a single particle
 
@@ -46,24 +47,20 @@ struct RunStatus {
 };
 
 
+enum class EngineRunMode { Simulation, Interactive };
+
 class Engine {
 public:
-	Engine(Simulation*, BoundaryConditionSelect);
+	// Simulations are nonowning and must outlive this engine. Interactive mode
+	// supports the existing single-simulation live editor without a step limit.
+	explicit Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode = EngineRunMode::Simulation);
 	~Engine();
 
 	void step();
 
-	/// <summary>
-	/// Engine takes ownedship of sim. Noone else is allowed to access
-	/// </summary>
-	void runAsync(std::unique_ptr<Simulation>, RunStatus& runstatus);
-
-
-	void CopySimulationToHost();
-
-
-	volatile RunStatus runstatus;
-
+	void CopySimulationToHost(size_t simulationId = 0);
+	const RunStatus& GetRunStatus(size_t simulationId = 0) const;
+	bool IsFinished() const;
 	void terminateSimulation();
 
 	static bool TestAlgorithms();
@@ -72,24 +69,24 @@ public:
 	// 1. This ensure that this funciton is rather quick, and the caller can continue sim immediately after this
 	// kernel, and do copytohost async afterwards
 	// 2. We return a reference to an existing buffer, so we wont have to allocate mem each time!
-	CudaBuffer<PersistentCluster>& OffloadPclusterState();
+	CudaBuffer<PersistentCluster>& OffloadPclusterState(size_t simulationId = 0);
 	// TODO: Make another version of the func above, that does the copy-to-host-part async, and can reuse
 	// the host memory..
 
 	// Similarly to above, returns a ref to a copy buffer
-	CudaBuffer<float>& OffloadForcesMagnitudeBuffer();
+	CudaBuffer<float>& OffloadForcesMagnitudeBuffer(size_t simulationId = 0);
 
 	// Overwrites force in IntegrationKernel during EM if present
-	void SetFixedParticleMovementBuffer(const std::vector<Float3>& velocities);
-	void SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotations);
+	void SetFixedParticleMovementBuffer(const std::vector<Float3>& velocities, size_t simulationId = 0);
+	void SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotations, size_t simulationId = 0);
 	// Is multiplied with forces in integration kernel, for partial fixing of particles
-	void SetForceMask(const std::vector<Float3>& mask); 
-	void SetElasticPositions(const std::vector<Float3>& mask);
+	void SetForceMask(const std::vector<Float3>& mask, size_t simulationId = 0);
+	void SetElasticPositions(const std::vector<Float3>& mask, size_t simulationId = 0);
 
 private:
 
 
-	void hostMaster();
+	bool hostMaster();
 	void deviceMaster();
 	template <typename BoundaryCondition, bool emvariant, bool computePotE>
 	void _deviceMaster();
@@ -101,28 +98,29 @@ private:
 	void verifyEngine();
 
 	// streams every n steps
-	void offloadLoggingData(const int64_t steps_to_transfer);
-	void offloadTrainData();
+	void OffloadLoggingData(EngineSimulationData& simData);
+
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
-	void bootstrapTrajbufferWithCoords();
+	void BootstrapTrajbufferWithCoords(EngineSimulationData& simData);
 	void Synchronize();
 
-	void BootstrapSolventblockDistributeFromDensity();
 
-	void HandleEarlyStoppingInEM();
+	void HandleEarlyStoppingInEM(EngineSimulationData& simData);
+	void RebuildActiveBatch();
+	void InitializePME();
+	void FinalizeSimulation(EngineSimulationData& simData);
 
 
-	std::array<cudaStream_t, 5> cudaStreams;
-	cudaStream_t pmeStream;
+	std::array<cudaStream_t, 5> cudaStreams{};
+	cudaStream_t pmeStream = nullptr;
+	EngineRunMode mode;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
-	std::unique_ptr<EngineSimulationData> simData;
+	std::unique_ptr<EngineBatchData> batch;
 
-	const BoundaryConditionSelect bc_select;
 
 	// Temp
-	bool MakeSuperClusterTasksCPU();
 	bool MakeSuperClusterTasksGPU(cudaStream_t stream);
 	void RunClustering(cudaStream_t stream, bool runPclustering = true);
 	void BootstrapClustering(cudaStream_t stream);

@@ -7,27 +7,22 @@
 
 
 
-void Engine::CopySimulationToHost() {
-	assert(simData->boxState.pclusterInterimStates);
-	simData->boxState.CopyDataToHost(*simData->simulation->box);
+void Engine::CopySimulationToHost(size_t simulationId) {
+	Synchronize();
+	auto& sim = batch->simulations.at(simulationId);
+	const auto range = sim.device.pclusters;
+	cudaMemcpy(sim.simulation->box->pclusterInterimStates.data(), batch->boxState.pclusterInterimStates + range.offset,
+		sizeof(PersistentclusterInterimState) * range.count, cudaMemcpyDeviceToHost);
 }
 
 void Engine::verifyEngine() {
-	LIMA_UTILS::genericErrorCheckNoSync("Error before engine initialization.\n");
-
-	Int3 dim = simData->simulation->box->boxparams.boxSize;
-	assert(dim.x < 1024 && dim.y < 1024 && dim.z < 1024 && "Neighborlist cannot handle such large gridnode_ids");
-
-	if constexpr (ENABLE_ES_LR) {
-		if (simData->simulation->simParams.enable_electrostatics && simData->simulation->simParams.bc_select != PBC) {
-			throw std::invalid_argument("Electrostatics only supported with PBC at the current time");
-		}
-	}
+	LIMA_UTILS::genericErrorCheckNoSync("Error before engine initialization");
+	const Int3 dim = batch->boxSize;
+	if (dim.x <= 0 || dim.y <= 0 || dim.z <= 0 || dim.x >= 1024 || dim.y >= 1024 || dim.z >= 1024)
+		throw std::invalid_argument("Unsupported engine box dimensions");
+	if (ENABLE_ES_LR && batch->params.enable_electrostatics && batch->params.bc_select != PBC)
+		throw std::invalid_argument("Electrostatics only supported with PBC");
 }
-
-
-
-
 
 ForceEnergyInterims::ForceEnergyInterims(int nBondgroupParticles, int nParticles, int nPclusters) {
 	if (nPclusters > 0) {

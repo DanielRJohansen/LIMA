@@ -13,6 +13,7 @@
 #include "ProgramsTests.h"
 #include "AlgorithmTests.h"
 #include "BatchingTests.h"
+#include "EngineBatchTests.h"
 
 
 using namespace TestUtils;
@@ -98,7 +99,15 @@ void BuildCellTest() {
 	env.LiveEdit(grofile, topfile);
 }
 
-int main() {
+int main(int argc, char** argv) {
+	if (argc == 2 && std::string_view(argv[1]) == "--environment-batch-tests") {
+		try { BatchingTests::RunSchedulerTests(Environment::Get()); return 0; }
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
+	if (argc == 2 && std::string_view(argv[1]) == "--engine-batch-tests") {
+		try { EngineBatchTests::RunAll(); return 0; }
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
@@ -110,7 +119,8 @@ int main() {
 
 
 		//loadAndRunBasicSimulation("Singleatom", envmode);
-
+		TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
+		return 0;
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
 		//TestLongrangeEsNoLJTwoParticles(envmode);

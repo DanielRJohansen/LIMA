@@ -40,11 +40,11 @@
 
 
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void PclusterSnfKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const UniformElectricField uniformElectricField, ForceEnergy* const forceEnergy, int nPclusters) {
+__global__ void PclusterSnfKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const SimulationDeviceData* simulations, const int* owners, ForceEnergy* const forceEnergy, int nPclusters, const int* activePclusterIds) {
 
-	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;	
-	if (pcId >= nPclusters)
-		return;
+	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (workId >= nPclusters) return;
+	const int pcId = activePclusterIds[workId];
 
 	
 	for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
@@ -53,16 +53,17 @@ __global__ void PclusterSnfKernel(const PersistentCluster* const pc, const Persi
 			continue;
 
 		float charge = pc[pcId].pqd[pid].params.charge;
-		Float3 force = uniformElectricField.GetForce(charge);
+		Float3 force = simulations[owners[pcId]].uniformElectricField.GetForce(charge);
 
 		forceEnergy[pcId * PersistentCluster::maxParticles + pid] = ForceEnergy{ force, 0.f };
 	}
 }
 
-__global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const Float3* const elasticPositions, ForceEnergy* const forceEnergy, int nPclusters, Float3 boxSize) {
-	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (pcId >= nPclusters)
-		return;
+__global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const Float3* const elasticPositions, ForceEnergy* const forceEnergy, int nPclusters, Float3 boxSize, const int* activePclusterIds, const SimulationDeviceData* simulations, const int* owners) {
+	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (workId >= nPclusters) return;
+	const int pcId = activePclusterIds[workId];
+	if (!simulations[owners[pcId]].hasElasticPositions) return;
 
 
 	for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
@@ -105,7 +106,7 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 
 static const int THREADS_PER_BONDSGROUPSKERNEL = 64;
 template <typename BoundaryCondition, bool emVariant>
-__global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv) {
+__global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv, const int* activeBondgroupIds) {
 	__shared__ Float3 positions[THREADS_PER_BONDSGROUPSKERNEL];
 
 	__shared__ float4 forceEnergyInterrims[THREADS_PER_BONDSGROUPSKERNEL];
@@ -114,7 +115,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
 	__shared__ char _bondsBuffer[largestBondBytesize * batchSize];	
 
-	const BondGroup* const bondGroup = &bondGroups.groups[blockIdx.x];
+	const BondGroup* const bondGroup = &bondGroups.groups[activeBondgroupIds[blockIdx.x]];
 
 	forceEnergyInterrims[threadIdx.x] = float4{0,0,0,0};
 
@@ -211,10 +212,10 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 
 // gridDim = (nPclusters, 1, 1)
 // blockDim = (32, 1, 1) // TODO OPTIM: Use y=4, and have 1 particle in pc per y-thread
-__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies) {
-	const int pcId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (pcId >= nPclusters)
-		return;
+__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies, const int* activePclusterIds) {
+	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
+	if (workId >= nPclusters) return;
+	const int pcId = activePclusterIds[workId];
 
 	for (int pid = 0; pid < 4; pid++) {
 		int pidGlobal = pclusterMeta[pcId].particleIdsGlobal[pid];
@@ -238,7 +239,8 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 // blockdim=16,4,1
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices, 
-	const SuperClusterMeta* const superClusterMeta, int step, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
+	const SuperClusterMeta* const superClusterMeta, const int* activeSuperclusterIds, const SimulationDeviceData* simulations, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
+	const int scId = activeSuperclusterIds[blockIdx.x];
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ SuperCluster scSelf;
 	__shared__ ScScTask task; // TODO: We dont access this much, no need to store in shared mem...
@@ -246,9 +248,9 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	//__shared__ ForceEnergy feAcc[SuperCluster::maxParticles];
 
 	auto tb = cooperative_groups::this_thread_block();
-	cooperative_groups::memcpy_async(tb, &scSelf, &superClusters[blockIdx.x], sizeof(SuperCluster));
+	cooperative_groups::memcpy_async(tb, &scSelf, &superClusters[scId], sizeof(SuperCluster));
 	if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
-		task = tasks[blockIdx.x];
+		task = tasks[scId];
 	}	
 	//feAcc[threadIdx.x] = ForceEnergy{};
 	cooperative_groups::wait(tb);	
@@ -325,15 +327,15 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, AdamState* adamState, int data_logging_interval, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt,	int totalParticlesUpperbound, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
-	Float3 boxSize, float thermostatScalar, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
+	const SimulationDeviceData* simulations, int64_t step, const int* activeSuperclusterIds, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
+	Float3 boxSize, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
 	Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer /*Only available in LIVEEDIT*/  /*,
 const ForceEnergy* const nbForceenergy*/) {
 
 	const int nScsPerBlock = 4;
 
 	const int scIdLocal = threadIdx.y;
-	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < numScs ? (blockIdx.x * nScsPerBlock + threadIdx.y) : -1;
+	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < numScs ? activeSuperclusterIds[blockIdx.x * nScsPerBlock + threadIdx.y] : -1;
 	const int pidLocal = threadIdx.y * SuperCluster::maxParticles + threadIdx.x;
 
 
@@ -365,6 +367,14 @@ const ForceEnergy* const nbForceenergy*/) {
 		}
 	}
 
+	const auto& simulation = simulations[scMetaShared[scIdLocal].simulationId];
+	const float dt = simulation.dt;
+	const float thermostatScalar = simulation.thermostatScalar;
+	const int totalParticlesUpperbound = simulation.pclusters.count * PersistentCluster::maxParticles;
+	const int pidInSimulation = pidGlobal - simulation.particles.offset;
+	if (!simulation.hasFixedMovement) fixedParticleMovementBuffer = nullptr;
+	if (!simulation.hasForceMask) forceMaskBuffer = nullptr;
+	if (!simulation.hasFixedRotation) fixedParticleRotationBuffer = nullptr;
 	Float3 pos = superClusters[scIdGlobal].Position(threadIdx.x);
 	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos, boxSize);
 
@@ -392,7 +402,7 @@ const ForceEnergy* const nbForceenergy*/) {
 	// Energy minimize
 	if constexpr (emvariant) {
 		
-		const Float3 safeForce = EngineUtils::ForceActivationFunction(fe.force);
+		const Float3 safeForce = EngineUtils::ForceActivationFunction(pidInSimulation, fe.force);
 
 		AdamState* const particleAdamState = &adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
 		Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, particleAdamState, step);
@@ -460,8 +470,8 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	//BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
 
-	EngineUtils::LogPclusterData(pcIdGlobal, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound,
-		trajBuffer, potEBuffer, velocityBuffer, forceBuffer);
+	EngineUtils::LogPclusterData(pcIdGlobal - simulation.pclusters.offset, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound,
+		trajBuffer + simulation.logOffset, potEBuffer + simulation.logOffset, velocityBuffer + simulation.logOffset, forceBuffer + simulation.logOffset);
 
 	superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
 	superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;

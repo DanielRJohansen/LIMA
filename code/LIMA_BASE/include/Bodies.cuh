@@ -304,6 +304,11 @@ public:
 			value = noVal;
 	}
 
+	void AddOffset(int offset) {
+		for (int& value : data)
+			if (value != noVal) value += offset;
+	}
+
 	constexpr bool Contains(int value) const {
 		for (int i = 0; i < size; i++) {
 			if (data[i] == value)
@@ -445,6 +450,7 @@ struct SuperCluster {
 };
 
 struct SuperClusterMeta {
+	int simulationId = 0;
 	// Set by clustering kernel
 	int _pclusterIds[SuperCluster::maxParticles];
 	int indexInPcluster[SuperCluster::maxParticles];

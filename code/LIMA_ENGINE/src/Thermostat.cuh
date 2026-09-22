@@ -2,6 +2,7 @@
 
 #include "LimaTypes.cuh"
 #include "PhysicsUtilsDevice.cuh"
+#include "BatchLayout.cuh"
 
 #include <thrust/device_vector.h>
 #include <thrust/transform.h>
@@ -12,23 +13,15 @@
 
 namespace _Thermostat {
 
-	struct TotalKineticEnergyCompounds {
-		const PersistentclusterInterimState* const states;
-		const PersistentClusterMeta* const pcMeta;
-
-		__host__ __device__
-			TotalKineticEnergyCompounds(const PersistentclusterInterimState* const _states, const PersistentClusterMeta* const _pcMeta)
-			: states(_states), pcMeta(_pcMeta){}
-		__host__ __device__
-			float operator()(int idx) const {
-			int pcId = idx / PersistentCluster::maxParticles;
-			int pId = idx % PersistentCluster::maxParticles;
-			const float mass = pcMeta[pcId].mass[pId];
-
-			const Float3& velocity = states[pcId].vels_prev[pId];
-			return PhysicsUtils::calcKineticEnergy(velocity.len(), mass); // TODO OPTIM: calcKineticEnergy can use lenSquared instead, save a sqrtf!!		
-		}
-	};
+	__global__ void ComputeKineticEnergyKernel(const PersistentclusterInterimState* states, const PersistentClusterMeta* metadata,
+		const int* activePclusterIds, int nPclusters, float* intermediate) {
+		const int index = blockIdx.x * blockDim.x + threadIdx.x;
+		if (index >= nPclusters * PersistentCluster::maxParticles) return;
+		const int pc = activePclusterIds[index / PersistentCluster::maxParticles];
+		const int lane = index % PersistentCluster::maxParticles;
+		intermediate[pc * PersistentCluster::maxParticles + lane] = PhysicsUtils::calcKineticEnergy(
+			states[pc].vels_prev[lane].len(), metadata[pc].mass[lane]);
+	}
 
 
 	float ComputeThermostatScalar(float temperature, const SimParams& simparams) {
@@ -59,26 +52,24 @@ public:
 		cudaMemset(intermediate, 0, sizeof(float) * nPclusters * PersistentCluster::maxParticles);
 	}
 
-	// {temp,thermostatScalar}
-	std::pair<float, float> Temperature(const PersistentclusterInterimState* states, const BoxParams& boxparams, const SimParams& simparams, int step,
-		const PersistentClusterMeta* const pcMetaDevice, cudaStream_t stream) {
-		// Step 1: Calculate kinetic energy for each Pcluster and store in the intermediate buffer
-		thrust::transform(thrust::cuda::par.on(stream), thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(nPclusters * PersistentCluster::maxParticles),
-			intermediate, _Thermostat::TotalKineticEnergyCompounds(states, pcMetaDevice));
-		LIMA_UTILS::genericErrorCheckNoSync("TotalKineticEnergyCompounds");
+	void ComputeKineticEnergy(const PersistentclusterInterimState* states, const PersistentClusterMeta* metadata,
+		const int* activePclusterIds, int count, cudaStream_t stream) {
+		if (count == 0) return;
+		_Thermostat::ComputeKineticEnergyKernel<<<(count * PersistentCluster::maxParticles + 127) / 128, 128, 0, stream>>>(
+			states, metadata, activePclusterIds, count, intermediate);
+	}
 
-		// Step 3: Sum up all kinetic energy values (compounds + solvents)
-		double totalKineticEnergy = thrust::reduce(thrust::cuda::par.on(stream),
-			intermediate, intermediate + nPclusters * PersistentCluster::maxParticles, 0.0);
-
-		//printf("Total kinetic energy: %f\n", totalKineticEnergy); 
+	// Keep each simulation's reduction order and degrees of freedom independent.
+	std::pair<float, float> Temperature(const BoxParams& boxparams, const SimParams& simparams, BatchRange pclusters, cudaStream_t stream) {
+		const float* begin = intermediate + pclusters.offset * PersistentCluster::maxParticles;
+		const double totalKineticEnergy = thrust::reduce(thrust::cuda::par.on(stream),
+			begin, begin + pclusters.count * PersistentCluster::maxParticles, 0.0);
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
-		const float scalar = _Thermostat::ComputeThermostatScalar(temperature, simparams);
-		return { temperature, scalar };		
+		return {temperature, _Thermostat::ComputeThermostatScalar(temperature, simparams)};
 	}
 
 	~Thermostat() {
-		//cudaFree(intermediate);
+		cudaFree(intermediate);
 	}
 };
 

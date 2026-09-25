@@ -241,22 +241,28 @@ Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr;
 
+    float contentScaleX = 1.0f;
+    float contentScaleY = 1.0f;
+    glfwGetWindowContentScale(window, &contentScaleX, &contentScaleY);
+    const float contentScale = std::max(contentScaleX, contentScaleY);
+
     // Better default choice than Roboto for this kind of UI.
     // Put Inter-Medium.ttf in resources/ui if you have it.
     if (std::filesystem::exists(limaDir / "resources" / "ui" / "Inter-Medium.ttf")) {
         io.Fonts->AddFontFromFileTTF(
             (limaDir / "resources" / "ui" / "Inter-Medium.ttf").string().c_str(),
-            24.0f
+            22.0f * contentScale
         );
     }
     else {
         io.Fonts->AddFontFromFileTTF(
             (limaDir / "resources" / "ui" / "Roboto-Medium.ttf").string().c_str(),
-            24.0f
+            22.0f * contentScale
         );
     }
 
     PushOverlayTheme();
+    ImGui::GetStyle().FontScaleMain = 1.0f / contentScale;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");

@@ -106,7 +106,7 @@ void TestDisplayT4Batch() {
 		auto job = BatchingTests::MakeT4Job(EnvMode::Full, false);
 		job.mode = EnvMode::Full;
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
-			params.n_steps = 4000;
+			params.n_steps = 40000;
 			params.data_logging_interval = 200;
 		};
 		handle = environment.Submit(std::move(job));

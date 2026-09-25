@@ -449,19 +449,20 @@ struct SuperCluster {
 	//}
 };
 
-struct SuperClusterMeta {	
+struct alignas(16) SuperClusterMeta {	
 	// Set by clustering kernel
 	int _pclusterIds[SuperCluster::maxParticles];
 	int indexInPcluster[SuperCluster::maxParticles];
 	int globalParticleIds[SuperCluster::maxParticles];	
 	int uniquePclusterIds[SuperCluster::maxParticles];
 	int nUniquePcIds = 0;
-	int nParticles;
+	int16_t nParticles;
+	int16_t simulationId = 0;
 
 	// Set by taskbuilder kernel
 	int resultsStartIndex; // TODO: Is int always safe here??
 	int nResults;
-	int simulationId = 0;
+	
 	
 
 	//__host__ bool operator != (const SuperClusterMeta& other) const {

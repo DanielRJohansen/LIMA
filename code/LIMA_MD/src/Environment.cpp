@@ -14,6 +14,7 @@
 #include "UpgradeableFileFormat.h"
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
+#include <cuda_profiler_api.h>
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -232,7 +233,8 @@ size_t Environment::GetReadyBatchSize() const {
 	for (auto it = std::next(preparedSimulations.begin()); it != preparedSimulations.end()
 		&& count < maxBatchSize; ++it) {
 		if (MustRunAlone(*it)) break;
-		if (!EngineBatch::FindIncompatibility(*preparedSimulations.front().simulation, *it->simulation))
+		if (preparedSimulations.front().job.profileCuda == it->job.profileCuda
+			&& !EngineBatch::FindIncompatibility(*preparedSimulations.front().simulation, *it->simulation))
 			++count;
 	}
 	return count;
@@ -247,7 +249,8 @@ std::vector<Environment::PreparedSimulation> Environment::TakeReadyBatch() {
 	for (auto it = preparedSimulations.begin(); it != preparedSimulations.end()
 		&& batch.size() < maxBatchSize;) {
 		if (MustRunAlone(*it)) break;
-		if (EngineBatch::FindIncompatibility(*batch.front().simulation, *it->simulation)) {
+		if (batch.front().job.profileCuda != it->job.profileCuda
+			|| EngineBatch::FindIncompatibility(*batch.front().simulation, *it->simulation)) {
 			++it;
 			continue;
 		}
@@ -344,7 +347,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		for (auto& member : next)
 			batch.sessions.emplace_back(std::move(member.simulation), member.job.mode, member.job.workDir);
 		if (next.front().job.run)
-			RunSimulation(batch);
+			RunSimulation(batch, next.front().job.profileCuda);
 		// RunSimulation destroys Engine before any of its nonowning simulation
 		// pointers can be transferred to (and consumed by) postprocessing.
 		const auto processTime = std::chrono::steady_clock::now() - started;
@@ -550,11 +553,15 @@ void Environment::sayHello() {
 	std::cout << file_contents;
 }
 
-std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch) {
+std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bool profileCuda) {
 	std::vector<Simulation*> simPointers;
 	for (auto& session : batch.sessions) {
 		session.avgStepTimes.reserve((session.simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 		simPointers.push_back(session.simulation.get());
+	}
+	if (profileCuda) {
+		cudaDeviceSynchronize();
+		cudaProfilerStart();
 	}
 	Engine engine(simPointers);
 
@@ -609,6 +616,10 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch) {
 			session.simulationTimer->stop();
 		}
 		session.simulation->finished = true;
+	}
+	if (profileCuda) {
+		cudaDeviceSynchronize();
+		cudaProfilerStop();
 	}
 	return elapsed;
 }

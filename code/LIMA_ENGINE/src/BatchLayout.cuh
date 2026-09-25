@@ -20,3 +20,12 @@ struct SimulationDeviceData {
 	bool active = true;
 	UniformElectricField uniformElectricField;
 };
+
+// Compact per-simulation data consumed by the batch-wide integration kernel.
+struct IntegrationSimulationData {
+	BatchRange particles;
+	BatchRange pclusters;
+	size_t logOffset = 0;
+	float dt = 0.f;
+	float thermostatScalar = 1.f;
+};

@@ -397,30 +397,26 @@ void Engine::_deviceMaster() {
 	}
 	Synchronize();
 	if (nScs > 0) {
+		std::vector<IntegrationSimulationData> simulationData;
+		simulationData.reserve(batch->simulations.size());
 		for (const auto& sim : batch->simulations) {
-			if (!sim.device.active) continue;
-			const int simScs = sim.superclusters.count;
-			if (simScs == 0) continue;
-			const auto& device = sim.device;
-			const int simParticles = device.pclusters.count * PersistentCluster::maxParticles;
-			Float3* fixedMovement = batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr;
-			Float3* forceMask = batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr;
-			const Rotation* fixedRotation = batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr;
-			Float3* trajectoryLog = batch->dataBuffersDevice->traj_buffer + device.logOffset;
-			float* potentialEnergyLog = batch->dataBuffersDevice->potE_buffer + device.logOffset;
-			float* velocityLog = batch->dataBuffersDevice->vel_buffer + device.logOffset;
-			Float3* forceLog = batch->dataBuffersDevice->forceBuffer + device.logOffset;
-
-			const int nBlocks = (simScs + 4 - 1) / 4;
-			const dim3 blockDim(16, 4, 1);
-
-			SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, blockDim, 0, cudaStreams[0]>>>(
-				*batch->forceEnergyInterims, batch->adamState, batch->params.data_logging_interval, batch->scResultsDevice.Get(),
-				batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
-				batch->boxState.pclusterInterimStates, batch->step, device.dt, simParticles, device.thermostatScalar,
-				device.particles.offset, device.pclusters.offset, sim.superclusters.offset, simScs, batch->forcesMagnitudeSquareDevice.Get(), boxSize,
-				fixedMovement, forceMask, fixedRotation, trajectoryLog, potentialEnergyLog, velocityLog, forceLog);
+			simulationData.push_back({
+				sim.device.particles, sim.device.pclusters, sim.device.logOffset, sim.device.dt, sim.device.thermostatScalar});
 		}
+		batch->integrationSimulationDataDevice.Expand(simulationData.size());
+		cudaMemcpyAsync(batch->integrationSimulationDataDevice.Get(), simulationData.data(),
+			sizeof(IntegrationSimulationData) * simulationData.size(), cudaMemcpyHostToDevice, cudaStreams[0]);
+
+		const int nBlocks = (nScs + 4 - 1) / 4;
+		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+			*batch->forceEnergyInterims, batch->adamState, batch->params.data_logging_interval, batch->scResultsDevice.Get(),
+			batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
+			batch->boxState.pclusterInterimStates, batch->step, batch->integrationSimulationDataDevice.Get(), nScs,
+			batch->forcesMagnitudeSquareDevice.Get(), boxSize, batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
+			batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
+			batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr,
+			batch->dataBuffersDevice->traj_buffer, batch->dataBuffersDevice->potE_buffer, batch->dataBuffersDevice->vel_buffer,
+			batch->dataBuffersDevice->forceBuffer);
 		cudaStreamSynchronize(cudaStreams[0]);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");

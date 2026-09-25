@@ -118,8 +118,8 @@ int main(int argc, char** argv) {
 		//Benchmarks::ToGmxLargeCif(envmode);
 
 
-		TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
-		return 0;
+		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
+		//return 0;
 		//PlotPmePotAsFactorOfDistance(envmode);
 		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
 		//TestLongrangeEsNoLJTwoParticles(envmode);
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
 		// 
 		//Benchmarks::STMV(env, envmode, 200, 3).RunToCompletion();
 		// 
-		//RunAllUnitTests();
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;

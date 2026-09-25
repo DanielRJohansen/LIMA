@@ -148,6 +148,7 @@ struct EngineBatchData {
 	CudaBuffer<int> resultIndicesDevice;
 	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
 	CudaBuffer<SCResult> scResultsDevice;
+	CudaBuffer<IntegrationSimulationData> integrationSimulationDataDevice;
 
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;

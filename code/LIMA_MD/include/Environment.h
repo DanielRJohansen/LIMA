@@ -45,6 +45,8 @@ struct SimulationJob {
 	std::function<void(SimulationResult&)> postprocess;
 	// Excludes the job from batch execution. Use this for reference runs and performance measurements.
 	bool mustRunAlone = false;
+	// Captures every CUDA kernel executed while this job's Engine exists.
+	bool profileCuda = false;
 	bool run = true;
 };
 
@@ -194,7 +196,7 @@ private:
 	std::tuple<GroFile, TopologyFile, SimParams> CreateLiveEditSimulationFiles(
 		Float3 boxlen, const fs::path& workDir);
 	void UpdateLiveEditCoordinates(GroFile& grofile);
-	std::chrono::duration<double> RunSimulation(BatchSession& batch);
+	std::chrono::duration<double> RunSimulation(BatchSession& batch, bool profileCuda);
 
 
 

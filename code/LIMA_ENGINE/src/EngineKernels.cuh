@@ -326,8 +326,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 template<typename BoundaryCondition, bool emvariant, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, AdamState* adamState, int data_logging_interval, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, float dt, int totalParticlesUpperbound, float thermostatScalar, int particleOffset, int pclusterOffset,
-	int superclusterOffset, int numScs, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
+	int64_t step, const IntegrationSimulationData* simulationData, int nSuperclusters, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
 	Float3 boxSize, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
 	Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer /*Only available in LIVEEDIT*/  /*,
 const ForceEnergy* const nbForceenergy*/) {
@@ -335,21 +334,20 @@ const ForceEnergy* const nbForceenergy*/) {
 	const int nScsPerBlock = 4;
 
 	const int scIdLocal = threadIdx.y;
-	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < numScs ? superclusterOffset + blockIdx.x * nScsPerBlock + threadIdx.y : -1;
-	const int pidLocal = threadIdx.y * SuperCluster::maxParticles + threadIdx.x;
+	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? blockIdx.x * nScsPerBlock + threadIdx.y : -1;
 
 
 	//__shared__ Float3 positions[SuperCluster::nParticles * nScsPerBlock];
 	__shared__ Float3 p0s[nScsPerBlock];
-	//__shared__ SuperClusterMeta scMetaShared[nScsPerBlock];
 	__shared__ int resultsStartIndex[nScsPerBlock];
 	__shared__ int nResults[nScsPerBlock];
+	__shared__ IntegrationSimulationData simulations[nScsPerBlock];
 
 
 	if (threadIdx.x == 0) {
-		//scMetaShared[threadIdx.y] = scIdGlobal == -1 ? SuperClusterMeta{} : scMeta[scIdGlobal];
 		resultsStartIndex[threadIdx.y] = scIdGlobal == -1 ? -1 : scMeta[scIdGlobal].resultsStartIndex;
 		nResults[threadIdx.y] = scIdGlobal == -1 ? 0 : scMeta[scIdGlobal].nResults;
+		simulations[threadIdx.y] = scIdGlobal == -1 ? IntegrationSimulationData{} : simulationData[scMeta[scIdGlobal].simulationId];
 		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].Position(0);
 
 		// By applying BC here, we dont need to wait for thread0 later in the kernel
@@ -374,6 +372,7 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	Float3 pos = superClusters[scIdGlobal].Position(threadIdx.x);
 	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos, boxSize);
+	const auto& simulation = simulations[scIdLocal];
 
 	// Collect ForceEnergy from all sources
 	ForceEnergy fe{};
@@ -399,7 +398,7 @@ const ForceEnergy* const nbForceenergy*/) {
 	// Energy minimize
 	if constexpr (emvariant) {
 		
-		const Float3 safeForce = EngineUtils::ForceActivationFunction(pidGlobal - particleOffset, fe.force);
+		const Float3 safeForce = EngineUtils::ForceActivationFunction(pidGlobal - simulation.particles.offset, fe.force);
 
 		AdamState* const particleAdamState = &adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
 		Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, particleAdamState, step);
@@ -423,8 +422,8 @@ const ForceEnergy* const nbForceenergy*/) {
 
 		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
 		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
-		Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, dt, mass);
-		Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, dt);
+		Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, simulation.dt, mass);
+		Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, simulation.dt);
 
 		if constexpr (FORCE_CHECKS) {
 			if ((pos_now - pos).len() > 0.5f) {
@@ -455,7 +454,7 @@ const ForceEnergy* const nbForceenergy*/) {
 		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
 
 		Float3 velScaled;
-		velScaled = vel_now * thermostatScalar;
+		velScaled = vel_now * simulation.thermostatScalar;
 
 		pcStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
 		pcStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
@@ -467,8 +466,9 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	//BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
 
-	EngineUtils::LogPclusterData(pcIdGlobal - pclusterOffset, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed, totalParticlesUpperbound,
-		trajBuffer, potEBuffer, velocityBuffer, forceBuffer);
+	EngineUtils::LogPclusterData(pcIdGlobal - simulation.pclusters.offset, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed,
+		simulation.pclusters.count * PersistentCluster::maxParticles, trajBuffer + simulation.logOffset, potEBuffer + simulation.logOffset,
+		velocityBuffer + simulation.logOffset, forceBuffer + simulation.logOffset);
 
 	superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
 	superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;

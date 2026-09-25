@@ -99,6 +99,27 @@ void BuildCellTest() {
 	env.LiveEdit(grofile, topfile);
 }
 
+void TestDisplayT4Batch() {
+	Environment& environment = Environment::Get();
+	std::array<SimulationHandle, 4> handles;
+	for (auto& handle : handles) {
+		auto job = BatchingTests::MakeT4Job(EnvMode::Full, false);
+		job.mode = EnvMode::Full;
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
+			params.n_steps = 4000;
+			params.data_logging_interval = 200;
+		};
+		handle = environment.Submit(std::move(job));
+	}
+
+	// Submit the entire batch before waiting, otherwise each Get serializes the jobs.
+	for (auto& handle : handles) {
+		auto result = handle.Get();
+		if (!result.simulation || result.execution.batchSize != handles.size())
+			throw std::runtime_error("Display T4 simulations did not execute as one batch");
+	}
+}
+
 int main(int argc, char** argv) {
 	if (argc == 2 && std::string_view(argv[1]) == "--environment-batch-tests") {
 		try { BatchingTests::RunSchedulerTests(Environment::Get()); return 0; }
@@ -117,7 +138,8 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-
+		TestDisplayT4Batch();
+		return 0;
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
 		//return 0;
 		//PlotPmePotAsFactorOfDistance(envmode);

@@ -11,6 +11,7 @@
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"
+#include "RenderDataPipe.h"
 
 
 
@@ -35,6 +36,14 @@
 
 
 using namespace Rendering;
+
+RenderContext::RenderContext()
+	: renderSettings(std::make_unique<RenderSettings>())
+	, camera(std::make_unique<Camera>(Float3{ 2.f })) {}
+
+RenderContext::~RenderContext() = default;
+RenderContext::RenderContext(RenderContext&&) noexcept = default;
+RenderContext& RenderContext::operator=(RenderContext&&) noexcept = default;
 
 void SetThreadName(const std::string& name) {
 #if defined(_WIN32) || defined(_WIN64)
@@ -87,22 +96,22 @@ void Display::SetupCallbacks() {
                 const float delta = 3.1415 / 8.f;
                 switch (key) {
                 case GLFW_KEY_UP:
-                    display->camera->Update(0, delta, 0);
+                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, delta, 0);
                     break;
                 case GLFW_KEY_DOWN:
-                    display->camera->Update(0, -delta, 0);
+                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, -delta, 0);
                     break;
                 case GLFW_KEY_LEFT:
-                    display->camera->Update(delta, 0, 0);
+                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(delta, 0, 0);
                     break;
                 case GLFW_KEY_RIGHT:
-                    display->camera->Update(-delta, 0, 0);
+                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(-delta, 0, 0);
                     break;
                 case GLFW_KEY_PAGE_UP:
-                    display->camera->Update(0, 0, 0.5f);
+                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, 0.5f);
                     break;
                 case GLFW_KEY_PAGE_DOWN:
-                    display->camera->Update(0, 0, -0.5f);
+                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, -0.5f);
                     break;
                 case GLFW_KEY_N:
                     display->debugValue = 1;
@@ -118,10 +127,10 @@ void Display::SetupCallbacks() {
 					break;
                 }
                 case GLFW_KEY_1:
-                    display->renderAtoms = !display->renderAtoms;
+                    if (display->activeRenderContext) display->activeRenderContext->renderAtoms = !display->activeRenderContext->renderAtoms;
                     break;
                 case GLFW_KEY_2:
-                    display->renderFacets = !display->renderFacets;
+                    if (display->activeRenderContext) display->activeRenderContext->renderFacets = !display->activeRenderContext->renderFacets;
                     break;
                 }
             }
@@ -189,9 +198,7 @@ void Display::Setup() {
 }
 
 Display::Display()
-	: rendersettings(std::make_unique<RenderSettings>())
-	, fps(std::make_unique<FPS>())
-	, camera(std::make_unique<Camera>(Float3{ 2.f }))
+	: fps(std::make_unique<FPS>())
 {
         // todo: Display needs to know if its in liveedit, so it knows whether to render gizmo and console.
         // It should also tell Overlay if there is any solvent present, if not dont have the button there..
@@ -274,13 +281,15 @@ void Display::Mainloop() {
         {
             std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
             if (!incomingRenderTasksGlobal.empty()) {
-				auto [simId, incomingRenderTask] = std::move(incomingRenderTasksGlobal.front());
+				auto [simId, incomingRenderTask, renderDataPipe] = std::move(incomingRenderTasksGlobal.front());
                 incomingRenderTasksGlobal.pop_front();
                 if (std::holds_alternative<Rendering::FreeTask>(incomingRenderTask)) {
 					renderContexts.erase(simId);
                 }
                 else {
                     auto& context = renderContexts[simId];
+					if (renderDataPipe)
+						context.renderDataPipe = renderDataPipe;
                     if (context.incomingRenderTasks.size() < 10)
 					    renderContexts[simId].incomingRenderTasks.push_back(std::move(incomingRenderTask));
                 }
@@ -297,17 +306,18 @@ void Display::Mainloop() {
 		}
 		RenderContext& currentRenderContext = renderContexts.begin()->second;
 		activeRenderContext = &currentRenderContext;
+		currentRenderContext.camera->UpdateViewport(framebufferSize);
 		auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
         auto& currentRenderTask = currentRenderContext.currentRenderTask;
 
         bool updatedPositions = false;
         bool shouldRecolorAtoms = false;
         ConsumeInputs(shouldRecolorAtoms);
-		if (revolveCamera) {
+		if (currentRenderContext.revolveCamera) {
 			const auto now = std::chrono::high_resolution_clock::now();
-			const float elapsedSeconds = std::chrono::duration<float>(now - lastRevolveTime).count();
-			camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
-			lastRevolveTime = now;
+			const float elapsedSeconds = std::chrono::duration<float>(now - currentRenderContext.lastRevolveTime).count();
+			currentRenderContext.camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
+			currentRenderContext.lastRevolveTime = now;
 		}
 
         // Check for new task
@@ -342,6 +352,21 @@ void Display::Mainloop() {
             PrepareTask(currentRenderContext, currentRenderTask, ignorePosition);
         }        
 
+		if (currentRenderContext.renderDataPipe
+			&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
+			auto& atomTask = *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask);
+			currentRenderContext.renderPositionsHost.resize(currentRenderContext.renderDataPipe->PositionCount());
+			int64_t renderStep = -1;
+			if (currentRenderContext.renderDataPipe->TryCopyToHost(
+				currentRenderContext.renderPositionsHost.data(), currentRenderContext.renderPositionsHost.size(), renderStep)) {
+				auto status = atomTask.simStatus;
+				status.step = renderStep;
+				PrepareNewRenderTask(currentRenderContext, atomTask, Rendering::SimulationTaskUpdate{
+					currentRenderContext.renderPositionsHost.data(), nullptr, status });
+				updatedPositions = true;
+			}
+		}
+
 
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
@@ -362,14 +387,15 @@ bool Display::ApplyPendingFramebufferResize() {
 		return false;
 
 	framebufferResizePending = false;
-	camera->UpdateViewport(framebufferSize);
+	if (activeRenderContext)
+		activeRenderContext->camera->UpdateViewport(framebufferSize);
 	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
 	if (renderTargetControl)
 		renderTargetControl->Resize(framebufferSize);
 	return true;
 }
 
-void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking) {
+void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking, RenderDataPipe* renderDataPipe) {
     {
         if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
             if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {
@@ -379,7 +405,7 @@ void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking) {
 		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
 
         if (incomingRenderTasksGlobal.size() < 20) // With too many tasks, drop incoming
-            incomingRenderTasksGlobal.push_back({simId, std::move(task)});
+            incomingRenderTasksGlobal.push_back({simId, std::move(task), renderDataPipe});
     }
 
     if (blocking) {
@@ -449,8 +475,10 @@ Float3 Convert(const glm::vec3& v) {
 }
 
 std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
-    if (activeGizmo && (activeGizmo->pullForce || activeGizmo->rotateForce)) {        
-        return LiveEdit::MoveMolecule(Convert(activeGizmo->pullForce.value_or(glm::vec3{})), Convert(activeGizmo->rotateForce.value_or(glm::vec3{})));
+    if (activeRenderContext && activeRenderContext->activeGizmo
+		&& (activeRenderContext->activeGizmo->pullForce || activeRenderContext->activeGizmo->rotateForce)) {
+		auto& gizmo = *activeRenderContext->activeGizmo;
+        return LiveEdit::MoveMolecule(Convert(gizmo.pullForce.value_or(glm::vec3{})), Convert(gizmo.rotateForce.value_or(glm::vec3{})));
     }
     if (bool stopMove = stopMovingLiveeditCmd.exchange(false)) {
 		return LiveEdit::MoveMolecule{};

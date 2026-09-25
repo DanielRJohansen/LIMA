@@ -246,16 +246,19 @@ void TransformGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camer
 
 // ----------------------------------------- GLFW callbacks ----------------------------------------- //
 void Display::OnMouseMove(double xpos, double ypos) {
-    if (activeGizmo && activeGizmo->activeAxis.has_value()) {
-		activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), *camera, windowSize);
+	if (!activeRenderContext)
+		return;
+	auto& renderContext = *activeRenderContext;
+    if (renderContext.activeGizmo && renderContext.activeGizmo->activeAxis.has_value()) {
+		renderContext.activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), *renderContext.camera, windowSize);
     }
     else if (isDragging) {
-		revolveCamera = false;
+		renderContext.revolveCamera = false;
         const float sensitivity = 0.001f;
         const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
         const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity;
 
-		camera->Update(xOffset, -yOffset, 0);
+		renderContext.camera->Update(xOffset, -yOffset, 0);
     }
 
     mousePos.x = xpos;
@@ -263,27 +266,31 @@ void Display::OnMouseMove(double xpos, double ypos) {
 }
 
 void Display::HandleGizmo(int objectId) {
-    if (!allowUserInputs)
+    if (!allowUserInputs || !activeRenderContext)
         return;
+	auto& renderContext = *activeRenderContext;
 
     if (objectId == -1) {
-        activeGizmo.reset();
+		renderContext.activeGizmo.reset();
         stopMovingLiveeditCmd.store(true);
         return;
     }
 
-    if (!activeGizmo) {
-		activeGizmo = std::make_unique<TransformGizmo>();
+    if (!renderContext.activeGizmo) {
+		renderContext.activeGizmo = std::make_unique<TransformGizmo>();
     }
     if (activeRenderContext && objectId >= 0 && objectId < activeRenderContext->renderAtomsHost.size()) {
-        activeGizmo->position = glm::vec3{ activeRenderContext->renderAtomsHost[objectId].position.x, activeRenderContext->renderAtomsHost[objectId].position.y, activeRenderContext->renderAtomsHost[objectId].position.z };
-        activeGizmo->idOfAtomAttachedTo = objectId;
+		renderContext.activeGizmo->position = glm::vec3{ activeRenderContext->renderAtomsHost[objectId].position.x, activeRenderContext->renderAtomsHost[objectId].position.y, activeRenderContext->renderAtomsHost[objectId].position.z };
+		renderContext.activeGizmo->idOfAtomAttachedTo = objectId;
     }
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
+	if (!activeRenderContext)
+		return;
+	auto& renderContext = *activeRenderContext;
 	if (action == GLFW_PRESS)
-		revolveCamera = false;
+		renderContext.revolveCamera = false;
 
 	glm::ivec2 pixel{ static_cast<int>(mousePos.x),        static_cast<int>(mousePos.y) };
 	const int objectId = GetObjectIdAtPixel(pixel);
@@ -296,16 +303,16 @@ void Display::OnMouseButton(int button, int action, int mods) {
             timeAtBtnDown = std::chrono::steady_clock::now();
             isDragging = true;
 
-            if (activeGizmo) {
-				activeGizmo->SetActiveAxis(objectId);
-				activeGizmo->BeginDragging(mousePos, *camera, windowSize);
+            if (renderContext.activeGizmo) {
+				renderContext.activeGizmo->SetActiveAxis(objectId);
+				renderContext.activeGizmo->BeginDragging(mousePos, *renderContext.camera, windowSize);
             }
 
         }
         else if (action == GLFW_RELEASE) {
-            if (activeGizmo) {
-                activeGizmo->activeAxis.reset();
-                activeGizmo->pullForce.reset();
+			if (renderContext.activeGizmo) {
+				renderContext.activeGizmo->activeAxis.reset();
+				renderContext.activeGizmo->pullForce.reset();
 				stopMovingLiveeditCmd.store(true);
             }
 
@@ -337,15 +344,19 @@ void Display::OnMouseButton(int button, int action, int mods) {
 }
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
-	camera->Update(0, 0, yoffset * 0.1f);
+	if (activeRenderContext)
+		activeRenderContext->camera->Update(0, 0, yoffset * 0.1f);
 }
 // -------------------------------------------------------------------------------------------------- //
 
 
 void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
+	if (!activeRenderContext)
+		return;
+	auto& renderContext = *activeRenderContext;
 
-    if (activeGizmo) {
-		activeGizmo->UpdateDraggingForce(mousePos, *camera, windowSize);
+    if (renderContext.activeGizmo) {
+		renderContext.activeGizmo->UpdateDraggingForce(mousePos, *renderContext.camera, windowSize);
     }
 
 
@@ -360,20 +371,20 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
                 }
             }
             else if constexpr (std::is_same_v<T, ColoringMethod>) {
-				rendersettings->coloringMethod = cmd;
+				renderContext.renderSettings->coloringMethod = cmd;
                 shouldRecolorAtoms |= true;
             }
             else if constexpr (std::is_same_v<T, Overlay::SolventVisibility>) {
-				rendersettings->showSolvents = cmd.visible;
+				renderContext.renderSettings->showSolvents = cmd.visible;
                 shouldRecolorAtoms |= true;
             }
 			else if constexpr (std::is_same_v<T, Overlay::ResetCamera>) {
-				camera->Reset();
-				revolveCamera = false;
+				renderContext.camera->Reset();
+				renderContext.revolveCamera = false;
 			}
 			else if constexpr (std::is_same_v<T, Overlay::RevolveCamera>) {
-				revolveCamera = true;
-				lastRevolveTime = std::chrono::high_resolution_clock::now();
+				renderContext.revolveCamera = true;
+				renderContext.lastRevolveTime = std::chrono::high_resolution_clock::now();
 			}
             else {
                 int a = 0;

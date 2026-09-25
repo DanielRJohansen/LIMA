@@ -34,13 +34,16 @@ class GLFWwindow;
 class Overlay;
 struct RenderSettings;
 class SSBO;
+class RenderDataPipe;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
 
 struct RenderContext {
-	RenderContext() = default;
+	RenderContext();
+	~RenderContext();
 	RenderContext(const RenderContext&) = delete;
-	RenderContext(RenderContext&&) = default;
+	RenderContext(RenderContext&&) noexcept;
+	RenderContext& operator=(RenderContext&&) noexcept;
 
 	Rendering::Task currentRenderTask = Rendering::NoTask{};
 	std::deque<Rendering::Task> incomingRenderTasks;
@@ -49,6 +52,17 @@ struct RenderContext {
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
+	RenderDataPipe* renderDataPipe = nullptr;
+	std::vector<Float3> renderPositionsHost;
+
+	std::unique_ptr<RenderSettings> renderSettings;
+	std::unique_ptr<Camera> camera;
+	std::unique_ptr<TransformGizmo> activeGizmo;
+	bool renderAtoms = true;
+	bool renderFacets = true;
+	bool renderFacetsNormals = false;
+	bool revolveCamera = false;
+	std::chrono::high_resolution_clock::time_point lastRevolveTime{};
 };
 
 class Display {
@@ -58,7 +72,7 @@ public:
 	void WaitForDisplayReady();
 
 
-	void Submit(SimulationId, Rendering::Task, bool blocking = false);
+	void Submit(SimulationId, Rendering::Task, bool blocking = false, RenderDataPipe* renderDataPipe = nullptr);
 	void Free(SimulationId);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
@@ -111,18 +125,11 @@ private:
 
 	std::mutex liveEditCommandsQueueMutex;
 	std::deque<LiveEdit::Command> liveEditCommandsQueue;
-	bool renderAtoms = true;
-	bool renderFacets = true;
-	bool renderFacetsNormals = false;
-	std::unique_ptr<RenderSettings> rendersettings;
 	std::unique_ptr<FPS> fps;
-	std::unique_ptr<TransformGizmo> activeGizmo;
-	bool revolveCamera = false;
-	std::chrono::high_resolution_clock::time_point lastRevolveTime{};
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	std::mutex incomingRenderTaskMutex;
-	std::deque<std::tuple<SimulationId, Rendering::Task>> incomingRenderTasksGlobal;
+	std::deque<std::tuple<SimulationId, Rendering::Task, RenderDataPipe*>> incomingRenderTasksGlobal;
 	std::mutex inputMutex;
 	std::deque<std::tuple<SimulationId, std::set<int>>> newSelectionInputs;
 	RenderContext* activeRenderContext = nullptr;
@@ -143,7 +150,6 @@ private:
 	bool setupCompleted = false;
 
 	std::unique_ptr<Overlay> overlay;
-	std::unique_ptr<Camera> camera;
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 	GLFWwindow* window = nullptr;
 	glm::ivec2 windowSize{};

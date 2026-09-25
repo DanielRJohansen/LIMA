@@ -11,6 +11,7 @@
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 #include "BatchCompatibility.h"
+#include "RenderDataPipe.h"
 #include "UpgradeableFileFormat.h"
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
@@ -119,6 +120,7 @@ constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 
 Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
 	: simulation(std::move(simulation))
+	, renderDataPipe(std::make_unique<RenderDataPipe>())
 	, mode(mode)
 	, workDir(workDir)
 	{}
@@ -555,28 +557,32 @@ void Environment::sayHello() {
 
 std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bool profileCuda) {
 	std::vector<Simulation*> simPointers;
+	std::vector<RenderDataPipe*> renderDataPipes;
 	for (auto& session : batch.sessions) {
 		session.avgStepTimes.reserve((session.simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 		simPointers.push_back(session.simulation.get());
+		renderDataPipes.push_back(session.mode == Full ? session.renderDataPipe.get() : nullptr);
 	}
 	if (profileCuda) {
 		cudaDeviceSynchronize();
 		cudaProfilerStart();
 	}
-	Engine engine(simPointers);
+	Engine engine(simPointers, EngineRunMode::Simulation, renderDataPipes);
 
-	auto& controlSession = batch.sessions.front();
-	auto& simulation = controlSession.simulation;
-	const bool emVariant = simulation->simParams.em_variant;
-	const bool stepwise = simulation->simParams.stepwise;
+	const bool stepwise = batch.sessions.front().simulation->simParams.stepwise;
 	std::unique_ptr<Display> display;
-	if (controlSession.mode == Full) {
+	if (std::ranges::any_of(batch.sessions, [](const auto& session) { return session.mode == Full; })) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
-		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-			simulation->box->boxparams, controlSession.simStatus, simulation->box->backboneChains
-		), stepwise);
+		for (size_t simulationId = 0; simulationId < batch.sessions.size(); ++simulationId) {
+			auto& session = batch.sessions[simulationId];
+			if (session.mode != Full) continue;
+			auto& member = session.simulation;
+			display->Submit(static_cast<SimulationId>(simulationId), std::make_unique<Rendering::AtomRenderTask>(
+				member->box->persistentClusters, member->box->persistentClustersMetadata,
+				member->box->boxparams, session.simStatus, member->box->backboneChains
+			), stepwise, session.renderDataPipe.get());
+		}
 	}
 
 	const auto started = std::chrono::steady_clock::now();
@@ -590,7 +596,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 		}
 	}
 	while (!engine.IsFinished()) {
-		if (!HandleDisplay(controlSession, engine, simulation->box->boxparams, display.get(), emVariant, stepwise))
+		if (!HandleDisplay(display.get()))
 			break;
 		const auto stepStarted = std::chrono::steady_clock::now();
 		engine.step();
@@ -692,30 +698,13 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 
 
 
-bool Environment::HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
-	auto& simStatus = session.simStatus;
-	auto& step_at_last_render = session.stepAtLastRender;
-	if (session.mode != Full) {
+bool Environment::HandleDisplay(Display* const display) {
+	if (!display)
 		return true;
-	}
 
 	auto displayException = display->displayThreadException;
 	if (displayException) {
 		std::rethrow_exception(displayException);
-	}
-
-	int64_t stepForMostRecentData = engine.GetRunStatus().stepForMostRecentData;
-	Float3* renderPositions = engine.GetRunStatus().most_recent_positions;
-	const std::string info = emVariant
-		? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine.GetRunStatus().current_step), static_cast<float>(engine.GetRunStatus().greatestForce))
-		: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine.GetRunStatus().current_step), static_cast<float>(engine.GetRunStatus().current_temperature));
-
-	if (stepForMostRecentData > step_at_last_render) {
-		display->Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(
-			renderPositions, nullptr, simStatus
-		), stepwise);
-		step_at_last_render = stepForMostRecentData;
-		//engine->GetRunStatus().most_recent_positions = nullptr;
 	}
 
 	return !display->DisplaySelfTerminated();

@@ -19,6 +19,7 @@
 class Display;
 struct BoxImage;
 class Engine;
+class RenderDataPipe;
 struct LiveEditData;
 struct ScheduledSimulationState;
 struct SimulationResult;
@@ -99,6 +100,7 @@ class Environment
 
 		std::unique_ptr<Simulation> simulation;
 		std::unique_ptr<Engine> engine = nullptr;
+		std::unique_ptr<RenderDataPipe> renderDataPipe;
 		std::chrono::steady_clock::time_point time0;
 		std::optional<TimeIt> simulationTimer;
 		std::vector<float> avgStepTimes;
@@ -106,7 +108,6 @@ class Environment
 		std::deque<LiveEdit::Command> liveEditCommandsQueue;
 		SimStatus simStatus{};
 		bool forceWriteSimstatusToDisplay = false;
-		int64_t stepAtLastRender = INT64_MIN;
 		EnvMode mode;
 		fs::path workDir;
 	};
@@ -209,8 +210,7 @@ private:
 	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/, size_t simulationId = 0);
 
 	// Returns false if display has been closed by user
-	bool HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams,
-		Display* display, bool emVariant, bool stepwise);
+	bool HandleDisplay(Display* display);
 
 	void sayHello();
 

@@ -15,6 +15,7 @@
 #include "ParticleClusters.cuh"
 #include "SuperclusterTaskBuilder.cuh"
 #include "BatchData.cuh"
+#include "RenderDataPipe.h"
 
 #include <random>
 #include <numeric>
@@ -29,12 +30,17 @@ EngineBatchData::~EngineBatchData() {
 	if (superclusterStagingControl) superclusterStagingControl->Free();
 }
 
-Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode)
-	: mode(mode), batch(std::make_unique<EngineBatchData>())
+Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
+	const std::vector<RenderDataPipe*>& inputRenderDataPipes)
+	: mode(mode), batch(std::make_unique<EngineBatchData>()), renderDataPipes(inputRenderDataPipes)
 {
 	if (mode == EngineRunMode::Interactive && simulations.size() != 1)
 		throw std::invalid_argument("Interactive engines require one simulation");
+	if (!renderDataPipes.empty() && renderDataPipes.size() != simulations.size())
+		throw std::invalid_argument("Render data pipe count does not match simulation count");
 	EngineBatch::Pack(*batch, simulations);
+	if (renderDataPipes.empty())
+		renderDataPipes.resize(simulations.size(), nullptr);
 	if (mode == EngineRunMode::Interactive) {
 		batch->simulations.front().device.active = true;
 		batch->simulations.front().runstatus.simulation_finished = false;
@@ -43,6 +49,11 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode)
 	try {
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
 		cudaStreamCreate(&pmeStream);
+		for (size_t simulationId = 0; simulationId < renderDataPipes.size(); ++simulationId) {
+			if (!renderDataPipes[simulationId]) continue;
+			const auto count = batch->simulations[simulationId].device.pclusters.count * PersistentCluster::maxParticles;
+			renderDataPipes[simulationId]->Initialize(count);
+		}
 		batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
 		batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
 		batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
@@ -166,6 +177,17 @@ void Engine::RebuildActiveBatch() {
 	Synchronize();
 }
 
+namespace {
+	__global__ void PackRenderPositions(const PersistentCluster* source, Float3* destination,
+		int pclusterOffset, int positionCount) {
+		const int positionId = blockIdx.x * blockDim.x + threadIdx.x;
+		if (positionId >= positionCount) return;
+		const int pclusterId = positionId / PersistentCluster::maxParticles;
+		const int lane = positionId % PersistentCluster::maxParticles;
+		destination[positionId] = source[pclusterOffset + pclusterId].pqd[lane].position;
+	}
+}
+
 void Engine::step() {
 	if (IsFinished()) return;
 	LIMA_UTILS::genericErrorCheckNoSync("Error before step");
@@ -184,6 +206,7 @@ void Engine::step() {
 		++sim.simulation->step;
 		sim.step = sim.simulation->getStep();
 	}
+	PublishRenderData();
 	const bool rebuilt = hostMaster();
 	if (!rebuilt && !IsFinished() && batch->step % batch->params.stepsPerNlistupdate == 0) {
 		batch->superClustersControl->Reset(batch->nGridnodes, cudaStreams[0]);
@@ -191,6 +214,29 @@ void Engine::step() {
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error after step");
+}
+
+void Engine::PublishRenderData() {
+	if (batch->step % StepsPerRender != 0)
+		return;
+	for (size_t simulationId = 0; simulationId < batch->simulations.size(); ++simulationId) {
+		auto* pipe = renderDataPipes[simulationId];
+		auto& simulation = batch->simulations[simulationId];
+		if (!pipe || !simulation.device.active)
+			continue;
+		Float3* destination = pipe->TryBeginWrite();
+		if (!destination)
+			continue;
+		const int count = simulation.device.pclusters.count * PersistentCluster::maxParticles;
+		PackRenderPositions<<<(count + 255) / 256, 256, 0, cudaStreams[0]>>>(
+			batch->pClusterDevice.Get(), destination, simulation.device.pclusters.offset, count);
+		if (cudaPeekAtLastError() != cudaSuccess) {
+			pipe->CancelWrite();
+			LIMA_UTILS::genericErrorCheckNoSync("Could not pack render positions");
+			continue;
+		}
+		pipe->Publish(cudaStreams[0], simulation.step);
+	}
 }
 
 bool Engine::hostMaster() {
@@ -275,8 +321,6 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 	}
 	cudaStreamSynchronize(cudaStreams[0]);
 	sim.nLogEntriesTransferred = entries;
-	sim.runstatus.stepForMostRecentData = sim.step;
-	sim.runstatus.most_recent_positions = sim.simulation->traj_buffer->getBufferAtIndex(entries - 1);
 }
 
 CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState(size_t simulationId) {
@@ -352,7 +396,6 @@ void Engine::BootstrapTrajbufferWithCoords(EngineSimulationData& sim) {
 	for (int pc = 0; pc < sim.device.pclusters.count; ++pc)
 		for (int lane = 0; lane < PersistentCluster::maxParticles; ++lane)
 			sim.simulation->traj_buffer->GetDatapoint(pc, lane, 0) = sim.simulation->box->persistentClusters[pc].pqd[lane].position;
-	sim.runstatus.most_recent_positions = sim.simulation->traj_buffer->getBufferAtIndex(0);
 }
 
 void Engine::HandleEarlyStoppingInEM(EngineSimulationData& sim) {

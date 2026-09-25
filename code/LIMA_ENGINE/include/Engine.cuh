@@ -26,6 +26,7 @@ class SuperclusterStagingControl;
 class TaskBuilderControl;
 struct EngineSimulationData;
 struct EngineBatchData;
+class RenderDataPipe;
 
 namespace NeighborList { class Controller; }
 
@@ -36,8 +37,6 @@ namespace NeighborList{struct IdAndRelshift;}
 
 
 struct RunStatus {
-	Float3* most_recent_positions = nullptr; // TODO: Refactor this out
-	int64_t stepForMostRecentData = -1;
 	int64_t current_step = 0;
 	float current_temperature = NAN;
 	float greatestForce = NAN; // measured in a single particle
@@ -53,7 +52,8 @@ class Engine {
 public:
 	// Simulations are nonowning and must outlive this engine. Interactive mode
 	// supports the existing single-simulation live editor without a step limit.
-	explicit Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode = EngineRunMode::Simulation);
+	explicit Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode = EngineRunMode::Simulation,
+		const std::vector<RenderDataPipe*>& renderDataPipes = {});
 	~Engine();
 
 	void step();
@@ -99,6 +99,7 @@ private:
 
 	// streams every n steps
 	void OffloadLoggingData(EngineSimulationData& simData);
+	void PublishRenderData();
 
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
@@ -118,6 +119,8 @@ private:
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
 	std::unique_ptr<EngineBatchData> batch;
+	std::vector<RenderDataPipe*> renderDataPipes;
+	static constexpr int StepsPerRender = 20;
 
 
 	// Temp

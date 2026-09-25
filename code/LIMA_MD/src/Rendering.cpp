@@ -309,7 +309,8 @@ void Display::_Render(const RenderContext& renderContext, const MoleculeHullColl
 	glfwSetWindowTitle(window, windowText.c_str());
 }
 
-void Display::_Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask) {
+void Display::_Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask,
+	const std::vector<SimulationTab>& tabs) {
 	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
 
 	// Check shaders is Init
@@ -368,7 +369,7 @@ void Display::_Render(const RenderContext& renderContext, const Rendering::Task&
 	}
 
 	overlay->enableConsole = allowUserInputs;
-	overlay->Draw(*renderContext.renderSettings, simStatus, fps->GetFps(), mousePosAtRightBtnDown,
+	overlay->Draw(*renderContext.renderSettings, simStatus, fps->GetFps(), tabs, mousePosAtRightBtnDown,
 		spinnerVisible.load());
 	mousePosAtRightBtnDown = std::nullopt;
 	overlay->Render();

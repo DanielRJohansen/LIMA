@@ -100,6 +100,7 @@ private:
 	// streams every n steps
 	void OffloadLoggingData(EngineSimulationData& simData);
 	void PublishRenderData();
+	void PublishRenderData(size_t simulationIndex);
 
 
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call

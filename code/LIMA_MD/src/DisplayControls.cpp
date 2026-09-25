@@ -1,5 +1,6 @@
 #include "Display.h"
 #include "DisplayInternal.h"
+#include "imgui.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -246,6 +247,10 @@ void TransformGizmo::UpdateDraggingForce(glm::vec2 mousePos, const Camera& camer
 
 // ----------------------------------------- GLFW callbacks ----------------------------------------- //
 void Display::OnMouseMove(double xpos, double ypos) {
+	if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse) {
+		mousePos = { xpos, ypos };
+		return;
+	}
 	if (!activeRenderContext)
 		return;
 	auto& renderContext = *activeRenderContext;
@@ -260,9 +265,7 @@ void Display::OnMouseMove(double xpos, double ypos) {
 
 		renderContext.camera->Update(xOffset, -yOffset, 0);
     }
-
-    mousePos.x = xpos;
-    mousePos.y = ypos;
+	mousePos = { xpos, ypos };
 }
 
 void Display::HandleGizmo(int objectId) {
@@ -289,6 +292,17 @@ void Display::OnMouseButton(int button, int action, int mods) {
 	if (!activeRenderContext)
 		return;
 	auto& renderContext = *activeRenderContext;
+	if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse) {
+		if (action == GLFW_RELEASE) {
+			isDragging = false;
+			if (renderContext.activeGizmo) {
+				renderContext.activeGizmo->activeAxis.reset();
+				renderContext.activeGizmo->pullForce.reset();
+				renderContext.activeGizmo->rotateForce.reset();
+			}
+		}
+		return;
+	}
 	if (action == GLFW_PRESS)
 		renderContext.revolveCamera = false;
 
@@ -344,6 +358,8 @@ void Display::OnMouseButton(int button, int action, int mods) {
 }
 
 void Display::OnMouseScroll(double xoffset, double yoffset) {
+	if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse)
+		return;
 	if (activeRenderContext)
 		activeRenderContext->camera->Update(0, 0, yoffset * 0.1f);
 }
@@ -385,6 +401,11 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
 			else if constexpr (std::is_same_v<T, Overlay::RevolveCamera>) {
 				renderContext.revolveCamera = true;
 				renderContext.lastRevolveTime = std::chrono::high_resolution_clock::now();
+			}
+			else if constexpr (std::is_same_v<T, Overlay::SelectSimulation>) {
+				activeSimulationId = cmd.simulationId;
+				isDragging = false;
+				mousePosAtRightBtnDown.reset();
 			}
             else {
                 int a = 0;

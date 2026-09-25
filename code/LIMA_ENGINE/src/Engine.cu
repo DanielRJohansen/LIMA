@@ -219,24 +219,25 @@ void Engine::step() {
 void Engine::PublishRenderData() {
 	if (batch->step % StepsPerRender != 0)
 		return;
-	for (size_t simulationId = 0; simulationId < batch->simulations.size(); ++simulationId) {
-		auto* pipe = renderDataPipes[simulationId];
-		auto& simulation = batch->simulations[simulationId];
-		if (!pipe || !simulation.device.active)
-			continue;
-		Float3* destination = pipe->TryBeginWrite();
-		if (!destination)
-			continue;
-		const int count = simulation.device.pclusters.count * PersistentCluster::maxParticles;
-		PackRenderPositions<<<(count + 255) / 256, 256, 0, cudaStreams[0]>>>(
-			batch->pClusterDevice.Get(), destination, simulation.device.pclusters.offset, count);
-		if (cudaPeekAtLastError() != cudaSuccess) {
-			pipe->CancelWrite();
-			LIMA_UTILS::genericErrorCheckNoSync("Could not pack render positions");
-			continue;
-		}
-		pipe->Publish(cudaStreams[0], simulation.step);
+	for (size_t simulationIndex = 0; simulationIndex < batch->simulations.size(); ++simulationIndex)
+		PublishRenderData(simulationIndex);
+}
+
+void Engine::PublishRenderData(size_t simulationIndex) {
+	auto* pipe = renderDataPipes[simulationIndex];
+	auto& simulation = batch->simulations[simulationIndex];
+	if (!pipe || !simulation.device.active) return;
+	Float3* destination = pipe->TryBeginWrite();
+	if (!destination) return;
+	const int count = simulation.device.pclusters.count * PersistentCluster::maxParticles;
+	PackRenderPositions<<<(count + 255) / 256, 256, 0, cudaStreams[0]>>>(
+		batch->pClusterDevice.Get(), destination, simulation.device.pclusters.offset, count);
+	if (cudaPeekAtLastError() != cudaSuccess) {
+		pipe->CancelWrite();
+		LIMA_UTILS::genericErrorCheckNoSync("Could not pack render positions");
+		return;
 	}
+	pipe->Publish(cudaStreams[0], simulation.step);
 }
 
 bool Engine::hostMaster() {

@@ -1,10 +1,11 @@
 #pragma once
 
-#include "LimaTypes.cuh"
+#include "Simulation.cuh"
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 
 #include <cuda_runtime.h>
 
@@ -30,6 +31,8 @@ public:
 	void CancelWrite();
 	bool TryCopyToHost(Float3* destination, std::size_t destinationCount, int64_t& step);
 	void Stop();
+	void SetStatus(const SimStatus& value, bool completed = false);
+	SimStatus GetStatus(bool& completed) const;
 
 	std::size_t PositionCount() const { return positionCount; }
 	State GetState() const { return state.load(std::memory_order_acquire); }
@@ -42,4 +45,7 @@ private:
 	int deviceId = 0;
 	std::atomic<int64_t> publishedStep{ -1 };
 	std::atomic<State> state{ State::Uninitialized };
+	mutable std::mutex statusMutex;
+	SimStatus status;
+	bool completed = false;
 };

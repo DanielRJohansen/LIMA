@@ -90,3 +90,15 @@ void RenderDataPipe::Stop() {
 	while (current != State::Stopped
 		&& !state.compare_exchange_weak(current, State::Stopped, std::memory_order_acq_rel)) {}
 }
+
+void RenderDataPipe::SetStatus(const SimStatus& value, bool isCompleted) {
+	const std::lock_guard lock(statusMutex);
+	status = value;
+	completed = isCompleted;
+}
+
+SimStatus RenderDataPipe::GetStatus(bool& isCompleted) const {
+	const std::lock_guard lock(statusMutex);
+	isCompleted = completed;
+	return status;
+}

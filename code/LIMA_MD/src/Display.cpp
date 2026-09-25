@@ -17,6 +17,7 @@
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <format>
 
 
 
@@ -280,16 +281,22 @@ void Display::Mainloop() {
         // Check for newly submitted work to display
         {
             std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
-            if (!incomingRenderTasksGlobal.empty()) {
-				auto [simId, incomingRenderTask, renderDataPipe] = std::move(incomingRenderTasksGlobal.front());
+			while (!incomingRenderTasksGlobal.empty()) {
+				auto [simId, incomingRenderTask, renderDataPipe, label] = std::move(incomingRenderTasksGlobal.front());
                 incomingRenderTasksGlobal.pop_front();
                 if (std::holds_alternative<Rendering::FreeTask>(incomingRenderTask)) {
+					if (activeSimulationId == simId) {
+						activeSimulationId.reset();
+						activeRenderContext = nullptr;
+					}
 					renderContexts.erase(simId);
                 }
                 else {
                     auto& context = renderContexts[simId];
 					if (renderDataPipe)
 						context.renderDataPipe = renderDataPipe;
+					if (!label.empty())
+						context.label = std::move(label);
                     if (context.incomingRenderTasks.size() < 10)
 					    renderContexts[simId].incomingRenderTasks.push_back(std::move(incomingRenderTask));
                 }
@@ -304,7 +311,21 @@ void Display::Mainloop() {
 			activeRenderContext = nullptr;
 			continue;
 		}
-		RenderContext& currentRenderContext = renderContexts.begin()->second;
+		if (!activeSimulationId || !renderContexts.contains(*activeSimulationId))
+			activeSimulationId = renderContexts.begin()->first;
+		auto currentContextIt = renderContexts.find(*activeSimulationId);
+		RenderContext& currentRenderContext = currentContextIt->second;
+		const bool switchedContext = activeRenderContext != &currentRenderContext;
+		if (switchedContext) {
+			isDragging = false;
+			mousePosAtRightBtnDown.reset();
+			if (activeRenderContext && activeRenderContext->activeGizmo) {
+				activeRenderContext->activeGizmo->activeAxis.reset();
+				activeRenderContext->activeGizmo->pullForce.reset();
+				activeRenderContext->activeGizmo->rotateForce.reset();
+				stopMovingLiveeditCmd.store(true);
+			}
+		}
 		activeRenderContext = &currentRenderContext;
 		currentRenderContext.camera->UpdateViewport(framebufferSize);
 		auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
@@ -367,14 +388,30 @@ void Display::Mainloop() {
 			}
 		}
 
+		std::vector<SimulationTab> tabs;
+		tabs.reserve(renderContexts.size());
+		for (auto& [simulationId, context] : renderContexts) {
+			if (context.renderDataPipe) {
+				bool completed = false;
+				auto status = context.renderDataPipe->GetStatus(completed);
+				context.completed = completed;
+				if (simulationId == *activeSimulationId
+					&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask))
+					std::get<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask)->simStatus = std::move(status);
+			}
+			tabs.push_back(SimulationTab{ simulationId,
+				context.label.empty() ? std::format("Simulation {}", simulationId + 1) : context.label,
+				simulationId == *activeSimulationId, context.completed });
+		}
+
 
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newTask || updatedPositions || newInput || framebufferWasResized
+        bool shouldDraw = newTask || updatedPositions || newInput || framebufferWasResized || switchedContext
 			|| frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
-            _Render(currentRenderContext, currentRenderTask);
+            _Render(currentRenderContext, currentRenderTask, tabs);
 
 			fps->NewFrame();
             frameTime = TimeIt{};
@@ -395,7 +432,8 @@ bool Display::ApplyPendingFramebufferResize() {
 	return true;
 }
 
-void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking, RenderDataPipe* renderDataPipe) {
+void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking,
+	RenderDataPipe* renderDataPipe, std::string label) {
     {
         if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
             if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {
@@ -404,8 +442,7 @@ void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking, Re
         }
 		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
 
-        if (incomingRenderTasksGlobal.size() < 20) // With too many tasks, drop incoming
-            incomingRenderTasksGlobal.push_back({simId, std::move(task), renderDataPipe});
+		incomingRenderTasksGlobal.push_back({simId, std::move(task), renderDataPipe, std::move(label)});
     }
 
     if (blocking) {

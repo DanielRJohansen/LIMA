@@ -6,6 +6,7 @@
 #include "MDFiles.h"
 #include "Trajectory.h"
 #include "LiveEditCommands.h"
+#include "RenderTask.h"
 
 #include <memory>
 #include <chrono>
@@ -94,10 +95,11 @@ private:
 class Environment
 {
 	struct SimulationSession {
-		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
+		SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
 		~SimulationSession();
 		SimulationSession(SimulationSession&&) noexcept;
 
+		SimulationId simulationId;
 		std::unique_ptr<Simulation> simulation;
 		std::unique_ptr<Engine> engine = nullptr;
 		std::unique_ptr<RenderDataPipe> renderDataPipe;
@@ -156,11 +158,13 @@ private:
 	struct SimulationSession;
 
 	struct QueuedSimulation {
+		SimulationId simulationId;
 		SimulationJob job;
 		std::shared_ptr<ScheduledSimulationState> state;
 	};
 
 	struct PreparedSimulation {
+		SimulationId simulationId;
 		SimulationJob job;
 		std::shared_ptr<ScheduledSimulationState> state;
 		std::unique_ptr<Simulation> simulation;
@@ -228,6 +232,7 @@ private:
 	static constexpr size_t maxPreparedSimulations = maxBatchSize * 2;
 	static constexpr size_t maxProcessedSimulations = maxBatchSize;
 	int nextBatchId = 1;
+	SimulationId nextSimulationId = 1;
 	std::deque<PreparedSimulation> preparedSimulations;
 	std::deque<ProcessedSimulation> processedSimulations;
 	bool preparingSimulation = false;

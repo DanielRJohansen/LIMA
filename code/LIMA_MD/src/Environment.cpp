@@ -118,8 +118,9 @@ const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
-Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
-	: simulation(std::move(simulation))
+Environment::SimulationSession::SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
+	: simulationId(simulationId)
+	, simulation(std::move(simulation))
 	, renderDataPipe(std::make_unique<RenderDataPipe>())
 	, mode(mode)
 	, workDir(workDir)
@@ -143,7 +144,7 @@ const Environment::SimulationSession& Environment::LiveEditSession() const {
 void Environment::SetLiveEditSimulation(
 	std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir) {
 	if (!liveEditSession) {
-		liveEditSession = std::make_unique<SimulationSession>(std::move(simulation), mode, workDir);
+		liveEditSession = std::make_unique<SimulationSession>(0, std::move(simulation), mode, workDir);
 		return;
 	}
 
@@ -190,7 +191,7 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 		const std::lock_guard lock(schedulingMutex);
 		if (stopping)
 			throw std::runtime_error("Cannot submit a simulation while Environment is stopping");
-		pendingSimulations.push_back({ std::move(job), state });
+		pendingSimulations.push_back({ nextSimulationId++, std::move(job), state });
 		++unpreparedSimulations;
 	}
 	schedulerWakeup.notify_one();
@@ -327,7 +328,7 @@ void Environment::Preprocess(QueuedSimulation next) {
 		const auto elapsed = std::chrono::steady_clock::now() - started;
 		const std::lock_guard lock(schedulingMutex);
 		preparedSimulations.emplace_back(PreparedSimulation{
-			std::move(next.job), next.state, std::move(simulation), elapsed });
+			next.simulationId, std::move(next.job), next.state, std::move(simulation), elapsed });
 	}
 	catch (...) {
 		next.state->SetError(std::current_exception());
@@ -347,7 +348,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		BatchSession batch;
 		batch.sessions.reserve(next.size());
 		for (auto& member : next)
-			batch.sessions.emplace_back(std::move(member.simulation), member.job.mode, member.job.workDir);
+			batch.sessions.emplace_back(member.simulationId, std::move(member.simulation), member.job.mode, member.job.workDir);
 		if (next.front().job.run)
 			RunSimulation(batch, next.front().job.profileCuda);
 		// RunSimulation destroys Engine before any of its nonowning simulation
@@ -487,7 +488,7 @@ void Environment::InitializeLiveEditSimulation(
 	SimulationSession& session = LiveEditSession();
 
 	if (display) {
-		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
+		display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 			session.simulation->box->persistentClusters, session.simulation->box->persistentClustersMetadata,
 			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains
 		));
@@ -574,14 +575,18 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 	if (std::ranges::any_of(batch.sessions, [](const auto& session) { return session.mode == Full; })) {
 		display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
-		for (size_t simulationId = 0; simulationId < batch.sessions.size(); ++simulationId) {
-			auto& session = batch.sessions[simulationId];
+		for (size_t simulationIndex = 0; simulationIndex < batch.sessions.size(); ++simulationIndex) {
+			auto& session = batch.sessions[simulationIndex];
 			if (session.mode != Full) continue;
 			auto& member = session.simulation;
-			display->Submit(static_cast<SimulationId>(simulationId), std::make_unique<Rendering::AtomRenderTask>(
+			session.renderDataPipe->SetStatus(session.simStatus);
+			std::string label = session.workDir.filename().string();
+			if (label.empty()) label = "Simulation";
+			label += std::format(" {}", simulationIndex + 1);
+			display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 				member->box->persistentClusters, member->box->persistentClustersMetadata,
 				member->box->boxparams, session.simStatus, member->box->backboneChains
-			), stepwise, session.renderDataPipe.get());
+			), stepwise, session.renderDataPipe.get(), std::move(label));
 		}
 	}
 
@@ -604,6 +609,8 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			auto& session = batch.sessions[i];
 			if (session.engineTime) continue;
 			UpdateSimstatus(session, engine, true, true, i);
+			if (session.mode == Full)
+				session.renderDataPipe->SetStatus(session.simStatus, engine.GetRunStatus(i).simulation_finished);
 			if (engine.GetRunStatus(i).simulation_finished) {
 				session.engineTime = std::chrono::steady_clock::now() - started;
 				session.simulationTimer->stop();
@@ -622,6 +629,10 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			session.simulationTimer->stop();
 		}
 		session.simulation->finished = true;
+		if (session.mode == Full) {
+			session.simStatus.step = session.simulation->getStep();
+			session.renderDataPipe->SetStatus(session.simStatus, true);
+		}
 	}
 	if (profileCuda) {
 		cudaDeviceSynchronize();

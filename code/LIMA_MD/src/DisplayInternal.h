@@ -59,7 +59,8 @@ public:
 	struct SolventVisibility { bool visible = true; };
 	struct ResetCamera {};
 	struct RevolveCamera {};
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera>;
+	struct SelectSimulation { SimulationId simulationId = 0; };
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation>;
 private:
 	bool didDrawThisFrame = false;
 
@@ -73,7 +74,7 @@ public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&, const SimStatus&, int fps,
+	void Draw(RenderSettings&, const SimStatus&, int fps, const std::vector<SimulationTab>& tabs,
 		std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible);
 	void Render();
 };

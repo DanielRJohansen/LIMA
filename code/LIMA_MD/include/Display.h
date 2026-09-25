@@ -38,6 +38,13 @@ class RenderDataPipe;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
 
+struct SimulationTab {
+	SimulationId simulationId = 0;
+	std::string label;
+	bool active = false;
+	bool completed = false;
+};
+
 struct RenderContext {
 	RenderContext();
 	~RenderContext();
@@ -54,6 +61,8 @@ struct RenderContext {
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
 	RenderDataPipe* renderDataPipe = nullptr;
 	std::vector<Float3> renderPositionsHost;
+	std::string label;
+	bool completed = false;
 
 	std::unique_ptr<RenderSettings> renderSettings;
 	std::unique_ptr<Camera> camera;
@@ -72,7 +81,8 @@ public:
 	void WaitForDisplayReady();
 
 
-	void Submit(SimulationId, Rendering::Task, bool blocking = false, RenderDataPipe* renderDataPipe = nullptr);
+	void Submit(SimulationId, Rendering::Task, bool blocking = false,
+		RenderDataPipe* renderDataPipe = nullptr, std::string label = {});
 	void Free(SimulationId);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
@@ -100,7 +110,8 @@ private:
 
 	void _RenderAtoms(const RenderContext& renderContext);
 	void _Render(const RenderContext& renderContext, const MoleculeHullCollection& molCollection, Float3 boxSize);
-	void _Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask);
+	void _Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask,
+		const std::vector<SimulationTab>& tabs);
 	void PrepareTask(RenderContext&, Rendering::Task& task, bool ignorePosition);
 	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask&, bool ignorePosition);
 	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
@@ -129,10 +140,11 @@ private:
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	std::mutex incomingRenderTaskMutex;
-	std::deque<std::tuple<SimulationId, Rendering::Task, RenderDataPipe*>> incomingRenderTasksGlobal;
+	std::deque<std::tuple<SimulationId, Rendering::Task, RenderDataPipe*, std::string>> incomingRenderTasksGlobal;
 	std::mutex inputMutex;
 	std::deque<std::tuple<SimulationId, std::set<int>>> newSelectionInputs;
 	RenderContext* activeRenderContext = nullptr;
+	std::optional<SimulationId> activeSimulationId;
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawFacetsShader> drawFacetsShader;

@@ -269,7 +269,7 @@ Overlay::~Overlay()
     ImGui::DestroyContext();
 }
 
-void DrawSimstatusCard(const SimStatus& status, int fps)
+void DrawSimstatusCard(const SimStatus& status, int fps, float top)
 {
     ImGuiIO& io = ImGui::GetIO();
 
@@ -358,7 +358,7 @@ void DrawSimstatusCard(const SimStatus& status, int fps)
         + (nRows - 1) * rowSpacing
         + titleSpacing;
 
-    const ImVec2 pos(kOuterMargin, kOuterMargin);
+    const ImVec2 pos(kOuterMargin, top);
     const ImVec2 size(cardWidth, cardHeight);
 
     ImGuiWindowFlags flags =
@@ -581,14 +581,51 @@ void DrawSpinner()
 	drawList->PathStroke(ImGui::GetColorU32(kAccent), 0, 3.5f);
 }
 
+void DrawSimulationTabs(const std::vector<SimulationTab>& tabs, std::deque<Overlay::Command>& submittedCommands)
+{
+	if (tabs.size() < 2)
+		return;
+	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+	const ImVec2 pos(displaySize.x * .5f, kOuterMargin);
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
+		| ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar
+		| ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus
+		| ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav;
+	ImGui::SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(.5f, 0.f));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.f, 0.f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14.f, 7.f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.f);
+	ImGui::Begin("###SimulationSelector", nullptr, flags);
+	for (size_t i = 0; i < tabs.size(); ++i) {
+		const auto& tab = tabs[i];
+		if (i > 0)
+			ImGui::SameLine();
+		const std::string visibleLabel = tab.completed ? tab.label + "  ✓" : tab.label;
+		const std::string id = std::format("{}###Simulation{}", visibleLabel, tab.simulationId);
+		ImGui::PushStyleColor(ImGuiCol_Button, tab.active ? kAccent : kPanelBgStrong);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, tab.active
+			? ImVec4(kAccent.x, kAccent.y, kAccent.z, 1.f) : kWidgetHover);
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, kWidgetActive);
+		ImGui::PushStyleColor(ImGuiCol_Text, tab.active ? ImVec4(.12f, .10f, .08f, 1.f) : kText);
+		if (ImGui::Button(id.c_str()) && !tab.active)
+			submittedCommands.push_back(Overlay::SelectSimulation{ tab.simulationId });
+		ImGui::PopStyleColor(4);
+	}
+	ImGui::End();
+	ImGui::PopStyleVar(4);
+}
+
 void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps,
-	std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible)
+	const std::vector<SimulationTab>& tabs, std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible)
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    DrawSimstatusCard(simstatus, fps);
+	DrawSimulationTabs(tabs, submittedCommands);
+	const float statusTop = tabs.size() > 1 ? kOuterMargin + 48.f : kOuterMargin;
+    DrawSimstatusCard(simstatus, fps, statusTop);
     if (enableConsole)
         HandleConsole();
 

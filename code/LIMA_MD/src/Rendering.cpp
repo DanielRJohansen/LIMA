@@ -126,7 +126,7 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 		_RenderAtoms(*activeRenderContext);
 
 	// Must be done last!
-	if (activeRenderContext && activeRenderContext->activeGizmo) {
+	if (gizmoEnabled && activeRenderContext && activeRenderContext->activeGizmo) {
 		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth
 		activeRenderContext->activeGizmo->Draw(drawTrianglesShader.get(), activeRenderContext->camera->ViewProjection());
 	}
@@ -361,7 +361,7 @@ void Display::_Render(const RenderContext& renderContext, const Rendering::Task&
 	}
 
 	
-	if (renderContext.activeGizmo) {
+	if (gizmoEnabled && renderContext.activeGizmo) {
 		// DO NOT RENDER ANYTHING IN 3D AFTER THIS POINT
 		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth
 		renderContext.activeGizmo->Draw(drawTrianglesShader.get(), VP);
@@ -370,7 +370,7 @@ void Display::_Render(const RenderContext& renderContext, const Rendering::Task&
 
 	overlay->enableConsole = allowUserInputs;
 	overlay->Draw(*renderContext.renderSettings, simStatus, fps->GetFps(), tabs, mousePosAtRightBtnDown,
-		spinnerVisible.load());
+		renderContext.selectedMolecule, spinnerVisible.load());
 	mousePosAtRightBtnDown = std::nullopt;
 	overlay->Render();
 

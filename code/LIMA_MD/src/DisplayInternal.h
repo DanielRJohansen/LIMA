@@ -79,7 +79,7 @@ public:
 	~Overlay();
 
 	void Draw(RenderSettings&, const SimStatus&, int fps, const std::vector<SimulationTab>& tabs,
-		std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible);
+		std::optional<glm::dvec2> rightClickedPos, const std::optional<Rendering::MoleculeInfo>& selectedMolecule, bool spinnerVisible);
 	void Render();
 };
 

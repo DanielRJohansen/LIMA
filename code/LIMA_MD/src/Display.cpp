@@ -267,7 +267,7 @@ void Display::Mainloop() {
         
         // Check for new user input
         bool newInput = false;
-        std::deque<std::tuple<SimulationId, std::set<int>>> newSelections;
+		std::deque<std::tuple<SimulationId, std::set<int>, std::optional<Rendering::MoleculeInfo>>> newSelections;
         {
             std::lock_guard<std::mutex> lock(inputMutex);
             newSelections.swap(newSelectionInputs);
@@ -276,6 +276,7 @@ void Display::Mainloop() {
             if (auto context = renderContexts.find(std::get<0>(newSelection)); context != renderContexts.end()) {
 				auto& renderContext = context->second;
                 _UpdateSelection(renderContext, std::get<1>(newSelection));
+				renderContext.selectedMolecule = std::get<2>(newSelection);
                 newInput = true;
 			}
         }
@@ -460,10 +461,11 @@ void Display::Free(SimulationId simId) {
 	Submit(simId, Rendering::FreeTask{}, false);
 }
 
-void Display::UpdateSelection(SimulationId simId, const std::set<int>& selection) {
+void Display::UpdateSelection(SimulationId simId, const std::set<int>& selection,
+	std::optional<Rendering::MoleculeInfo> selectedMolecule) {
 
 	std::lock_guard<std::mutex> lock(inputMutex);
-    newSelectionInputs.emplace_back(simId, selection);
+    newSelectionInputs.emplace_back(simId, selection, std::move(selectedMolecule));
 }
 
 
@@ -514,7 +516,7 @@ Float3 Convert(const glm::vec3& v) {
 }
 
 std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
-    if (activeRenderContext && activeRenderContext->activeGizmo
+	if (gizmoEnabled && activeRenderContext && activeRenderContext->activeGizmo
 		&& (activeRenderContext->activeGizmo->pullForce || activeRenderContext->activeGizmo->rotateForce)) {
 		auto& gizmo = *activeRenderContext->activeGizmo;
         return LiveEdit::MoveMolecule(Convert(gizmo.pullForce.value_or(glm::vec3{})), Convert(gizmo.rotateForce.value_or(glm::vec3{})));

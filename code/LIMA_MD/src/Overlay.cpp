@@ -258,6 +258,22 @@ namespace
         DrawCard("##Telemetry", CardSide::Left, sections);
     }
 
+    void DrawMoleculeInfo(const std::optional<Rendering::MoleculeInfo>& molecule)
+    {
+        if (!molecule)
+            return;
+		const std::string name = molecule->number > 0
+			? std::format("{} (#{})", molecule->name, molecule->number)
+			: molecule->name;
+		CardSection section{ "Molecule info", { { "Name", name } } };
+		if (molecule->number == 0)
+			section.lines.push_back({ "Molecules selected", std::format("{}", molecule->typeCount) });
+		section.lines.push_back({ "Atoms", std::format("{}", molecule->atomIds.size()) });
+        DrawCard("##MoleculeInfo", CardSide::Right, {
+			std::move(section)
+        });
+    }
+
     float DrawMenuBar(RenderSettings& settings, std::deque<Overlay::Command>& commands, int fps,
         unsigned int logoTexture)
     {
@@ -466,7 +482,8 @@ void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dve
 }
 
 void Overlay::Draw(RenderSettings& settings, const SimStatus& status, int fps,
-    const std::vector<SimulationTab>& tabs, std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible)
+    const std::vector<SimulationTab>& tabs, std::optional<glm::dvec2> rightClickedPos,
+	const std::optional<Rendering::MoleculeInfo>& selectedMolecule, bool spinnerVisible)
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -478,6 +495,7 @@ void Overlay::Draw(RenderSettings& settings, const SimStatus& status, int fps,
         - (enableConsole ? consoleHeight + 12.f : 0.f);
     cardLayout = { top, top, bottom };
     DrawTelemetry(status);
+    DrawMoleculeInfo(selectedMolecule);
     if (enableConsole)
         HandleConsole();
     HandleContextMenu(settings, rightClickedPos);

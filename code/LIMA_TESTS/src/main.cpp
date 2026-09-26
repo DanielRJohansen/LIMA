@@ -159,10 +159,11 @@ int main(int argc, char** argv) {
 		//TestDisplayT4();
 		//ProgramsTests::TestToGmx_ciffile(envmode);
 		//LiveEditTest();
-		//BuildCellTest();
+		BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		TestDisplayT4Batch();
+		//TestDisplayT4Batch();
+		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
 		return 0;
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
 		//return 0;

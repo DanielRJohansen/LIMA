@@ -586,7 +586,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			label += std::format(" {}", simulationIndex + 1);
 			display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 				member->box->persistentClusters, member->box->persistentClustersMetadata,
-				member->box->boxparams, session.simStatus, member->box->backboneChains
+				member->box->boxparams, session.simStatus, member->box->backboneChains, Rendering::GetMoleculeInfo(*member->boxImage)
 			), stepwise, session.renderDataPipe.get(), std::move(label));
 		}
 	}

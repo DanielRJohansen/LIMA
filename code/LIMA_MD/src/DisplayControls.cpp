@@ -4,6 +4,7 @@
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <ranges>
 
 
 
@@ -254,7 +255,7 @@ void Display::OnMouseMove(double xpos, double ypos) {
 	if (!activeRenderContext)
 		return;
 	auto& renderContext = *activeRenderContext;
-    if (renderContext.activeGizmo && renderContext.activeGizmo->activeAxis.has_value()) {
+	if (gizmoEnabled && renderContext.activeGizmo && renderContext.activeGizmo->activeAxis.has_value()) {
 		renderContext.activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), *renderContext.camera, windowSize);
     }
     else if (isDragging) {
@@ -269,7 +270,7 @@ void Display::OnMouseMove(double xpos, double ypos) {
 }
 
 void Display::HandleGizmo(int objectId) {
-    if (!allowUserInputs || !activeRenderContext)
+	if (!allowUserInputs || !gizmoEnabled || !activeRenderContext)
         return;
 	auto& renderContext = *activeRenderContext;
 
@@ -286,6 +287,41 @@ void Display::HandleGizmo(int objectId) {
 		renderContext.activeGizmo->position = glm::vec3{ activeRenderContext->renderAtomsHost[objectId].position.x, activeRenderContext->renderAtomsHost[objectId].position.y, activeRenderContext->renderAtomsHost[objectId].position.z };
 		renderContext.activeGizmo->idOfAtomAttachedTo = objectId;
     }
+}
+
+void Display::SelectMolecule(int atomId) {
+	if (!activeRenderContext)
+		return;
+	auto& renderContext = *activeRenderContext;
+	if (!std::holds_alternative<std::unique_ptr<Rendering::AtomRenderTask>>(renderContext.currentRenderTask))
+		return;
+	const auto& molecules = std::get<std::unique_ptr<Rendering::AtomRenderTask>>(renderContext.currentRenderTask)->molecules;
+	const auto molecule = std::ranges::find_if(molecules, [atomId](const auto& atoms) {
+		return std::ranges::find(atoms.atomIds, atomId) != atoms.atomIds.end();
+	});
+	if (molecule == molecules.end()) {
+		renderContext.selectedMolecule.reset();
+		_UpdateSelection(renderContext, {});
+		return;
+	}
+	const bool selectAllOfType = renderContext.selectedMolecule
+		&& renderContext.selectedMolecule->name == molecule->name
+		&& std::ranges::find(renderContext.selectedMolecule->atomIds, atomId) != renderContext.selectedMolecule->atomIds.end()
+		&& lastSelectedAtomId == atomId
+		&& renderContext.selectedMolecule->number > 0;
+	if (selectAllOfType) {
+		Rendering::MoleculeInfo selection{ molecule->name, 0, molecule->typeCount };
+		for (const auto& candidate : molecules)
+			if (candidate.name == molecule->name)
+				selection.atomIds.insert(selection.atomIds.end(), candidate.atomIds.begin(), candidate.atomIds.end());
+		renderContext.selectedMolecule = std::move(selection);
+	}
+	else {
+		renderContext.selectedMolecule = *molecule;
+	}
+	_UpdateSelection(renderContext, std::set<int>{ renderContext.selectedMolecule->atomIds.begin(),
+		renderContext.selectedMolecule->atomIds.end() });
+	lastSelectedAtomId = atomId;
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
@@ -317,7 +353,7 @@ void Display::OnMouseButton(int button, int action, int mods) {
             timeAtBtnDown = std::chrono::steady_clock::now();
             isDragging = true;
 
-            if (renderContext.activeGizmo) {
+			if (gizmoEnabled && renderContext.activeGizmo) {
 				renderContext.activeGizmo->SetActiveAxis(objectId);
 				renderContext.activeGizmo->BeginDragging(mousePos, *renderContext.camera, windowSize);
             }
@@ -338,14 +374,17 @@ void Display::OnMouseButton(int button, int action, int mods) {
             bool isClick = glm::distance(mousePos, mousePosAtBtnDown) < 5. && durationMs < 200;
 
             if (isClick && drawAtomsFromCpuShader) {
-                {
+                if (allowUserInputs) {
                     bool objectIdIsAtomId = ElementIdIsAtomid(objectId);
                     int id = objectIdIsAtomId ? objectId : -1;
                     std::lock_guard<std::mutex> lock(liveEditCommandsQueueMutex);
                     liveEditCommandsQueue.push_back(LiveEdit::AtomSelected{ id });
+                    HandleGizmo(objectId);
                 }
-
-                HandleGizmo(objectId);
+                else if (ElementIdIsAtomid(objectId))
+                    SelectMolecule(objectId);
+                else
+                    SelectMolecule(-1);
             }
         }
     }
@@ -371,7 +410,7 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
 		return;
 	auto& renderContext = *activeRenderContext;
 
-    if (renderContext.activeGizmo) {
+	if (gizmoEnabled && renderContext.activeGizmo) {
 		renderContext.activeGizmo->UpdateDraggingForce(mousePos, *renderContext.camera, windowSize);
     }
 

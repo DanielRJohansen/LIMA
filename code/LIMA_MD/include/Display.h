@@ -63,6 +63,7 @@ struct RenderContext {
 	std::vector<Float3> renderPositionsHost;
 	std::string label;
 	bool completed = false;
+	std::optional<Rendering::MoleculeInfo> selectedMolecule;
 
 	std::unique_ptr<RenderSettings> renderSettings;
 	std::unique_ptr<Camera> camera;
@@ -86,12 +87,14 @@ public:
 	void Free(SimulationId);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
-	void UpdateSelection(SimulationId simulationId, const std::set<int>& particleIds);
+	void UpdateSelection(SimulationId simulationId, const std::set<int>& particleIds,
+		std::optional<Rendering::MoleculeInfo> selectedMolecule = std::nullopt);
 	void SetSpinnerVisible(bool visible) { spinnerVisible.store(visible); }
 
 	volatile int debugValue = 0;
 	std::exception_ptr displayThreadException{ nullptr };
 	std::atomic_bool allowUserInputs = false;
+	std::atomic_bool gizmoEnabled = true;
 
 	static void TestDisplay();
 	static void RenderGrofile(const GroFile& grofile, bool showSolvents = true) {
@@ -124,6 +127,7 @@ private:
 	void OnMouseLeft();
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
+	void SelectMolecule(int atomId);
 	int GetObjectIdAtPixel(glm::ivec2);
 	void ConsumeInputs(bool& shouldRecolorAtoms);
 
@@ -142,7 +146,7 @@ private:
 	std::mutex incomingRenderTaskMutex;
 	std::deque<std::tuple<SimulationId, Rendering::Task, RenderDataPipe*, std::string>> incomingRenderTasksGlobal;
 	std::mutex inputMutex;
-	std::deque<std::tuple<SimulationId, std::set<int>>> newSelectionInputs;
+	std::deque<std::tuple<SimulationId, std::set<int>, std::optional<Rendering::MoleculeInfo>>> newSelectionInputs;
 	RenderContext* activeRenderContext = nullptr;
 	std::optional<SimulationId> activeSimulationId;
 

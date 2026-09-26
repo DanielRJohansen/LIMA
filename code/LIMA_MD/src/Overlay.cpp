@@ -1,4 +1,5 @@
 #include <GL/glew.h>
+#include <stb/stb_image.h>
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -28,6 +29,25 @@ namespace
         | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
         | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings
         | ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    enum class CardSide { Left, Right };
+
+    struct CardLayout {
+        float leftY;
+        float rightY;
+        float bottom;
+    } cardLayout;
+
+    struct CardLine {
+        std::string text;
+        std::string value;
+        std::optional<std::string> unit;
+    };
+
+    struct CardSection {
+        std::string title;
+        std::vector<CardLine> lines;
+    };
 
     void PushOverlayTheme()
     {
@@ -83,6 +103,42 @@ namespace
         ImGui::SetNextWindowPos(pos);
         ImGui::SetNextWindowSize(size);
         ImGui::Begin(name, nullptr, panelFlags | flags);
+    }
+
+    void Metric(const char* label, const std::string& value, const char* unit);
+
+    void DrawCard(const char* name, CardSide side, const std::vector<CardSection>& sections)
+    {
+        const float width = std::min(380.f, ImGui::GetIO().DisplaySize.x - margin * 2.f);
+        float& top = side == CardSide::Left ? cardLayout.leftY : cardLayout.rightY;
+        const float x = side == CardSide::Left ? margin : ImGui::GetIO().DisplaySize.x - margin - width;
+        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.f), ImVec2(width, std::max(80.f, cardLayout.bottom - top)));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.f, 10.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.f, 4.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(0.f, 2.f));
+        BeginPanel(name, ImVec2(x, top), ImVec2(width, 0.f), ImGuiWindowFlags_AlwaysAutoResize);
+        for (size_t i = 0; i < sections.size(); ++i) {
+            const auto& section = sections[i];
+            if (i > 0) {
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+            }
+            ImGui::TextColored(accent, "%s", section.title.c_str());
+            ImGui::PushID(static_cast<int>(i));
+            if (ImGui::BeginTable("##CardSection", 2, ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
+                for (const auto& line : section.lines)
+                    Metric(line.text.c_str(), line.value, line.unit ? line.unit->c_str() : "");
+                ImGui::EndTable();
+            }
+            ImGui::PopID();
+        }
+        const float height = ImGui::GetWindowHeight();
+        ImGui::End();
+        ImGui::PopStyleVar(3);
+        top += height + 12.f;
     }
 
     void SectionLabel(const char* label)
@@ -151,63 +207,55 @@ namespace
         }
     }
 
-    void DrawTelemetry(const SimStatus& status, float top, float bottom)
+    void DrawTelemetry(const SimStatus& status)
     {
         if (!status.step && !status.temperature && !status.maxForce
             && !status.expectedTimeToFinish && !status.avgStepTime && !status.simulationPerformance)
             return;
 
-        const float width = std::min(380.f, ImGui::GetIO().DisplaySize.x - margin * 2.f);
         const bool hasSimulation = status.step || status.temperature || status.maxForce || status.expectedTimeToFinish;
-        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.f), ImVec2(width, std::max(80.f, bottom - top)));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.f, 10.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.f, 4.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(0.f, 2.f));
-        BeginPanel("##Telemetry", ImVec2(margin, top), ImVec2(width, 0.f), ImGuiWindowFlags_AlwaysAutoResize);
-        if (hasSimulation)
-            ImGui::TextColored(accent, "Simulation");
-
-        if (hasSimulation && ImGui::BeginTable("##Metrics", 2, ImGuiTableFlags_SizingStretchProp)) {
-            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
-            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
+        std::vector<CardSection> sections;
+        if (hasSimulation) {
+            auto& simulation = sections.emplace_back();
+            simulation.title = "Simulation";
             if (status.step)
-                Metric("Step", std::format("{}", *status.step));
+                simulation.lines.push_back({ "Step", std::format("{}", *status.step) });
             if (status.temperature)
-                Metric("Temperature", std::format("{:.2f}", *status.temperature), "K");
+                simulation.lines.push_back({ "Temperature", std::format("{:.2f}", *status.temperature), "K" });
             if (status.maxForce)
-                Metric("Max force", std::format("{:.2e}", *status.maxForce), "kJ/mol/nm");
+                simulation.lines.push_back({ "Max force", std::format("{:.2e}", *status.maxForce), "kJ/mol/nm" });
             if (status.expectedTimeToFinish)
-                Metric("Remaining", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2));
-            ImGui::EndTable();
+                simulation.lines.push_back({ "Remaining", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2) });
         }
         if (status.avgStepTime || status.simulationPerformance) {
-            if (hasSimulation) {
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
-            }
-            ImGui::TextColored(accent, "Performance");
-            if (ImGui::BeginTable("##Performance", 2, ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
-                if (status.avgStepTime)
-                    Metric("Step time", std::format("{:.3f}", *status.avgStepTime), "ms");
-                if (status.simulationPerformance)
-                    Metric("Throughput", std::format("{:.2f}", *status.simulationPerformance), "ns/day");
-                ImGui::EndTable();
-            }
+            auto& performance = sections.emplace_back();
+            performance.title = "Performance";
+            if (status.avgStepTime)
+                performance.lines.push_back({ "Step time", std::format("{:.3f}", *status.avgStepTime), "ms" });
+            if (status.simulationPerformance)
+                performance.lines.push_back({ "Throughput", std::format("{:.2f}", *status.simulationPerformance), "ns/day" });
         }
-        ImGui::End();
-        ImGui::PopStyleVar(3);
+        DrawCard("##Telemetry", CardSide::Left, sections);
     }
 
-    float DrawMenuBar(RenderSettings& settings, std::deque<Overlay::Command>& commands, int fps)
+    float DrawMenuBar(RenderSettings& settings, std::deque<Overlay::Command>& commands, int fps,
+        unsigned int logoTexture)
     {
         float height = 0.f;
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.f, 4.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.f, 10.f));
         ImGui::PushStyleColor(ImGuiCol_MenuBarBg, menuBg);
         if (ImGui::BeginMainMenuBar()) {
             height = ImGui::GetWindowHeight();
+            if (logoTexture) {
+                const ImVec2 barPos = ImGui::GetWindowPos();
+                const float logoSize = ImGui::GetTextLineHeight();
+                ImGui::GetWindowDrawList()->AddImage(static_cast<ImTextureID>(logoTexture),
+                    ImVec2(barPos.x + 10.f, barPos.y + (height - logoSize) * .5f),
+                    ImVec2(barPos.x + 10.f + logoSize, barPos.y + (height + logoSize) * .5f));
+            }
+            ImGui::SetCursorPosX(logoTexture ? ImGui::GetTextLineHeight() + 18.f : 12.f);
+            ImGui::TextColored(accent, "LIMA");
+            ImGui::SameLine(0.f, 16.f);
             if (ImGui::BeginMenu("Representation")) {
                 ColoringMenu(settings, commands);
                 ImGui::Separator();
@@ -320,12 +368,29 @@ Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir)
     PushOverlayTheme();
     ImGui::GetStyle().FontScaleMain = 1.0f / contentScale;
 
+    int logoWidth = 0;
+    int logoHeight = 0;
+    int logoChannels = 0;
+    unsigned char* logoPixels = stbi_load(
+        (limaDir / "resources" / "logo" / "Lima_Symbol_64x64.png").string().c_str(),
+        &logoWidth, &logoHeight, &logoChannels, 4);
+    if (logoPixels) {
+        glGenTextures(1, &logoTexture);
+        glBindTexture(GL_TEXTURE_2D, logoTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, logoWidth, logoHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, logoPixels);
+        stbi_image_free(logoPixels);
+    }
+
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
 }
 
 Overlay::~Overlay()
 {
+    if (logoTexture)
+        glDeleteTextures(1, &logoTexture);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -387,11 +452,12 @@ void Overlay::Draw(RenderSettings& settings, const SimStatus& status, int fps,
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    const float menuHeight = DrawMenuBar(settings, submittedCommands, fps);
+    const float menuHeight = DrawMenuBar(settings, submittedCommands, fps, logoTexture);
     const float top = DrawSimulationTabs(tabs, submittedCommands, menuHeight);
     const float bottom = ImGui::GetIO().DisplaySize.y - margin
         - (enableConsole ? consoleHeight + 12.f : 0.f);
-    DrawTelemetry(status, top, bottom);
+    cardLayout = { top, top, bottom };
+    DrawTelemetry(status);
     if (enableConsole)
         HandleConsole();
     HandleContextMenu(settings, rightClickedPos);

@@ -63,6 +63,7 @@ public:
 	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation>;
 private:
 	bool didDrawThisFrame = false;
+	unsigned int logoTexture = 0;
 	bool scrollConsoleToBottom = false;
 	std::array<char, 512> consoleInput{};
 	std::deque<std::string> consoleLines;

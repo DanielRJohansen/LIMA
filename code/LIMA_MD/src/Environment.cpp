@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <optional>
@@ -699,9 +700,24 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 
 	// "Free" updates
 	if (simulation->simParams.em_variant) {
-		simStatus.maxForce = engine.GetRunStatus(simulationId).greatestForce;
+		const float maxForce = engine.GetRunStatus(simulationId).greatestForce;
+		simStatus.maxForce = maxForce;
+		if (!session.initialEmMaxForce && std::isfinite(maxForce) && maxForce > 0.f)
+			session.initialEmMaxForce = maxForce;
+		if (session.initialEmMaxForce && simulation->simParams.em_force_tolerance > 0.f) {
+			const float forceTolerance = simulation->simParams.em_force_tolerance;
+			if (*session.initialEmMaxForce <= forceTolerance)
+				simStatus.progress = 1.f;
+			else if (std::isfinite(maxForce) && maxForce > 0.f) {
+				const float totalLogReduction = std::log(*session.initialEmMaxForce / forceTolerance);
+				const float logReduction = std::log(*session.initialEmMaxForce / std::max(maxForce, forceTolerance));
+				simStatus.progress = std::clamp(logReduction / totalLogReduction, 0.f, 1.f);
+			}
+		}
 	}
 	else {
+		if (simulation->simParams.n_steps > 0)
+			simStatus.progress = std::clamp(static_cast<float>(simulation->getStep()) / simulation->simParams.n_steps, 0.f, 1.f);
 		if (!std::isnan(engine.GetRunStatus(simulationId).current_temperature))
 			simStatus.temperature = engine.GetRunStatus(simulationId).current_temperature;
 	}

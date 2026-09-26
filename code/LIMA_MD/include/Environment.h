@@ -105,6 +105,7 @@ class Environment
 		std::unique_ptr<RenderDataPipe> renderDataPipe;
 		std::chrono::steady_clock::time_point time0;
 		std::optional<TimeIt> simulationTimer;
+		std::optional<float> initialEmMaxForce;
 		std::vector<float> avgStepTimes;
 		std::optional<std::chrono::duration<double>> engineTime;
 		std::deque<LiveEdit::Command> liveEditCommandsQueue;

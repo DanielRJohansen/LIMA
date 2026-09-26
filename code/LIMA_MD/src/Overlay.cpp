@@ -42,6 +42,7 @@ namespace
         std::string text;
         std::string value;
         std::optional<std::string> unit;
+        std::optional<float> progress;
     };
 
     struct CardSection {
@@ -126,13 +127,30 @@ namespace
             }
             ImGui::TextColored(accent, "%s", section.title.c_str());
             ImGui::PushID(static_cast<int>(i));
-            if (ImGui::BeginTable("##CardSection", 2, ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
-                for (const auto& line : section.lines)
+            bool tableOpen = false;
+            for (const auto& line : section.lines) {
+                if (line.progress) {
+                    if (tableOpen) {
+                        ImGui::EndTable();
+                        tableOpen = false;
+                    }
+                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, accent);
+                    ImGui::ProgressBar(*line.progress, ImVec2(-1.f, 5.f), "");
+                    ImGui::PopStyleColor();
+                    continue;
+                }
+                if (!tableOpen) {
+                    tableOpen = ImGui::BeginTable("##CardSection", 2, ImGuiTableFlags_SizingStretchProp);
+                    if (tableOpen) {
+                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
+                        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
+                    }
+                }
+                if (tableOpen)
                     Metric(line.text.c_str(), line.value, line.unit ? line.unit->c_str() : "");
-                ImGui::EndTable();
             }
+            if (tableOpen)
+                ImGui::EndTable();
             ImGui::PopID();
         }
         const float height = ImGui::GetWindowHeight();
@@ -220,6 +238,8 @@ namespace
             simulation.title = "Simulation";
             if (status.step)
                 simulation.lines.push_back({ "Step", std::format("{}", *status.step) });
+            if (status.progress)
+                simulation.lines.push_back({ {}, {}, {}, std::clamp(*status.progress, 0.f, 1.f) });
             if (status.temperature)
                 simulation.lines.push_back({ "Temperature", std::format("{:.2f}", *status.temperature), "K" });
             if (status.maxForce)

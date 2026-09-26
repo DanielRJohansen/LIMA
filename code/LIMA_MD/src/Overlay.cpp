@@ -6,230 +6,286 @@
 #include "Display.h"
 #include "DisplayInternal.h"
 #include "Utilities.h"
-#include "filesystem"
 
-#include <deque>
-#include <string>
-#include <cstdio>
+#include <algorithm>
+#include <array>
+#include <filesystem>
 #include <format>
 
 namespace
 {
-    constexpr ImVec4 kPanelBg = ImVec4(0.10f, 0.11f, 0.13f, 0.78f);
-    constexpr ImVec4 kPanelBgStrong = ImVec4(0.12f, 0.13f, 0.16f, 0.88f);
-    constexpr ImVec4 kPanelBorder = ImVec4(0.28f, 0.34f, 0.40f, 0.30f);
-    constexpr ImVec4 kText = ImVec4(0.88f, 0.92f, 0.96f, 1.00f);
-    constexpr ImVec4 kTextDim = ImVec4(0.60f, 0.67f, 0.74f, 1.00f);
-    constexpr ImVec4 kAccent = ImVec4(0.38f, 0.63f, 0.92f, 1.00f);
-    constexpr ImVec4 kWidget = ImVec4(0.18f, 0.20f, 0.24f, 0.95f);
-    constexpr ImVec4 kWidgetHover = ImVec4(0.23f, 0.26f, 0.31f, 0.95f);
-    constexpr ImVec4 kWidgetActive = ImVec4(0.28f, 0.32f, 0.38f, 0.95f);
-
-    constexpr float kOuterMargin = 18.0f;
-    constexpr float kPanelRounding = 8.0f;
-    constexpr float kPanelBorderSize = 1.0f;
-    constexpr float kTopBarHeight = 56.0f;
-    constexpr float kBottomBarHeight = 62.0f;
-    constexpr float kConsoleHeight = 128.0f;
+    constexpr ImVec4 panelBg{ .055f, .063f, .078f, .96f };
+    constexpr ImVec4 menuBg{ .035f, .041f, .051f, 1.f };
+    constexpr ImVec4 tabBg{ .070f, .080f, .096f, 1.f };
+    constexpr ImVec4 panelBorder{ .23f, .27f, .31f, .65f };
+    constexpr ImVec4 textColor{ .89f, .92f, .94f, 1.f };
+    constexpr ImVec4 mutedText{ .56f, .63f, .68f, 1.f };
+    constexpr ImVec4 accent{ .48f, .91f, .76f, 1.f };
+    constexpr ImVec4 selectedBg{ .10f, .22f, .20f, 1.f };
+    constexpr float margin = 20.f;
+    constexpr float consoleHeight = 164.f;
+    constexpr ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoTitleBar
+        | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
+        | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
     void PushOverlayTheme()
     {
-        ImGuiStyle& style = ImGui::GetStyle();
+        auto& style = ImGui::GetStyle();
+        style.WindowRounding = 10.f;
+        style.ChildRounding = 6.f;
+        style.FrameRounding = 5.f;
+        style.PopupRounding = 8.f;
+        style.GrabRounding = 4.f;
+        style.ScrollbarRounding = 4.f;
+        style.WindowBorderSize = 1.f;
+        style.PopupBorderSize = 1.f;
+        style.FrameBorderSize = 0.f;
+        style.WindowPadding = ImVec2(18.f, 16.f);
+        style.FramePadding = ImVec2(12.f, 7.f);
+        style.ItemSpacing = ImVec2(10.f, 10.f);
+        style.ItemInnerSpacing = ImVec2(8.f, 6.f);
+        style.CellPadding = ImVec2(0.f, 6.f);
+        style.ScrollbarSize = 8.f;
 
-        style.WindowRounding = kPanelRounding;
-        style.ChildRounding = 14.0f;
-        style.FrameRounding = 12.0f;
-        style.PopupRounding = 12.0f;
-        style.GrabRounding = 12.0f;
-        style.ScrollbarRounding = 12.0f;
-        style.TabRounding = 12.0f;
-
-        style.WindowBorderSize = kPanelBorderSize;
-        style.FrameBorderSize = 0.0f;
-        style.PopupBorderSize = 0.0f;
-        style.TabBorderSize = 0.0f;
-
-        style.WindowPadding = ImVec2(16.0f, 12.0f);
-        style.FramePadding = ImVec2(12.0f, 9.0f);
-        style.ItemSpacing = ImVec2(14.0f, 10.0f);
-        style.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
-
-        ImVec4* colors = style.Colors;
-        colors[ImGuiCol_Text] = kText;
-        colors[ImGuiCol_TextDisabled] = kTextDim;
-
-        colors[ImGuiCol_WindowBg] = kPanelBg;
-        colors[ImGuiCol_ChildBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-        colors[ImGuiCol_PopupBg] = kPanelBgStrong;
-        colors[ImGuiCol_Border] = kPanelBorder;
-        colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-
-        colors[ImGuiCol_FrameBg] = kWidget;
-        colors[ImGuiCol_FrameBgHovered] = kWidgetHover;
-        colors[ImGuiCol_FrameBgActive] = kWidgetActive;
-
-        colors[ImGuiCol_TitleBg] = kPanelBgStrong;
-        colors[ImGuiCol_TitleBgActive] = kPanelBgStrong;
-        colors[ImGuiCol_TitleBgCollapsed] = kPanelBg;
-
-        colors[ImGuiCol_Button] = kWidget;
-        colors[ImGuiCol_ButtonHovered] = kWidgetHover;
-        colors[ImGuiCol_ButtonActive] = kWidgetActive;
-
-        colors[ImGuiCol_Header] = kWidget;
-        colors[ImGuiCol_HeaderHovered] = kWidgetHover;
-        colors[ImGuiCol_HeaderActive] = kWidgetActive;
-
-        colors[ImGuiCol_CheckMark] = kAccent;
-        colors[ImGuiCol_SliderGrab] = kAccent;
-        colors[ImGuiCol_SliderGrabActive] = ImVec4(0.88f, 0.79f, 0.67f, 1.00f);
-
-        colors[ImGuiCol_ScrollbarBg] = ImVec4(0.10f, 0.09f, 0.08f, 0.35f);
-        colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.38f, 0.34f, 0.30f, 0.80f);
-        colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.46f, 0.41f, 0.36f, 0.90f);
-        colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.54f, 0.48f, 0.42f, 1.00f);
+        auto* colors = style.Colors;
+        colors[ImGuiCol_Text] = textColor;
+        colors[ImGuiCol_TextDisabled] = mutedText;
+        colors[ImGuiCol_WindowBg] = panelBg;
+        colors[ImGuiCol_MenuBarBg] = menuBg;
+        colors[ImGuiCol_PopupBg] = ImVec4(.065f, .078f, .09f, 1.f);
+        colors[ImGuiCol_ChildBg] = ImVec4(0.f, 0.f, 0.f, 0.f);
+        colors[ImGuiCol_Border] = panelBorder;
+        colors[ImGuiCol_BorderShadow] = ImVec4(0.f, 0.f, 0.f, 0.f);
+        colors[ImGuiCol_FrameBg] = ImVec4(.10f, .12f, .14f, 1.f);
+        colors[ImGuiCol_FrameBgHovered] = ImVec4(.15f, .19f, .20f, 1.f);
+        colors[ImGuiCol_FrameBgActive] = selectedBg;
+        colors[ImGuiCol_Button] = ImVec4(.10f, .12f, .14f, 1.f);
+        colors[ImGuiCol_ButtonHovered] = ImVec4(.16f, .22f, .23f, 1.f);
+        colors[ImGuiCol_ButtonActive] = selectedBg;
+        colors[ImGuiCol_Header] = selectedBg;
+        colors[ImGuiCol_HeaderHovered] = ImVec4(.14f, .23f, .22f, 1.f);
+        colors[ImGuiCol_HeaderActive] = selectedBg;
+        colors[ImGuiCol_CheckMark] = accent;
+        colors[ImGuiCol_SliderGrab] = accent;
+        colors[ImGuiCol_SliderGrabActive] = accent;
+        colors[ImGuiCol_Separator] = panelBorder;
+        colors[ImGuiCol_ScrollbarBg] = ImVec4(0.f, 0.f, 0.f, 0.f);
+        colors[ImGuiCol_ScrollbarGrab] = panelBorder;
+        colors[ImGuiCol_ScrollbarGrabHovered] = mutedText;
+        colors[ImGuiCol_ScrollbarGrabActive] = accent;
+        colors[ImGuiCol_NavCursor] = accent;
+        colors[ImGuiCol_TextSelectedBg] = selectedBg;
     }
 
-    void DrawPanelShadow(const ImVec2& min, const ImVec2& max, float rounding)
+    void BeginPanel(const char* name, ImVec2 pos, ImVec2 size, ImGuiWindowFlags flags = 0)
     {
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-        drawList->AddRectFilled(
-            ImVec2(min.x + 0.0f, min.y + 8.0f),
-            ImVec2(max.x + 0.0f, max.y + 8.0f),
-            IM_COL32(0, 0, 0, 55),
-            rounding
-        );
-        drawList->AddRectFilled(
-            ImVec2(min.x + 0.0f, min.y + 16.0f),
-            ImVec2(max.x + 0.0f, max.y + 16.0f),
-            IM_COL32(0, 0, 0, 20),
-            rounding
-        );
-    }
-
-    void BeginFloatingPanel(const char* name, const ImVec2& pos, const ImVec2& size, ImGuiWindowFlags flags, bool strongBg = false)
-    {
-        DrawPanelShadow(pos, ImVec2(pos.x + size.x, pos.y + size.y), kPanelRounding);
-
         ImGui::SetNextWindowPos(pos);
         ImGui::SetNextWindowSize(size);
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kPanelRounding);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kPanelBorderSize);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, strongBg ? kPanelBgStrong : kPanelBg);
-        ImGui::PushStyleColor(ImGuiCol_Border, kPanelBorder);
-
-        ImGui::Begin(name, nullptr, flags);
+        ImGui::Begin(name, nullptr, panelFlags | flags);
     }
 
-    void EndFloatingPanel()
+    void SectionLabel(const char* label)
     {
+        ImGui::TextColored(mutedText, "%s", label);
+        ImGui::Spacing();
+    }
+
+    void Tooltip(const char* text)
+    {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%s", text);
+    }
+
+    const char* ColoringMethodName(ColoringMethod method)
+    {
+        switch (method) {
+        case ColoringMethod::Atomname: return "Atom name";
+        case ColoringMethod::Charge: return "Charge";
+        case ColoringMethod::GradientFromAtomid: return "Atom ID";
+        case ColoringMethod::PersistentClusterId: return "Compound ID";
+        case ColoringMethod::ForceMagnitude: return "Force magnitude";
+        case ColoringMethod::NewCartoon: return "Backbone";
+        default: return "Default";
+        }
+    }
+
+    void ColoringMenu(RenderSettings& settings, std::deque<Overlay::Command>& commands)
+    {
+        constexpr std::array methods{
+            ColoringMethod::Atomname, ColoringMethod::Charge,
+            ColoringMethod::GradientFromAtomid, ColoringMethod::PersistentClusterId,
+            ColoringMethod::ForceMagnitude, ColoringMethod::NewCartoon
+        };
+        for (const auto method : methods) {
+            if (method == ColoringMethod::ForceMagnitude && !settings.hasForceData)
+                continue;
+            if (method == ColoringMethod::NewCartoon && !settings.hasBackbone)
+                continue;
+            if (ImGui::MenuItem(ColoringMethodName(method), nullptr, settings.coloringMethod == method))
+                commands.push_back(method);
+        }
+    }
+
+    void CameraMenu(std::deque<Overlay::Command>& commands)
+    {
+        if (ImGui::MenuItem("Reset view"))
+            commands.push_back(Overlay::ResetCamera{});
+        if (ImGui::MenuItem("Toggle orbit"))
+            commands.push_back(Overlay::RevolveCamera{});
+    }
+
+    void Metric(const char* label, const std::string& value, const char* unit = "")
+    {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextColored(mutedText, "%s", label);
+        ImGui::TableSetColumnIndex(1);
+        const float unitWidth = *unit ? ImGui::CalcTextSize(unit).x + 7.f : 0.f;
+        const float width = ImGui::CalcTextSize(value.c_str()).x + unitWidth;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, ImGui::GetContentRegionAvail().x - width));
+        ImGui::TextUnformatted(value.c_str());
+        if (*unit) {
+            ImGui::SameLine(0.f, 7.f);
+            ImGui::TextColored(mutedText, "%s", unit);
+        }
+    }
+
+    void DrawTelemetry(const SimStatus& status, float top, float bottom)
+    {
+        if (!status.step && !status.temperature && !status.maxForce
+            && !status.expectedTimeToFinish && !status.avgStepTime && !status.simulationPerformance)
+            return;
+
+        const float width = std::min(380.f, ImGui::GetIO().DisplaySize.x - margin * 2.f);
+        const bool hasSimulation = status.step || status.temperature || status.maxForce || status.expectedTimeToFinish;
+        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.f), ImVec2(width, std::max(80.f, bottom - top)));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.f, 10.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.f, 4.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(0.f, 2.f));
+        BeginPanel("##Telemetry", ImVec2(margin, top), ImVec2(width, 0.f), ImGuiWindowFlags_AlwaysAutoResize);
+        if (hasSimulation)
+            ImGui::TextColored(accent, "Simulation");
+
+        if (hasSimulation && ImGui::BeginTable("##Metrics", 2, ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
+            if (status.step)
+                Metric("Step", std::format("{}", *status.step));
+            if (status.temperature)
+                Metric("Temperature", std::format("{:.2f}", *status.temperature), "K");
+            if (status.maxForce)
+                Metric("Max force", std::format("{:.2e}", *status.maxForce), "kJ/mol/nm");
+            if (status.expectedTimeToFinish)
+                Metric("Remaining", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2));
+            ImGui::EndTable();
+        }
+        if (status.avgStepTime || status.simulationPerformance) {
+            if (hasSimulation) {
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+            }
+            ImGui::TextColored(accent, "Performance");
+            if (ImGui::BeginTable("##Performance", 2, ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, .40f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, .60f);
+                if (status.avgStepTime)
+                    Metric("Step time", std::format("{:.3f}", *status.avgStepTime), "ms");
+                if (status.simulationPerformance)
+                    Metric("Throughput", std::format("{:.2f}", *status.simulationPerformance), "ns/day");
+                ImGui::EndTable();
+            }
+        }
         ImGui::End();
-        ImGui::PopStyleColor(2);
         ImGui::PopStyleVar(3);
     }
 
-    void RightAlignedField(const std::string& label, const std::string& value, const std::string& unit, const std::string& maxPattern)
+    float DrawMenuBar(RenderSettings& settings, std::deque<Overlay::Command>& commands, int fps)
     {
-        if (!label.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
-            ImGui::TextUnformatted(label.c_str());
-            ImGui::PopStyleColor();
-            ImGui::SameLine();
+        float height = 0.f;
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.f, 4.f));
+        ImGui::PushStyleColor(ImGuiCol_MenuBarBg, menuBg);
+        if (ImGui::BeginMainMenuBar()) {
+            height = ImGui::GetWindowHeight();
+            if (ImGui::BeginMenu("Representation")) {
+                ColoringMenu(settings, commands);
+                ImGui::Separator();
+                if (ImGui::MenuItem("Show solvents", nullptr, &settings.showSolvents))
+                    commands.push_back(Overlay::SolventVisibility{ settings.showSolvents });
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Camera")) {
+                CameraMenu(commands);
+                ImGui::EndMenu();
+            }
+            const auto fpsText = std::format("{} fps", fps);
+            const float fpsX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(fpsText.c_str()).x - 14.f;
+            if (fpsX > ImGui::GetCursorPosX() + 20.f) {
+                ImGui::SetCursorPosX(fpsX);
+                ImGui::TextColored(mutedText, "%s", fpsText.c_str());
+            }
+            ImGui::EndMainMenuBar();
+            ImGui::GetForegroundDrawList()->AddLine(
+                ImVec2(0.f, height - 1.f),
+                ImVec2(ImGui::GetIO().DisplaySize.x, height - 1.f),
+                ImGui::GetColorU32(panelBorder)
+            );
         }
-
-        const ImVec2 maxWidth = ImGui::CalcTextSize(maxPattern.c_str());
-        const std::string combined = unit.empty() ? value : std::format("{} {}", value, unit);
-        const ImVec2 valueWidth = ImGui::CalcTextSize(combined.c_str());
-
-        float pad = maxWidth.x - valueWidth.x;
-        if (pad > 0.0f)
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
-
-        if (unit.empty()) {
-            ImGui::TextUnformatted(value.c_str());
-        }
-        else {
-            ImGui::Text("%s %s", value.c_str(), unit.c_str());
-        }
-
-        ImGui::SameLine();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+        return height;
     }
 
-
-
-
-
-
-    const char* ColoringMethodName(ColoringMethod coloringMethod)
+    float DrawSimulationTabs(const std::vector<SimulationTab>& tabs,
+        std::deque<Overlay::Command>& commands, float top)
     {
-        switch (coloringMethod) {
-        case ColoringMethod::Atomname: return "Atom name";
-        case ColoringMethod::Charge: return "Charge";
-        case ColoringMethod::GradientFromAtomid: return "Gradient from atom id";
-        case ColoringMethod::PersistentClusterId: return "Gradient from compound id";
-        case ColoringMethod::ForceMagnitude: return "Force magnitude";
-        case ColoringMethod::NewCartoon: return "NewCartoon";
-        default: return "Unknown";
+        if (tabs.size() < 2)
+            return top + 12.f;
+        const float width = ImGui::GetIO().DisplaySize.x;
+        const float tabHeight = ImGui::GetTextLineHeight() + 8.f;
+        float totalWidth = 0.f;
+        for (const auto& tab : tabs)
+            totalWidth += ImGui::CalcTextSize(tab.label.c_str()).x + 24.f;
+        const bool overflow = totalWidth > width;
+        const float height = tabHeight + (overflow ? ImGui::GetStyle().ScrollbarSize : 0.f);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1.f, 1.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.f, 4.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, tabBg);
+        BeginPanel("##SimulationTabs", ImVec2(0.f, top), ImVec2(width, height),
+            overflow ? ImGuiWindowFlags_HorizontalScrollbar : ImGuiWindowFlags_NoScrollbar);
+        for (size_t i = 0; i < tabs.size(); ++i) {
+            if (i > 0)
+                ImGui::SameLine();
+            const auto& tab = tabs[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::PushStyleColor(ImGuiCol_Button, tab.active ? selectedBg : ImVec4(0.f, 0.f, 0.f, 0.f));
+            ImGui::PushStyleColor(ImGuiCol_Text, tab.active ? textColor : mutedText);
+            const float tabWidth = ImGui::CalcTextSize(tab.label.c_str()).x + 24.f;
+            if (ImGui::Button(tab.label.c_str(), ImVec2(tabWidth, tabHeight)) && !tab.active)
+                commands.push_back(Overlay::SelectSimulation{ tab.simulationId });
+            Tooltip(tab.completed ? "Completed simulation" : "Simulation");
+            const auto min = ImGui::GetItemRectMin();
+            const auto max = ImGui::GetItemRectMax();
+            if (tab.active)
+                ImGui::GetWindowDrawList()->AddLine(ImVec2(min.x, min.y + 1.f),
+                    ImVec2(max.x, min.y + 1.f), ImGui::GetColorU32(accent), 2.f);
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(max.x - 1.f, min.y + 6.f),
+                ImVec2(max.x - 1.f, max.y - 6.f), ImGui::GetColorU32(panelBorder));
+            ImGui::PopStyleColor(2);
+            ImGui::PopID();
         }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(7);
+        return top + height + 12.f;
     }
-
-    bool ColoringMethodMenuItem(
-        std::deque<Overlay::Command>& submittedCommands,
-        ColoringMethod currentMethod,
-        ColoringMethod method
-    ) {
-        const bool isSelected = currentMethod == method;
-
-        if (ImGui::MenuItem(ColoringMethodName(method), nullptr, isSelected)) {
-            submittedCommands.push_back(method);
-            return true;
-        }
-
-        return false;
-    }
-
-}
-
-static std::deque<std::string>& ConsoleLines()
-{
-    static std::deque<std::string> lines;
-    return lines;
-}
-
-char* ConsoleInputBuffer()
-{
-    static char buffer[512] = "";
-    return buffer;
-}
-
-constexpr const char* ConsolePrompt()
-{
-    return "> ";
-}
-
-std::string SubmitConsoleInput()
-{
-    char* buffer = ConsoleInputBuffer();
-    if (buffer[0] == '\0')
-        return "";
-
-    auto& lines = ConsoleLines();
-    lines.emplace_back(std::format("{}{}", ConsolePrompt(), buffer));
-    if (lines.size() > 2)
-        lines.pop_front();
-
-    std::string inputText(buffer);
-    buffer[0] = '\0';
-    return inputText;
-}
-
-int TerminalInputCallback(ImGuiInputTextCallbackData* data)
-{
-    if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory)
-        return 0;
-    return 0;
 }
 
 Overlay::Overlay(GLFWwindow* window, const std::filesystem::path& limaDir)
@@ -275,371 +331,78 @@ Overlay::~Overlay()
     ImGui::DestroyContext();
 }
 
-void DrawSimstatusCard(const SimStatus& status, int fps, float top)
-{
-    ImGuiIO& io = ImGui::GetIO();
-
-    const bool hasSimulationStatus =
-        status.step.has_value()
-        || status.temperature.has_value()
-        || status.maxForce.has_value()
-        || status.expectedTimeToFinish.has_value();
-
-    const bool hasEnginePerformance =
-        status.avgStepTime.has_value()
-        || status.simulationPerformance.has_value()
-#ifdef _DEBUG
-        || true
-#endif
-        ;
-
-    if (!hasSimulationStatus && !hasEnginePerformance)
-        return;
-
-    auto DrawField = [](const char* label, const std::string& value, const char* unit = nullptr)
-        {
-            ImGui::TableNextRow();
-
-            ImGui::TableSetColumnIndex(0);
-            ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
-            ImGui::TextUnformatted(label);
-            ImGui::PopStyleColor();
-
-            ImGui::TableSetColumnIndex(1);
-
-            const float startX = ImGui::GetCursorPosX();
-            const float colWidth = ImGui::GetColumnWidth();
-            const float rightX = startX + colWidth;
-
-            if (unit && unit[0] != '\0') {
-                constexpr float gap = 6.0f;
-
-                const float unitWidth = ImGui::CalcTextSize(unit).x;
-                const float valueWidth = ImGui::CalcTextSize(value.c_str()).x;
-
-                const float unitX = rightX - unitWidth;
-                const float valueX = unitX - gap - valueWidth;
-
-                ImGui::SetCursorPosX(valueX);
-                ImGui::TextUnformatted(value.c_str());
-
-                ImGui::SameLine(0.0f, gap);
-                ImGui::SetCursorPosX(unitX);
-                ImGui::TextUnformatted(unit);
-            }
-            else {
-                const float valueWidth = ImGui::CalcTextSize(value.c_str()).x;
-                ImGui::SetCursorPosX(rightX - valueWidth);
-                ImGui::TextUnformatted(value.c_str());
-            }
-        };
-    int nRows = 0;
-    if (hasSimulationStatus) {
-        nRows += 1;
-        if (status.step.has_value()) ++nRows;
-        if (status.temperature.has_value()) ++nRows;
-        if (status.maxForce.has_value()) ++nRows;
-        if (status.expectedTimeToFinish.has_value()) ++nRows;
-    }
-    if (hasEnginePerformance) {
-        if (nRows > 0)
-            nRows += 1;
-        nRows += 1;
-        if (status.avgStepTime.has_value()) ++nRows;
-        if (status.simulationPerformance.has_value()) ++nRows;
-#ifdef _DEBUG
-        ++nRows;
-#endif
-    }
-
-    const float cardWidth = 380.0f;
-    const float lineHeight = ImGui::GetTextLineHeight();
-    const float verticalPadding = 10.0f;
-    const float rowSpacing = 8.0f;
-    const float titleSpacing = 10.0f;
-    const float sectionSpacing = 12.0f;
-    const float cardHeight =
-        verticalPadding * 2.0f
-        + nRows * lineHeight
-        + (nRows - 1) * rowSpacing
-        + titleSpacing;
-
-    const ImVec2 pos(kOuterMargin, top);
-    const ImVec2 size(cardWidth, cardHeight);
-
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoTitleBar
-        | ImGuiWindowFlags_NoResize
-        | ImGuiWindowFlags_NoMove
-        | ImGuiWindowFlags_NoScrollbar
-        | ImGuiWindowFlags_NoSavedSettings
-        | ImGuiWindowFlags_NoNav
-        | ImGuiWindowFlags_NoBringToFrontOnFocus;
-
-    BeginFloatingPanel("###TopStatusCard", pos, size, flags, true);
-
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, rowSpacing));
-
-    if (ImGui::BeginTable("##TopStatusTable", 2, ImGuiTableFlags_SizingStretchProp))
-    {
-        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-        if (hasSimulationStatus) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
-            ImGui::TextUnformatted("Simulation");
-            ImGui::PopStyleColor();
-            ImGui::TableSetColumnIndex(1);
-            ImGui::Dummy(ImVec2(0.0f, 0.0f));
-
-            if (status.step.has_value())
-                DrawField("Step", std::to_string(*status.step));
-
-            if (status.temperature.has_value())
-                DrawField("Temperature", std::format("{:.2f}", *status.temperature), "[K]");
-
-            if (status.maxForce.has_value())
-                DrawField("Max force", std::format("{:.2e}", *status.maxForce), "[kJ/mol/nm]");
-
-            if (status.expectedTimeToFinish.has_value())
-                DrawField("Remaining time", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2));
-        }
-
-        if (hasEnginePerformance) {
-            if (hasSimulationStatus) {
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                ImGui::Dummy(ImVec2(0.0f, sectionSpacing));
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Dummy(ImVec2(0.0f, sectionSpacing));
-            }
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
-            ImGui::TextUnformatted("Performance");
-            ImGui::PopStyleColor();
-            ImGui::TableSetColumnIndex(1);
-            ImGui::Dummy(ImVec2(0.0f, 0.0f));
-
-            if (status.avgStepTime.has_value())
-                DrawField("Step time", std::format("{:.3f}", *status.avgStepTime), "[ms]");
-
-            if (status.simulationPerformance.has_value())
-                DrawField("Simulation", std::format("{:.2f}", *status.simulationPerformance), "[ns/day]");
-
-#ifdef _DEBUG
-            DrawField("FPS", std::to_string(fps));
-#endif
-        }
-
-        ImGui::EndTable();
-    }
-
-    ImGui::PopStyleVar();
-    EndFloatingPanel();
-}
 
 void Overlay::HandleConsole()
 {
-    const ImVec2 winSize = ImGui::GetIO().DisplaySize;
-
-    const ImVec2 pos(
-        kOuterMargin,
-        winSize.y - kOuterMargin - kBottomBarHeight - 10.0f - kConsoleHeight
-    );
-    const ImVec2 size(
-        winSize.x - 2.0f * kOuterMargin,
-        kConsoleHeight
-    );
-
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoTitleBar
-        | ImGuiWindowFlags_NoResize
-        | ImGuiWindowFlags_NoMove
-        | ImGuiWindowFlags_NoCollapse
-        | ImGuiWindowFlags_NoSavedSettings
-        | ImGuiWindowFlags_NoBringToFrontOnFocus
-        | ImGuiWindowFlags_NoScrollbar;
-
-    BeginFloatingPanel("OverlayConsole", pos, size, flags, true);
-
-    auto& lines = ConsoleLines();
-    char* inputBuffer = ConsoleInputBuffer();
-
-    ImGui::PushStyleColor(ImGuiCol_Text, kTextDim);
-    for (const std::string& line : lines)
-        ImGui::TextUnformatted(line.c_str());
-    ImGui::PopStyleColor();
-
-    ImGui::Spacing();
-
-    ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
-    ImGui::TextUnformatted(ConsolePrompt());
-    ImGui::PopStyleColor();
-    ImGui::SameLine(0.0f, 8.0f);
-
-    ImGui::PushItemWidth(-1.0f);
-    const bool submitted = ImGui::InputText(
-        "##TerminalInput",
-        inputBuffer,
-        512,
-        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
-        TerminalInputCallback
-    );
-    ImGui::PopItemWidth();
-
-    if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere(-1);
-
-    if (submitted) {
-        SubmittedCmd submittedCommand{ SubmitConsoleInput() };
-        submittedCommands.push_back(submittedCommand);
+    const auto displaySize = ImGui::GetIO().DisplaySize;
+    const float width = std::min(920.f, displaySize.x - margin * 2.f);
+    BeginPanel("##CommandConsole",
+        ImVec2((displaySize.x - width) * .5f, displaySize.y - margin - consoleHeight),
+        ImVec2(width, consoleHeight));
+    SectionLabel("COMMAND CONSOLE");
+    ImGui::BeginChild("##ConsoleHistory", ImVec2(0.f, -ImGui::GetFrameHeightWithSpacing()));
+    for (const auto& line : consoleLines)
+        ImGui::TextWrapped("%s", line.c_str());
+    if (scrollConsoleToBottom) {
+        ImGui::SetScrollHereY(1.f);
+        scrollConsoleToBottom = false;
+    }
+    ImGui::EndChild();
+    ImGui::SetNextItemWidth(-1.f);
+    if (ImGui::InputTextWithHint("##Command", "Enter a command...", consoleInput.data(), consoleInput.size(),
+        ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (consoleInput[0] != '\0') {
+            const std::string command{ consoleInput.data() };
+            consoleLines.push_back("> " + command);
+            if (consoleLines.size() > 100)
+                consoleLines.pop_front();
+            submittedCommands.push_back(SubmittedCmd{ command });
+            consoleInput[0] = '\0';
+            scrollConsoleToBottom = true;
+        }
         ImGui::SetKeyboardFocusHere(-1);
     }
-
-    EndFloatingPanel();
+    ImGui::End();
 }
 
-void Overlay::HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos)
+void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos)
 {
-    if (rightClickedPos.has_value()) {
-        ImGui::SetNextWindowPos(ImVec2(
-            static_cast<float>(rightClickedPos->x),
-            static_cast<float>(rightClickedPos->y)
-        ));
-        ImGui::OpenPopup("OverlayContextMenu");
+    if (pos) {
+        ImGui::SetNextWindowPos(ImVec2(static_cast<float>(pos->x), static_cast<float>(pos->y)));
+        ImGui::OpenPopup("##ViewportMenu");
     }
-
-    if (ImGui::BeginPopup("OverlayContextMenu")) {
-        ImGui::TextUnformatted("Coloring method");
+    if (ImGui::BeginPopup("##ViewportMenu")) {
+        SectionLabel("APPEARANCE");
+        ColoringMenu(settings, submittedCommands);
         ImGui::Separator();
-
-        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Atomname);
-        ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::Charge);
-		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::GradientFromAtomid);
-		ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::PersistentClusterId);
-		if (renderSettings.hasForceData)
-			ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::ForceMagnitude);
-		if (renderSettings.hasBackbone)
-			ColoringMethodMenuItem(submittedCommands, renderSettings.coloringMethod, ColoringMethod::NewCartoon);
-
-		ImGui::Separator();
-		ImGui::TextUnformatted("Camera");
-		if (ImGui::MenuItem("Reset camera"))
-			submittedCommands.push_back(ResetCamera{});
-		if (ImGui::MenuItem("Revolve"))
-			submittedCommands.push_back(RevolveCamera{});
-
+        CameraMenu(submittedCommands);
         ImGui::EndPopup();
     }
 }
 
-void DrawBottomBar(RenderSettings& renderSettings, std::deque<Overlay::Command>& submittedCommands)
-{
-    ImVec2 winSize = ImGui::GetIO().DisplaySize;
-
-    const ImVec2 pos(
-        kOuterMargin,
-        winSize.y - kOuterMargin - kBottomBarHeight
-    );
-    const ImVec2 size(
-        winSize.x - 2.0f * kOuterMargin,
-        kBottomBarHeight
-    );
-
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoTitleBar
-        | ImGuiWindowFlags_NoResize
-        | ImGuiWindowFlags_NoMove
-        | ImGuiWindowFlags_NoCollapse
-        | ImGuiWindowFlags_NoScrollbar
-        | ImGuiWindowFlags_NoSavedSettings
-        | ImGuiWindowFlags_NoBringToFrontOnFocus
-        | ImGuiWindowFlags_NoNav;
-
-    BeginFloatingPanel("BottomBar", pos, size, flags);
-
-    float widgetHeight = ImGui::GetFrameHeight();
-    float offset = (kBottomBarHeight - widgetHeight) * 0.5f;
-
-    ImGui::SetCursorPosY(offset);
-    if (ImGui::Checkbox("Show solvents", &renderSettings.showSolvents))
-        submittedCommands.push_back(Overlay::SolventVisibility{ renderSettings.showSolvents });
-
-    EndFloatingPanel();
-}
-
-void DrawSpinner()
-{
-	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-    constexpr float radius = 18.0f;
-	const ImVec2 center{ displaySize.x - radius * 2.f, radius * 2.f };
-	
-	const float startAngle = static_cast<float>(ImGui::GetTime() * 4.5);
-	const float endAngle = startAngle + 3.14159265f * 1.55f;
-
-	ImDrawList* drawList = ImGui::GetForegroundDrawList();
-	drawList->AddCircle(center, radius, ImGui::GetColorU32(kPanelBorder), 32, 3.0f);
-	drawList->PathArcTo(center, radius, startAngle, endAngle, 28);
-	drawList->PathStroke(ImGui::GetColorU32(kAccent), 0, 3.5f);
-}
-
-void DrawSimulationTabs(const std::vector<SimulationTab>& tabs, std::deque<Overlay::Command>& submittedCommands)
-{
-	if (tabs.size() < 2)
-		return;
-	const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-	const ImVec2 pos(displaySize.x * .5f, kOuterMargin);
-	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
-		| ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar
-		| ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus
-		| ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav;
-	ImGui::SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(.5f, 0.f));
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
-	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.f, 0.f));
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14.f, 7.f));
-	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.f);
-	ImGui::Begin("###SimulationSelector", nullptr, flags);
-	for (size_t i = 0; i < tabs.size(); ++i) {
-		const auto& tab = tabs[i];
-		if (i > 0)
-			ImGui::SameLine();
-		const std::string visibleLabel = tab.completed ? tab.label + "  ✓" : tab.label;
-		const std::string id = std::format("{}###Simulation{}", visibleLabel, tab.simulationId);
-		ImGui::PushStyleColor(ImGuiCol_Button, tab.active ? kAccent : kPanelBgStrong);
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, tab.active
-			? ImVec4(kAccent.x, kAccent.y, kAccent.z, 1.f) : kWidgetHover);
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, kWidgetActive);
-		ImGui::PushStyleColor(ImGuiCol_Text, tab.active ? ImVec4(.12f, .10f, .08f, 1.f) : kText);
-		if (ImGui::Button(id.c_str()) && !tab.active)
-			submittedCommands.push_back(Overlay::SelectSimulation{ tab.simulationId });
-		ImGui::PopStyleColor(4);
-	}
-	ImGui::End();
-	ImGui::PopStyleVar(4);
-}
-
-void Overlay::Draw(RenderSettings& renderSettings, const SimStatus& simstatus, int fps,
-	const std::vector<SimulationTab>& tabs, std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible)
+void Overlay::Draw(RenderSettings& settings, const SimStatus& status, int fps,
+    const std::vector<SimulationTab>& tabs, std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible)
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-	DrawSimulationTabs(tabs, submittedCommands);
-	const float statusTop = tabs.size() > 1 ? kOuterMargin + 48.f : kOuterMargin;
-    DrawSimstatusCard(simstatus, fps, statusTop);
+    const float menuHeight = DrawMenuBar(settings, submittedCommands, fps);
+    const float top = DrawSimulationTabs(tabs, submittedCommands, menuHeight);
+    const float bottom = ImGui::GetIO().DisplaySize.y - margin
+        - (enableConsole ? consoleHeight + 12.f : 0.f);
+    DrawTelemetry(status, top, bottom);
     if (enableConsole)
         HandleConsole();
-
-    DrawBottomBar(renderSettings, submittedCommands);
-    HandleContextMenu(renderSettings, rightClickedPos);
-	if (spinnerVisible)
-		DrawSpinner();
-
+    HandleContextMenu(settings, rightClickedPos);
+    if (spinnerVisible) {
+        const auto displaySize = ImGui::GetIO().DisplaySize;
+        const ImVec2 center(displaySize.x - 35.f, top + 12.f);
+        auto* drawList = ImGui::GetForegroundDrawList();
+        const float angle = static_cast<float>(ImGui::GetTime()) * 4.f;
+        drawList->PathArcTo(center, 9.f, angle, angle + 4.7f, 24);
+        drawList->PathStroke(ImGui::GetColorU32(accent), 0, 2.f);
+    }
     didDrawThisFrame = true;
 }
 
@@ -647,7 +410,6 @@ void Overlay::Render()
 {
     if (!didDrawThisFrame)
         return;
-
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     didDrawThisFrame = false;

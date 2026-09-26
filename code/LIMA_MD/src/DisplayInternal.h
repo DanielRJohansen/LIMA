@@ -63,6 +63,9 @@ public:
 	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation>;
 private:
 	bool didDrawThisFrame = false;
+	bool scrollConsoleToBottom = false;
+	std::array<char, 512> consoleInput{};
+	std::deque<std::string> consoleLines;
 
 	void HandleConsole();
 	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos);

@@ -106,7 +106,7 @@ void TestDisplayT4Batch() {
 		auto job = BatchingTests::MakeT4Job(EnvMode::Full, false);
 		job.mode = EnvMode::Full;
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
-			params.n_steps = 40000;
+			params.n_steps = 90000;
 			params.data_logging_interval = 200;
 		};
 		handle = environment.Submit(std::move(job));
@@ -121,6 +121,30 @@ void TestDisplayT4Batch() {
 }
 
 int main(int argc, char** argv) {
+	if (argc == 2 && std::string_view(argv[1]) == "--display-preview") {
+		try {
+			// Static UI fixture: no simulation runs or output files are written.
+			const GroFile molecule{ AutomatedTestsDir() / "T4Lysozyme" / "molecule" / "conf.gro" };
+			Display display;
+			display.allowUserInputs = true;
+			for (int i = 0; i < 4; ++i) {
+				auto task = std::make_unique<Rendering::AtomRenderTask>(molecule, false);
+				task->simStatus.step = 24000 + i * 1000;
+				task->simStatus.temperature = 300.12f + i;
+				task->simStatus.maxForce = 1.23e3f;
+				task->simStatus.expectedTimeToFinish = std::chrono::duration<double>{ 154. };
+				task->simStatus.avgStepTime = .842f;
+				task->simStatus.simulationPerformance = 205.23f;
+				display.Submit(i, std::move(task), false, nullptr, "Preview " + std::to_string(i + 1));
+			}
+			while (!display.DisplaySelfTerminated())
+				std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			if (display.displayThreadException)
+				std::rethrow_exception(display.displayThreadException);
+			return 0;
+		}
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
 	if (argc == 2 && std::string_view(argv[1]) == "--environment-batch-tests") {
 		try { BatchingTests::RunSchedulerTests(Environment::Get()); return 0; }
 		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }

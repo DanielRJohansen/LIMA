@@ -90,6 +90,8 @@ void Display::SetupCallbacks() {
 	});
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+        if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureKeyboard)
+            return;
         if (action == GLFW_PRESS) {
             // Retrieve the Display instance from the window user pointer
             Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));

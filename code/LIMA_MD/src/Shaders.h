@@ -662,7 +662,7 @@ class DrawAtomsShader : public Shader {
 struct RenderAtom {
     vec4 position; // {posX, posY, posZ, radius}
     vec4 color;    // {r, g, b, a}
-    uvec4 flags;   // {x=highlight}
+    uvec4 flags;   // {x=highlight, y=coloring method, z=atom ID}
 };
 
 layout(std430, binding = 0) buffer RenderAtoms {
@@ -684,7 +684,7 @@ void main() {
     float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom);
 
     vec4 atomPos = atoms[gl_InstanceID].position;
-    atomId = int(atoms[gl_InstanceID].flags.y);
+    atomId = int(atoms[gl_InstanceID].flags.z);
 
     vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0);
     float radius = atomPos.w;
@@ -837,7 +837,7 @@ void main() {
     fragNormalView = normalize(mat3(View) * inNormal);
 
     vertexColor = atom.color;
-    atomId = int(atoms[gl_InstanceID].flags.y);
+    atomId = int(atoms[gl_InstanceID].flags.z);
     highlight = atom.flags.x;
 
     gl_Position = Proj * viewPos4;

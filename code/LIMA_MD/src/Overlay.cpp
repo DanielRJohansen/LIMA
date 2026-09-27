@@ -184,7 +184,7 @@ namespace
         }
     }
 
-    void ColoringMenu(RenderSettings& settings, std::deque<Overlay::Command>& commands)
+    void ColoringMenu(const RenderSettings& settings, std::deque<Overlay::Command>& commands)
     {
         constexpr std::array methods{
             ColoringMethod::Atomname, ColoringMethod::Charge,
@@ -474,7 +474,7 @@ void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dve
     }
     if (ImGui::BeginPopup("##ViewportMenu")) {
         SectionLabel("APPEARANCE");
-        ColoringMenu(settings, submittedCommands);
+    ColoringMenu(settings, submittedCommands);
         ImGui::Separator();
         CameraMenu(submittedCommands);
         ImGui::EndPopup();

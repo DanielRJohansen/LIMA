@@ -13,6 +13,32 @@
 const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
 
+namespace {
+
+void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, size_t atomId, size_t atomCount,
+	bool showSolvents, float forceMagnitude = 0.f) {
+	const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+	const float chargeNormalized = (atom.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
+	const auto coloringMethod = static_cast<ColoringMethod>(renderAtom.flags.y);
+	if (coloringMethod == ColoringMethod::Atomname || coloringMethod == ColoringMethod::NewCartoon)
+		renderAtom.color = RenderUtilities::getColor(atomType);
+	else if (coloringMethod == ColoringMethod::Charge)
+		renderAtom.color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+	else if (coloringMethod == ColoringMethod::PersistentClusterId) {
+		constexpr int nElementsPerRevolution = 12;
+		const float fraction = static_cast<float>(std::max(atom.groupId, 0) % nElementsPerRevolution) / nElementsPerRevolution;
+		renderAtom.color = RenderUtilities::GetColorInGradientHue(fraction);
+	}
+	else if (coloringMethod == ColoringMethod::GradientFromAtomid)
+		renderAtom.color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / atomCount);
+	else if (coloringMethod == ColoringMethod::ForceMagnitude)
+		renderAtom.color = RenderUtilities::GetLogColorGradient(forceMagnitude, 1e5f, 1e11f);
+	if (!showSolvents && atom.isSolvent)
+		renderAtom.color.w = 0.f;
+}
+
+}
+
 glm::vec3 AnyPerpendicular(const glm::vec3& dir)
 {
 	const glm::vec3 helper = std::abs(dir.z) < 0.999f
@@ -172,40 +198,54 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		drawAtomsPrettyShader = std::make_unique<DrawAtomsPrettyShader>();
 	renderTargetControl->Resize(framebufferSize);
 
-	// Preprocess the renderAtoms
-	{
-		renderContext.renderAtomsHost.resize(task.atoms.size(), RenderAtom{});
-		for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
-			const Rendering::AtomRenderData& atom = task.atoms[atomId];
-			const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
-			const float chargeNormalized = (atom.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
+	// Preprocess all renderAtoms
+	renderContext.renderAtomsHost.resize(task.atoms.size(), RenderAtom{});
+	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
+		const Rendering::AtomRenderData& atom = task.atoms[atomId];
+		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+		if (!ignorePosition) {
+			renderContext.renderAtomsHost[atomId].position = task.positions[atomId].Tofloat4(RenderUtilities::getRadius(atomType));
+			renderContext.renderAtomsHost[atomId].flags.z = static_cast<unsigned int>(atomId);
+		}
 
-			if (!ignorePosition)
-				renderContext.renderAtomsHost[atomId].position = task.positions[atomId].Tofloat4(RenderUtilities::getRadius(atomType));
-			renderContext.renderAtomsHost[atomId].flags.y = static_cast<int>(atomId);
-
-			if (task.highlightedAtoms.contains(static_cast<int>(atomId)))
-				renderContext.renderAtomsHost[atomId].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f);
-			else if (renderContext.renderSettings->coloringMethod == ColoringMethod::Atomname
-				|| renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon)
-				renderContext.renderAtomsHost[atomId].color = RenderUtilities::getColor(atomType);
-			else if (renderContext.renderSettings->coloringMethod == ColoringMethod::Charge)
-				renderContext.renderAtomsHost[atomId].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
-			else if (renderContext.renderSettings->coloringMethod == ColoringMethod::PersistentClusterId) {
-				constexpr int nElementsPerRevolution = 12;
-				const int groupId = std::max(atom.groupId, 0);
-				const float fraction = static_cast<float>(groupId % nElementsPerRevolution) / nElementsPerRevolution;
-				renderContext.renderAtomsHost[atomId].color = RenderUtilities::GetColorInGradientHue(fraction);
-			}
-			else if (renderContext.renderSettings->coloringMethod == ColoringMethod::GradientFromAtomid)
-				renderContext.renderAtomsHost[atomId].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / task.atoms.size());
-			else if (renderContext.renderSettings->coloringMethod == ColoringMethod::ForceMagnitude)
-				renderContext.renderAtomsHost[atomId].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e6f);
-
-			if (!renderContext.renderSettings->showSolvents && atom.isSolvent)
-				renderContext.renderAtomsHost[atomId].color.w = 0.f;
+		// If no active selection, color all atoms
+		if (!renderContext.selectedMolecule) {
+			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
+			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), renderContext.renderSettings->showSolvents);
 		}
 	}
+
+
+	// If active selection, color only those
+	if (renderContext.selectedMolecule) {
+		for (auto& atomId : renderContext.selectedMolecule->atomIds) {
+			const Rendering::AtomRenderData& atom = task.atoms[atomId];
+			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
+			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), renderContext.renderSettings->showSolvents);
+		}
+	}
+
+	
+	//{
+	//	renderContext.renderAtomsHost.resize(task.atoms.size(), RenderAtom{});
+
+	//	if (renderContext.selectedMolecule)
+
+	//	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
+	//		const Rendering::AtomRenderData& atom = task.atoms[atomId];
+	//		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+
+	//		if (!ignorePosition)
+	//			renderContext.renderAtomsHost[atomId].position = task.positions[atomId].Tofloat4(RenderUtilities::getRadius(atomType));
+	//		if (!ignorePosition || !renderContext.selectedMolecule
+	//			|| std::ranges::find(renderContext.selectedMolecule->atomIds, static_cast<int>(atomId))
+	//				!= renderContext.selectedMolecule->atomIds.end())
+	//			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
+	//		renderContext.renderAtomsHost[atomId].flags.z = static_cast<unsigned int>(atomId);
+	//		ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(),
+	//			renderContext.renderSettings->showSolvents);
+	//	}
+	//}
 
 	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
 		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
@@ -234,8 +274,9 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 				continue;
 			currentTask.positions[atomId] = update.positions[packedPositionIndex];
 			renderContext.renderAtomsHost[atomId].position = currentTask.positions[atomId].Tofloat4(renderContext.renderAtomsHost[atomId].position.w);
-			if (update.forceMagnitudes && renderContext.renderSettings->coloringMethod == ColoringMethod::ForceMagnitude)
-				renderContext.renderAtomsHost[atomId].color = RenderUtilities::GetLogColorGradient(update.forceMagnitudes[atomId], 1e5f, 1e11f);
+			if (update.forceMagnitudes)
+				ColorAtom(renderContext.renderAtomsHost[atomId], currentTask.atoms[atomId], atomId, currentTask.atoms.size(),
+					renderContext.renderSettings->showSolvents, update.forceMagnitudes[atomId]);
 		}
 	}
 	if (renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon && renderContext.newCartoonRenderer)

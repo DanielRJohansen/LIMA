@@ -427,7 +427,7 @@ void Display::ConsumeInputs(bool& shouldRecolorAtoms) {
             }
             else if constexpr (std::is_same_v<T, ColoringMethod>) {
 				renderContext.renderSettings->coloringMethod = cmd;
-                shouldRecolorAtoms |= true;
+                shouldRecolorAtoms = true;
             }
             else if constexpr (std::is_same_v<T, Overlay::SolventVisibility>) {
 				renderContext.renderSettings->showSolvents = cmd.visible;

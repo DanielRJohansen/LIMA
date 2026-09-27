@@ -48,7 +48,7 @@ public:
 
 struct RenderSettings {
 	bool showSolvents = true;
-	ColoringMethod coloringMethod{};
+	ColoringMethod coloringMethod{}; // Guides what (selected) renderatoms will be set to upon change
 	bool hasForceData = false;
 	bool hasBackbone = false;
 };

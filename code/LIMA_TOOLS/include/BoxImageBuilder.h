@@ -88,7 +88,7 @@ namespace LIMA_MOLECULEBUILD {
 
 	public:
 		struct MoleculeInstance {
-			const TopologyFile::Moleculetype* type = nullptr;
+			std::shared_ptr<const TopologyFile::Moleculetype> type;
 			int particleOffset = 0;
 		};
 

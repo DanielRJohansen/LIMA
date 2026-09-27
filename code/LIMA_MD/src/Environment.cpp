@@ -322,7 +322,7 @@ void Environment::Preprocess(QueuedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
 		auto simulation = BuildSimulation(next.job);
-		if (next.job.configureSimulation)
+		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
@@ -465,8 +465,8 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		std::make_unique<LimaLogger>(LimaLogger::normal, job.mode, "moleculebuilder", job.workDir),
 		IGNORE_HYDROGEN, simParams);
 	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage));
-	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
-	return simulation;
+	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
+	return simulation; // here sim->boximage->topology->moleculetypes[0].name is valid
 }
 
 

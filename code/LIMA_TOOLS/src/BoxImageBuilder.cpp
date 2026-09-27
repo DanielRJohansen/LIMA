@@ -85,7 +85,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		if (molType.atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
 
-		moleculeInstances.push_back(MoleculeInstance{ &molType, particleIdOffset });
+		moleculeInstances.push_back(MoleculeInstance{ molecule.moleculetype, particleIdOffset });
 
 		for (int localId = 0; localId < molType.atoms.size(); localId++) {
 
@@ -324,9 +324,9 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIM
 
 	size_t totalClusterCount = 0;
 	for (const SuperTopology::MoleculeInstance& instance : system.moleculeInstances) {
-		auto templateIt = templates.find(instance.type);
+		auto templateIt = templates.find(instance.type.get());
 		if (templateIt == templates.end())
-			templateIt = templates.emplace(instance.type, BuildPersistentClusterTemplate(*instance.type, forcefield)).first;
+			templateIt = templates.emplace(instance.type.get(), BuildPersistentClusterTemplate(*instance.type, forcefield)).first;
 
 		instanceTemplates.push_back(&templateIt->second);
 		totalClusterCount += templateIt->second.clusters.size();

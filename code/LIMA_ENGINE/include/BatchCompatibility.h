@@ -16,7 +16,7 @@ namespace EngineBatch {
 		[&]<size_t... indices>(std::index_sequence<indices...>) {
 			([&] {
 				const auto& param = std::get<indices>(candidate);
-				if (!mismatch && param.name != "dt" && param.name != "n_steps"
+				if (!mismatch && param.name != "dt" && param.name != "n_steps" && param.name != "ref_t"
 					&& param.value != std::get<indices>(reference).value)
 					mismatch = param.name;
 			}(), ...);

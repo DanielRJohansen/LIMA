@@ -207,15 +207,13 @@ namespace BatchingTests {
 			for (auto& handle : handles) results.push_back(handle.Get());
 			for (size_t i = 0; i < results.size(); ++i) {
 				Require(results[i].simulation->getStep() == 3, "Bounded scheduler failed to drain jobs");
-				for (size_t j = 0; j < i; ++j)
-					if ((i % 2) != (j % 2))
-						Require(results[i].execution.batchId != results[j].execution.batchId, "Scheduler ignored configured parameter incompatibility");
+				Require(results[i].simulation->simParams.ref_t == (i % 2 ? 310.f : 300.f),
+					"Batch changed a member thermostat target");
 			}
-			Require(results[0].execution.batchSize == 3 && results[0].execution.batchId == results[2].execution.batchId
-				&& results[2].execution.batchId == results[4].execution.batchId
-				&& results[1].execution.batchId == results[3].execution.batchId
-				&& results[3].execution.batchId == results[5].execution.batchId,
-				"Scheduler started before queued compatible simulations finished preparing");
+			Require(results[0].execution.batchSize == 4 && results[0].execution.batchId == results[1].execution.batchId
+				&& results[1].execution.batchId == results[2].execution.batchId
+				&& results[2].execution.batchId == results[3].execution.batchId,
+				"Scheduler did not batch simulations with different thermostat targets");
 		}
 		{
 			std::vector<SimulationJob> jobs;

@@ -637,7 +637,7 @@ static Float3 PlanarSurfaceNormal(float x, float y, const Float3& boxSize) {
 }
 
 static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, float membraneCenter) {
+	const Lipids::Selection& lipidselection, float membraneCenter, int randomSeed) {
 
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
 	const float n_lipids_total = lipidDensity * grofile.box_size.x * grofile.box_size.y; // (per side)
@@ -650,12 +650,12 @@ static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
-	RandomUniformGenerator genRandomAngle(-PI, PI);
-	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+	RandomUniformGenerator genRandomAngle(-PI, PI, 1238971 + randomSeed);
+	GetNextRandomLipid getNextRandomLipid{ lipidselection, randomSeed };
 	// Small independent protrusions are layered on top of the shared mid-plane
 	// undulation. Keeping these below 0.04 nm avoids tearing the initial bilayer.
-	RandomUniformGenerator topLeafletProtrusion(-0.035f, 0.035f, 571923);
-	RandomUniformGenerator bottomLeafletProtrusion(-0.035f, 0.035f, 927531);
+	RandomUniformGenerator topLeafletProtrusion(-0.035f, 0.035f, 571923 + randomSeed);
+	RandomUniformGenerator bottomLeafletProtrusion(-0.035f, 0.035f, 927531 + randomSeed);
 
 	std::map<std::string, std::vector<QueuedInsertion>> queuedInsertions; // Must be ordered, so we get the same sequence each time
 	for (auto& lipid : lipidselection) {
@@ -987,7 +987,7 @@ static void QueueEllipsoidalLeaflet(
 
 static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, const Float3& center, const Float3& radii,
-	const std::string& shapeName) {
+	const std::string& shapeName, int randomSeed) {
 	if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z))
 		throw std::invalid_argument(std::format("Membrane {} center must contain finite coordinates.", shapeName));
 	if (!std::isfinite(radii.x) || !std::isfinite(radii.y) || !std::isfinite(radii.z)
@@ -1020,9 +1020,9 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 		queuedInsertions.try_emplace(lipid.lipidname);
 
 	QueueEllipsoidalLeaflet(queuedInsertions, lipidselection, center, radii,
-		leafletHalfThickness, outerLipidCount, true, 0);
+		leafletHalfThickness, outerLipidCount, true, randomSeed);
 	QueueEllipsoidalLeaflet(queuedInsertions, lipidselection, center, radii,
-		-leafletHalfThickness, innerLipidCount, false, 1);
+		-leafletHalfThickness, innerLipidCount, false, randomSeed + 1);
 
 	int totalIncoming = 0;
 	for (const auto& [_, insertions] : queuedInsertions) {
@@ -1040,19 +1040,19 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 }
 
 static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere) {
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere, int randomSeed) {
 	CreateEllipsoidalMembrane(grofile, topfile, lipidselection, sphere.center,
-		Float3{ sphere.radius }, "sphere");
+		Float3{ sphere.radius }, "sphere", randomSeed);
 }
 
 static void CreateEllipsoidMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Ellipsoid& ellipsoid) {
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Ellipsoid& ellipsoid, int randomSeed) {
 	CreateEllipsoidalMembrane(grofile, topfile, lipidselection, ellipsoid.center,
-		ellipsoid.radii, "ellipsoid");
+		ellipsoid.radii, "ellipsoid", randomSeed);
 }
 
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry) {
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry, int randomSeed) {
 	validateLipidselection(lipidselection);
 	for (const auto& lipid : lipidselection)
 		centerMoleculeAroundOrigo(*lipid.grofile);
@@ -1060,15 +1060,15 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
 	std::visit([&](const auto& figure) {
 		using FigureType = std::decay_t<decltype(figure)>;
 		if constexpr (std::is_same_v<FigureType, MembraneGeometry::Plane>)
-			CreatePlanarMembrane(grofile, topfile, lipidselection, figure.z);
+			CreatePlanarMembrane(grofile, topfile, lipidselection, figure.z, randomSeed);
 		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Sphere>)
-			CreateSphericalMembrane(grofile, topfile, lipidselection, figure);
+			CreateSphericalMembrane(grofile, topfile, lipidselection, figure, randomSeed);
 		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Ellipsoid>)
-			CreateEllipsoidMembrane(grofile, topfile, lipidselection, figure);
+			CreateEllipsoidMembrane(grofile, topfile, lipidselection, figure, randomSeed);
 	}, geometry);
 }
 
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, float membraneCenter) {
-	CreateMembrane(grofile, topfile, lipidselection, MembraneGeometry::Plane{ membraneCenter });
+	const Lipids::Selection& lipidselection, float membraneCenter, int randomSeed) {
+	CreateMembrane(grofile, topfile, lipidselection, MembraneGeometry::Plane{ membraneCenter }, randomSeed);
 }

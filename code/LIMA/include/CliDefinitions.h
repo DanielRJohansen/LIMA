@@ -51,6 +51,7 @@ Options:
   -b, --box-size NM [NM NM]    Cubic size or x/y/z dimensions (required)
   -c, --center-z NM            Membrane center (default: half the box height)
       --em-tolerance VALUE     EM force tolerance (default: 100 kJ/mol/nm)
+      --seed INTEGER           Reproducible membrane construction seed (default: 0)
       --working-dir PATH       Output directory (default: current directory)
   -d, --display                Display the simulation
   -h, --help                   Display this help and exit

@@ -118,6 +118,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
     std::optional<float> membraneCenterZ = std::nullopt;
     Float3 boxsize{};
     float emtol = 100.f;
+    int randomSeed = 0;
 
     ArgParser argparser(helpText);
 
@@ -143,6 +144,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
     argparser.AddOption({ "--center-z", "-c", "-centerz" }, false, membraneCenterZ);
 	argparser.AddOption({ "--box-size", "-b", "-boxsize" }, true, boxsize, true);
 	argparser.AddOption({ "--em-tolerance", "-emtol", "-tolerance" }, false, emtol);
+	argparser.AddOption({ "--seed", "-seed" }, false, randomSeed);
     argparser.AddOption({ "--working-dir", "-working_dir", "-workdir", "-wd" }, false, workDir);
 	argparser.AddFlag({ "--display", "-d", "-display" }, [&envmode]() { envmode = Full; });
 
@@ -158,7 +160,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
     grofile.title = "Membrane";
     TopologyFile topfile;
     topfile.SetSystem("Membrane");
-    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ.value_or(boxsize.z/2.f));
+    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ.value_or(boxsize.z/2.f), randomSeed);
     auto emResult = Environment::Get().Submit(SimulationJob{
         workDir, grofile, topfile, SimParams::BasicEMSimParams(emtol), envmode }).Get();
     emResult.WriteCoordinatesTo(grofile);

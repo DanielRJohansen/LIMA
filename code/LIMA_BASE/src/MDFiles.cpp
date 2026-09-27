@@ -161,6 +161,8 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 
 void GroFile::printToFile(const std::filesystem::path& path) const {
 	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
+	if (!path.parent_path().empty())
+		fs::create_directories(path.parent_path());
 
 	std::ofstream file(path);
 	if (!file.is_open()) {
@@ -235,7 +237,7 @@ PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 			atom.resSeq = std::stoi(line.substr(22, 4));
 			atom.iCode = line[26];
 
-			// Convert coordinates from Ångströms to nanometers
+			// Convert coordinates from Ã…ngstrÃ¶ms to nanometers
 			atom.position.x = std::stof(line.substr(30, 8)) * 0.1f;
 			atom.position.y = std::stof(line.substr(38, 8)) * 0.1f;
 			atom.position.z = std::stof(line.substr(46, 8)) * 0.1f;

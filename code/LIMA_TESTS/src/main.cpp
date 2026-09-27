@@ -120,6 +120,109 @@ void TestDisplayT4Batch() {
 	}
 }
 
+
+// Demonstrates LIMA's parallel simulation workflow.
+// Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
+// Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
+void ShowcaseMultisim() {
+	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc";
+	const fs::path outputDir = workDir / "showcase_multisim";
+	constexpr std::array temperatures{ 300.f, 340.f };
+	constexpr std::array seeds{ 101, 202, 303 };
+	const std::array compositions{
+		std::vector<std::pair<std::string, double>>{ { "DPPC", 70. }, { "DOPC", 30. } },
+		std::vector<std::pair<std::string, double>>{ { "DPPC", 40. }, { "DOPC", 60. } },
+	};
+
+	struct PreparedMembrane {
+		std::string name;
+		fs::path initialCoordinates;
+		fs::path minimizedCoordinates;
+		fs::path topology;
+	};
+	std::vector<std::shared_ptr<PreparedMembrane>> membranes;
+	std::vector<SimulationHandle> minimizations;
+	Environment& environment = Environment::Get();
+
+	for (size_t compositionId = 0; compositionId < compositions.size(); ++compositionId) {
+		for (const int seed : seeds) {
+			auto membrane = std::make_shared<PreparedMembrane>();
+			membrane->name = std::format("composition_{}_seed_{}", compositionId + 1, seed);
+			const fs::path membraneDir = outputDir / membrane->name;
+			membrane->initialCoordinates = membraneDir / "initial.gro";
+			membrane->minimizedCoordinates = membraneDir / "minimized.gro";
+			membrane->topology = membraneDir / "topol.top";
+			membranes.push_back(membrane);
+
+			SimulationJob job;
+			job.workDir = workDir;
+			job.grofile.emplace();
+			job.grofile->box_size = Float3{ 12.f };
+			job.topfile.emplace();
+			job.simParams = SimParams::BasicEMSimParams(100.f);
+			job.mode = Full;
+			job.preprocess = [workDir, composition = compositions[compositionId], seed, membrane](
+				GroFile& gro, TopologyFile& top, SimParams&) {
+				Lipids::Selection selection;
+				for (const auto& [lipidName, percentage] : composition)
+					selection.emplace_back(Lipids::Select{ lipidName, workDir, percentage });
+				gro.title = "Multisim membrane";
+				top.SetSystem("Multisim membrane");
+				SimulationBuilder::CreateMembrane(gro, top, selection, 4.f, seed);
+				top.printToFile(membrane->topology);
+			};
+			minimizations.push_back(environment.Submit(std::move(job)));
+		}
+	}
+
+	for (size_t i = 0; i < minimizations.size(); ++i) {
+		auto result = minimizations[i].Get();
+		if (!result.simulation)
+			throw std::runtime_error("Multisim membrane minimization did not return a simulation");
+		GroFile gro{ membranes[i]->initialCoordinates };
+		result.WriteCoordinatesTo(gro);
+		gro.printToFile(membranes[i]->minimizedCoordinates);
+	}
+
+	std::vector<SimulationHandle> productions;
+	std::vector<std::pair<size_t, float>> productionMetadata;
+	for (size_t membraneId = 0; membraneId < membranes.size(); ++membraneId) {
+		for (const float temperature : temperatures) {
+			SimParams params;
+			params.n_steps = 5000;
+			params.apply_thermostat = true;
+			params.ref_t = temperature;
+			params.save_energy = true;
+			params.data_logging_interval = 100;
+			const auto& membrane = *membranes[membraneId];
+			SimulationJob job;
+			job.workDir = workDir;
+			job.groPath = membrane.minimizedCoordinates;
+			job.topPath = membrane.topology;
+			job.simParams = params;
+			job.mode = Full;
+			productions.push_back(environment.Submit(std::move(job)));
+			productionMetadata.emplace_back(membraneId, temperature);
+		}
+	}
+
+	for (size_t i = 0; i < productions.size(); ++i) {
+		auto result = productions[i].Get();
+		if (!result.simulation || result.simulation->simParams.ref_t != productionMetadata[i].second)
+			throw std::runtime_error("Multisim production simulation used the wrong temperature");
+		const auto& [membraneId, temperature] = productionMetadata[i];
+		const auto& membrane = *membranes[membraneId];
+		const fs::path runDir = outputDir / membrane.name / std::format("{}K", static_cast<int>(temperature));
+		GroFile finalCoordinates{ membrane.minimizedCoordinates };
+		result.WriteCoordinatesTo(finalCoordinates);
+		finalCoordinates.printToFile(runDir / "out.gro");
+	}
+
+	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
+}
+
+
+
 int main(int argc, char** argv) {
 	if (argc == 2 && std::string_view(argv[1]) == "--display-preview") {
 		try {
@@ -153,6 +256,10 @@ int main(int argc, char** argv) {
 		try { EngineBatchTests::RunAll(); return 0; }
 		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
 	}
+	if (argc == 2 && std::string_view(argv[1]) == "--showcase-multisim") {
+		try { ShowcaseMultisim(); return 0; }
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
@@ -162,7 +269,8 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		TestDisplayT4Batch();
+		ShowcaseMultisim();
+		//TestDisplayT4Batch();
 		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
 		return 0;
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();

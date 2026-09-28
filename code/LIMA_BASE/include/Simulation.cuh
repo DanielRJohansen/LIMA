@@ -9,6 +9,7 @@
 #include "Backbone.h"
 
 #include <set>
+#include <string>
 
 namespace MDFiles { struct TrrFile; }
 struct BoxImage;
@@ -144,6 +145,7 @@ public:
 
 	
 	bool finished = false;
+	std::string name;
 
 
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;	// [nm]

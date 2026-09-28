@@ -1054,6 +1054,13 @@ static void CreateEllipsoidMembrane(GroFile& grofile, TopologyFile& topfile,
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry, int randomSeed) {
 	validateLipidselection(lipidselection);
+	const std::string name = Lipids::NameSelection(lipidselection);
+	if (grofile.title.empty())
+		grofile.title = name;
+	if (topfile.title.empty())
+		topfile.title = name;
+	if (!topfile.HasSystem())
+		topfile.SetSystem(name);
 	for (const auto& lipid : lipidselection)
 		centerMoleculeAroundOrigo(*lipid.grofile);
 

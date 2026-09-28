@@ -76,11 +76,13 @@ bool RenderDataPipe::TryCopyToHost(Float3* destination, std::size_t destinationC
 			"Could not copy render data to host");
 		CheckCuda(cudaStreamSynchronize(readStream), "Could not finish copying render data to host");
 		step = publishedStep.load(std::memory_order_relaxed);
-		state.store(State::Empty, std::memory_order_release);
+		State reading = State::Reading;
+		state.compare_exchange_strong(reading, State::Empty, std::memory_order_release, std::memory_order_relaxed);
 		return true;
 	}
 	catch (...) {
-		state.store(State::Empty, std::memory_order_release);
+		State reading = State::Reading;
+		state.compare_exchange_strong(reading, State::Empty, std::memory_order_release, std::memory_order_relaxed);
 		throw;
 	}
 }

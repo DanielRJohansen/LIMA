@@ -10,14 +10,25 @@
 Camera::Camera(Float3 boxSize)
 	: center(boxSize / 2.f)
 	, boxSize(boxSize)
-	, dist(-2.f * boxSize.y)
-{}
+{
+	dist = -FitDistance();
+}
+
+float Camera::FitDistance() const
+{
+	constexpr float halfFovY = glm::radians(45.f / 2.f);
+	const float halfFovX = std::atan(std::tan(halfFovY) * aspectRatio);
+	const float halfFov = std::min(halfFovX, halfFovY);
+	const float radius = glm::length(ToVec3(boxSize)) * .5f;
+	return radius / std::sin(halfFov) * 1.05f;
+}
 
 void Camera::Update(float deltaYaw, float deltaPitch, float deltaDist)
 {
 	yaw += deltaYaw;
 	pitch += deltaPitch;
 	dist += deltaDist + deltaDist * -std::min(dist, 0.f) * 0.5f;
+	hasUserZoom |= deltaDist != 0.f;
 }
 
 void Camera::Update(Float3 boxSize)
@@ -39,8 +50,11 @@ void Camera::Reset()
 
 void Camera::UpdateViewport(glm::ivec2 viewportSize)
 {
-	if (viewportSize.x > 0 && viewportSize.y > 0)
+	if (viewportSize.x > 0 && viewportSize.y > 0) {
 		aspectRatio = static_cast<float>(viewportSize.x) / static_cast<float>(viewportSize.y);
+		if (!hasUserZoom)
+			dist = -FitDistance();
+	}
 }
 
 glm::mat4 Camera::View() const

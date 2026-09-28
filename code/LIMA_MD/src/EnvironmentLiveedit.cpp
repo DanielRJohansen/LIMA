@@ -291,7 +291,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 		simulation->box->boxparams, simStatus, simulation->box->backboneChains
-	), false);
+	), false, nullptr, simulation->name);
 	display->allowUserInputs = true;
 
 	LiveEditData liveeditData{};

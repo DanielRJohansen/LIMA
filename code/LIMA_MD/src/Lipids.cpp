@@ -30,6 +30,13 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 		OrganizeLipidIntoCompoundsizedSections(*grofile, topfile->GetMoleculeType());
 }
 
+std::string Lipids::NameSelection(const Selection& selection) {
+	std::ostringstream oss;
+	for (const auto& sel : selection) {
+		oss << sel.lipidname << "(" << std::format("{:.1f}", sel.percentage) << "%)_";
+	}
+	return oss.str();
+}
 
 
 

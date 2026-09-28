@@ -106,6 +106,7 @@ private:
 	// Needed to get positions before initial kernel call. Necessary in order to get positions for first NList call
 	void BootstrapTrajbufferWithCoords(EngineSimulationData& simData);
 	void Synchronize();
+	void StopRenderDataPipes();
 
 
 	void HandleEarlyStoppingInEM(EngineSimulationData& simData);

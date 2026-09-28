@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine.cuh"
+#include "RenderDataPipe.h"
 #include <stdexcept>
 
 namespace EngineBatchTests {
@@ -88,6 +89,15 @@ namespace EngineBatchTests {
 	}
 
 	inline void RunAll() {
+		{
+			auto simulation = MakeSimulation(5, 1, 0.00001f, false);
+			RenderDataPipe renderDataPipe;
+			Engine engine({ simulation.get() }, EngineRunMode::Simulation, { &renderDataPipe });
+			while (!engine.IsFinished()) engine.step();
+			engine.terminateSimulation();
+			Require(renderDataPipe.GetState() == RenderDataPipe::State::Stopped,
+				"Terminated engine left its render pipe active");
+		}
 		{
 			auto first = MakeSimulation(29, 11, 0.00001f, true);
 			auto middle = MakeSimulation(5, 3, 0.00002f, true);

@@ -2,6 +2,7 @@
 
 #include "LiveEditCommands.h"
 #include "RenderTask.h"
+#include "RenderViewport.h"
 
 #include <atomic>
 #include <chrono>
@@ -59,11 +60,13 @@ struct RenderContext {
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
-	RenderDataPipe* renderDataPipe = nullptr;
+	std::shared_ptr<RenderDataPipe> renderDataPipe;
 	std::vector<Float3> renderPositionsHost;
 	std::string label;
 	bool completed = false;
 	std::optional<Rendering::MoleculeInfo> selectedMolecule;
+	int lastSelectedAtomId = -1;
+	bool shouldRecolorAtoms = false;
 
 	std::unique_ptr<RenderSettings> renderSettings;
 	std::unique_ptr<Camera> camera;
@@ -76,6 +79,7 @@ struct RenderContext {
 };
 
 class Display {
+	friend class DisplayTests;
 public:
 	Display();
 	~Display();
@@ -83,7 +87,7 @@ public:
 
 
 	void Submit(SimulationId, Rendering::Task, bool blocking = false,
-		RenderDataPipe* renderDataPipe = nullptr, std::string label = {});
+		std::shared_ptr<RenderDataPipe> renderDataPipe = nullptr, std::string label = {});
 	void Free(SimulationId);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
@@ -105,6 +109,8 @@ public:
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
 
 private:
+	explicit Display(bool startRenderThread);
+	void ReleaseGraphics();
 	void Mainloop();
 	void Setup();
 	void SetupCallbacks();
@@ -113,8 +119,13 @@ private:
 
 	void _RenderAtoms(const RenderContext& renderContext);
 	void _Render(const RenderContext& renderContext, const MoleculeHullCollection& molCollection, Float3 boxSize);
-	void _Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask,
-		const std::vector<SimulationTab>& tabs);
+	void RenderFrame(const std::vector<SimulationTab>& tabs);
+	void RenderScene(const RenderContext& renderContext, const RenderViewport& viewport);
+	void SetViewport(const RenderViewport& viewport);
+	bool RemoveStoppedRenderContexts();
+	void CancelInteraction();
+	bool TargetMouseContext();
+	void ApplyRepresentation(ColoringMethod method);
 	void PrepareTask(RenderContext&, Rendering::Task& task, bool ignorePosition);
 	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask&, bool ignorePosition);
 	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
@@ -128,15 +139,19 @@ private:
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
 	void SelectMolecule(int atomId);
-	int GetObjectIdAtPixel(glm::ivec2);
-	void ConsumeInputs(bool& shouldRecolorAtoms);
+	int GetObjectIdAtPixel(glm::dvec2);
+	void ConsumeInputs();
 
 	bool isDragging = false;
 	glm::dvec2 mousePosAtBtnDown{};
 	std::optional<glm::dvec3> mousePosAtRightBtnDown{};
 	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
 	glm::dvec2 mousePos{};
-	int lastSelectedAtomId = -1;
+	std::optional<SimulationId> dragSimulationId;
+	std::optional<SimulationId> popupSimulationId;
+	std::map<SimulationId, RenderContext> renderContexts;
+	std::map<SimulationId, RenderViewport> viewports;
+	bool tiled = false;
 
 	std::mutex liveEditCommandsQueueMutex;
 	std::deque<LiveEdit::Command> liveEditCommandsQueue;
@@ -144,7 +159,7 @@ private:
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	std::mutex incomingRenderTaskMutex;
-	std::deque<std::tuple<SimulationId, Rendering::Task, RenderDataPipe*, std::string>> incomingRenderTasksGlobal;
+	std::deque<std::tuple<SimulationId, Rendering::Task, std::shared_ptr<RenderDataPipe>, std::string>> incomingRenderTasksGlobal;
 	std::mutex inputMutex;
 	std::deque<std::tuple<SimulationId, std::set<int>, std::optional<Rendering::MoleculeInfo>>> newSelectionInputs;
 	RenderContext* activeRenderContext = nullptr;

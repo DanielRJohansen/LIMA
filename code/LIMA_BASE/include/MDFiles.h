@@ -273,6 +273,7 @@ public:
 			throw std::runtime_error("System not initialized");
 		return m_system;
 	}
+	bool HasSystem() const { return m_system.IsInit(); }
 	void SetSystem(const std::string& systemName) {
 		if (m_system.IsInit())
 			throw std::runtime_error("System already initialized");

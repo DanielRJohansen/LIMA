@@ -895,9 +895,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 //	}
 //}
 
-TopologyFile::TopologyFile() {
-	title = "My Topology file";
-}
+TopologyFile::TopologyFile() = default;
 TopologyFile::TopologyFile(const fs::path& path) : path(path)
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))

@@ -73,6 +73,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 	}
 	catch (...) {
 		Synchronize();
+		StopRenderDataPipes();
 		batch.reset();
 		for (auto stream : cudaStreams) if (stream) cudaStreamDestroy(stream);
 		if (pmeStream) cudaStreamDestroy(pmeStream);
@@ -82,6 +83,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 
 Engine::~Engine() {
 	Synchronize();
+	StopRenderDataPipes();
 	batch.reset(); // Controllers reference streams, so destroy them first.
 	for (auto stream : cudaStreams) cudaStreamDestroy(stream);
 	cudaStreamDestroy(pmeStream);
@@ -186,6 +188,12 @@ namespace {
 		const int lane = positionId % PersistentCluster::maxParticles;
 		destination[positionId] = source[pclusterOffset + pclusterId].pqd[lane].position;
 	}
+}
+
+void Engine::StopRenderDataPipes() {
+	for (auto* pipe : renderDataPipes)
+		if (pipe)
+			pipe->Stop();
 }
 
 void Engine::step() {
@@ -297,6 +305,7 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 
 void Engine::terminateSimulation() {
 	for (auto& sim : batch->simulations) FinalizeSimulation(sim);
+	StopRenderDataPipes();
 	LIMA_UTILS::genericErrorCheckNoSync("Error during TerminateSimulation");
 }
 

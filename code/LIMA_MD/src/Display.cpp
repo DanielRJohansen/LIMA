@@ -96,25 +96,26 @@ void Display::SetupCallbacks() {
             // Retrieve the Display instance from the window user pointer
             Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
             if (display) {
+                const bool hasMouseContext = display->TargetMouseContext();
                 const float delta = 3.1415 / 8.f;
                 switch (key) {
                 case GLFW_KEY_UP:
-                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, delta, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, delta, 0);
                     break;
                 case GLFW_KEY_DOWN:
-                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, -delta, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, -delta, 0);
                     break;
                 case GLFW_KEY_LEFT:
-                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(delta, 0, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(delta, 0, 0);
                     break;
                 case GLFW_KEY_RIGHT:
-                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(-delta, 0, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(-delta, 0, 0);
                     break;
                 case GLFW_KEY_PAGE_UP:
-                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, 0.5f);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, 0.5f);
                     break;
                 case GLFW_KEY_PAGE_DOWN:
-                    if (display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, -0.5f);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, -0.5f);
                     break;
                 case GLFW_KEY_N:
                     display->debugValue = 1;
@@ -130,10 +131,10 @@ void Display::SetupCallbacks() {
 					break;
                 }
                 case GLFW_KEY_1:
-                    if (display->activeRenderContext) display->activeRenderContext->renderAtoms = !display->activeRenderContext->renderAtoms;
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->renderAtoms = !display->activeRenderContext->renderAtoms;
                     break;
                 case GLFW_KEY_2:
-                    if (display->activeRenderContext) display->activeRenderContext->renderFacets = !display->activeRenderContext->renderFacets;
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->renderFacets = !display->activeRenderContext->renderFacets;
                     break;
                 }
             }
@@ -200,9 +201,12 @@ void Display::Setup() {
     }
 }
 
-Display::Display()
+Display::Display() : Display(true) {}
+
+Display::Display(bool startRenderThread)
 	: fps(std::make_unique<FPS>())
 {
+    if (!startRenderThread) return;
         // todo: Display needs to know if its in liveedit, so it knows whether to render gizmo and console.
         // It should also tell Overlay if there is any solvent present, if not dont have the button there..
     renderThread = std::jthread([this] {
@@ -213,6 +217,7 @@ Display::Display()
         catch(...) {
             displayThreadException = std::current_exception();
         }
+        ReleaseGraphics();
         displaySelfTerminated = true;
     }); 
 }
@@ -221,7 +226,30 @@ Display::~Display() {
     kill = true;
     if (renderThread.joinable())
         renderThread.join();
+    else
+        ReleaseGraphics();
     glfwTerminate();
+}
+
+void Display::ReleaseGraphics() {
+    // Windows destroys a thread's windows on exit. Release ImGui and GPU resources
+    // on the window's owning thread while its OpenGL context is still valid.
+    if (window) {
+        glfwMakeContextCurrent(window);
+        activeRenderContext = nullptr;
+        renderContexts.clear();
+        overlay.reset();
+        renderTargetControl.reset();
+        drawBoxOutlineShader.reset();
+        drawFacetsShader.reset();
+        drawAtomsFromCpuShader.reset();
+        drawNormalsShader.reset();
+        drawTrianglesShader.reset();
+        drawBackgroundGradientShader.reset();
+        drawAtomsPrettyShader.reset();
+        glfwDestroyWindow(window);
+        window = nullptr;
+    }
 }
 
 void Display::WaitForDisplayReady() {
@@ -252,7 +280,6 @@ void Display::PrepareTask(RenderContext& renderContext, Task& task, bool ignoreP
 }
 
 void Display::Mainloop() {
-    std::map<SimulationId, RenderContext> renderContexts;
 
     TimeIt frameTime{};
 
@@ -288,6 +315,9 @@ void Display::Mainloop() {
 				auto [simId, incomingRenderTask, renderDataPipe, label] = std::move(incomingRenderTasksGlobal.front());
                 incomingRenderTasksGlobal.pop_front();
                 if (std::holds_alternative<Rendering::FreeTask>(incomingRenderTask)) {
+					CancelInteraction();
+					viewports.clear();
+					if (popupSimulationId == simId) popupSimulationId.reset();
 					if (activeSimulationId == simId) {
 						activeSimulationId.reset();
 						activeRenderContext = nullptr;
@@ -295,6 +325,10 @@ void Display::Mainloop() {
 					renderContexts.erase(simId);
                 }
                 else {
+                    if (!renderContexts.contains(simId)) {
+                        CancelInteraction();
+                        viewports.clear();
+                    }
                     auto& context = renderContexts[simId];
 					if (renderDataPipe)
 						context.renderDataPipe = renderDataPipe;
@@ -306,90 +340,77 @@ void Display::Mainloop() {
             }
         }
 
+		RemoveStoppedRenderContexts();
 
 
-        // Everything happening from here is specific to the active RenderContext. Currently that is the "oldest" one, but eventually the user can switch between them
-        // The RC status is not modifying externally, and thus we dont need mutexes from here onward
-		if (renderContexts.empty()) {
-			activeRenderContext = nullptr;
-			continue;
-		}
-		if (!activeSimulationId || !renderContexts.contains(*activeSimulationId))
-			activeSimulationId = renderContexts.begin()->first;
-		auto currentContextIt = renderContexts.find(*activeSimulationId);
-		RenderContext& currentRenderContext = currentContextIt->second;
-		const bool switchedContext = activeRenderContext != &currentRenderContext;
-		if (switchedContext) {
-			isDragging = false;
-			mousePosAtRightBtnDown.reset();
-			if (activeRenderContext && activeRenderContext->activeGizmo) {
-				activeRenderContext->activeGizmo->activeAxis.reset();
-				activeRenderContext->activeGizmo->pullForce.reset();
-				activeRenderContext->activeGizmo->rotateForce.reset();
-				stopMovingLiveeditCmd.store(true);
-			}
-		}
-		activeRenderContext = &currentRenderContext;
-		currentRenderContext.camera->UpdateViewport(framebufferSize);
-		auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
-        auto& currentRenderTask = currentRenderContext.currentRenderTask;
+        if (renderContexts.empty()) {
+            activeRenderContext = nullptr;
+            viewports.clear();
+            if (framebufferSize.x > 0 && framebufferSize.y > 0) {
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glfwSwapBuffers(window);
+            }
+            continue;
+        }
+        if (!activeSimulationId || !renderContexts.contains(*activeSimulationId))
+            activeSimulationId = renderContexts.begin()->first;
+        activeRenderContext = &renderContexts.at(*activeSimulationId);
+        ConsumeInputs();
+        if (allowUserInputs) tiled = false;
 
         bool updatedPositions = false;
-        bool shouldRecolorAtoms = false;
-        ConsumeInputs(shouldRecolorAtoms);
-		if (currentRenderContext.revolveCamera) {
-			const auto now = std::chrono::high_resolution_clock::now();
-			const float elapsedSeconds = std::chrono::duration<float>(now - currentRenderContext.lastRevolveTime).count();
-			currentRenderContext.camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
-			currentRenderContext.lastRevolveTime = now;
-		}
+        bool anyNewTask = false;
+        for (auto& [simulationId, currentRenderContext] : renderContexts) {
+            auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
+            auto& currentRenderTask = currentRenderContext.currentRenderTask;
+            const bool visible = tiled || simulationId == activeSimulationId;
+            if (currentRenderContext.revolveCamera) {
+                const auto now = std::chrono::high_resolution_clock::now();
+                const float elapsedSeconds = std::chrono::duration<float>(now - currentRenderContext.lastRevolveTime).count();
+                if (visible)
+                    currentRenderContext.camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
+                currentRenderContext.lastRevolveTime = now;
+            }
 
-        // Check for new task
-        bool newTask = false;        
-        {
+            bool newTask = false;
             if (!incomingRenderTasks.empty()) {
-                Rendering::Task incomingRenderTask = std::move(incomingRenderTasks.front());
+                auto incomingRenderTask = std::move(incomingRenderTasks.front());
                 incomingRenderTasks.pop_front();
-
-                if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
-					if (std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
-                        if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
-                            int a = 0;
-                        }
-						PrepareNewRenderTask(currentRenderContext, *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
-                        //incomingRenderTask = Rendering::NoTask{};
+                if (const auto* update = std::get_if<std::unique_ptr<SimulationTaskUpdate>>(&incomingRenderTask)) {
+                    if (*update && std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
+                        PrepareNewRenderTask(currentRenderContext, *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), **update);
                         updatedPositions = true;
-                    }
-                    else {
-                        // This shouldn't happen
                     }
                 }
                 else if (!std::holds_alternative<Rendering::NoTask>(incomingRenderTask)) {
+                    if (dragSimulationId == simulationId) CancelInteraction();
                     currentRenderTask = std::move(incomingRenderTask);
-                    //incomingRenderTasks = Rendering::NoTask{};
                     newTask = true;
                 }
             }
-        }
-        if (newTask || shouldRecolorAtoms) {
-            bool ignorePosition = !newTask;
-            PrepareTask(currentRenderContext, currentRenderTask, ignorePosition);
-        }        
+            if (newTask || currentRenderContext.shouldRecolorAtoms) {
+                if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask))
+                    PrepareTask(currentRenderContext, currentRenderTask, !newTask);
+                currentRenderContext.shouldRecolorAtoms = false;
+                anyNewTask = true;
+            }
 
-		if (currentRenderContext.renderDataPipe
-			&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
-			auto& atomTask = *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask);
-			currentRenderContext.renderPositionsHost.resize(currentRenderContext.renderDataPipe->PositionCount());
-			int64_t renderStep = -1;
-			if (currentRenderContext.renderDataPipe->TryCopyToHost(
-				currentRenderContext.renderPositionsHost.data(), currentRenderContext.renderPositionsHost.size(), renderStep)) {
-				auto status = atomTask.simStatus;
-				status.step = renderStep;
-				PrepareNewRenderTask(currentRenderContext, atomTask, Rendering::SimulationTaskUpdate{
-					currentRenderContext.renderPositionsHost.data(), nullptr, status });
-				updatedPositions = true;
+			if (currentRenderContext.renderDataPipe
+				&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
+				auto& atomTask = *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask);
+				currentRenderContext.renderPositionsHost.resize(currentRenderContext.renderDataPipe->PositionCount());
+				int64_t renderStep = -1;
+				if (currentRenderContext.renderDataPipe->TryCopyToHost(
+					currentRenderContext.renderPositionsHost.data(), currentRenderContext.renderPositionsHost.size(), renderStep)) {
+					auto status = atomTask.simStatus;
+					status.step = renderStep;
+					PrepareNewRenderTask(currentRenderContext, atomTask, Rendering::SimulationTaskUpdate{
+						currentRenderContext.renderPositionsHost.data(), nullptr, status });
+					updatedPositions = true;
+				}
 			}
-		}
+
+        }
 
 		std::vector<SimulationTab> tabs;
 		tabs.reserve(renderContexts.size());
@@ -398,8 +419,7 @@ void Display::Mainloop() {
 				bool completed = false;
 				auto status = context.renderDataPipe->GetStatus(completed);
 				context.completed = completed;
-				if (simulationId == *activeSimulationId
-					&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask))
+				if (std::holds_alternative<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask))
 					std::get<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask)->simStatus = std::move(status);
 			}
 			tabs.push_back(SimulationTab{ simulationId,
@@ -410,22 +430,48 @@ void Display::Mainloop() {
 
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newTask || updatedPositions || newInput || framebufferWasResized || switchedContext
+        bool shouldDraw = viewports.empty() || anyNewTask || updatedPositions || newInput || framebufferWasResized
 			|| frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
-            _Render(currentRenderContext, currentRenderTask, tabs);
+            RenderFrame(tabs);
 
 			fps->NewFrame();
             frameTime = TimeIt{};
         }
     }
+    activeRenderContext = nullptr;
+    renderContexts.clear(); // Release GL resources while the render thread owns the GL context.
+}
+
+bool Display::RemoveStoppedRenderContexts() {
+	bool removed = false;
+	for (auto it = renderContexts.begin(); it != renderContexts.end();) {
+		if (!it->second.renderDataPipe || it->second.renderDataPipe->GetState() != RenderDataPipe::State::Stopped) {
+			++it;
+			continue;
+		}
+		if (dragSimulationId == it->first)
+			CancelInteraction();
+		if (popupSimulationId == it->first)
+			popupSimulationId.reset();
+		if (activeSimulationId == it->first) {
+			activeSimulationId.reset();
+			activeRenderContext = nullptr;
+		}
+		viewports.erase(it->first);
+		it = renderContexts.erase(it);
+		removed = true;
+	}
+	return removed;
 }
 
 bool Display::ApplyPendingFramebufferResize() {
 	if (!framebufferResizePending || framebufferSize.x <= 0 || framebufferSize.y <= 0)
 		return false;
 
+	CancelInteraction();
+	viewports.clear();
 	framebufferResizePending = false;
 	if (activeRenderContext)
 		activeRenderContext->camera->UpdateViewport(framebufferSize);
@@ -436,7 +482,7 @@ bool Display::ApplyPendingFramebufferResize() {
 }
 
 void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking,
-	RenderDataPipe* renderDataPipe, std::string label) {
+	std::shared_ptr<RenderDataPipe> renderDataPipe, std::string label) {
     {
         if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
             if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {

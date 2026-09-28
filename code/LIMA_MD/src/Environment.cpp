@@ -119,10 +119,11 @@ const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
-Environment::SimulationSession::SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
+Environment::SimulationSession::SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode,
+	const fs::path& workDir)
 	: simulationId(simulationId)
 	, simulation(std::move(simulation))
-	, renderDataPipe(std::make_unique<RenderDataPipe>())
+	, renderDataPipe(std::make_shared<RenderDataPipe>())
 	, mode(mode)
 	, workDir(workDir)
 	{}
@@ -349,7 +350,8 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		BatchSession batch;
 		batch.sessions.reserve(next.size());
 		for (auto& member : next)
-			batch.sessions.emplace_back(member.simulationId, std::move(member.simulation), member.job.mode, member.job.workDir);
+			batch.sessions.emplace_back(member.simulationId, std::move(member.simulation), member.job.mode,
+				member.job.workDir);
 		if (next.front().job.run)
 			RunSimulation(batch, next.front().job.profileCuda);
 		// RunSimulation destroys Engine before any of its nonowning simulation
@@ -449,6 +451,7 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		auto simulation = std::make_unique<Simulation>(*job.simParams);
 		BoxBuilder::copyBoxState(*simulation, std::move(job.initialSimulation->box), job.initialSimulation->getStep());
 		simulation->boxImage = std::move(job.initialSimulation->boxImage);
+		simulation->name = std::move(job.initialSimulation->name);
 		return simulation;
 	}
 
@@ -466,6 +469,7 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		IGNORE_HYDROGEN, simParams);
 	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
+	simulation->name = grofile.title;
 	return simulation; // here sim->boximage->topology->moleculetypes[0].name is valid
 }
 
@@ -485,6 +489,7 @@ void Environment::InitializeLiveEditSimulation(
 
 	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
+	simulation->name = grofile.title;
 	SetLiveEditSimulation(std::move(simulation), mode, workDir);
 	SimulationSession& session = LiveEditSession();
 
@@ -492,7 +497,7 @@ void Environment::InitializeLiveEditSimulation(
 		display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 			session.simulation->box->persistentClusters, session.simulation->box->persistentClustersMetadata,
 			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains
-		));
+		), false, nullptr, session.simulation->name);
 	}
 }
 
@@ -572,22 +577,20 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 	Engine engine(simPointers, EngineRunMode::Simulation, renderDataPipes);
 
 	const bool stepwise = batch.sessions.front().simulation->simParams.stepwise;
-	std::unique_ptr<Display> display;
 	if (std::ranges::any_of(batch.sessions, [](const auto& session) { return session.mode == Full; })) {
-		display = std::make_unique<Display>();
+		if (display == nullptr)
+			display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
 		for (size_t simulationIndex = 0; simulationIndex < batch.sessions.size(); ++simulationIndex) {
 			auto& session = batch.sessions[simulationIndex];
 			if (session.mode != Full) continue;
 			auto& member = session.simulation;
 			session.renderDataPipe->SetStatus(session.simStatus);
-			std::string label = session.workDir.filename().string();
-			if (label.empty()) label = "Simulation";
-			label += std::format(" {}", simulationIndex + 1);
+			const std::string& label = member->name;
 			display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 				member->box->persistentClusters, member->box->persistentClustersMetadata,
 				member->box->boxparams, session.simStatus, member->box->backboneChains, Rendering::GetMoleculeInfo(*member->boxImage)
-			), stepwise, session.renderDataPipe.get(), std::move(label));
+			), stepwise, session.renderDataPipe, label);
 		}
 	}
 

@@ -36,6 +36,11 @@ namespace
         float leftY;
         float rightY;
         float bottom;
+        float left = 0.f;
+        float width = 0.f;
+        bool tiled = false;
+        SimulationId simulationId = 0;
+        float scale = 1.f;
     } cardLayout;
 
     struct CardLine {
@@ -110,14 +115,22 @@ namespace
 
     void DrawCard(const char* name, CardSide side, const std::vector<CardSection>& sections)
     {
-        const float width = std::min(380.f, ImGui::GetIO().DisplaySize.x - margin * 2.f);
-        float& top = side == CardSide::Left ? cardLayout.leftY : cardLayout.rightY;
-        const float x = side == CardSide::Left ? margin : ImGui::GetIO().DisplaySize.x - margin - width;
-        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.f), ImVec2(width, std::max(80.f, cardLayout.bottom - top)));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.f, 10.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.f, 4.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(0.f, 2.f));
-        BeginPanel(name, ImVec2(x, top), ImVec2(width, 0.f), ImGuiWindowFlags_AlwaysAutoResize);
+        const float scale = cardLayout.scale;
+        const float inset = margin * scale;
+        const float width = std::max(1.f, std::min(380.f * scale, cardLayout.width - inset * 2.f));
+        float& top = side == CardSide::Left || cardLayout.tiled ? cardLayout.leftY : cardLayout.rightY;
+        if (cardLayout.bottom - top < 30.f * scale)
+            return;
+        const float x = cardLayout.left + (side == CardSide::Left || cardLayout.tiled ? inset : cardLayout.width - inset - width);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.f), ImVec2(width, cardLayout.bottom - top));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.f * scale, 10.f * scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.f * scale, 4.f * scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(0.f, 2.f * scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1.f, 1.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 8.f * scale);
+        const auto windowName = std::format("{}##{}", name, cardLayout.simulationId);
+        BeginPanel(windowName.c_str(), ImVec2(x, top), ImVec2(width, 0.f), ImGuiWindowFlags_AlwaysAutoResize);
         for (size_t i = 0; i < sections.size(); ++i) {
             const auto& section = sections[i];
             if (i > 0) {
@@ -135,7 +148,7 @@ namespace
                         tableOpen = false;
                     }
                     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, accent);
-                    ImGui::ProgressBar(*line.progress, ImVec2(-1.f, 5.f), "");
+                    ImGui::ProgressBar(*line.progress, ImVec2(-1.f, 5.f * scale), "");
                     ImGui::PopStyleColor();
                     continue;
                 }
@@ -155,8 +168,8 @@ namespace
         }
         const float height = ImGui::GetWindowHeight();
         ImGui::End();
-        ImGui::PopStyleVar(3);
-        top += height + 12.f;
+        ImGui::PopStyleVar(6);
+        top += height + 12.f * scale;
     }
 
     void SectionLabel(const char* label)
@@ -201,12 +214,12 @@ namespace
         }
     }
 
-    void CameraMenu(std::deque<Overlay::Command>& commands)
+    void CameraMenu(std::deque<Overlay::Command>& commands, SimulationId simulationId)
     {
         if (ImGui::MenuItem("Reset view"))
-            commands.push_back(Overlay::ResetCamera{});
+            commands.push_back(Overlay::ResetCamera{ simulationId });
         if (ImGui::MenuItem("Toggle orbit"))
-            commands.push_back(Overlay::RevolveCamera{});
+            commands.push_back(Overlay::RevolveCamera{ simulationId });
     }
 
     void Metric(const char* label, const std::string& value, const char* unit = "")
@@ -215,12 +228,12 @@ namespace
         ImGui::TableSetColumnIndex(0);
         ImGui::TextColored(mutedText, "%s", label);
         ImGui::TableSetColumnIndex(1);
-        const float unitWidth = *unit ? ImGui::CalcTextSize(unit).x + 7.f : 0.f;
+        const float unitWidth = *unit ? ImGui::CalcTextSize(unit).x + 7.f * cardLayout.scale : 0.f;
         const float width = ImGui::CalcTextSize(value.c_str()).x + unitWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, ImGui::GetContentRegionAvail().x - width));
         ImGui::TextUnformatted(value.c_str());
         if (*unit) {
-            ImGui::SameLine(0.f, 7.f);
+            ImGui::SameLine(0.f, 7.f * cardLayout.scale);
             ImGui::TextColored(mutedText, "%s", unit);
         }
     }
@@ -275,7 +288,7 @@ namespace
     }
 
     float DrawMenuBar(RenderSettings& settings, std::deque<Overlay::Command>& commands, int fps,
-        unsigned int logoTexture)
+        unsigned int logoTexture, bool tiled, bool enableConsole, SimulationId simulationId)
     {
         float height = 0.f;
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.f, 10.f));
@@ -300,7 +313,15 @@ namespace
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Camera")) {
-                CameraMenu(commands);
+                if (!tiled)
+                    CameraMenu(commands, simulationId);
+                if (!enableConsole) {
+                    if (!tiled) ImGui::Separator();
+                    if (ImGui::MenuItem("Single", nullptr, !tiled))
+                        commands.push_back(Overlay::SetTiled{ false });
+                    if (ImGui::MenuItem("Tiles", nullptr, tiled))
+                        commands.push_back(Overlay::SetTiled{ true });
+                }
                 ImGui::EndMenu();
             }
             const auto fpsText = std::format("{} fps", fps);
@@ -466,7 +487,7 @@ void Overlay::HandleConsole()
     ImGui::End();
 }
 
-void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos)
+void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos, SimulationId simulationId)
 {
     if (pos) {
         ImGui::SetNextWindowPos(ImVec2(static_cast<float>(pos->x), static_cast<float>(pos->y)));
@@ -476,32 +497,67 @@ void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dve
         SectionLabel("APPEARANCE");
     ColoringMenu(settings, submittedCommands);
         ImGui::Separator();
-        CameraMenu(submittedCommands);
+        CameraMenu(submittedCommands, simulationId);
         ImGui::EndPopup();
     }
 }
 
-void Overlay::Draw(RenderSettings& settings, const SimStatus& status, int fps,
-    const std::vector<SimulationTab>& tabs, std::optional<glm::dvec2> rightClickedPos,
-	const std::optional<Rendering::MoleculeInfo>& selectedMolecule, bool spinnerVisible)
+float Overlay::BeginFrame(RenderSettings& settings, int fps, const std::vector<SimulationTab>& tabs,
+    bool tiled, SimulationId simulationId)
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+    const float menuHeight = DrawMenuBar(settings, submittedCommands, fps, logoTexture,
+        tiled, enableConsole, simulationId);
+    return tiled ? menuHeight : DrawSimulationTabs(tabs, submittedCommands, menuHeight);
+}
 
-    const float menuHeight = DrawMenuBar(settings, submittedCommands, fps, logoTexture);
-    const float top = DrawSimulationTabs(tabs, submittedCommands, menuHeight);
-    const float bottom = ImGui::GetIO().DisplaySize.y - margin
-        - (enableConsole ? consoleHeight + 12.f : 0.f);
-    cardLayout = { top, top, bottom };
-    DrawTelemetry(status);
-    DrawMoleculeInfo(selectedMolecule);
+void Overlay::DrawTile(SimulationId simulationId, const RenderContext& context,
+    const RenderViewport& viewport, bool tiled)
+{
+    const float scale = tiled ? std::clamp(static_cast<float>(std::min(viewport.size.x, viewport.size.y)) / 600.f, .45f, .85f) : 1.f;
+    const float top = static_cast<float>(viewport.origin.y) + 12.f * scale;
+    const float bottom = static_cast<float>(viewport.origin.y + viewport.size.y) - 12.f * scale
+        - (enableConsole ? consoleHeight + margin : 0.f);
+    cardLayout = { top, top, bottom, static_cast<float>(viewport.origin.x),
+        static_cast<float>(viewport.size.x), tiled, simulationId, scale };
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
+    if (tiled) {
+        const auto label = context.label.empty() ? std::format("Simulation {}", simulationId + 1) : context.label;
+        const auto name = std::format("##TileTitle{}", simulationId);
+        const float titleHeight = ImGui::GetTextLineHeight() + 6.f * scale;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.f * scale, 3.f * scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1.f, 1.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
+        BeginPanel(name.c_str(), ImVec2(static_cast<float>(viewport.origin.x), static_cast<float>(viewport.origin.y)),
+            ImVec2(static_cast<float>(viewport.size.x), titleHeight), ImGuiWindowFlags_NoInputs);
+        ImGui::TextUnformatted(label.c_str());
+        if (context.completed) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(completed)");
+        }
+        ImGui::End();
+        ImGui::PopStyleVar(3);
+        cardLayout.leftY = cardLayout.rightY = top + titleHeight;
+    }
+    if (const auto* task = std::get_if<std::unique_ptr<Rendering::AtomRenderTask>>(&context.currentRenderTask))
+        DrawTelemetry((*task)->simStatus);
+    DrawMoleculeInfo(context.selectedMolecule);
+    ImGui::PopFont();
+}
+
+
+void Overlay::EndFrame(RenderSettings& settings, std::optional<glm::dvec2> rightClickedPos,
+    std::optional<SimulationId> popupSimulationId, bool spinnerVisible)
+{
     if (enableConsole)
         HandleConsole();
-    HandleContextMenu(settings, rightClickedPos);
+    if (popupSimulationId)
+        HandleContextMenu(settings, rightClickedPos, *popupSimulationId);
     if (spinnerVisible) {
         const auto displaySize = ImGui::GetIO().DisplaySize;
-        const ImVec2 center(displaySize.x - 35.f, top + 12.f);
+        const ImVec2 center(displaySize.x - 35.f, 70.f);
         auto* drawList = ImGui::GetForegroundDrawList();
         const float angle = static_cast<float>(ImGui::GetTime()) * 4.f;
         drawList->PathArcTo(center, 9.f, angle, angle + 4.7f, 24);

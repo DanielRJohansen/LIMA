@@ -35,17 +35,24 @@ public:
         GLint prevDrawFbo = 0;
         GLint prevReadFbo = 0;
         GLint prevViewport[4]{};
+		GLint prevScissor[4]{};
+		GLboolean scissorEnabled = GL_FALSE;
 
         ScopedDrawBinding() {
             glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFbo);
             glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
             glGetIntegerv(GL_VIEWPORT, prevViewport);
+			glGetIntegerv(GL_SCISSOR_BOX, prevScissor);
+			scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
         }
 
         ~ScopedDrawBinding() {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevDrawFbo);
             glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
             glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+			glScissor(prevScissor[0], prevScissor[1], prevScissor[2], prevScissor[3]);
+			if (scissorEnabled) glEnable(GL_SCISSOR_TEST);
+			else glDisable(GL_SCISSOR_TEST);
         }
     };
 
@@ -737,6 +744,7 @@ layout(location = 1) out int  FragAtomId;
 
 void main() {
     vec3 color = vertexColor.rgb;
+	if (vertexColor.a <= 0.0) discard;
 
     if (highlight == 1u) {
 

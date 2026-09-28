@@ -9,6 +9,7 @@
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "SSBO.h"
+#include <algorithm>
 
 const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
@@ -33,7 +34,7 @@ void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, si
 		renderAtom.color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / atomCount);
 	else if (coloringMethod == ColoringMethod::ForceMagnitude)
 		renderAtom.color = RenderUtilities::GetLogColorGradient(forceMagnitude, 1e5f, 1e11f);
-	if (!showSolvents && atom.isSolvent)
+	if ((!showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon)
 		renderAtom.color.w = 0.f;
 }
 
@@ -116,13 +117,12 @@ void Ring::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec
 void Display::_RenderAtoms(const RenderContext& renderContext) {
 	
 	const glm::mat4 VP = renderContext.camera->ViewProjection();
-	if (renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon
-		&& renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry()) {
+    if (!renderContext.renderAtoms)
+        return;
+	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry()) {
 		renderContext.newCartoonRenderer->Draw(*drawTrianglesShader, VP);
-		return;
 	}
 
-	// TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
 	const glm::mat4 view = renderContext.camera->View();
 	const glm::mat4 projection = renderContext.camera->Projection();
 
@@ -132,7 +132,7 @@ void Display::_RenderAtoms(const RenderContext& renderContext) {
 	drawAtomsFromCpuShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
 }
 
-int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
+int Display::GetObjectIdAtPixel(glm::dvec2 cursor)
 {
 	if (!renderTargetControl || windowSize.x <= 0 || windowSize.y <= 0
 		|| framebufferSize.x <= 0 || framebufferSize.y <= 0)
@@ -140,12 +140,19 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 
 	// GLFW cursor positions are logical window coordinates; the picking
 	// attachment uses framebuffer pixels.
-	pixel.x = static_cast<int>(static_cast<double>(pixel.x) * framebufferSize.x / windowSize.x);
-	pixel.y = static_cast<int>(static_cast<double>(pixel.y) * framebufferSize.y / windowSize.y);
-	pixel.x = std::clamp(pixel.x, 0, framebufferSize.x - 1);
-	pixel.y = std::clamp(pixel.y, 0, framebufferSize.y - 1);
+	if (cursor.x < 0. || cursor.y < 0. || cursor.x >= windowSize.x || cursor.y >= windowSize.y)
+		return -1;
+	const glm::ivec2 pixel = glm::floor(cursor * glm::dvec2(framebufferSize) / glm::dvec2(windowSize));
 
+    if (!activeSimulationId || !viewports.contains(*activeSimulationId))
+        return -1;
+    const auto& viewport = viewports.at(*activeSimulationId);
+    if (pixel.x < viewport.pixelOrigin.x || pixel.y < viewport.pixelOrigin.y
+        || pixel.x >= viewport.pixelOrigin.x + viewport.pixelSize.x
+        || pixel.y >= viewport.pixelOrigin.y + viewport.pixelSize.y)
+        return -1;
 	auto scopedDrawBinding = renderTargetControl->BindForDraw();
+    SetViewport(viewport);
 	renderTargetControl->ClearForPicking();
 
 	if (activeRenderContext)
@@ -166,6 +173,9 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 	if (!ignorePosition)
 		renderContext.renderSettings->showSolvents = task.showSolvents;
 	if (!ignorePosition) {
+        renderContext.selectedMolecule.reset();
+        renderContext.lastSelectedAtomId = -1;
+        renderContext.activeGizmo.reset();
 		renderContext.renderSettings->hasBackbone = !task.backboneChains.empty();
 		renderContext.renderSettings->hasForceData = false;
 		if (!renderContext.renderSettings->hasBackbone && renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon)
@@ -174,15 +184,6 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 			renderContext.renderSettings->coloringMethod = ColoringMethod::Atomname;
 	}
 
-	if (renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon) {
-		if (!renderContext.newCartoonRenderer)
-			renderContext.newCartoonRenderer = std::make_unique<NewCartoon::Renderer>();
-		renderContext.newCartoonRenderer->Prepare(
-			task.backboneChains, task.positions, task.boxSize);
-	}
-	else if (renderContext.newCartoonRenderer) {
-		renderContext.newCartoonRenderer->Clear();
-	}
 
 	renderContext.camera->Update(task.boxSize);
 
@@ -199,7 +200,8 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 	renderTargetControl->Resize(framebufferSize);
 
 	// Preprocess all renderAtoms
-	renderContext.renderAtomsHost.resize(task.atoms.size(), RenderAtom{});
+	if (!ignorePosition)
+        renderContext.renderAtomsHost.assign(task.atoms.size(), RenderAtom{});
 	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
 		const Rendering::AtomRenderData& atom = task.atoms[atomId];
 		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
@@ -226,26 +228,31 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 	}
 
 	
-	//{
-	//	renderContext.renderAtomsHost.resize(task.atoms.size(), RenderAtom{});
 
-	//	if (renderContext.selectedMolecule)
+    BackboneChains cartoonChains;
+    for (const auto& source : task.backboneChains) {
+        BackboneChain chain;
+        for (const auto& point : source.points) {
+            if (point.particleId >= 0 && point.particleId < renderContext.renderAtomsHost.size()
+                && renderContext.renderAtomsHost[point.particleId].flags.y == static_cast<unsigned int>(ColoringMethod::NewCartoon)) {
+                chain.points.push_back(point);
+            }
+            else {
+                if (chain.points.size() >= 2) cartoonChains.push_back(std::move(chain));
+                chain = {};
+            }
+        }
+        if (chain.points.size() >= 2) cartoonChains.push_back(std::move(chain));
+    }
+    if (!cartoonChains.empty()) {
+        if (!renderContext.newCartoonRenderer)
+            renderContext.newCartoonRenderer = std::make_unique<NewCartoon::Renderer>();
+        renderContext.newCartoonRenderer->Prepare(cartoonChains, task.positions, task.boxSize);
+    }
+    else if (renderContext.newCartoonRenderer) {
+        renderContext.newCartoonRenderer->Clear();
+    }
 
-	//	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
-	//		const Rendering::AtomRenderData& atom = task.atoms[atomId];
-	//		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
-
-	//		if (!ignorePosition)
-	//			renderContext.renderAtomsHost[atomId].position = task.positions[atomId].Tofloat4(RenderUtilities::getRadius(atomType));
-	//		if (!ignorePosition || !renderContext.selectedMolecule
-	//			|| std::ranges::find(renderContext.selectedMolecule->atomIds, static_cast<int>(atomId))
-	//				!= renderContext.selectedMolecule->atomIds.end())
-	//			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
-	//		renderContext.renderAtomsHost[atomId].flags.z = static_cast<unsigned int>(atomId);
-	//		ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(),
-	//			renderContext.renderSettings->showSolvents);
-	//	}
-	//}
 
 	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
 		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
@@ -279,7 +286,7 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 					renderContext.renderSettings->showSolvents, update.forceMagnitudes[atomId]);
 		}
 	}
-	if (renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon && renderContext.newCartoonRenderer)
+	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry())
 		renderContext.newCartoonRenderer->Update(currentTask.positions);
 	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
 		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
@@ -350,9 +357,9 @@ void Display::_Render(const RenderContext& renderContext, const MoleculeHullColl
 	glfwSetWindowTitle(window, windowText.c_str());
 }
 
-void Display::_Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask,
-	const std::vector<SimulationTab>& tabs) {
-	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+void Display::RenderScene(const RenderContext& renderContext, const RenderViewport& viewport) {
+    SetViewport(viewport);
+    const auto& currentRenderTask = renderContext.currentRenderTask;
 
 	// Check shaders is Init
 	if (!drawBackgroundGradientShader)
@@ -360,7 +367,6 @@ void Display::_Render(const RenderContext& renderContext, const Rendering::Task&
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
-	SimStatus simStatus{};
 	Float3 boxSize{};
 
 	// First extract necessary information from the render task
@@ -368,7 +374,6 @@ void Display::_Render(const RenderContext& renderContext, const Rendering::Task&
 		std::visit([&](auto& taskPtr) {
 			using T = std::decay_t<decltype(taskPtr)>;
 			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::AtomRenderTask>>) {
-				simStatus = taskPtr->simStatus;
 				boxSize = taskPtr->boxSize;
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
@@ -409,13 +414,56 @@ void Display::_Render(const RenderContext& renderContext, const Rendering::Task&
 		glEnable(GL_DEPTH_TEST);
 	}
 
-	overlay->enableConsole = allowUserInputs;
-	overlay->Draw(*renderContext.renderSettings, simStatus, fps->GetFps(), tabs, mousePosAtRightBtnDown,
-		renderContext.selectedMolecule, spinnerVisible.load());
-	mousePosAtRightBtnDown = std::nullopt;
-	overlay->Render();
+}
 
-	glfwSwapBuffers(window);
+
+void Display::SetViewport(const RenderViewport& viewport) {
+    const int bottom = framebufferSize.y - viewport.pixelOrigin.y - viewport.pixelSize.y;
+    glViewport(viewport.pixelOrigin.x, bottom, viewport.pixelSize.x, viewport.pixelSize.y);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(viewport.pixelOrigin.x, bottom, viewport.pixelSize.x, viewport.pixelSize.y);
+}
+
+void Display::RenderFrame(const std::vector<SimulationTab>& tabs) {
+    overlay->enableConsole = allowUserInputs;
+    RenderSettings menuSettings = *activeRenderContext->renderSettings;
+    menuSettings.hasBackbone = false;
+    menuSettings.hasForceData = false;
+    const bool anySelection = std::ranges::any_of(renderContexts, [](const auto& entry) {
+        return entry.second.selectedMolecule.has_value();
+    });
+    for (const auto& [id, context] : renderContexts) {
+        if (anySelection && !context.selectedMolecule) continue;
+        menuSettings.hasBackbone |= context.renderSettings->hasBackbone;
+        menuSettings.hasForceData |= context.renderSettings->hasForceData;
+    }
+    const float top = overlay->BeginFrame(menuSettings, fps->GetFps(), tabs, tiled, *activeSimulationId);
+    viewports.clear();
+    const int count = tiled ? static_cast<int>(renderContexts.size()) : 1;
+    int index = 0;
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    for (auto& [id, context] : renderContexts) {
+        if (!tiled && id != activeSimulationId) continue;
+        const auto viewport = RenderViewport::Tile(index++, count, windowSize, framebufferSize, tiled ? top : 0.);
+        viewports.emplace(id, viewport);
+        if (viewport.pixelSize.x <= 0 || viewport.pixelSize.y <= 0) continue;
+        context.camera->UpdateViewport(viewport.pixelSize);
+        RenderScene(context, viewport);
+        auto cardViewport = viewport;
+        if (!tiled) {
+            cardViewport.origin.y = top;
+            cardViewport.size.y -= top;
+        }
+        overlay->DrawTile(id, context, cardViewport, tiled);
+    }
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+    overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, popupSimulationId, spinnerVisible.load());
+    mousePosAtRightBtnDown.reset();
+    overlay->Render();
+    glfwSwapBuffers(window);
 }
 
 

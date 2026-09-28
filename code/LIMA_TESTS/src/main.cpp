@@ -14,6 +14,7 @@
 #include "AlgorithmTests.h"
 #include "BatchingTests.h"
 #include "EngineBatchTests.h"
+#include "DisplayTests.h"
 
 
 using namespace TestUtils;
@@ -128,14 +129,16 @@ void ShowcaseMultisim() {
 	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc";
 	const fs::path outputDir = workDir / "showcase_multisim";
 	constexpr std::array temperatures{ 300.f, 340.f };
-	constexpr std::array seeds{ 101, 202, 303 };
-	const std::array compositions{
-		std::vector<std::pair<std::string, double>>{ { "DPPC", 70. }, { "DOPC", 30. } },
-		std::vector<std::pair<std::string, double>>{ { "DPPC", 40. }, { "DOPC", 60. } },
+	constexpr std::array seeds{ 101, 202, 303 };	
+	std::vector<Lipids::Selection> lipidSelections{
+		{Lipids::Select{ "DPPC", workDir, 70. },	Lipids::Select{ "DOPC", workDir, 30. }},
+		{Lipids::Select{ "DPPC", workDir, 40. },	Lipids::Select{ "DOPC", workDir, 60. }}
 	};
+	
 
 	struct PreparedMembrane {
 		std::string name;
+		int seed = 0;
 		fs::path initialCoordinates;
 		fs::path minimizedCoordinates;
 		fs::path topology;
@@ -144,10 +147,12 @@ void ShowcaseMultisim() {
 	std::vector<SimulationHandle> minimizations;
 	Environment& environment = Environment::Get();
 
-	for (size_t compositionId = 0; compositionId < compositions.size(); ++compositionId) {
-		for (const int seed : seeds) {
+	for (const auto& lipidSelection : lipidSelections) {
+		for (int i = 0; i < seeds.size(); i++) {
+			auto seed = seeds[i];
 			auto membrane = std::make_shared<PreparedMembrane>();
-			membrane->name = std::format("composition_{}_seed_{}", compositionId + 1, seed);
+			membrane->name = Lipids::NameSelection(lipidSelection) + std::format("_seed{}", seed);
+			membrane->seed = seed;
 			const fs::path membraneDir = outputDir / membrane->name;
 			membrane->initialCoordinates = membraneDir / "initial.gro";
 			membrane->minimizedCoordinates = membraneDir / "minimized.gro";
@@ -159,17 +164,17 @@ void ShowcaseMultisim() {
 			job.grofile.emplace();
 			job.grofile->box_size = Float3{ 12.f };
 			job.topfile.emplace();
-			job.simParams = SimParams::BasicEMSimParams(100.f);
+			job.simParams = SimParams::BasicEMSimParams(800.f);
+			job.simParams->n_steps = 5000;
 			job.mode = Full;
-			job.preprocess = [workDir, composition = compositions[compositionId], seed, membrane](
+			job.preprocess = [workDir, lipidSelection, seed, membrane](
 				GroFile& gro, TopologyFile& top, SimParams&) {
-				Lipids::Selection selection;
-				for (const auto& [lipidName, percentage] : composition)
-					selection.emplace_back(Lipids::Select{ lipidName, workDir, percentage });
-				gro.title = "Multisim membrane";
-				top.SetSystem("Multisim membrane");
-				SimulationBuilder::CreateMembrane(gro, top, selection, 4.f, seed);
+				SimulationBuilder::CreateMembrane(gro, top, lipidSelection, 4.f, seed);
+				gro.printToFile(membrane->initialCoordinates);
 				top.printToFile(membrane->topology);
+			};
+			job.configureSimulation = [seed](Simulation& simulation) {
+				simulation.name += std::format(" seed {}", seed);
 			};
 			minimizations.push_back(environment.Submit(std::move(job)));
 		}
@@ -201,6 +206,9 @@ void ShowcaseMultisim() {
 			job.topPath = membrane.topology;
 			job.simParams = params;
 			job.mode = Full;
+			job.configureSimulation = [seed = membrane.seed, temperature](Simulation& simulation) {
+				simulation.name += std::format(" seed:{} temperature:{} K", seed, static_cast<int>(temperature));
+			};
 			productions.push_back(environment.Submit(std::move(job)));
 			productionMetadata.emplace_back(membraneId, temperature);
 		}
@@ -224,13 +232,18 @@ void ShowcaseMultisim() {
 
 
 int main(int argc, char** argv) {
-	if (argc == 2 && std::string_view(argv[1]) == "--display-preview") {
+	if (argc == 2 && std::string_view(argv[1]) == "--display-tiles-tests") {
+		try { DisplayTests::Run(); return 0; }
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
+	if (argc == 2 && (std::string_view(argv[1]) == "--display-preview" || std::string_view(argv[1]) == "--display-tiles-preview")) {
 		try {
 			// Static UI fixture: no simulation runs or output files are written.
 			const GroFile molecule{ AutomatedTestsDir() / "T4Lysozyme" / "molecule" / "conf.gro" };
 			Display display;
-			display.allowUserInputs = true;
-			for (int i = 0; i < 4; ++i) {
+			const bool tilePreview = std::string_view(argv[1]) == "--display-tiles-preview";
+			display.allowUserInputs = !tilePreview;
+			for (int i = 0; i < (tilePreview ? 9 : 4); ++i) {
 				auto task = std::make_unique<Rendering::AtomRenderTask>(molecule, false);
 				task->simStatus.step = 24000 + i * 1000;
 				task->simStatus.temperature = 300.12f + i;

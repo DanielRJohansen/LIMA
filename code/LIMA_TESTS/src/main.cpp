@@ -138,6 +138,7 @@ void ShowcaseMultisim() {
 
 	struct PreparedMembrane {
 		std::string name;
+		std::string composition;
 		int seed = 0;
 		fs::path initialCoordinates;
 		fs::path minimizedCoordinates;
@@ -151,7 +152,8 @@ void ShowcaseMultisim() {
 		for (int i = 0; i < seeds.size(); i++) {
 			auto seed = seeds[i];
 			auto membrane = std::make_shared<PreparedMembrane>();
-			membrane->name = Lipids::NameSelection(lipidSelection) + std::format("_seed{}", seed);
+			membrane->composition = Lipids::NameSelection(lipidSelection);
+			membrane->name = membrane->composition + std::format("_seed{}", seed);
 			membrane->seed = seed;
 			const fs::path membraneDir = outputDir / membrane->name;
 			membrane->initialCoordinates = membraneDir / "initial.gro";
@@ -209,6 +211,10 @@ void ShowcaseMultisim() {
 			job.configureSimulation = [seed = membrane.seed, temperature](Simulation& simulation) {
 				simulation.name += std::format(" seed:{} temperature:{} K", seed, static_cast<int>(temperature));
 			};
+			const fs::path runDir = outputDir / membrane.name / std::format("{}K", static_cast<int>(temperature));
+			job.postprocess = [profilePath = runDir / "density_profile.csv"](SimulationResult& result) {
+				SimAnalysis::DensityProfile(*result.simulation, profilePath);
+			};
 			productions.push_back(environment.Submit(std::move(job)));
 			productionMetadata.emplace_back(membraneId, temperature);
 		}
@@ -225,6 +231,19 @@ void ShowcaseMultisim() {
 		result.WriteCoordinatesTo(finalCoordinates);
 		finalCoordinates.printToFile(runDir / "out.gro");
 	}
+
+	std::vector<SimAnalysis::DensityProfileGroup> profileGroups;
+	for (const auto& lipidSelection : lipidSelections) {
+		const std::string composition = Lipids::NameSelection(lipidSelection);
+		for (const float temperature : temperatures) {
+			SimAnalysis::DensityProfileGroup group{ .composition = composition, .temperature = temperature };
+			for (const auto& membrane : membranes)
+				if (membrane->composition == composition)
+					group.profiles.push_back(outputDir / membrane->name / std::format("{}K", static_cast<int>(temperature)) / "density_profile.csv");
+			profileGroups.push_back(std::move(group));
+		}
+	}
+	SimAnalysis::CompareDensityProfiles(profileGroups, outputDir / "density_profile_comparison.csv");
 
 	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
 }

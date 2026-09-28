@@ -31,6 +31,13 @@ namespace SimAnalysis {
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 	void AnalyzeEnergy(SimulationResult& result);
+	void DensityProfile(const Simulation& simulation, const std::filesystem::path& outputPath, bool show = false);
+	struct DensityProfileGroup {
+		std::string composition;
+		float temperature = 0.f;
+		std::vector<std::filesystem::path> profiles;
+	};
+	void CompareDensityProfiles(const std::vector<DensityProfileGroup>& groups, const std::filesystem::path& outputPath, bool show = true);
 	std::vector<Float3> GetForces(const Simulation& simulation, int64_t step);
 
 

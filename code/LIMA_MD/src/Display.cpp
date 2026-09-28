@@ -325,7 +325,8 @@ void Display::Mainloop() {
 					renderContexts.erase(simId);
                 }
                 else {
-                    if (!renderContexts.contains(simId)) {
+					const bool isNewContext = !renderContexts.contains(simId);
+                    if (isNewContext) {
                         CancelInteraction();
                         viewports.clear();
                     }
@@ -336,18 +337,30 @@ void Display::Mainloop() {
 						context.label = std::move(label);
                     if (context.incomingRenderTasks.size() < 10)
 					    renderContexts[simId].incomingRenderTasks.push_back(std::move(incomingRenderTask));
+					if (isNewContext && renderContexts.size() > 1 && !allowUserInputs)
+						tiled = true;
                 }
             }
         }
 
 		RemoveStoppedRenderContexts();
+		if (renderContexts.size() <= 1)
+			tiled = false;
 
 
         if (renderContexts.empty()) {
             activeRenderContext = nullptr;
             viewports.clear();
             if (framebufferSize.x > 0 && framebufferSize.y > 0) {
+				overlay->enableConsole = allowUserInputs;
+				RenderSettings menuSettings{};
+				overlay->BeginFrame(menuSettings, fps->GetFps(), {}, false, 0);
+				glDisable(GL_SCISSOR_TEST);
+				glViewport(0, 0, framebufferSize.x, framebufferSize.y);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+				overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, std::nullopt, spinnerVisible.load());
+				mousePosAtRightBtnDown.reset();
+				overlay->Render();
                 glfwSwapBuffers(window);
             }
             continue;

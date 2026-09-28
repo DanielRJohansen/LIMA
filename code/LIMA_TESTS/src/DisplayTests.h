@@ -154,11 +154,15 @@ public:
 			PrepareChanges(display);
 			Require(!display.activeRenderContext->newCartoonRenderer->HasGeometry(), "Cartoon geometry survived switching selected atoms back");
 
-			// A command remembers its source even when the pointer subsequently targets another tile.
+			// Camera commands broadcast to every visible tile.
 			display.overlay->submittedCommands.push_back(Overlay::RevolveCamera{ 1 });
 			display.ConsumeInputs();
-			Require(display.renderContexts.at(1).revolveCamera && !display.renderContexts.at(4).revolveCamera,
-				"Camera command reached the wrong tile");
+			for (const auto& [id, context] : display.renderContexts)
+				Require(context.revolveCamera, "Tiled orbit did not reach every camera");
+			display.overlay->submittedCommands.push_back(Overlay::ResetCamera{ 1 });
+			display.ConsumeInputs();
+			for (const auto& [id, context] : display.renderContexts)
+				Require(!context.revolveCamera, "Tiled reset did not stop every orbit");
 			display.isDragging = true;
 			display.dragSimulationId = 4;
 			const auto draggedView = display.renderContexts.at(4).camera->View();

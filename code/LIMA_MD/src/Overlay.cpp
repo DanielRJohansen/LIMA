@@ -313,10 +313,9 @@ namespace
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Camera")) {
-                if (!tiled)
-                    CameraMenu(commands, simulationId);
+				CameraMenu(commands, simulationId);
                 if (!enableConsole) {
-                    if (!tiled) ImGui::Separator();
+					ImGui::Separator();
                     if (ImGui::MenuItem("Single", nullptr, !tiled))
                         commands.push_back(Overlay::SetTiled{ false });
                     if (ImGui::MenuItem("Tiles", nullptr, tiled))
@@ -510,7 +509,7 @@ float Overlay::BeginFrame(RenderSettings& settings, int fps, const std::vector<S
     ImGui::NewFrame();
     const float menuHeight = DrawMenuBar(settings, submittedCommands, fps, logoTexture,
         tiled, enableConsole, simulationId);
-    return tiled ? menuHeight : DrawSimulationTabs(tabs, submittedCommands, menuHeight);
+    return tiled || tabs.empty() ? menuHeight : DrawSimulationTabs(tabs, submittedCommands, menuHeight);
 }
 
 void Overlay::DrawTile(SimulationId simulationId, const RenderContext& context,

@@ -269,13 +269,22 @@ void Display::OnMouseMove(double xpos, double ypos) {
 	if (gizmoEnabled && renderContext.activeGizmo && renderContext.activeGizmo->activeAxis.has_value()) {
 		renderContext.activeGizmo->UpdateDraggingForce(glm::vec2(xpos, ypos), *renderContext.camera, windowSize);
     }
-    else if (isDragging) {
-		renderContext.revolveCamera = false;
+	else if (isDragging) {
         const float sensitivity = 0.001f;
         const float xOffset = static_cast<float>(xpos - mousePos.x) * sensitivity;
         const float yOffset = static_cast<float>(mousePos.y - ypos) * sensitivity;
-
-		renderContext.camera->Update(xOffset, -yOffset, 0);
+		const bool applyToAll = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS
+			|| glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+		if (applyToAll) {
+			for (auto& [id, context] : renderContexts) {
+				context.revolveCamera = false;
+				context.camera->Update(xOffset, -yOffset, 0);
+			}
+		}
+		else {
+			renderContext.revolveCamera = false;
+			renderContext.camera->Update(xOffset, -yOffset, 0);
+		}
     }
 	mousePos = { xpos, ypos };
 }
@@ -417,8 +426,18 @@ void Display::OnMouseScroll(double xoffset, double yoffset) {
 	if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse)
 		return;
     if (!isDragging && TargetMouseContext()) {
-        activeRenderContext->revolveCamera = false;
-        activeRenderContext->camera->Update(0, 0, yoffset * 0.1f);
+		const bool applyToAll = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS
+			|| glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+		if (applyToAll) {
+			for (auto& [id, context] : renderContexts) {
+				context.revolveCamera = false;
+				context.camera->Update(0, 0, yoffset * 0.1f);
+			}
+		}
+		else {
+			activeRenderContext->revolveCamera = false;
+			activeRenderContext->camera->Update(0, 0, yoffset * 0.1f);
+		}
     }
 }
 // -------------------------------------------------------------------------------------------------- //
@@ -498,17 +517,23 @@ void Display::ConsumeInputs() {
                 }
             }
             else if constexpr (std::is_same_v<T, Overlay::ResetCamera> || std::is_same_v<T, Overlay::RevolveCamera>) {
-                if (auto it = renderContexts.find(cmd.simulationId); it != renderContexts.end()) {
-                    auto& context = it->second;
-                    if constexpr (std::is_same_v<T, Overlay::ResetCamera>) {
-                        context.camera->Reset();
-                        context.revolveCamera = false;
-                    }
-                    else {
-                        context.revolveCamera = !context.revolveCamera;
-                        context.lastRevolveTime = std::chrono::high_resolution_clock::now();
-                    }
-                }
+				const auto source = renderContexts.find(cmd.simulationId);
+				if (source == renderContexts.end()) return;
+				const bool orbit = !source->second.revolveCamera;
+				auto Apply = [&](RenderContext& context) {
+					if constexpr (std::is_same_v<T, Overlay::ResetCamera>) {
+						context.camera->Reset();
+						context.revolveCamera = false;
+					}
+					else {
+						context.revolveCamera = orbit;
+						context.lastRevolveTime = std::chrono::high_resolution_clock::now();
+					}
+				};
+				if (tiled)
+					for (auto& [id, context] : renderContexts) Apply(context);
+				else
+					Apply(source->second);
             }
             else if constexpr (std::is_same_v<T, Overlay::SelectSimulation>) {
                 if (renderContexts.contains(cmd.simulationId)) {

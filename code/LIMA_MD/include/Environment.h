@@ -232,7 +232,7 @@ private:
 	size_t unpreparedSimulations = 0; // Submitted jobs not yet finished by Preprocess.
 	static constexpr size_t maxBatchSize = 6;
 	static constexpr size_t maxPreparedSimulations = maxBatchSize * 2;
-	static constexpr size_t maxProcessedSimulations = maxBatchSize;
+	
 	int nextBatchId = 1;
 	SimulationId nextSimulationId = 1;
 	std::deque<PreparedSimulation> preparedSimulations;

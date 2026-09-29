@@ -221,8 +221,7 @@ bool Environment::CanPostprocess() const {
 }
 
 bool Environment::CanStartBatch() const {
-	if (runningSimulation || preparedSimulations.empty()
-		|| processedSimulations.size() + maxBatchSize > maxProcessedSimulations)
+	if (runningSimulation || preparedSimulations.empty())
 		return false;
 	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == maxBatchSize)
 		return true;

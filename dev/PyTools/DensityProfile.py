@@ -13,11 +13,11 @@ import numpy as np
 def PlotDensityProfile(csv_path: Path, show: bool) -> None:
     profile = np.genfromtxt(csv_path, delimiter=",", names=True)
     figure, axis = plt.subplots(figsize=(8, 4.5))
-    axis.plot(profile["z_nm"], profile["water_density"], label="Water", color="#3b82f6", linewidth=2)
-    axis.plot(profile["z_nm"], profile["head_density"], label="Lipid heads", color="#f59e0b", linewidth=2)
-    axis.plot(profile["z_nm"], profile["tail_density"], label="Lipid tails", color="#8b5cf6", linewidth=2)
+    axis.plot(profile["z_nm"], profile["water_fraction"], label="Water", color="#3b82f6", linewidth=2)
+    axis.plot(profile["z_nm"], profile["head_fraction"], label="Lipid heads", color="#f59e0b", linewidth=2)
+    axis.plot(profile["z_nm"], profile["tail_fraction"], label="Lipid tails", color="#8b5cf6", linewidth=2)
     axis.set_xlabel("Position through membrane (nm)")
-    axis.set_ylabel("Number density (nm$^{-3}$)")
+    axis.set_ylabel("Fraction of species")
     axis.set_title(csv_path.parent.name.replace("_", " "))
     axis.grid(alpha=0.25)
     axis.legend(frameon=False)
@@ -43,15 +43,15 @@ def PlotDensityComparison(csv_path: Path, show: bool) -> None:
             axis = axes[row][column]
             profile = groups[(composition, temperature)]
             z = [float(point["z_nm"]) for point in profile]
-            axis.plot(z, [float(point["water_density"]) for point in profile], label="Water", color="#3b82f6", linewidth=2)
-            axis.plot(z, [float(point["head_density"]) for point in profile], label="Lipid heads", color="#f59e0b", linewidth=2)
-            axis.plot(z, [float(point["tail_density"]) for point in profile], label="Lipid tails", color="#8b5cf6", linewidth=2)
+            axis.plot(z, [float(point["water_fraction"]) for point in profile], label="Water", color="#3b82f6", linewidth=2)
+            axis.plot(z, [float(point["head_fraction"]) for point in profile], label="Lipid heads", color="#f59e0b", linewidth=2)
+            axis.plot(z, [float(point["tail_fraction"]) for point in profile], label="Lipid tails", color="#8b5cf6", linewidth=2)
             axis.set_title(f"{composition}: {temperature:.0f} K")
             axis.grid(alpha=0.25)
     for axis in axes[-1]:
         axis.set_xlabel("Position through membrane (nm)")
     for axis in axes[:, 0]:
-        axis.set_ylabel("Number density (nm$^{-3}$)")
+        axis.set_ylabel("Fraction of species")
     axes[0][0].legend(frameon=False)
     figure.tight_layout()
     figure.savefig(csv_path.with_suffix(".png"), dpi=180)

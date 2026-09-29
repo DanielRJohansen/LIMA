@@ -39,6 +39,9 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 	if (!renderDataPipes.empty() && renderDataPipes.size() != simulations.size())
 		throw std::invalid_argument("Render data pipe count does not match simulation count");
 	EngineBatch::Pack(*batch, simulations);
+	for (auto& simulation : batch->simulations)
+		if (!simulation.simulation->temperature_buffer.empty())
+			simulation.runstatus.current_temperature = simulation.simulation->temperature_buffer.back();
 	if (renderDataPipes.empty())
 		renderDataPipes.resize(simulations.size(), nullptr);
 	if (mode == EngineRunMode::Interactive) {

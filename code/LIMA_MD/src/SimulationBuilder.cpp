@@ -288,8 +288,6 @@ void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, co
 
 
 void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3) {
-
-	throw std::runtime_error("SolvateGrofile is not implemented yet");
 	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
 		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
 	}
@@ -335,7 +333,10 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	}
 
 
-	const float distanceThreshold = 0.12;	// [nm]
+	// Keep newly placed water atoms outside the van der Waals envelope of the
+	// existing system. The previous 0.12 nm cutoff filled membrane-occupied grid
+	// cells at bulk-water density and could overflow the engine's cluster bins.
+	const float distanceThreshold = 0.25f;	// [nm]
 
 	// Now mark all particles too close to another for deletion, if said particle is the "lower" id/block compared to the other
 	for (int x = 0; x < gridDim.x; x++) {
@@ -452,13 +453,13 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 		}
 	}
 
-	//topfile.AppendSolvents(solventCount, FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff" / "spce.itp");
-	//topfile.AppendSolvents()
-	/*TopologyFile solventTop{ FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff" / "spce.itp" };
-	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr(), solventTop.forcefieldInclude);
-	for (size_t i = 0; i < solventCount; i++) {
+	TopologyFile solventTop{
+		FileUtils::GetLimaDir() / "resources/forcefields/combined/Slipids_2020.ff/spce.itp" };
+	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr());
+	// AppendMoleculetype also appends the first molecule.
+	for (int i = 1; i < solventCount; i++) {
 		topfile.AppendMolecule("SOL");
-	}*/
+	}
 }
 
 void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,

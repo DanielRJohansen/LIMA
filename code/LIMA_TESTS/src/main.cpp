@@ -11,6 +11,7 @@
 #include "Display.h"
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
+#include "Workflow.h"
 #include "AlgorithmTests.h"
 #include "BatchingTests.h"
 #include "EngineBatchTests.h"
@@ -134,7 +135,7 @@ void ShowcaseMultisim() {
 
 	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
 	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
-		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }));
+		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
 	SimParams minimization = SimParams::BasicEMSimParams(800.f);
 	minimization.n_steps = 5000;
 	workflow.AddStage({ "minimize", minimization, {},
@@ -144,11 +145,10 @@ void ShowcaseMultisim() {
 	production.n_steps = 1000;
 	production.apply_thermostat = true;
 	production.save_energy = true;
-	production.data_logging_interval = 100;
 	workflow.AddStage({ "production", production, {
 		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
 		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
-	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile } });
+	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
 	workflow.CompareDensityProfiles("composition", "temperature");
 	workflow.Run();
 

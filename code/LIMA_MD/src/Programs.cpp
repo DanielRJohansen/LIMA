@@ -173,7 +173,8 @@ void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& to
 }
 
 SimulationJob Programs::MakeMembraneJob(fs::path workDir, Lipids::Selection composition,
-	Float3 boxSize, MembraneGeometry::Figure geometry, int seed, SimParams params, EnvMode mode) {
+	Float3 boxSize, MembraneGeometry::Figure geometry, int seed, SimParams params, EnvMode mode,
+	bool solvate) {
 	SimulationJob job;
 	job.workDir = std::move(workDir);
 	job.grofile.emplace();
@@ -181,9 +182,10 @@ SimulationJob Programs::MakeMembraneJob(fs::path workDir, Lipids::Selection comp
 	job.topfile.emplace();
 	job.simParams = std::move(params);
 	job.mode = mode;
-	job.preprocess = [composition = std::move(composition), geometry = std::move(geometry), seed](
+	job.preprocess = [composition = std::move(composition), geometry = std::move(geometry), seed, solvate](
 		GroFile& coordinates, TopologyFile& topology, SimParams&) {
 		SimulationBuilder::CreateMembrane(coordinates, topology, composition, geometry, seed);
+		if (solvate) SimulationBuilder::SolvateGrofile(coordinates, topology);
 	};
 	return job;
 }
@@ -197,118 +199,4 @@ SimulationJob Programs::MakeSimulationJob(fs::path workDir, MolecularSystem syst
 	job.simParams = std::move(params);
 	job.mode = mode;
 	return job;
-}
-
-std::vector<Programs::WorkflowInput> Programs::MakeMembraneInputs(
-	const std::vector<Lipids::Selection>& compositions, const std::vector<int>& seeds,
-	Float3 boxSize, MembraneGeometry::Figure geometry) {
-	std::vector<WorkflowInput> inputs;
-	inputs.reserve(compositions.size() * seeds.size());
-	for (const Lipids::Selection& composition : compositions) {
-		const std::string compositionName = Lipids::NameSelection(composition);
-		for (const int seed : seeds) {
-			const std::string name = compositionName + std::format("_seed{}", seed);
-			inputs.push_back({
-				.name = name,
-				.tags = { { "composition", compositionName }, { "seed", std::to_string(seed) } },
-				.MakeJob = [composition, boxSize, geometry, seed](fs::path runDir, SimParams params, EnvMode mode) {
-					return MakeMembraneJob(std::move(runDir), composition, boxSize, geometry,
-						seed, std::move(params), mode);
-				}
-			});
-		}
-	}
-	return inputs;
-}
-
-Programs::SimulationWorkflow::SimulationWorkflow(fs::path workDir, EnvMode mode)
-	: workDir(std::move(workDir)), mode(mode) {}
-
-void Programs::SimulationWorkflow::AddInputs(std::vector<WorkflowInput> newInputs) {
-	inputs.insert(inputs.end(), std::make_move_iterator(newInputs.begin()),
-		std::make_move_iterator(newInputs.end()));
-}
-
-void Programs::SimulationWorkflow::AddStage(WorkflowStage stage) {
-	stages.push_back(std::move(stage));
-}
-
-void Programs::SimulationWorkflow::CompareDensityProfiles(std::string compositionTag,
-	std::string temperatureTag, fs::path output) {
-	densityProfileComparison.emplace(
-		std::move(compositionTag), std::move(temperatureTag), std::move(output));
-}
-
-void Programs::SimulationWorkflow::Run(Environment& environment) {
-	if (inputs.empty()) throw std::invalid_argument("A simulation workflow requires at least one input");
-	if (stages.empty()) throw std::invalid_argument("A simulation workflow requires at least one stage");
-
-	struct PendingRun {
-		std::string name;
-		std::map<std::string, std::string> tags;
-		fs::path runDir;
-		SimulationHandle handle;
-	};
-	std::vector<PendingRun> pending;
-	const WorkflowStage& firstStage = stages.front();
-	if (!firstStage.variants.empty())
-		throw std::invalid_argument("The first workflow stage cannot have variants");
-	pending.reserve(inputs.size());
-	for (const WorkflowInput& input : inputs) {
-		const fs::path runDir = workDir / input.name;
-		SimulationJob job = input.MakeJob(runDir, firstStage.params, mode);
-		job.name = input.name;
-		job.outputs = firstStage.outputs;
-		pending.push_back({ input.name, input.tags, runDir, environment.Submit(std::move(job)) });
-	}
-
-	for (size_t stageId = 1; stageId < stages.size(); ++stageId) {
-		const WorkflowStage& stage = stages[stageId];
-		std::vector<WorkflowVariant> variants = stage.variants;
-		if (variants.empty()) variants.push_back({ .name = stage.name });
-		std::vector<PendingRun> next;
-		next.reserve(pending.size() * variants.size());
-		for (PendingRun& parent : pending) {
-			SimulationResult completed = parent.handle.Get();
-			MolecularSystem parentSystem = completed.FinalSystem();
-			for (size_t variantId = 0; variantId < variants.size(); ++variantId) {
-				const WorkflowVariant& variant = variants[variantId];
-				SimParams params = stage.params;
-				if (variant.Configure) variant.Configure(params);
-				MolecularSystem system = variantId + 1 == variants.size()
-					? std::move(parentSystem) : parentSystem;
-				const std::string runName = variant.name.empty() ? stage.name : variant.name;
-				const fs::path runDir = parent.runDir / runName;
-				SimulationJob job = MakeSimulationJob(runDir, std::move(system), std::move(params), mode);
-				job.name = parent.name + " " + runName;
-				job.outputs = stage.outputs;
-				std::map<std::string, std::string> tags = parent.tags;
-				for (const auto& [key, value] : variant.tags)
-					tags.insert_or_assign(key, value);
-				next.push_back({ job.name, std::move(tags), runDir,
-					environment.Submit(std::move(job)) });
-			}
-		}
-		pending = std::move(next);
-	}
-
-	for (PendingRun& run : pending) run.handle.Get();
-	if (!densityProfileComparison) return;
-	if (!stages.back().outputs.contains(OutputSelect::DensityProfile))
-		throw std::invalid_argument("Density-profile comparison requires density-profile output");
-
-	std::map<std::pair<std::string, std::string>, std::vector<fs::path>> groupedProfiles;
-	for (const PendingRun& run : pending) {
-		const auto composition = run.tags.find(densityProfileComparison->compositionTag);
-		const auto temperature = run.tags.find(densityProfileComparison->temperatureTag);
-		if (composition == run.tags.end() || temperature == run.tags.end())
-			throw std::invalid_argument("Density-profile comparison references a missing workflow tag");
-		groupedProfiles[{ composition->second, temperature->second }].push_back(
-			run.runDir / "density_profile.csv");
-	}
-	std::vector<SimAnalysis::DensityProfileGroup> groups;
-	groups.reserve(groupedProfiles.size());
-	for (auto& [key, profiles] : groupedProfiles)
-		groups.push_back({ key.first, std::stof(key.second), std::move(profiles) });
-	SimAnalysis::CompareDensityProfiles(groups, workDir / densityProfileComparison->output);
 }

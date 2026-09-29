@@ -137,9 +137,9 @@ void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesy
 	for (auto& density : densities) density.assign(nBins, 0.f);
 	const float binWidth = boxSize.z / nBins;
 	const auto Group = [&simulation](const PersistentClusterMeta& metadata, int particleId) -> std::optional<size_t> {
-		if (metadata.isSolvent) return 0;
 		const int globalId = metadata.particleIdsGlobal[particleId];
 		if (globalId < 0 || globalId >= simulation.boxImage->grofile.atoms.size()) return std::nullopt;
+		if (metadata.isSolvent) return 0;
 		const auto& atom = simulation.boxImage->grofile.atoms[globalId];
 		if (atom.atomName == "P") return 1;
 		if (atom.atomName.View().starts_with('C')) return 2;
@@ -160,17 +160,18 @@ void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesy
 		}
 	}
 
-	const float scale = 1.f / (nFrames * binWidth * boxSize.x * boxSize.y);
-	for (auto& density : densities)
-		for (float& value : density)
-			value *= scale;
+	for (auto& density : densities) {
+		const float total = std::reduce(density.begin(), density.end());
+		if (total > 0.f)
+			for (float& value : density) value /= total;
+	}
 
 	if (!outputPath.parent_path().empty())
 		std::filesystem::create_directories(outputPath.parent_path());
 	std::ofstream file(outputPath);
 	if (!file.is_open())
 		throw std::runtime_error(std::format("Failed to write density profile {}", outputPath.string()));
-	file << "z_nm,water_density,head_density,tail_density\n";
+	file << "z_nm,water_fraction,head_fraction,tail_fraction\n";
 	for (int bin = 0; bin < nBins; ++bin)
 		file << (bin + .5f) * binWidth << ',' << densities[0][bin] << ',' << densities[1][bin] << ',' << densities[2][bin] << '\n';
 	file.close();
@@ -190,7 +191,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 	std::ofstream output(outputPath);
 	if (!output.is_open())
 		throw std::runtime_error(std::format("Failed to write density profile comparison {}", outputPath.string()));
-	output << "composition,temperature,z_nm,water_density,head_density,tail_density\n";
+	output << "composition,temperature,z_nm,water_fraction,head_fraction,tail_fraction\n";
 
 	for (const auto& group : groups) {
 		if (group.profiles.empty())

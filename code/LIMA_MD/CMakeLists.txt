@@ -19,6 +19,7 @@ add_library(LIMA_MD STATIC
     src/Environment.cpp
     src/Interface.cpp
     src/Programs.cpp
+	 src/Workflow.cpp
     src/Pdb2gmx.cpp
     src/Rendering.cpp
     src/RenderTask.cpp

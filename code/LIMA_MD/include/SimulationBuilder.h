@@ -44,9 +44,9 @@ namespace SimulationBuilder {
 
 
 	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection,
-		const MembraneGeometry::Figure& geometry);
+		const MembraneGeometry::Figure& geometry, int randomSeed = 0);
 	void CreateMembrane(GroFile& grofile, TopologyFile& topfile, const Lipids::Selection& lipidselection, 
-		float membraneCenter);
+		float membraneCenter, int randomSeed = 0);
 
 	// The minimum is derived from the lipid length and enough inner-leaflet area
 	// to pack a small, but meaningful, closed surface.

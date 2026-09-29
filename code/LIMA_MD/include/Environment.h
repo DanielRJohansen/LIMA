@@ -6,6 +6,7 @@
 #include "MDFiles.h"
 #include "Trajectory.h"
 #include "LiveEditCommands.h"
+#include "RenderTask.h"
 
 #include <memory>
 #include <chrono>
@@ -13,15 +14,29 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <cstdint>
 
 class Display;
 struct BoxImage;
 class Engine;
+class RenderDataPipe;
 struct LiveEditData;
 struct ScheduledSimulationState;
 struct SimulationResult;
+
+struct MolecularSystem {
+	GroFile coordinates;
+	TopologyFile topology;
+};
+
+enum class OutputSelect {
+	InitialCoordinates,
+	FinalCoordinates,
+	Topology,
+	DensityProfile
+};
 
 namespace fs = std::filesystem;
 
@@ -32,9 +47,8 @@ struct SimulationJob {
 		topfile(std::move(topfile)), mode(mode) {}
 
 	fs::path workDir;
-	fs::path groPath{ "molecule/conf.gro" };
-	fs::path topPath{ "molecule/topol.top" };
-	fs::path simParamsPath{ "sim_params.txt" };
+	std::string name;
+	std::set<OutputSelect> outputs;
 	std::optional<SimParams> simParams;
 	std::optional<GroFile> grofile;
 	std::optional<TopologyFile> topfile;
@@ -57,6 +71,7 @@ struct SimulationExecutionInfo {
 
 struct SimulationResult {
 	std::unique_ptr<Simulation> simulation;
+	std::optional<MolecularSystem> sourceSystem;
 	std::optional<SimAnalysis::AnalyzedPackage> analysis;
 	std::chrono::duration<double> engineTime{};
 	std::chrono::duration<double> environmentTime{};
@@ -64,6 +79,7 @@ struct SimulationResult {
 	SimulationExecutionInfo execution;
 
 	void WriteCoordinatesTo(GroFile& grofile, std::optional<int64_t> step = std::nullopt) const;
+	MolecularSystem FinalSystem();
 	Trajectory MakeTrajectory() const;
 	void WriteTrajectoryAsUff(const fs::path& path) const;
 };
@@ -93,20 +109,23 @@ private:
 class Environment
 {
 	struct SimulationSession {
-		SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
+		SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode,
+			const fs::path& workDir);
 		~SimulationSession();
 		SimulationSession(SimulationSession&&) noexcept;
 
+		SimulationId simulationId;
 		std::unique_ptr<Simulation> simulation;
 		std::unique_ptr<Engine> engine = nullptr;
+		std::shared_ptr<RenderDataPipe> renderDataPipe;
 		std::chrono::steady_clock::time_point time0;
 		std::optional<TimeIt> simulationTimer;
+		std::optional<float> initialEmMaxForce;
 		std::vector<float> avgStepTimes;
 		std::optional<std::chrono::duration<double>> engineTime;
 		std::deque<LiveEdit::Command> liveEditCommandsQueue;
 		SimStatus simStatus{};
 		bool forceWriteSimstatusToDisplay = false;
-		int64_t stepAtLastRender = INT64_MIN;
 		EnvMode mode;
 		fs::path workDir;
 	};
@@ -155,11 +174,13 @@ private:
 	struct SimulationSession;
 
 	struct QueuedSimulation {
+		SimulationId simulationId;
 		SimulationJob job;
 		std::shared_ptr<ScheduledSimulationState> state;
 	};
 
 	struct PreparedSimulation {
+		SimulationId simulationId;
 		SimulationJob job;
 		std::shared_ptr<ScheduledSimulationState> state;
 		std::unique_ptr<Simulation> simulation;
@@ -209,8 +230,7 @@ private:
 	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/, size_t simulationId = 0);
 
 	// Returns false if display has been closed by user
-	bool HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams,
-		Display* display, bool emVariant, bool stepwise);
+	bool HandleDisplay(Display* display);
 
 	void sayHello();
 
@@ -224,10 +244,11 @@ private:
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
 	size_t unpreparedSimulations = 0; // Submitted jobs not yet finished by Preprocess.
-	static constexpr size_t maxBatchSize = 4;
+	static constexpr size_t maxBatchSize = 6;
 	static constexpr size_t maxPreparedSimulations = maxBatchSize * 2;
-	static constexpr size_t maxProcessedSimulations = maxBatchSize;
+	
 	int nextBatchId = 1;
+	SimulationId nextSimulationId = 1;
 	std::deque<PreparedSimulation> preparedSimulations;
 	std::deque<ProcessedSimulation> processedSimulations;
 	bool preparingSimulation = false;

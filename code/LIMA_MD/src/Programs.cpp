@@ -171,3 +171,32 @@ void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& to
 
 	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size, render);
 }
+
+SimulationJob Programs::MakeMembraneJob(fs::path workDir, Lipids::Selection composition,
+	Float3 boxSize, MembraneGeometry::Figure geometry, int seed, SimParams params, EnvMode mode,
+	bool solvate) {
+	SimulationJob job;
+	job.workDir = std::move(workDir);
+	job.grofile.emplace();
+	job.grofile->box_size = boxSize;
+	job.topfile.emplace();
+	job.simParams = std::move(params);
+	job.mode = mode;
+	job.preprocess = [composition = std::move(composition), geometry = std::move(geometry), seed, solvate](
+		GroFile& coordinates, TopologyFile& topology, SimParams&) {
+		SimulationBuilder::CreateMembrane(coordinates, topology, composition, geometry, seed);
+		if (solvate) SimulationBuilder::SolvateGrofile(coordinates, topology);
+	};
+	return job;
+}
+
+SimulationJob Programs::MakeSimulationJob(fs::path workDir, MolecularSystem system,
+	SimParams params, EnvMode mode) {
+	SimulationJob job;
+	job.workDir = std::move(workDir);
+	job.grofile = std::move(system.coordinates);
+	job.topfile = std::move(system.topology);
+	job.simParams = std::move(params);
+	job.mode = mode;
+	return job;
+}

@@ -35,17 +35,24 @@ public:
         GLint prevDrawFbo = 0;
         GLint prevReadFbo = 0;
         GLint prevViewport[4]{};
+		GLint prevScissor[4]{};
+		GLboolean scissorEnabled = GL_FALSE;
 
         ScopedDrawBinding() {
             glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFbo);
             glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
             glGetIntegerv(GL_VIEWPORT, prevViewport);
+			glGetIntegerv(GL_SCISSOR_BOX, prevScissor);
+			scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
         }
 
         ~ScopedDrawBinding() {
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevDrawFbo);
             glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
             glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+			glScissor(prevScissor[0], prevScissor[1], prevScissor[2], prevScissor[3]);
+			if (scissorEnabled) glEnable(GL_SCISSOR_TEST);
+			else glDisable(GL_SCISSOR_TEST);
         }
     };
 
@@ -662,7 +669,7 @@ class DrawAtomsShader : public Shader {
 struct RenderAtom {
     vec4 position; // {posX, posY, posZ, radius}
     vec4 color;    // {r, g, b, a}
-    uvec4 flags;   // {x=highlight}
+    uvec4 flags;   // {x=highlight, y=coloring method, z=atom ID}
 };
 
 layout(std430, binding = 0) buffer RenderAtoms {
@@ -684,7 +691,7 @@ void main() {
     float angle = 2.0f * pi * float(gl_VertexID) / float(numTrianglesPerAtom);
 
     vec4 atomPos = atoms[gl_InstanceID].position;
-    atomId = int(atoms[gl_InstanceID].flags.y);
+    atomId = int(atoms[gl_InstanceID].flags.z);
 
     vec4 viewSpacePos = View * vec4(atomPos.xyz, 1.0);
     float radius = atomPos.w;
@@ -737,6 +744,7 @@ layout(location = 1) out int  FragAtomId;
 
 void main() {
     vec3 color = vertexColor.rgb;
+	if (vertexColor.a <= 0.0) discard;
 
     if (highlight == 1u) {
 
@@ -837,7 +845,7 @@ void main() {
     fragNormalView = normalize(mat3(View) * inNormal);
 
     vertexColor = atom.color;
-    atomId = int(atoms[gl_InstanceID].flags.y);
+    atomId = int(atoms[gl_InstanceID].flags.z);
     highlight = atom.flags.x;
 
     gl_Position = Proj * viewPos4;

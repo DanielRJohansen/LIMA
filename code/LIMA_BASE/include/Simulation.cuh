@@ -9,6 +9,7 @@
 #include "Backbone.h"
 
 #include <set>
+#include <string>
 
 namespace MDFiles { struct TrrFile; }
 struct BoxImage;
@@ -144,6 +145,7 @@ public:
 
 	
 	bool finished = false;
+	std::string name;
 
 
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;	// [nm]
@@ -172,7 +174,8 @@ public:
 
 struct SimStatus {
 	// SimulationStatus
-	std::optional<size_t> step = 0;
+	std::optional<size_t> step = 0;	
+	std::optional<float> progress = std::nullopt;				// [0,1]. For bounded simulations, step/n_steps. For EM the log reduction in maximum force from its initial value to em_force_tolerance.
 	std::optional<float> temperature = std::nullopt;			// [K]
 	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
 	std::optional<std::chrono::duration<double>> expectedTimeToFinish = std::nullopt;

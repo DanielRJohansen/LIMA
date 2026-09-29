@@ -20,6 +20,7 @@ int RunMakeSimParams(int argc, char** argv);
 int RunSelfTest(int argc, char** argv);
 int RunRender(int argc, char** argv);
 int RunMakeBox(int argc, char** argv);
+int RunSolvate(int argc, char** argv);
 int RunInsertMolecule(int argc, char** argv);
 int RunInsertMolecules(int argc, char** argv);
 int RunEditConf(int argc, char** argv);
@@ -45,18 +46,28 @@ inline constexpr std::string_view BuildMembraneHelp = R"(Usage: lima buildmembra
 
 Build a membrane with a specified lipid composition. Stockholm lipids 2020 are
 supported by default; custom lipid files may be placed in the working directory.
+Choose exactly one geometry option: --plane, --sphere, or --ellipsoid. If none
+is given, LIMA creates a planar membrane at half the box height.
 
 Options:
       --lipids NAME PERCENT... Lipid names and percentages (required)
   -b, --box-size NM [NM NM]    Cubic size or x/y/z dimensions (required)
-  -c, --center-z NM            Membrane center (default: half the box height)
+      --plane Z                Planar bilayer mid-plane (default: half box height)
+      --sphere X Y Z R         Vesicle center and bilayer mid-surface radius
+      --ellipsoid X Y Z RX RY RZ
+                                Ellipsoid center and three mid-surface radii
       --em-tolerance VALUE     EM force tolerance (default: 100 kJ/mol/nm)
+      --seed INTEGER           Reproducible membrane construction seed (default: 0)
       --working-dir PATH       Output directory (default: current directory)
   -d, --display                Display the simulation
   -h, --help                   Display this help and exit
 
 Example:
   lima buildmembrane --lipids DPPC 60 DOPC 40 --box-size 10
+  lima buildmembrane --lipids DMPC 100 --box-size 16 --sphere 8 8 8 5
+  lima buildmembrane --lipids POPC 70 cholesterol 30 --box-size 24 \
+    --ellipsoid 12 12 12 7 8 9 --seed 42
+  lima buildmembrane --lipids DOPC 100 --box-size 12 --plane 5.5
 )";
 
 inline constexpr std::string_view MakeSimParamsHelp = R"(Usage: lima makesimparams [OPTION]...
@@ -102,6 +113,23 @@ Options:
 
 Example:
   lima makebox --name mybox --box-size 14
+)";
+
+inline constexpr std::string_view SolvateHelp = R"(Usage: lima solvate [OPTION]...
+
+Fill the unoccupied volume of a simulation box with SPC/E water and update its
+topology.
+
+Options:
+  -c, --conf PATH              Input coordinates (default: ./conf.gro)
+  -t, --topology PATH          Input topology (default: ./topol.top)
+      --conf-out PATH          Output coordinates (default: INPUT_solvated.gro)
+      --topology-out PATH      Output topology (default: INPUT_solvated.top)
+  -p, --density COUNT          Target waters per nm^3 (default: 34)
+  -h, --help                   Display this help and exit
+
+Example:
+  lima solvate --conf membrane.gro --topology membrane.top
 )";
 
 inline constexpr std::string_view InsertMoleculeHelp = R"(Usage: lima insertmolecule [OPTION]...
@@ -180,6 +208,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "selftest", "Run LIMA's internal self-test.", SelfTestHelp, RunSelfTest },
     CommandDefinition{ "render", "Render a molecular structure.", RenderHelp, RunRender },
     CommandDefinition{ "makebox", "Create an empty simulation box.", MakeBoxHelp, RunMakeBox },
+    CommandDefinition{ "solvate", "Fill a simulation box with SPC/E water.", SolvateHelp, RunSolvate },
     CommandDefinition{ "insertmolecule", "Insert one molecule into a box.", InsertMoleculeHelp, RunInsertMolecule },
     CommandDefinition{ "insertmolecules", "Insert multiple molecules into a box.", InsertMoleculesHelp, RunInsertMolecules },
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp, RunEditConf },

@@ -33,6 +33,9 @@ class Camera {
 	float yaw = 0;
 	float pitch = 0;
 	float aspectRatio = 1.f;
+	bool hasUserZoom = false;
+
+	float FitDistance() const;
 
 public:
 	Camera(Float3 boxSize);
@@ -48,7 +51,7 @@ public:
 
 struct RenderSettings {
 	bool showSolvents = true;
-	ColoringMethod coloringMethod{};
+	ColoringMethod coloringMethod{}; // Guides what (selected) renderatoms will be set to upon change
 	bool hasForceData = false;
 	bool hasBackbone = false;
 };
@@ -57,14 +60,20 @@ class Overlay {
 public:
 	struct SubmittedCmd { std::string cmd{}; };
 	struct SolventVisibility { bool visible = true; };
-	struct ResetCamera {};
-	struct RevolveCamera {};
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera>;
+	struct ResetCamera { SimulationId simulationId = 0; };
+	struct RevolveCamera { SimulationId simulationId = 0; };
+	struct SetTiled { bool enabled = false; };
+	struct SelectSimulation { SimulationId simulationId = 0; };
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled>;
 private:
 	bool didDrawThisFrame = false;
+	unsigned int logoTexture = 0;
+	bool scrollConsoleToBottom = false;
+	std::array<char, 512> consoleInput{};
+	std::deque<std::string> consoleLines;
 
 	void HandleConsole();
-	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos);
+	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos, SimulationId simulationId);
 
 public:
 	std::deque<Command> submittedCommands;
@@ -73,8 +82,10 @@ public:
 	Overlay(GLFWwindow*, const std::filesystem::path& limadir);
 	~Overlay();
 
-	void Draw(RenderSettings&, const SimStatus&, int fps,
-		std::optional<glm::dvec2> rightClickedPos, bool spinnerVisible);
+	float BeginFrame(RenderSettings&, int fps, const std::vector<SimulationTab>& tabs, bool tiled, SimulationId simulationId);
+	void DrawTile(SimulationId simulationId, const RenderContext&, const RenderViewport&, bool tiled);
+	void EndFrame(RenderSettings&, std::optional<glm::dvec2> rightClickedPos,
+		std::optional<SimulationId> popupSimulationId, bool spinnerVisible);
 	void Render();
 };
 

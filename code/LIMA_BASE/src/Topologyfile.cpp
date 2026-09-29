@@ -895,9 +895,7 @@ void TopologyFile::ParseFileIntoTopology(TopologyFile& topology, const fs::path&
 //	}
 //}
 
-TopologyFile::TopologyFile() {
-	title = "My Topology file";
-}
+TopologyFile::TopologyFile() = default;
 TopologyFile::TopologyFile(const fs::path& path) : path(path)
 {
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
@@ -1098,6 +1096,8 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();
 	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expected [.top/.itp]", ext)); }
+	if (!path.parent_path().empty())
+		fs::create_directories(path.parent_path());
 	{
 		std::ofstream file(path);
 		if (!file.is_open()) {

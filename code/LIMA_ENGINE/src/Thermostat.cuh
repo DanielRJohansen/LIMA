@@ -25,13 +25,11 @@ namespace _Thermostat {
 
 
 	float ComputeThermostatScalar(float temperature, const SimParams& simparams) {
-		const float target_temp = 310.f;  // Target temperature in [K]
-
 		// Avoid division by zero
 		const float temp_safe = (temperature == 0.f) ? 1.0f : temperature;
 
 		// Compute the temperature scalar
-		float temp_scalar = target_temp / temp_safe;
+		float temp_scalar = simparams.ref_t / temp_safe;
 
 		// Clamp the temperature scalar to avoid rapid temperature changes
 		const float max_scalar = 0.001f / static_cast<float>(simparams.steps_per_temperature_measurement);  // Change velocity by 0.1% over NSTEPS

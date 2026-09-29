@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SimulationBuilder.h"
+#include "Environment.h"
 
 #include <string_view>
 
@@ -27,6 +28,13 @@ namespace Programs {
 	void MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float3 boxSize, bool renderProgress);
 
 	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&, bool render);
+
+	SimulationJob MakeMembraneJob(fs::path workDir, Lipids::Selection composition,
+		Float3 boxSize, MembraneGeometry::Figure geometry, int seed,
+		SimParams params, EnvMode mode = EnvMode::Headless, bool solvate = false);
+
+	SimulationJob MakeSimulationJob(fs::path workDir, MolecularSystem system,
+		SimParams params, EnvMode mode = EnvMode::Headless);
 
 	/// Build in-memory CHARMM27 coordinates, topology, and position restraints
 	/// from a protein PDB or mmCIF structure.

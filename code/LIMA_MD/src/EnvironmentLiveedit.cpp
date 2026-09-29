@@ -19,6 +19,7 @@ struct LiveEditData {
 	// Selection
 	std::set<int> activeSelection{};
 	std::optional<int> selectedParticleId = std::nullopt;
+	std::optional<Rendering::MoleculeInfo> selectedMolecule;
 
 	// MoleculeDragging
 	LiveEdit::MoveMolecule prevDragmoleculeCmd{};
@@ -145,16 +146,32 @@ void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const Li
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::AtomSelected& cmd) {
 	const auto& boximage = LiveEditSession().simulation->boxImage;
+	const auto molecule = Rendering::GetMoleculeInfo(*boximage, cmd.particleId);
+	if (!molecule) {
+		liveeditData->activeSelection.clear();
+		liveeditData->selectedMolecule.reset();
+		display->UpdateSelection(0, liveeditData->activeSelection);
+		return;
+	}
+	const bool selectAllOfType = liveeditData->selectedMolecule
+		&& liveeditData->selectedMolecule->name == molecule->name
+		&& liveeditData->activeSelection.contains(cmd.particleId)
+		&& liveeditData->selectedParticleId == cmd.particleId
+		&& liveeditData->selectedMolecule->number > 0;
+	if (selectAllOfType) {
+		Rendering::MoleculeInfo selection{ molecule->name, 0, molecule->typeCount };
+		for (const auto& candidate : Rendering::GetMoleculeInfo(*boximage))
+			if (candidate.name == molecule->name)
+				selection.atomIds.insert(selection.atomIds.end(), candidate.atomIds.begin(), candidate.atomIds.end());
+		liveeditData->selectedMolecule = std::move(selection);
+	}
+	else {
+		liveeditData->selectedMolecule = *molecule;
+	}
+	liveeditData->activeSelection = { liveeditData->selectedMolecule->atomIds.begin(), liveeditData->selectedMolecule->atomIds.end() };
 	liveeditData->selectedParticleId = cmd.particleId;
-	if (liveeditData->activeSelection.contains(cmd.particleId)) {
-		return; // This operation will just yield the same set
-	}
-
-	liveeditData->activeSelection.clear();	
-	for (const auto& node : boximage->systemGraph->BFS(cmd.particleId)) {
-		liveeditData->activeSelection.insert(node.atomid);
-	}
-	display->UpdateSelection(0, liveeditData->activeSelection);
+	display->UpdateSelection(0, liveeditData->activeSelection,
+		liveeditData->selectedMolecule);
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
@@ -274,7 +291,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
 		simulation->box->boxparams, simStatus, simulation->box->backboneChains
-	), false);
+	), false, nullptr, simulation->name);
 	display->allowUserInputs = true;
 
 	LiveEditData liveeditData{};
@@ -298,6 +315,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 		};
 
 	while (true) {
+		display->gizmoEnabled = !(simulation->simParams.em_variant && liveeditData.remainingStepsCount > 0);
 		if (shouldExit) {
 			break;
 		}
@@ -358,6 +376,10 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 					*newCmd
 				);
 			}
+		}
+		else if (const auto newCmd = display->GetLiveEditCommand(); newCmd
+			&& std::holds_alternative<LiveEdit::AtomSelected>(*newCmd)) {
+			UpdateSelection(&liveeditData, std::get<LiveEdit::AtomSelected>(*newCmd));
 		}
 
 

@@ -1,7 +1,38 @@
 #include "RenderTask.h"
 
+#include "BoxImageBuilder.h"
+
 #include <stdexcept>
 #include <utility>
+#include <numeric>
+#include <ranges>
+#include <unordered_map>
+
+std::vector<Rendering::MoleculeInfo> Rendering::GetMoleculeInfo(const BoxImage& boxImage) {
+	std::unordered_map<std::string, size_t> typeCounts;
+	std::vector<MoleculeInfo> molecules;
+	for (const auto& instance : boxImage.topology.moleculeInstances) {
+		MoleculeInfo molecule;
+		molecule.name = instance.type->name;
+		molecule.number = ++typeCounts[molecule.name];
+		molecule.atomIds.resize(instance.type->atoms.size());
+		std::iota(molecule.atomIds.begin(), molecule.atomIds.end(), instance.particleOffset);
+		molecules.push_back(std::move(molecule));
+	}
+	for (auto& molecule : molecules)
+		molecule.typeCount = typeCounts[molecule.name];
+	return molecules;
+}
+
+std::optional<Rendering::MoleculeInfo> Rendering::GetMoleculeInfo(const BoxImage& boxImage, int atomId) {
+	const auto molecules = GetMoleculeInfo(boxImage);
+	const auto molecule = std::ranges::find_if(molecules, [atomId](const MoleculeInfo& candidate) {
+		return std::ranges::find(candidate.atomIds, atomId) != candidate.atomIds.end();
+	});
+	if (molecule == molecules.end())
+		return std::nullopt;
+	return *molecule;
+}
 
 Rendering::AtomRenderTask::AtomRenderTask(const GroFile& grofile, bool shouldShowSolvents)
 	: positions(grofile.atoms.size())
@@ -24,13 +55,15 @@ Rendering::AtomRenderTask::AtomRenderTask(
 	const std::vector<PersistentClusterMeta>& pcMeta,
 	const BoxParams& boxparams,
 	SimStatus initialSimStatus,
-	BackboneChains initialBackboneChains)
+	BackboneChains initialBackboneChains,
+	std::vector<MoleculeInfo> initialMolecules)
 	: positions(boxparams.totalParticles)
 	, atoms(boxparams.totalParticles)
 	, packedPositionIndices(boxparams.totalParticles, -1)
 	, boxSize(boxparams.BoxSizeFloat())
 	, simStatus(initialSimStatus)
 	, backboneChains(std::move(initialBackboneChains))
+	, molecules(std::move(initialMolecules))
 {
 	for (std::size_t pcid = 0; pcid < pcMeta.size(); ++pcid) {
 		for (int pid = 0; pid < PersistentCluster::maxParticles; ++pid) {

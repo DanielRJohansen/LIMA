@@ -37,7 +37,7 @@ the small amount of simulation-specific state used by kernels.
 - Logging uses concatenated per-simulation ring buffers, each with its own stride.
 
 All members must start at step zero, have equal box dimensions and agree on
-`SimParams` except `dt` and `n_steps`. Particle counts, topology, degrees of freedom
+`SimParams` except `dt`, `n_steps`, and thermostat `ref_t`. Particle counts, topology, degrees of freedom
 and PME self-energy corrections are simulation-specific. The engine and scheduler
 use the same compatibility check in `BatchCompatibility.h`.
 

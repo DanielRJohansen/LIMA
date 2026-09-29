@@ -11,11 +11,13 @@
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"
+#include "RenderDataPipe.h"
 
 
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <format>
 
 
 
@@ -35,6 +37,14 @@
 
 
 using namespace Rendering;
+
+RenderContext::RenderContext()
+	: renderSettings(std::make_unique<RenderSettings>())
+	, camera(std::make_unique<Camera>(Float3{ 2.f })) {}
+
+RenderContext::~RenderContext() = default;
+RenderContext::RenderContext(RenderContext&&) noexcept = default;
+RenderContext& RenderContext::operator=(RenderContext&&) noexcept = default;
 
 void SetThreadName(const std::string& name) {
 #if defined(_WIN32) || defined(_WIN64)
@@ -80,29 +90,32 @@ void Display::SetupCallbacks() {
 	});
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+        if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureKeyboard)
+            return;
         if (action == GLFW_PRESS) {
             // Retrieve the Display instance from the window user pointer
             Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
             if (display) {
+                const bool hasMouseContext = display->TargetMouseContext();
                 const float delta = 3.1415 / 8.f;
                 switch (key) {
                 case GLFW_KEY_UP:
-                    display->camera->Update(0, delta, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, delta, 0);
                     break;
                 case GLFW_KEY_DOWN:
-                    display->camera->Update(0, -delta, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, -delta, 0);
                     break;
                 case GLFW_KEY_LEFT:
-                    display->camera->Update(delta, 0, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(delta, 0, 0);
                     break;
                 case GLFW_KEY_RIGHT:
-                    display->camera->Update(-delta, 0, 0);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(-delta, 0, 0);
                     break;
                 case GLFW_KEY_PAGE_UP:
-                    display->camera->Update(0, 0, 0.5f);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, 0.5f);
                     break;
                 case GLFW_KEY_PAGE_DOWN:
-                    display->camera->Update(0, 0, -0.5f);
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->camera->Update(0, 0, -0.5f);
                     break;
                 case GLFW_KEY_N:
                     display->debugValue = 1;
@@ -118,10 +131,10 @@ void Display::SetupCallbacks() {
 					break;
                 }
                 case GLFW_KEY_1:
-                    display->renderAtoms = !display->renderAtoms;
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->renderAtoms = !display->activeRenderContext->renderAtoms;
                     break;
                 case GLFW_KEY_2:
-                    display->renderFacets = !display->renderFacets;
+                    if (hasMouseContext && display->activeRenderContext) display->activeRenderContext->renderFacets = !display->activeRenderContext->renderFacets;
                     break;
                 }
             }
@@ -188,11 +201,12 @@ void Display::Setup() {
     }
 }
 
-Display::Display()
-	: rendersettings(std::make_unique<RenderSettings>())
-	, fps(std::make_unique<FPS>())
-	, camera(std::make_unique<Camera>(Float3{ 2.f }))
+Display::Display() : Display(true) {}
+
+Display::Display(bool startRenderThread)
+	: fps(std::make_unique<FPS>())
 {
+    if (!startRenderThread) return;
         // todo: Display needs to know if its in liveedit, so it knows whether to render gizmo and console.
         // It should also tell Overlay if there is any solvent present, if not dont have the button there..
     renderThread = std::jthread([this] {
@@ -203,6 +217,7 @@ Display::Display()
         catch(...) {
             displayThreadException = std::current_exception();
         }
+        ReleaseGraphics();
         displaySelfTerminated = true;
     }); 
 }
@@ -211,7 +226,30 @@ Display::~Display() {
     kill = true;
     if (renderThread.joinable())
         renderThread.join();
+    else
+        ReleaseGraphics();
     glfwTerminate();
+}
+
+void Display::ReleaseGraphics() {
+    // Windows destroys a thread's windows on exit. Release ImGui and GPU resources
+    // on the window's owning thread while its OpenGL context is still valid.
+    if (window) {
+        glfwMakeContextCurrent(window);
+        activeRenderContext = nullptr;
+        renderContexts.clear();
+        overlay.reset();
+        renderTargetControl.reset();
+        drawBoxOutlineShader.reset();
+        drawFacetsShader.reset();
+        drawAtomsFromCpuShader.reset();
+        drawNormalsShader.reset();
+        drawTrianglesShader.reset();
+        drawBackgroundGradientShader.reset();
+        drawAtomsPrettyShader.reset();
+        glfwDestroyWindow(window);
+        window = nullptr;
+    }
 }
 
 void Display::WaitForDisplayReady() {
@@ -242,7 +280,6 @@ void Display::PrepareTask(RenderContext& renderContext, Task& task, bool ignoreP
 }
 
 void Display::Mainloop() {
-    std::map<SimulationId, RenderContext> renderContexts;
 
     TimeIt frameTime{};
 
@@ -257,7 +294,7 @@ void Display::Mainloop() {
         
         // Check for new user input
         bool newInput = false;
-        std::deque<std::tuple<SimulationId, std::set<int>>> newSelections;
+		std::deque<std::tuple<SimulationId, std::set<int>, std::optional<Rendering::MoleculeInfo>>> newSelections;
         {
             std::lock_guard<std::mutex> lock(inputMutex);
             newSelections.swap(newSelectionInputs);
@@ -266,6 +303,7 @@ void Display::Mainloop() {
             if (auto context = renderContexts.find(std::get<0>(newSelection)); context != renderContexts.end()) {
 				auto& renderContext = context->second;
                 _UpdateSelection(renderContext, std::get<1>(newSelection));
+				renderContext.selectedMolecule = std::get<2>(newSelection);
                 newInput = true;
 			}
         }
@@ -273,103 +311,191 @@ void Display::Mainloop() {
         // Check for newly submitted work to display
         {
             std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
-            if (!incomingRenderTasksGlobal.empty()) {
-				auto [simId, incomingRenderTask] = std::move(incomingRenderTasksGlobal.front());
+			while (!incomingRenderTasksGlobal.empty()) {
+				auto [simId, incomingRenderTask, renderDataPipe, label] = std::move(incomingRenderTasksGlobal.front());
                 incomingRenderTasksGlobal.pop_front();
                 if (std::holds_alternative<Rendering::FreeTask>(incomingRenderTask)) {
+					CancelInteraction();
+					viewports.clear();
+					if (popupSimulationId == simId) popupSimulationId.reset();
+					if (activeSimulationId == simId) {
+						activeSimulationId.reset();
+						activeRenderContext = nullptr;
+					}
 					renderContexts.erase(simId);
                 }
                 else {
+					const bool isNewContext = !renderContexts.contains(simId);
+                    if (isNewContext) {
+                        CancelInteraction();
+                        viewports.clear();
+                    }
                     auto& context = renderContexts[simId];
+					if (renderDataPipe)
+						context.renderDataPipe = renderDataPipe;
+					if (!label.empty())
+						context.label = std::move(label);
                     if (context.incomingRenderTasks.size() < 10)
 					    renderContexts[simId].incomingRenderTasks.push_back(std::move(incomingRenderTask));
+					if (isNewContext && renderContexts.size() > 1 && !allowUserInputs)
+						tiled = true;
                 }
             }
         }
 
+		RemoveStoppedRenderContexts();
+		if (renderContexts.size() <= 1)
+			tiled = false;
 
 
-        // Everything happening from here is specific to the active RenderContext. Currently that is the "oldest" one, but eventually the user can switch between them
-        // The RC status is not modifying externally, and thus we dont need mutexes from here onward
-		if (renderContexts.empty()) {
-			activeRenderContext = nullptr;
-			continue;
-		}
-		RenderContext& currentRenderContext = renderContexts.begin()->second;
-		activeRenderContext = &currentRenderContext;
-		auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
-        auto& currentRenderTask = currentRenderContext.currentRenderTask;
+        if (renderContexts.empty()) {
+            activeRenderContext = nullptr;
+            viewports.clear();
+            if (framebufferSize.x > 0 && framebufferSize.y > 0) {
+				overlay->enableConsole = allowUserInputs;
+				RenderSettings menuSettings{};
+				overlay->BeginFrame(menuSettings, fps->GetFps(), {}, false, 0);
+				glDisable(GL_SCISSOR_TEST);
+				glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+				overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, std::nullopt, spinnerVisible.load());
+				mousePosAtRightBtnDown.reset();
+				overlay->Render();
+                glfwSwapBuffers(window);
+            }
+            continue;
+        }
+        if (!activeSimulationId || !renderContexts.contains(*activeSimulationId))
+            activeSimulationId = renderContexts.begin()->first;
+        activeRenderContext = &renderContexts.at(*activeSimulationId);
+        ConsumeInputs();
+        if (allowUserInputs) tiled = false;
 
         bool updatedPositions = false;
-        bool shouldRecolorAtoms = false;
-        ConsumeInputs(shouldRecolorAtoms);
-		if (revolveCamera) {
-			const auto now = std::chrono::high_resolution_clock::now();
-			const float elapsedSeconds = std::chrono::duration<float>(now - lastRevolveTime).count();
-			camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
-			lastRevolveTime = now;
-		}
+        bool anyNewTask = false;
+        for (auto& [simulationId, currentRenderContext] : renderContexts) {
+            auto& incomingRenderTasks = currentRenderContext.incomingRenderTasks;
+            auto& currentRenderTask = currentRenderContext.currentRenderTask;
+            const bool visible = tiled || simulationId == activeSimulationId;
+            if (currentRenderContext.revolveCamera) {
+                const auto now = std::chrono::high_resolution_clock::now();
+                const float elapsedSeconds = std::chrono::duration<float>(now - currentRenderContext.lastRevolveTime).count();
+                if (visible)
+                    currentRenderContext.camera->Update(-elapsedSeconds * 2.f * PI / 5.f, 0.f, 0.f);
+                currentRenderContext.lastRevolveTime = now;
+            }
 
-        // Check for new task
-        bool newTask = false;        
-        {
+            bool newTask = false;
             if (!incomingRenderTasks.empty()) {
-                Rendering::Task incomingRenderTask = std::move(incomingRenderTasks.front());
+                auto incomingRenderTask = std::move(incomingRenderTasks.front());
                 incomingRenderTasks.pop_front();
-
-                if (std::holds_alternative<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask)) {
-					if (std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
-                        if (std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask) == nullptr) {
-                            int a = 0;
-                        }
-						PrepareNewRenderTask(currentRenderContext, *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), *std::get<std::unique_ptr<SimulationTaskUpdate>>(incomingRenderTask));
-                        //incomingRenderTask = Rendering::NoTask{};
+                if (const auto* update = std::get_if<std::unique_ptr<SimulationTaskUpdate>>(&incomingRenderTask)) {
+                    if (*update && std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
+                        PrepareNewRenderTask(currentRenderContext, *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask), **update);
                         updatedPositions = true;
-                    }
-                    else {
-                        // This shouldn't happen
                     }
                 }
                 else if (!std::holds_alternative<Rendering::NoTask>(incomingRenderTask)) {
+                    if (dragSimulationId == simulationId) CancelInteraction();
                     currentRenderTask = std::move(incomingRenderTask);
-                    //incomingRenderTasks = Rendering::NoTask{};
                     newTask = true;
                 }
             }
+            if (newTask || currentRenderContext.shouldRecolorAtoms) {
+                if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask))
+                    PrepareTask(currentRenderContext, currentRenderTask, !newTask);
+                currentRenderContext.shouldRecolorAtoms = false;
+                anyNewTask = true;
+            }
+
+			if (currentRenderContext.renderDataPipe
+				&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
+				auto& atomTask = *std::get<std::unique_ptr<AtomRenderTask>>(currentRenderTask);
+				currentRenderContext.renderPositionsHost.resize(currentRenderContext.renderDataPipe->PositionCount());
+				int64_t renderStep = -1;
+				if (currentRenderContext.renderDataPipe->TryCopyToHost(
+					currentRenderContext.renderPositionsHost.data(), currentRenderContext.renderPositionsHost.size(), renderStep)) {
+					auto status = atomTask.simStatus;
+					status.step = renderStep;
+					PrepareNewRenderTask(currentRenderContext, atomTask, Rendering::SimulationTaskUpdate{
+						currentRenderContext.renderPositionsHost.data(), nullptr, status });
+					updatedPositions = true;
+				}
+			}
+
         }
-        if (newTask || shouldRecolorAtoms) {
-            bool ignorePosition = !newTask;
-            PrepareTask(currentRenderContext, currentRenderTask, ignorePosition);
-        }        
+
+		std::vector<SimulationTab> tabs;
+		tabs.reserve(renderContexts.size());
+		for (auto& [simulationId, context] : renderContexts) {
+			if (context.renderDataPipe) {
+				bool completed = false;
+				auto status = context.renderDataPipe->GetStatus(completed);
+				context.completed = completed;
+				if (std::holds_alternative<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask))
+					std::get<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask)->simStatus = std::move(status);
+			}
+			tabs.push_back(SimulationTab{ simulationId,
+				context.label.empty() ? std::format("Simulation {}", simulationId + 1) : context.label,
+				simulationId == *activeSimulationId, context.completed });
+		}
 
 
 
         const int msPerFrame = std::floor(1. / 60. * 1000.);
-        bool shouldDraw = newTask || updatedPositions || newInput || framebufferWasResized
+        bool shouldDraw = viewports.empty() || anyNewTask || updatedPositions || newInput || framebufferWasResized
 			|| frameTime.elapsed().count() > msPerFrame;
 
         if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
-            _Render(currentRenderContext, currentRenderTask);
+            RenderFrame(tabs);
 
 			fps->NewFrame();
             frameTime = TimeIt{};
         }
     }
+    activeRenderContext = nullptr;
+    renderContexts.clear(); // Release GL resources while the render thread owns the GL context.
+}
+
+bool Display::RemoveStoppedRenderContexts() {
+	bool removed = false;
+	for (auto it = renderContexts.begin(); it != renderContexts.end();) {
+		if (!it->second.renderDataPipe || it->second.renderDataPipe->GetState() != RenderDataPipe::State::Stopped) {
+			++it;
+			continue;
+		}
+		if (dragSimulationId == it->first)
+			CancelInteraction();
+		if (popupSimulationId == it->first)
+			popupSimulationId.reset();
+		if (activeSimulationId == it->first) {
+			activeSimulationId.reset();
+			activeRenderContext = nullptr;
+		}
+		viewports.erase(it->first);
+		it = renderContexts.erase(it);
+		removed = true;
+	}
+	return removed;
 }
 
 bool Display::ApplyPendingFramebufferResize() {
 	if (!framebufferResizePending || framebufferSize.x <= 0 || framebufferSize.y <= 0)
 		return false;
 
+	CancelInteraction();
+	viewports.clear();
 	framebufferResizePending = false;
-	camera->UpdateViewport(framebufferSize);
+	if (activeRenderContext)
+		activeRenderContext->camera->UpdateViewport(framebufferSize);
 	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
 	if (renderTargetControl)
 		renderTargetControl->Resize(framebufferSize);
 	return true;
 }
 
-void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking) {
+void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking,
+	std::shared_ptr<RenderDataPipe> renderDataPipe, std::string label) {
     {
         if (std::holds_alternative<std::unique_ptr<Rendering::SimulationTaskUpdate>>(task)) {
             if (std::get<std::unique_ptr<SimulationTaskUpdate>>(task) == nullptr) {
@@ -378,8 +504,7 @@ void Display::Submit(SimulationId simId, Rendering::Task task, bool blocking) {
         }
 		std::lock_guard<std::mutex> lock(incomingRenderTaskMutex);
 
-        if (incomingRenderTasksGlobal.size() < 20) // With too many tasks, drop incoming
-            incomingRenderTasksGlobal.push_back({simId, std::move(task)});
+		incomingRenderTasksGlobal.push_back({simId, std::move(task), renderDataPipe, std::move(label)});
     }
 
     if (blocking) {
@@ -395,10 +520,11 @@ void Display::Free(SimulationId simId) {
 	Submit(simId, Rendering::FreeTask{}, false);
 }
 
-void Display::UpdateSelection(SimulationId simId, const std::set<int>& selection) {
+void Display::UpdateSelection(SimulationId simId, const std::set<int>& selection,
+	std::optional<Rendering::MoleculeInfo> selectedMolecule) {
 
 	std::lock_guard<std::mutex> lock(inputMutex);
-    newSelectionInputs.emplace_back(simId, selection);
+    newSelectionInputs.emplace_back(simId, selection, std::move(selectedMolecule));
 }
 
 
@@ -449,8 +575,10 @@ Float3 Convert(const glm::vec3& v) {
 }
 
 std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
-    if (activeGizmo && (activeGizmo->pullForce || activeGizmo->rotateForce)) {        
-        return LiveEdit::MoveMolecule(Convert(activeGizmo->pullForce.value_or(glm::vec3{})), Convert(activeGizmo->rotateForce.value_or(glm::vec3{})));
+	if (gizmoEnabled && activeRenderContext && activeRenderContext->activeGizmo
+		&& (activeRenderContext->activeGizmo->pullForce || activeRenderContext->activeGizmo->rotateForce)) {
+		auto& gizmo = *activeRenderContext->activeGizmo;
+        return LiveEdit::MoveMolecule(Convert(gizmo.pullForce.value_or(glm::vec3{})), Convert(gizmo.rotateForce.value_or(glm::vec3{})));
     }
     if (bool stopMove = stopMovingLiveeditCmd.exchange(false)) {
 		return LiveEdit::MoveMolecule{};

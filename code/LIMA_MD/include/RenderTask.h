@@ -12,7 +12,18 @@
 
 using SimulationId = int;
 
+struct BoxImage;
+
 namespace Rendering {	
+	struct MoleculeInfo {
+		std::string name;
+		size_t number = 0;
+		size_t typeCount = 0;
+		std::vector<int> atomIds;
+	};
+
+	std::vector<MoleculeInfo> GetMoleculeInfo(const BoxImage& boxImage);
+	std::optional<MoleculeInfo> GetMoleculeInfo(const BoxImage& boxImage, int atomId);
 	struct NoTask {};
 
 	struct FreeTask{};
@@ -32,6 +43,7 @@ namespace Rendering {
 		SimStatus simStatus;
 		BackboneChains backboneChains;
 		std::set<int> highlightedAtoms;
+		std::vector<MoleculeInfo> molecules;
 		bool showSolvents = true;
 
 		AtomRenderTask(const GroFile& grofile, bool showSolvents = true);
@@ -40,7 +52,8 @@ namespace Rendering {
 			const std::vector<PersistentClusterMeta>& pcMeta,
 			const BoxParams& boxparams,
 			SimStatus simStatus = {},
-			BackboneChains backboneChains = {});
+			BackboneChains backboneChains = {},
+			std::vector<MoleculeInfo> molecules = {});
 	};
 
 	struct SimulationTaskUpdate {

@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <optional>
@@ -11,6 +12,7 @@
 #include "BoxBuilder.cuh"
 #include "Engine.cuh"
 #include "BatchCompatibility.h"
+#include "RenderDataPipe.h"
 #include "UpgradeableFileFormat.h"
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
@@ -94,6 +96,13 @@ void SimulationResult::WriteCoordinatesTo(GroFile& grofile, std::optional<int64_
 			"Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 }
 
+MolecularSystem SimulationResult::FinalSystem() {
+	if (!sourceSystem)
+		throw std::runtime_error("Cannot create a molecular system without source files");
+	WriteCoordinatesTo(sourceSystem->coordinates);
+	return std::move(*sourceSystem);
+}
+
 Trajectory SimulationResult::MakeTrajectory() const {
 	if (!simulation || !simulation->boxImage)
 		throw std::runtime_error("Cannot write a trajectory without a simulation result and BoxImage");
@@ -117,8 +126,11 @@ const int STEPS_PER_UPDATE = 100;
 constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
-Environment::SimulationSession::SimulationSession(std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir)
-	: simulation(std::move(simulation))
+Environment::SimulationSession::SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode,
+	const fs::path& workDir)
+	: simulationId(simulationId)
+	, simulation(std::move(simulation))
+	, renderDataPipe(std::make_shared<RenderDataPipe>())
 	, mode(mode)
 	, workDir(workDir)
 	{}
@@ -141,7 +153,7 @@ const Environment::SimulationSession& Environment::LiveEditSession() const {
 void Environment::SetLiveEditSimulation(
 	std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir) {
 	if (!liveEditSession) {
-		liveEditSession = std::make_unique<SimulationSession>(std::move(simulation), mode, workDir);
+		liveEditSession = std::make_unique<SimulationSession>(0, std::move(simulation), mode, workDir);
 		return;
 	}
 
@@ -188,7 +200,7 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 		const std::lock_guard lock(schedulingMutex);
 		if (stopping)
 			throw std::runtime_error("Cannot submit a simulation while Environment is stopping");
-		pendingSimulations.push_back({ std::move(job), state });
+		pendingSimulations.push_back({ nextSimulationId++, std::move(job), state });
 		++unpreparedSimulations;
 	}
 	schedulerWakeup.notify_one();
@@ -216,8 +228,7 @@ bool Environment::CanPostprocess() const {
 }
 
 bool Environment::CanStartBatch() const {
-	if (runningSimulation || preparedSimulations.empty()
-		|| processedSimulations.size() + maxBatchSize > maxProcessedSimulations)
+	if (runningSimulation || preparedSimulations.empty())
 		return false;
 	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == maxBatchSize)
 		return true;
@@ -318,14 +329,26 @@ void Environment::Preprocess(QueuedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
 		auto simulation = BuildSimulation(next.job);
-		if (next.job.configureSimulation)
+		if (!next.job.outputs.empty())
+			fs::create_directories(next.job.workDir);
+		if (next.job.outputs.contains(OutputSelect::InitialCoordinates) && !next.job.grofile)
+			throw std::runtime_error("Initial-coordinate output requires molecular-file input");
+		if (next.job.outputs.contains(OutputSelect::Topology) && !next.job.topfile)
+			throw std::runtime_error("Topology output requires molecular-file input");
+		if (next.job.outputs.contains(OutputSelect::InitialCoordinates))
+			next.job.grofile->printToFile(next.job.workDir / "initial.gro");
+		if (next.job.outputs.contains(OutputSelect::Topology))
+			next.job.topfile->printToFile(next.job.workDir / "topol.top");
+		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
+		if (!next.job.name.empty())
+			simulation->name = next.job.name;
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
 		const auto elapsed = std::chrono::steady_clock::now() - started;
 		const std::lock_guard lock(schedulingMutex);
 		preparedSimulations.emplace_back(PreparedSimulation{
-			std::move(next.job), next.state, std::move(simulation), elapsed });
+			next.simulationId, std::move(next.job), next.state, std::move(simulation), elapsed });
 	}
 	catch (...) {
 		next.state->SetError(std::current_exception());
@@ -345,7 +368,8 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		BatchSession batch;
 		batch.sessions.reserve(next.size());
 		for (auto& member : next)
-			batch.sessions.emplace_back(std::move(member.simulation), member.job.mode, member.job.workDir);
+			batch.sessions.emplace_back(member.simulationId, std::move(member.simulation), member.job.mode,
+				member.job.workDir);
 		if (next.front().job.run)
 			RunSimulation(batch, next.front().job.profileCuda);
 		// RunSimulation destroys Engine before any of its nonowning simulation
@@ -355,8 +379,14 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		for (size_t i = 0; i < next.size(); ++i) {
 			auto& session = batch.sessions[i];
 			auto& member = next[i];
+			std::optional<MolecularSystem> sourceSystem;
+			if (member.job.grofile && member.job.topfile)
+				sourceSystem.emplace(
+					std::move(*member.job.grofile), std::move(*member.job.topfile));
 			SimulationResult result{
-				std::move(session.simulation), std::nullopt, session.engineTime.value_or(std::chrono::duration<double>{}),
+				std::move(session.simulation),
+				std::move(sourceSystem),
+				std::nullopt, session.engineTime.value_or(std::chrono::duration<double>{}),
 				member.preprocessingTime + processTime, std::move(session.avgStepTimes),
 				SimulationExecutionInfo{ batchId, static_cast<int>(next.size()) } };
 			processedSimulations.emplace_back(ProcessedSimulation{
@@ -378,6 +408,14 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 void Environment::Postprocess(ProcessedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
+		if (next.job.outputs.contains(OutputSelect::FinalCoordinates)) {
+			if (!next.result.sourceSystem)
+				throw std::runtime_error("Final-coordinate output requires molecular-file input");
+			next.result.WriteCoordinatesTo(next.result.sourceSystem->coordinates);
+			next.result.sourceSystem->coordinates.printToFile(next.job.workDir / "out.gro");
+		}
+		if (next.job.outputs.contains(OutputSelect::DensityProfile))
+			SimAnalysis::DensityProfile(*next.result.simulation, next.job.workDir / "density_profile.csv");
 		if (next.job.postprocess)
 			next.job.postprocess(next.result);
 		next.result.environmentTime += std::chrono::steady_clock::now() - started;
@@ -437,21 +475,19 @@ void Environment::PrintDevPerformanceReport() {
 }
 
 std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {
-	const fs::path simParamsPath = job.simParamsPath.is_absolute() ? job.simParamsPath : job.workDir / job.simParamsPath;
 	if (!job.simParams)
-		job.simParams.emplace(simParamsPath);
+		job.simParams.emplace(job.workDir / "sim_params.txt");
 
 	if (job.initialSimulation) {
 		auto simulation = std::make_unique<Simulation>(*job.simParams);
 		BoxBuilder::copyBoxState(*simulation, std::move(job.initialSimulation->box), job.initialSimulation->getStep());
 		simulation->boxImage = std::move(job.initialSimulation->boxImage);
+		simulation->name = std::move(job.initialSimulation->name);
 		return simulation;
 	}
 
-	const fs::path groPath = job.groPath.is_absolute() ? job.groPath : job.workDir / job.groPath;
-	const fs::path topPath = job.topPath.is_absolute() ? job.topPath : job.workDir / job.topPath;
-	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ groPath };
-	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ topPath };
+	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ job.workDir / "molecule/conf.gro" };
+	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ job.workDir / "molecule/topol.top" };
 	if (job.preprocess)
 		job.preprocess(grofile, topolfile, *job.simParams);
 	const SimParams& simParams = *job.simParams;
@@ -461,8 +497,11 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		std::make_unique<LimaLogger>(LimaLogger::normal, job.mode, "moleculebuilder", job.workDir),
 		IGNORE_HYDROGEN, simParams);
 	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage));
-	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
-	return simulation;
+	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
+	simulation->name = grofile.title;
+	job.grofile.emplace(std::move(grofile));
+	job.topfile.emplace(std::move(topolfile));
+	return simulation; // here sim->boximage->topology->moleculetypes[0].name is valid
 }
 
 
@@ -481,14 +520,15 @@ void Environment::InitializeLiveEditSimulation(
 
 	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
+	simulation->name = grofile.title;
 	SetLiveEditSimulation(std::move(simulation), mode, workDir);
 	SimulationSession& session = LiveEditSession();
 
 	if (display) {
-		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
+		display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 			session.simulation->box->persistentClusters, session.simulation->box->persistentClustersMetadata,
 			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains
-		));
+		), false, nullptr, session.simulation->name);
 	}
 }
 
@@ -555,28 +595,34 @@ void Environment::sayHello() {
 
 std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bool profileCuda) {
 	std::vector<Simulation*> simPointers;
+	std::vector<RenderDataPipe*> renderDataPipes;
 	for (auto& session : batch.sessions) {
 		session.avgStepTimes.reserve((session.simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
 		simPointers.push_back(session.simulation.get());
+		renderDataPipes.push_back(session.mode == Full ? session.renderDataPipe.get() : nullptr);
 	}
 	if (profileCuda) {
 		cudaDeviceSynchronize();
 		cudaProfilerStart();
 	}
-	Engine engine(simPointers);
+	Engine engine(simPointers, EngineRunMode::Simulation, renderDataPipes);
 
-	auto& controlSession = batch.sessions.front();
-	auto& simulation = controlSession.simulation;
-	const bool emVariant = simulation->simParams.em_variant;
-	const bool stepwise = simulation->simParams.stepwise;
-	std::unique_ptr<Display> display;
-	if (controlSession.mode == Full) {
-		display = std::make_unique<Display>();
+	const bool stepwise = batch.sessions.front().simulation->simParams.stepwise;
+	if (std::ranges::any_of(batch.sessions, [](const auto& session) { return session.mode == Full; })) {
+		if (display == nullptr)
+			display = std::make_unique<Display>();
 		display->WaitForDisplayReady();
-		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
-			simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-			simulation->box->boxparams, controlSession.simStatus, simulation->box->backboneChains
-		), stepwise);
+		for (size_t simulationIndex = 0; simulationIndex < batch.sessions.size(); ++simulationIndex) {
+			auto& session = batch.sessions[simulationIndex];
+			if (session.mode != Full) continue;
+			auto& member = session.simulation;
+			session.renderDataPipe->SetStatus(session.simStatus);
+			const std::string& label = member->name;
+			display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
+				member->box->persistentClusters, member->box->persistentClustersMetadata,
+				member->box->boxparams, session.simStatus, member->box->backboneChains, Rendering::GetMoleculeInfo(*member->boxImage)
+			), stepwise, session.renderDataPipe, label);
+		}
 	}
 
 	const auto started = std::chrono::steady_clock::now();
@@ -590,7 +636,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 		}
 	}
 	while (!engine.IsFinished()) {
-		if (!HandleDisplay(controlSession, engine, simulation->box->boxparams, display.get(), emVariant, stepwise))
+		if (!HandleDisplay(display.get()))
 			break;
 		const auto stepStarted = std::chrono::steady_clock::now();
 		engine.step();
@@ -598,6 +644,8 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			auto& session = batch.sessions[i];
 			if (session.engineTime) continue;
 			UpdateSimstatus(session, engine, true, true, i);
+			if (session.mode == Full)
+				session.renderDataPipe->SetStatus(session.simStatus, engine.GetRunStatus(i).simulation_finished);
 			if (engine.GetRunStatus(i).simulation_finished) {
 				session.engineTime = std::chrono::steady_clock::now() - started;
 				session.simulationTimer->stop();
@@ -616,6 +664,10 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			session.simulationTimer->stop();
 		}
 		session.simulation->finished = true;
+		if (session.mode == Full) {
+			session.simStatus.step = session.simulation->getStep();
+			session.renderDataPipe->SetStatus(session.simStatus, true);
+		}
 	}
 	if (profileCuda) {
 		cudaDeviceSynchronize();
@@ -682,9 +734,24 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 
 	// "Free" updates
 	if (simulation->simParams.em_variant) {
-		simStatus.maxForce = engine.GetRunStatus(simulationId).greatestForce;
+		const float maxForce = engine.GetRunStatus(simulationId).greatestForce;
+		simStatus.maxForce = maxForce;
+		if (!session.initialEmMaxForce && std::isfinite(maxForce) && maxForce > 0.f)
+			session.initialEmMaxForce = maxForce;
+		if (session.initialEmMaxForce && simulation->simParams.em_force_tolerance > 0.f) {
+			const float forceTolerance = simulation->simParams.em_force_tolerance;
+			if (*session.initialEmMaxForce <= forceTolerance)
+				simStatus.progress = 1.f;
+			else if (std::isfinite(maxForce) && maxForce > 0.f) {
+				const float totalLogReduction = std::log(*session.initialEmMaxForce / forceTolerance);
+				const float logReduction = std::log(*session.initialEmMaxForce / std::max(maxForce, forceTolerance));
+				simStatus.progress = std::clamp(logReduction / totalLogReduction, 0.f, 1.f);
+			}
+		}
 	}
 	else {
+		if (simulation->simParams.n_steps > 0)
+			simStatus.progress = std::clamp(static_cast<float>(simulation->getStep()) / simulation->simParams.n_steps, 0.f, 1.f);
 		if (!std::isnan(engine.GetRunStatus(simulationId).current_temperature))
 			simStatus.temperature = engine.GetRunStatus(simulationId).current_temperature;
 	}
@@ -692,30 +759,13 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 
 
 
-bool Environment::HandleDisplay(SimulationSession& session, Engine& engine, const BoxParams& boxparams, Display* const display, bool emVariant, bool stepwise) {
-	auto& simStatus = session.simStatus;
-	auto& step_at_last_render = session.stepAtLastRender;
-	if (session.mode != Full) {
+bool Environment::HandleDisplay(Display* const display) {
+	if (!display)
 		return true;
-	}
 
 	auto displayException = display->displayThreadException;
 	if (displayException) {
 		std::rethrow_exception(displayException);
-	}
-
-	int64_t stepForMostRecentData = engine.GetRunStatus().stepForMostRecentData;
-	Float3* renderPositions = engine.GetRunStatus().most_recent_positions;
-	const std::string info = emVariant
-		? std::format("Step {:d} MaxForce {:.02f}", static_cast<int>(engine.GetRunStatus().current_step), static_cast<float>(engine.GetRunStatus().greatestForce))
-		: std::format("Step {:d} Temp {:.02f}", static_cast<int>(engine.GetRunStatus().current_step), static_cast<float>(engine.GetRunStatus().current_temperature));
-
-	if (stepForMostRecentData > step_at_last_render) {
-		display->Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(
-			renderPositions, nullptr, simStatus
-		), stepwise);
-		step_at_last_render = stepForMostRecentData;
-		//engine->GetRunStatus().most_recent_positions = nullptr;
 	}
 
 	return !display->DisplaySelfTerminated();

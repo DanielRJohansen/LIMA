@@ -18,10 +18,10 @@ namespace ForceComparisons {
 			const fs::path workDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / directory;
 			SimulationJob job;
 			job.workDir = workDir;
-			job.groPath = workDir / "conf.gro";
-			job.topPath = workDir / "topol.top";
-			job.simParamsPath = fs::exists(workDir / "sim_params.txt")
-				? workDir / "sim_params.txt" : workDir.parent_path() / "sim_params.txt";
+			job.grofile.emplace(workDir / "conf.gro");
+			job.topfile.emplace(workDir / "topol.top");
+			job.simParams.emplace(fs::exists(workDir / "sim_params.txt")
+				? workDir / "sim_params.txt" : workDir.parent_path() / "sim_params.txt");
 			handles.push_back(environment.Submit(std::move(job)));
 		}
 		for (std::size_t index = 0; index < handles.size(); index++) {

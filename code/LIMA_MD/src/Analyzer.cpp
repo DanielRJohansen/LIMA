@@ -4,9 +4,43 @@
 #include "PhysicsUtils.cuh"
 #include "Printer.h"
 #include "Statistics.h"
+#include "BoxImageBuilder.h"
+#include "Filehandling.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <fstream>
+#include <sstream>
 #include <numeric>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#endif
+
+namespace {
+	void LaunchDetachedPython(const std::filesystem::path& script,
+		const std::filesystem::path& input, bool show) {
+#ifdef _WIN32
+		std::wstring command = L"python \"" + script.wstring() + L"\" --comparison \""
+			+ input.wstring() + L"\"" + (show ? L" --show" : L"");
+		STARTUPINFOW startupInfo{};
+		startupInfo.cb = sizeof(startupInfo);
+		PROCESS_INFORMATION processInfo{};
+		if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE,
+			DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, nullptr, nullptr, &startupInfo, &processInfo))
+			throw std::runtime_error("Failed to launch density-profile comparison");
+		CloseHandle(processInfo.hThread);
+		CloseHandle(processInfo.hProcess);
+#else
+		std::string command = std::format("python \"{}\" --comparison \"{}\"{} >/dev/null 2>&1 &",
+			script.string(), input.string(), show ? " --show" : "");
+		if (std::system(command.c_str()) != 0)
+			throw std::runtime_error("Failed to launch density-profile comparison");
+#endif
+	}
+}
 
 std::vector<Float3> SimAnalysis::GetForces(const Simulation& simulation, int64_t step) {
 	int atomCount = 0;
@@ -82,6 +116,116 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 
 void SimAnalysis::AnalyzeEnergy(SimulationResult& result) {
 	result.analysis = analyzeEnergy(result.simulation.get());
+}
+
+void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesystem::path& outputPath, bool show) {
+	if (!simulation.traj_buffer || !simulation.boxImage)
+		throw std::invalid_argument("Density profile requires trajectory data and atom metadata");
+	const int loggingInterval = simulation.simParams.data_logging_interval;
+	if (loggingInterval <= 0)
+		throw std::invalid_argument("Density profile requires trajectory logging");
+	const int64_t nFrames = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation.getStep(), loggingInterval);
+	if (nFrames <= 0)
+		throw std::invalid_argument("Density profile requires at least one logged trajectory frame");
+
+	const Float3 boxSize = simulation.box->boxparams.BoxSizeFloat();
+	if (boxSize.x <= 0.f || boxSize.y <= 0.f || boxSize.z <= 0.f)
+		throw std::invalid_argument("Density profile requires a non-empty box");
+
+	constexpr int nBins = 80;
+	std::array<std::vector<float>, 3> densities;
+	for (auto& density : densities) density.assign(nBins, 0.f);
+	const float binWidth = boxSize.z / nBins;
+	const auto Group = [&simulation](const PersistentClusterMeta& metadata, int particleId) -> std::optional<size_t> {
+		const int globalId = metadata.particleIdsGlobal[particleId];
+		if (globalId < 0 || globalId >= simulation.boxImage->grofile.atoms.size()) return std::nullopt;
+		if (metadata.isSolvent) return 0;
+		const auto& atom = simulation.boxImage->grofile.atoms[globalId];
+		if (atom.atomName == "P") return 1;
+		if (atom.atomName.View().starts_with('C')) return 2;
+		return std::nullopt;
+	};
+
+	for (int64_t frame = 0; frame < nFrames; ++frame) {
+		for (size_t clusterId = 0; clusterId < simulation.box->persistentClustersMetadata.size(); ++clusterId) {
+			const auto& metadata = simulation.box->persistentClustersMetadata[clusterId];
+			for (int particleId = 0; particleId < PersistentCluster::maxParticles; ++particleId) {
+				const auto group = Group(metadata, particleId);
+				if (!group) continue;
+				const Float3 position = simulation.traj_buffer->GetDatapoint(static_cast<int>(clusterId), particleId, frame);
+				const float z = position.z - std::floor(position.z / boxSize.z) * boxSize.z;
+				const int bin = std::clamp(static_cast<int>(z / binWidth), 0, nBins - 1);
+				densities[*group][bin] += 1.f;
+			}
+		}
+	}
+
+	for (auto& density : densities) {
+		const float total = std::reduce(density.begin(), density.end());
+		if (total > 0.f)
+			for (float& value : density) value /= total;
+	}
+
+	if (!outputPath.parent_path().empty())
+		std::filesystem::create_directories(outputPath.parent_path());
+	std::ofstream file(outputPath);
+	if (!file.is_open())
+		throw std::runtime_error(std::format("Failed to write density profile {}", outputPath.string()));
+	file << "z_nm,water_fraction,head_fraction,tail_fraction\n";
+	for (int bin = 0; bin < nBins; ++bin)
+		file << (bin + .5f) * binWidth << ',' << densities[0][bin] << ',' << densities[1][bin] << ',' << densities[2][bin] << '\n';
+	file.close();
+
+	const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "DensityProfile.py";
+	std::string command = std::format("python \"{}\" \"{}\"", script.string(), outputPath.string());
+	if (show) command += " --show";
+	if (std::system(command.c_str()) != 0)
+		throw std::runtime_error("Matplotlib failed to render density profile");
+}
+
+void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>& groups, const std::filesystem::path& outputPath, bool show) {
+	if (groups.empty())
+		throw std::invalid_argument("Density profile comparison requires at least one group");
+	if (!outputPath.parent_path().empty())
+		std::filesystem::create_directories(outputPath.parent_path());
+	std::ofstream output(outputPath);
+	if (!output.is_open())
+		throw std::runtime_error(std::format("Failed to write density profile comparison {}", outputPath.string()));
+	output << "composition,temperature,z_nm,water_fraction,head_fraction,tail_fraction\n";
+
+	for (const auto& group : groups) {
+		if (group.profiles.empty())
+			throw std::invalid_argument("Density profile comparison group has no profiles");
+		std::vector<std::array<float, 4>> averages;
+		for (const auto& profilePath : group.profiles) {
+			std::ifstream input(profilePath);
+			if (!input.is_open())
+				throw std::runtime_error(std::format("Failed to read density profile {}", profilePath.string()));
+			std::string line;
+			std::getline(input, line);
+			for (size_t bin = 0; std::getline(input, line); ++bin) {
+				std::array<float, 4> values{};
+				std::istringstream row(line);
+				char comma;
+				if (!(row >> values[0] >> comma >> values[1] >> comma >> values[2] >> comma >> values[3]))
+					throw std::runtime_error(std::format("Invalid density profile row in {}", profilePath.string()));
+				if (averages.size() <= bin) averages.emplace_back();
+				for (size_t column = 0; column < values.size(); ++column)
+					averages[bin][column] += values[column];
+			}
+		}
+		for (auto& average : averages) {
+			for (size_t column = 0; column < average.size(); ++column)
+				average[column] /= static_cast<float>(group.profiles.size());
+			output << group.composition << ',' << group.temperature;
+			for (const float value : average) output << ',' << value;
+			output << '\n';
+		}
+	}
+	output.close();
+
+	const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "DensityProfile.py";
+	LaunchDetachedPython(script, outputPath, show);
 }
 
 namespace {

@@ -2,6 +2,7 @@
 
 #include "LiveEditCommands.h"
 #include "RenderTask.h"
+#include "RenderViewport.h"
 
 #include <atomic>
 #include <chrono>
@@ -34,13 +35,23 @@ class GLFWwindow;
 class Overlay;
 struct RenderSettings;
 class SSBO;
+class RenderDataPipe;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
 
+struct SimulationTab {
+	SimulationId simulationId = 0;
+	std::string label;
+	bool active = false;
+	bool completed = false;
+};
+
 struct RenderContext {
-	RenderContext() = default;
+	RenderContext();
+	~RenderContext();
 	RenderContext(const RenderContext&) = delete;
-	RenderContext(RenderContext&&) = default;
+	RenderContext(RenderContext&&) noexcept;
+	RenderContext& operator=(RenderContext&&) noexcept;
 
 	Rendering::Task currentRenderTask = Rendering::NoTask{};
 	std::deque<Rendering::Task> incomingRenderTasks;
@@ -49,25 +60,45 @@ struct RenderContext {
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
+	std::shared_ptr<RenderDataPipe> renderDataPipe;
+	std::vector<Float3> renderPositionsHost;
+	std::string label;
+	bool completed = false;
+	std::optional<Rendering::MoleculeInfo> selectedMolecule;
+	int lastSelectedAtomId = -1;
+	bool shouldRecolorAtoms = false;
+
+	std::unique_ptr<RenderSettings> renderSettings;
+	std::unique_ptr<Camera> camera;
+	std::unique_ptr<TransformGizmo> activeGizmo;
+	bool renderAtoms = true;
+	bool renderFacets = true;
+	bool renderFacetsNormals = false;
+	bool revolveCamera = false;
+	std::chrono::high_resolution_clock::time_point lastRevolveTime{};
 };
 
 class Display {
+	friend class DisplayTests;
 public:
 	Display();
 	~Display();
 	void WaitForDisplayReady();
 
 
-	void Submit(SimulationId, Rendering::Task, bool blocking = false);
+	void Submit(SimulationId, Rendering::Task, bool blocking = false,
+		std::shared_ptr<RenderDataPipe> renderDataPipe = nullptr, std::string label = {});
 	void Free(SimulationId);
 	bool DisplaySelfTerminated() { return displaySelfTerminated; }
 
-	void UpdateSelection(SimulationId simulationId, const std::set<int>& particleIds);
+	void UpdateSelection(SimulationId simulationId, const std::set<int>& particleIds,
+		std::optional<Rendering::MoleculeInfo> selectedMolecule = std::nullopt);
 	void SetSpinnerVisible(bool visible) { spinnerVisible.store(visible); }
 
 	volatile int debugValue = 0;
 	std::exception_ptr displayThreadException{ nullptr };
 	std::atomic_bool allowUserInputs = false;
+	std::atomic_bool gizmoEnabled = true;
 
 	static void TestDisplay();
 	static void RenderGrofile(const GroFile& grofile, bool showSolvents = true) {
@@ -78,6 +109,8 @@ public:
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
 
 private:
+	explicit Display(bool startRenderThread);
+	void ReleaseGraphics();
 	void Mainloop();
 	void Setup();
 	void SetupCallbacks();
@@ -86,7 +119,13 @@ private:
 
 	void _RenderAtoms(const RenderContext& renderContext);
 	void _Render(const RenderContext& renderContext, const MoleculeHullCollection& molCollection, Float3 boxSize);
-	void _Render(const RenderContext& renderContext, const Rendering::Task& currentRenderTask);
+	void RenderFrame(const std::vector<SimulationTab>& tabs);
+	void RenderScene(const RenderContext& renderContext, const RenderViewport& viewport);
+	void SetViewport(const RenderViewport& viewport);
+	bool RemoveStoppedRenderContexts();
+	void CancelInteraction();
+	bool TargetMouseContext();
+	void ApplyRepresentation(ColoringMethod method);
 	void PrepareTask(RenderContext&, Rendering::Task& task, bool ignorePosition);
 	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask&, bool ignorePosition);
 	void PrepareNewRenderTask(RenderContext&, Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate&);
@@ -99,33 +138,32 @@ private:
 	void OnMouseLeft();
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
-	int GetObjectIdAtPixel(glm::ivec2);
-	void ConsumeInputs(bool& shouldRecolorAtoms);
+	void SelectMolecule(int atomId);
+	int GetObjectIdAtPixel(glm::dvec2);
+	void ConsumeInputs();
 
 	bool isDragging = false;
 	glm::dvec2 mousePosAtBtnDown{};
 	std::optional<glm::dvec3> mousePosAtRightBtnDown{};
 	std::chrono::time_point<std::chrono::steady_clock> timeAtBtnDown;
 	glm::dvec2 mousePos{};
-	int lastSelectedAtomId = -1;
+	std::optional<SimulationId> dragSimulationId;
+	std::optional<SimulationId> popupSimulationId;
+	std::map<SimulationId, RenderContext> renderContexts;
+	std::map<SimulationId, RenderViewport> viewports;
+	bool tiled = false;
 
 	std::mutex liveEditCommandsQueueMutex;
 	std::deque<LiveEdit::Command> liveEditCommandsQueue;
-	bool renderAtoms = true;
-	bool renderFacets = true;
-	bool renderFacetsNormals = false;
-	std::unique_ptr<RenderSettings> rendersettings;
 	std::unique_ptr<FPS> fps;
-	std::unique_ptr<TransformGizmo> activeGizmo;
-	bool revolveCamera = false;
-	std::chrono::high_resolution_clock::time_point lastRevolveTime{};
 	std::atomic<bool> stopMovingLiveeditCmd = false;
 
 	std::mutex incomingRenderTaskMutex;
-	std::deque<std::tuple<SimulationId, Rendering::Task>> incomingRenderTasksGlobal;
+	std::deque<std::tuple<SimulationId, Rendering::Task, std::shared_ptr<RenderDataPipe>, std::string>> incomingRenderTasksGlobal;
 	std::mutex inputMutex;
-	std::deque<std::tuple<SimulationId, std::set<int>>> newSelectionInputs;
+	std::deque<std::tuple<SimulationId, std::set<int>, std::optional<Rendering::MoleculeInfo>>> newSelectionInputs;
 	RenderContext* activeRenderContext = nullptr;
+	std::optional<SimulationId> activeSimulationId;
 
 	std::unique_ptr<DrawBoxOutlineShader> drawBoxOutlineShader;
 	std::unique_ptr<DrawFacetsShader> drawFacetsShader;
@@ -143,7 +181,6 @@ private:
 	bool setupCompleted = false;
 
 	std::unique_ptr<Overlay> overlay;
-	std::unique_ptr<Camera> camera;
 	const std::string window_title = "LIMA - Molecular Dynamics Engine";
 	GLFWwindow* window = nullptr;
 	glm::ivec2 windowSize{};

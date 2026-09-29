@@ -11,9 +11,11 @@
 #include "Display.h"
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
+#include "Workflow.h"
 #include "AlgorithmTests.h"
 #include "BatchingTests.h"
 #include "EngineBatchTests.h"
+#include "DisplayTests.h"
 
 
 using namespace TestUtils;
@@ -99,13 +101,102 @@ void BuildCellTest() {
 	env.LiveEdit(grofile, topfile);
 }
 
+void TestDisplayT4Batch() {
+	Environment& environment = Environment::Get();
+	std::array<SimulationHandle, 4> handles;
+	for (auto& handle : handles) {
+		auto job = BatchingTests::MakeT4Job(EnvMode::Full, false);
+		job.mode = EnvMode::Full;
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
+			params.n_steps = 90000;
+			params.data_logging_interval = 200;
+		};
+		handle = environment.Submit(std::move(job));
+	}
+
+	// Submit the entire batch before waiting, otherwise each Get serializes the jobs.
+	for (auto& handle : handles) {
+		auto result = handle.Get();
+		if (!result.simulation || result.execution.batchSize != handles.size())
+			throw std::runtime_error("Display T4 simulations did not execute as one batch");
+	}
+}
+
+
+// Demonstrates LIMA's parallel simulation workflow.
+// Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
+// Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
+void ShowcaseMultisim() {
+	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
+	std::vector<Lipids::Selection> lipidSelections{
+		{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
+		{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
+	};
+
+	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
+	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
+		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
+	SimParams minimization = SimParams::BasicEMSimParams(800.f);
+	minimization.n_steps = 5000;
+	workflow.AddStage({ "minimize", minimization, {},
+		{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
+
+	SimParams production;
+	production.n_steps = 1000;
+	production.apply_thermostat = true;
+	production.save_energy = true;
+	workflow.AddStage({ "production", production, {
+		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
+		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
+	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
+	workflow.CompareDensityProfiles("composition", "temperature");
+	workflow.Run();
+
+	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
+}
+
+
+
 int main(int argc, char** argv) {
+	if (argc == 2 && std::string_view(argv[1]) == "--display-tiles-tests") {
+		try { DisplayTests::Run(); return 0; }
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
+	if (argc == 2 && (std::string_view(argv[1]) == "--display-preview" || std::string_view(argv[1]) == "--display-tiles-preview")) {
+		try {
+			// Static UI fixture: no simulation runs or output files are written.
+			const GroFile molecule{ AutomatedTestsDir() / "T4Lysozyme" / "molecule" / "conf.gro" };
+			Display display;
+			const bool tilePreview = std::string_view(argv[1]) == "--display-tiles-preview";
+			display.allowUserInputs = !tilePreview;
+			for (int i = 0; i < (tilePreview ? 9 : 4); ++i) {
+				auto task = std::make_unique<Rendering::AtomRenderTask>(molecule, false);
+				task->simStatus.step = 24000 + i * 1000;
+				task->simStatus.temperature = 300.12f + i;
+				task->simStatus.maxForce = 1.23e3f;
+				task->simStatus.expectedTimeToFinish = std::chrono::duration<double>{ 154. };
+				task->simStatus.avgStepTime = .842f;
+				task->simStatus.simulationPerformance = 205.23f;
+				display.Submit(i, std::move(task), false, nullptr, "Preview " + std::to_string(i + 1));
+			}
+			while (!display.DisplaySelfTerminated())
+				std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			if (display.displayThreadException)
+				std::rethrow_exception(display.displayThreadException);
+			return 0;
+		}
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
 	if (argc == 2 && std::string_view(argv[1]) == "--environment-batch-tests") {
 		try { BatchingTests::RunSchedulerTests(Environment::Get()); return 0; }
 		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
 	}
 	if (argc == 2 && std::string_view(argv[1]) == "--engine-batch-tests") {
 		try { EngineBatchTests::RunAll(); return 0; }
+		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
+	}
+	if (argc == 2 && std::string_view(argv[1]) == "--showcase-multisim") {
+		try { ShowcaseMultisim(); return 0; }
 		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
 	}
 	try {
@@ -117,6 +208,10 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
+		//ShowcaseMultisim();
+		//TestDisplayT4Batch();
+		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
+		//return 0;
 
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
 		//return 0;

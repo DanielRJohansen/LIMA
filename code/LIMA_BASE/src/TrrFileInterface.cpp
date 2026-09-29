@@ -8,6 +8,8 @@
 
 
 void MDFiles::Dump(Trajectory& trajectory, const fs::path& path) {
+	if (!path.parent_path().empty())
+		fs::create_directories(path.parent_path());
 	XDRFILE* file = xdrfile_open(path.string().c_str(), "w");
 
 	if (trajectory.nAtoms == 0 || trajectory.nFrames == 0)

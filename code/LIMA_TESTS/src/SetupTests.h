@@ -6,8 +6,6 @@ TestRoutine TestBoxIsSavedCorrectlyBetweenSimulations(Environment& environment, 
 	const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
 	SimulationJob first;
 	first.workDir = workDir;
-	first.groPath = workDir / "molecule/conf.gro";
-	first.topPath = workDir / "molecule/topol.top";
 	first.simParams = SimParams{};
 	first.simParams->n_steps = 100;
 	first.simParams->dt = 1.f * FEMTO_TO_NANO;

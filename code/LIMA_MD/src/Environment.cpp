@@ -96,6 +96,13 @@ void SimulationResult::WriteCoordinatesTo(GroFile& grofile, std::optional<int64_
 			"Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 }
 
+MolecularSystem SimulationResult::FinalSystem() {
+	if (!sourceSystem)
+		throw std::runtime_error("Cannot create a molecular system without source files");
+	WriteCoordinatesTo(sourceSystem->coordinates);
+	return std::move(*sourceSystem);
+}
+
 Trajectory SimulationResult::MakeTrajectory() const {
 	if (!simulation || !simulation->boxImage)
 		throw std::runtime_error("Cannot write a trajectory without a simulation result and BoxImage");
@@ -322,8 +329,20 @@ void Environment::Preprocess(QueuedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
 		auto simulation = BuildSimulation(next.job);
+		if (!next.job.outputs.empty())
+			fs::create_directories(next.job.workDir);
+		if (next.job.outputs.contains(OutputSelect::InitialCoordinates) && !next.job.grofile)
+			throw std::runtime_error("Initial-coordinate output requires molecular-file input");
+		if (next.job.outputs.contains(OutputSelect::Topology) && !next.job.topfile)
+			throw std::runtime_error("Topology output requires molecular-file input");
+		if (next.job.outputs.contains(OutputSelect::InitialCoordinates))
+			next.job.grofile->printToFile(next.job.workDir / "initial.gro");
+		if (next.job.outputs.contains(OutputSelect::Topology))
+			next.job.topfile->printToFile(next.job.workDir / "topol.top");
 		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
+		if (!next.job.name.empty())
+			simulation->name = next.job.name;
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
 		const auto elapsed = std::chrono::steady_clock::now() - started;
@@ -360,8 +379,14 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		for (size_t i = 0; i < next.size(); ++i) {
 			auto& session = batch.sessions[i];
 			auto& member = next[i];
+			std::optional<MolecularSystem> sourceSystem;
+			if (member.job.grofile && member.job.topfile)
+				sourceSystem.emplace(
+					std::move(*member.job.grofile), std::move(*member.job.topfile));
 			SimulationResult result{
-				std::move(session.simulation), std::nullopt, session.engineTime.value_or(std::chrono::duration<double>{}),
+				std::move(session.simulation),
+				std::move(sourceSystem),
+				std::nullopt, session.engineTime.value_or(std::chrono::duration<double>{}),
 				member.preprocessingTime + processTime, std::move(session.avgStepTimes),
 				SimulationExecutionInfo{ batchId, static_cast<int>(next.size()) } };
 			processedSimulations.emplace_back(ProcessedSimulation{
@@ -383,6 +408,14 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 void Environment::Postprocess(ProcessedSimulation next) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
+		if (next.job.outputs.contains(OutputSelect::FinalCoordinates)) {
+			if (!next.result.sourceSystem)
+				throw std::runtime_error("Final-coordinate output requires molecular-file input");
+			next.result.WriteCoordinatesTo(next.result.sourceSystem->coordinates);
+			next.result.sourceSystem->coordinates.printToFile(next.job.workDir / "out.gro");
+		}
+		if (next.job.outputs.contains(OutputSelect::DensityProfile))
+			SimAnalysis::DensityProfile(*next.result.simulation, next.job.workDir / "density_profile.csv");
 		if (next.job.postprocess)
 			next.job.postprocess(next.result);
 		next.result.environmentTime += std::chrono::steady_clock::now() - started;
@@ -466,6 +499,8 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
 	simulation->name = grofile.title;
+	job.grofile.emplace(std::move(grofile));
+	job.topfile.emplace(std::move(topolfile));
 	return simulation; // here sim->boximage->topology->moleculetypes[0].name is valid
 }
 

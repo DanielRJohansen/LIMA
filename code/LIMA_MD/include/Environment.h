@@ -14,6 +14,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <cstdint>
 
@@ -25,6 +26,18 @@ struct LiveEditData;
 struct ScheduledSimulationState;
 struct SimulationResult;
 
+struct MolecularSystem {
+	GroFile coordinates;
+	TopologyFile topology;
+};
+
+enum class OutputSelect {
+	InitialCoordinates,
+	FinalCoordinates,
+	Topology,
+	DensityProfile
+};
+
 namespace fs = std::filesystem;
 
 struct SimulationJob {
@@ -34,6 +47,8 @@ struct SimulationJob {
 		topfile(std::move(topfile)), mode(mode) {}
 
 	fs::path workDir;
+	std::string name;
+	std::set<OutputSelect> outputs;
 	std::optional<SimParams> simParams;
 	std::optional<GroFile> grofile;
 	std::optional<TopologyFile> topfile;
@@ -56,6 +71,7 @@ struct SimulationExecutionInfo {
 
 struct SimulationResult {
 	std::unique_ptr<Simulation> simulation;
+	std::optional<MolecularSystem> sourceSystem;
 	std::optional<SimAnalysis::AnalyzedPackage> analysis;
 	std::chrono::duration<double> engineTime{};
 	std::chrono::duration<double> environmentTime{};
@@ -63,6 +79,7 @@ struct SimulationResult {
 	SimulationExecutionInfo execution;
 
 	void WriteCoordinatesTo(GroFile& grofile, std::optional<int64_t> step = std::nullopt) const;
+	MolecularSystem FinalSystem();
 	Trajectory MakeTrajectory() const;
 	void WriteTrajectoryAsUff(const fs::path& path) const;
 };

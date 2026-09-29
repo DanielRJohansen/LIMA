@@ -14,6 +14,34 @@
 #include <sstream>
 #include <numeric>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <Windows.h>
+#endif
+
+namespace {
+	void LaunchDetachedPython(const std::filesystem::path& script,
+		const std::filesystem::path& input, bool show) {
+#ifdef _WIN32
+		std::wstring command = L"python \"" + script.wstring() + L"\" --comparison \""
+			+ input.wstring() + L"\"" + (show ? L" --show" : L"");
+		STARTUPINFOW startupInfo{};
+		startupInfo.cb = sizeof(startupInfo);
+		PROCESS_INFORMATION processInfo{};
+		if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE,
+			DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, nullptr, nullptr, &startupInfo, &processInfo))
+			throw std::runtime_error("Failed to launch density-profile comparison");
+		CloseHandle(processInfo.hThread);
+		CloseHandle(processInfo.hProcess);
+#else
+		std::string command = std::format("python \"{}\" --comparison \"{}\"{} >/dev/null 2>&1 &",
+			script.string(), input.string(), show ? " --show" : "");
+		if (std::system(command.c_str()) != 0)
+			throw std::runtime_error("Failed to launch density-profile comparison");
+#endif
+	}
+}
+
 std::vector<Float3> SimAnalysis::GetForces(const Simulation& simulation, int64_t step) {
 	int atomCount = 0;
 	for (const auto& metadata : simulation.box->persistentClustersMetadata)
@@ -196,10 +224,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 	output.close();
 
 	const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "DensityProfile.py";
-	std::string command = std::format("python \"{}\" --comparison \"{}\"", script.string(), outputPath.string());
-	if (show) command += " --show";
-	if (std::system(command.c_str()) != 0)
-		throw std::runtime_error("Matplotlib failed to render density profile comparison");
+	LaunchDetachedPython(script, outputPath, show);
 }
 
 namespace {

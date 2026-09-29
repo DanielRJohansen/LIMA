@@ -126,125 +126,31 @@ void TestDisplayT4Batch() {
 // Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
 // Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
 void ShowcaseMultisim() {
-	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc";
-	const fs::path outputDir = workDir / "showcase_multisim";
-	constexpr std::array temperatures{ 300.f, 340.f };
-	constexpr std::array seeds{ 101, 202, 303 };	
+	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
 	std::vector<Lipids::Selection> lipidSelections{
-		{Lipids::Select{ "DPPC", workDir, 70. },	Lipids::Select{ "DOPC", workDir, 30. }},
-		{Lipids::Select{ "DPPC", workDir, 40. },	Lipids::Select{ "DOPC", workDir, 60. }}
+		{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
+		{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
 	};
-	
 
-	struct PreparedMembrane {
-		std::string name;
-		std::string composition;
-		int seed = 0;
-		fs::path initialCoordinates;
-		fs::path minimizedCoordinates;
-		fs::path topology;
-	};
-	std::vector<std::shared_ptr<PreparedMembrane>> membranes;
-	std::vector<SimulationHandle> minimizations;
-	Environment& environment = Environment::Get();
+	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
+	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
+		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }));
+	SimParams minimization = SimParams::BasicEMSimParams(800.f);
+	minimization.n_steps = 5000;
+	workflow.AddStage({ "minimize", minimization, {},
+		{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
 
-	for (const auto& lipidSelection : lipidSelections) {
-		for (int i = 0; i < seeds.size(); i++) {
-			auto seed = seeds[i];
-			auto membrane = std::make_shared<PreparedMembrane>();
-			membrane->composition = Lipids::NameSelection(lipidSelection);
-			membrane->name = membrane->composition + std::format("_seed{}", seed);
-			membrane->seed = seed;
-			const fs::path membraneDir = outputDir / membrane->name;
-			membrane->initialCoordinates = membraneDir / "initial.gro";
-			membrane->minimizedCoordinates = membraneDir / "minimized.gro";
-			membrane->topology = membraneDir / "topol.top";
-			membranes.push_back(membrane);
-
-			SimulationJob job;
-			job.workDir = workDir;
-			job.grofile.emplace();
-			job.grofile->box_size = Float3{ 12.f };
-			job.topfile.emplace();
-			job.simParams = SimParams::BasicEMSimParams(800.f);
-			job.simParams->n_steps = 5000;
-			job.mode = Full;
-			job.preprocess = [workDir, lipidSelection, seed, membrane](
-				GroFile& gro, TopologyFile& top, SimParams&) {
-				SimulationBuilder::CreateMembrane(gro, top, lipidSelection, 4.f, seed);
-				gro.printToFile(membrane->initialCoordinates);
-				top.printToFile(membrane->topology);
-			};
-			job.configureSimulation = [seed](Simulation& simulation) {
-				simulation.name += std::format(" seed {}", seed);
-
-			};
-			minimizations.push_back(environment.Submit(std::move(job)));
-		}
-	}
-
-	for (size_t i = 0; i < minimizations.size(); ++i) {
-		auto result = minimizations[i].Get();
-		if (!result.simulation)
-			throw std::runtime_error("Multisim membrane minimization did not return a simulation");
-		GroFile gro{ membranes[i]->initialCoordinates };
-		result.WriteCoordinatesTo(gro);
-		gro.printToFile(membranes[i]->minimizedCoordinates);
-	}
-
-	std::vector<SimulationHandle> productions;
-	std::vector<std::pair<size_t, float>> productionMetadata;
-	for (size_t membraneId = 0; membraneId < membranes.size(); ++membraneId) {
-		for (const float temperature : temperatures) {
-			SimParams params;
-			params.n_steps = 5000;
-			params.apply_thermostat = true;
-			params.ref_t = temperature;
-			params.save_energy = true;
-			params.data_logging_interval = 100;
-			const auto& membrane = *membranes[membraneId];
-			SimulationJob job;
-			job.workDir = workDir;
-			job.grofile.emplace(membrane.minimizedCoordinates);
-			job.topfile.emplace(membrane.topology);
-			job.simParams = params;
-			job.mode = Full;
-			job.configureSimulation = [seed = membrane.seed, temperature](Simulation& simulation) {
-				simulation.name += std::format(" seed:{} temperature:{} K", seed, static_cast<int>(temperature));
-			};
-			const fs::path runDir = outputDir / membrane.name / std::format("{}K", static_cast<int>(temperature));
-			job.postprocess = [profilePath = runDir / "density_profile.csv"](SimulationResult& result) {
-				SimAnalysis::DensityProfile(*result.simulation, profilePath);
-			};
-			productions.push_back(environment.Submit(std::move(job)));
-			productionMetadata.emplace_back(membraneId, temperature);
-		}
-	}
-
-	for (size_t i = 0; i < productions.size(); ++i) {
-		auto result = productions[i].Get();
-		if (!result.simulation || result.simulation->simParams.ref_t != productionMetadata[i].second)
-			throw std::runtime_error("Multisim production simulation used the wrong temperature");
-		const auto& [membraneId, temperature] = productionMetadata[i];
-		const auto& membrane = *membranes[membraneId];
-		const fs::path runDir = outputDir / membrane.name / std::format("{}K", static_cast<int>(temperature));
-		GroFile finalCoordinates{ membrane.minimizedCoordinates };
-		result.WriteCoordinatesTo(finalCoordinates);
-		finalCoordinates.printToFile(runDir / "out.gro");
-	}
-
-	std::vector<SimAnalysis::DensityProfileGroup> profileGroups;
-	for (const auto& lipidSelection : lipidSelections) {
-		const std::string composition = Lipids::NameSelection(lipidSelection);
-		for (const float temperature : temperatures) {
-			SimAnalysis::DensityProfileGroup group{ .composition = composition, .temperature = temperature };
-			for (const auto& membrane : membranes)
-				if (membrane->composition == composition)
-					group.profiles.push_back(outputDir / membrane->name / std::format("{}K", static_cast<int>(temperature)) / "density_profile.csv");
-			profileGroups.push_back(std::move(group));
-		}
-	}
-	SimAnalysis::CompareDensityProfiles(profileGroups, outputDir / "density_profile_comparison.csv");
+	SimParams production;
+	production.n_steps = 1000;
+	production.apply_thermostat = true;
+	production.save_energy = true;
+	production.data_logging_interval = 100;
+	workflow.AddStage({ "production", production, {
+		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
+		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
+	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile } });
+	workflow.CompareDensityProfiles("composition", "temperature");
+	workflow.Run();
 
 	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
 }
@@ -302,10 +208,11 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		//ShowcaseMultisim();
+		ShowcaseMultisim();
 		//TestDisplayT4Batch();
 		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
-		//return 0;
+		return 0;
+
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
 		//return 0;
 		//PlotPmePotAsFactorOfDistance(envmode);

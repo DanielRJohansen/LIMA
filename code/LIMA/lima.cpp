@@ -328,6 +328,45 @@ int Cli::RunMakeBox(int argc, char** argv) {
     return 0;
 }
 
+int Cli::RunSolvate(int argc, char** argv) {
+    ArgParser parser{ std::string{ SolvateHelp } };
+
+    fs::path confPath = "conf.gro";
+    fs::path topologyPath = "topol.top";
+    fs::path confOutputPath;
+    fs::path topologyOutputPath;
+    int density = SimulationBuilder::defaultSolventsPerNm3;
+
+    parser.AddOption({ "--conf", "-c", "-conf", "-confInput", "-ci" }, false, confPath);
+    parser.AddOption({ "--topology", "-t", "-top", "-topInput", "-ti" }, false, topologyPath);
+    parser.AddOption({ "--conf-out", "-co", "-confOutput" }, false, confOutputPath);
+    parser.AddOption({ "--topology-out", "-to", "-topOutput" }, false, topologyOutputPath);
+    parser.AddOption({ "--density", "-p", "-pressure" }, false, density);
+    parser.Parse(argc, argv);
+
+    if (!fs::exists(confPath))
+        throw CliError(std::format("input coordinates not found: {}", confPath.string()));
+    if (!fs::exists(topologyPath))
+        throw CliError(std::format("input topology not found: {}", topologyPath.string()));
+    if (density <= 0)
+        throw CliError("option '--density' must be positive");
+
+    confPath = fs::absolute(confPath);
+    topologyPath = fs::absolute(topologyPath);
+    if (confOutputPath.empty())
+        confOutputPath = confPath.parent_path() / (confPath.stem().string() + "_solvated.gro");
+    if (topologyOutputPath.empty())
+        topologyOutputPath = topologyPath.parent_path() / (topologyPath.stem().string() + "_solvated.top");
+
+    GroFile grofile{ confPath };
+    TopologyFile topfile{ topologyPath };
+    if (!topfile.HasSystem()) topfile.SetSystem("Solvated system");
+    SimulationBuilder::SolvateGrofile(grofile, topfile, density);
+    grofile.printToFile(fs::absolute(confOutputPath));
+    topfile.printToFile(fs::absolute(topologyOutputPath));
+    return 0;
+}
+
 int Cli::RunInsertMolecule(int argc, char** argv) {
     namespace fs = std::filesystem;
     const std::string helpText{ Cli::InsertMoleculeHelp };

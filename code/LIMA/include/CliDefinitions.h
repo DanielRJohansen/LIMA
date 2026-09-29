@@ -20,6 +20,7 @@ int RunMakeSimParams(int argc, char** argv);
 int RunSelfTest(int argc, char** argv);
 int RunRender(int argc, char** argv);
 int RunMakeBox(int argc, char** argv);
+int RunSolvate(int argc, char** argv);
 int RunInsertMolecule(int argc, char** argv);
 int RunInsertMolecules(int argc, char** argv);
 int RunEditConf(int argc, char** argv);
@@ -105,6 +106,23 @@ Example:
   lima makebox --name mybox --box-size 14
 )";
 
+inline constexpr std::string_view SolvateHelp = R"(Usage: lima solvate [OPTION]...
+
+Fill the unoccupied volume of a simulation box with SPC/E water and update its
+topology.
+
+Options:
+  -c, --conf PATH              Input coordinates (default: ./conf.gro)
+  -t, --topology PATH          Input topology (default: ./topol.top)
+      --conf-out PATH          Output coordinates (default: INPUT_solvated.gro)
+      --topology-out PATH      Output topology (default: INPUT_solvated.top)
+  -p, --density COUNT          Target waters per nm^3 (default: 34)
+  -h, --help                   Display this help and exit
+
+Example:
+  lima solvate --conf membrane.gro --topology membrane.top
+)";
+
 inline constexpr std::string_view InsertMoleculeHelp = R"(Usage: lima insertmolecule [OPTION]...
 
 Insert one molecule into a target box.
@@ -181,6 +199,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "selftest", "Run LIMA's internal self-test.", SelfTestHelp, RunSelfTest },
     CommandDefinition{ "render", "Render a molecular structure.", RenderHelp, RunRender },
     CommandDefinition{ "makebox", "Create an empty simulation box.", MakeBoxHelp, RunMakeBox },
+    CommandDefinition{ "solvate", "Fill a simulation box with SPC/E water.", SolvateHelp, RunSolvate },
     CommandDefinition{ "insertmolecule", "Insert one molecule into a box.", InsertMoleculeHelp, RunInsertMolecule },
     CommandDefinition{ "insertmolecules", "Insert multiple molecules into a box.", InsertMoleculesHelp, RunInsertMolecules },
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp, RunEditConf },

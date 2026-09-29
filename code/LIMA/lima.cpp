@@ -116,6 +116,8 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
 
     std::vector<std::pair<std::string, double>> lipids; // {name, percentage}
     std::optional<float> membraneCenterZ = std::nullopt;
+    std::optional<MembraneGeometry::Sphere> sphere;
+    std::optional<MembraneGeometry::Ellipsoid> ellipsoid;
     Float3 boxsize{};
     float emtol = 100.f;
     int randomSeed = 0;
@@ -141,7 +143,25 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
 		}
     );
 
-    argparser.AddOption({ "--center-z", "-c", "-centerz" }, false, membraneCenterZ);
+    argparser.AddOption({ "--plane", "--center-z", "-c", "-centerz", "-plane" }, false, membraneCenterZ);
+	argparser.AddOption({ "--sphere", "-sphere" }, false,
+		[&sphere](const std::vector<std::string>& args) {
+			try {
+				sphere = MembraneGeometry::Sphere{
+					Float3{ std::stof(args[0]), std::stof(args[1]), std::stof(args[2]) },
+					std::stof(args[3]) };
+			}
+			catch (...) { throw CliError("option '--sphere' contains an invalid number"); }
+		}, 4, 4);
+	argparser.AddOption({ "--ellipsoid", "-ellipsoid" }, false,
+		[&ellipsoid](const std::vector<std::string>& args) {
+			try {
+				ellipsoid = MembraneGeometry::Ellipsoid{
+					Float3{ std::stof(args[0]), std::stof(args[1]), std::stof(args[2]) },
+					Float3{ std::stof(args[3]), std::stof(args[4]), std::stof(args[5]) } };
+			}
+			catch (...) { throw CliError("option '--ellipsoid' contains an invalid number"); }
+		}, 6, 6);
 	argparser.AddOption({ "--box-size", "-b", "-boxsize" }, true, boxsize, true);
 	argparser.AddOption({ "--em-tolerance", "-emtol", "-tolerance" }, false, emtol);
 	argparser.AddOption({ "--seed", "-seed" }, false, randomSeed);
@@ -149,6 +169,15 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
 	argparser.AddFlag({ "--display", "-d", "-display" }, [&envmode]() { envmode = Full; });
 
     argparser.Parse(argc, argv);
+
+	const int geometryCount = static_cast<int>(membraneCenterZ.has_value())
+		+ static_cast<int>(sphere.has_value()) + static_cast<int>(ellipsoid.has_value());
+	if (geometryCount > 1)
+		throw CliError("specify only one membrane geometry: --plane, --sphere, or --ellipsoid");
+	if (sphere && sphere->radius <= 0.f)
+		throw CliError("option '--sphere' requires a positive radius");
+	if (ellipsoid && (ellipsoid->radii.x <= 0.f || ellipsoid->radii.y <= 0.f || ellipsoid->radii.z <= 0.f))
+		throw CliError("option '--ellipsoid' requires positive radii");
 
 	Lipids::Selection lipidselection;
 	for (const auto& lipid : lipids) {
@@ -160,7 +189,10 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
     grofile.title = "Membrane";
     TopologyFile topfile;
     topfile.SetSystem("Membrane");
-    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, membraneCenterZ.value_or(boxsize.z/2.f), randomSeed);
+    MembraneGeometry::Figure geometry = MembraneGeometry::Plane{ membraneCenterZ.value_or(boxsize.z / 2.f) };
+    if (sphere) geometry = *sphere;
+    else if (ellipsoid) geometry = *ellipsoid;
+    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry, randomSeed);
     auto emResult = Environment::Get().Submit(SimulationJob{
         workDir, grofile, topfile, SimParams::BasicEMSimParams(emtol), envmode }).Get();
     emResult.WriteCoordinatesTo(grofile);

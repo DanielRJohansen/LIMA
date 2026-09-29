@@ -46,11 +46,16 @@ inline constexpr std::string_view BuildMembraneHelp = R"(Usage: lima buildmembra
 
 Build a membrane with a specified lipid composition. Stockholm lipids 2020 are
 supported by default; custom lipid files may be placed in the working directory.
+Choose exactly one geometry option: --plane, --sphere, or --ellipsoid. If none
+is given, LIMA creates a planar membrane at half the box height.
 
 Options:
       --lipids NAME PERCENT... Lipid names and percentages (required)
   -b, --box-size NM [NM NM]    Cubic size or x/y/z dimensions (required)
-  -c, --center-z NM            Membrane center (default: half the box height)
+      --plane Z                Planar bilayer mid-plane (default: half box height)
+      --sphere X Y Z R         Vesicle center and bilayer mid-surface radius
+      --ellipsoid X Y Z RX RY RZ
+                                Ellipsoid center and three mid-surface radii
       --em-tolerance VALUE     EM force tolerance (default: 100 kJ/mol/nm)
       --seed INTEGER           Reproducible membrane construction seed (default: 0)
       --working-dir PATH       Output directory (default: current directory)
@@ -59,6 +64,10 @@ Options:
 
 Example:
   lima buildmembrane --lipids DPPC 60 DOPC 40 --box-size 10
+  lima buildmembrane --lipids DMPC 100 --box-size 16 --sphere 8 8 8 5
+  lima buildmembrane --lipids POPC 70 cholesterol 30 --box-size 24 \
+    --ellipsoid 12 12 12 7 8 9 --seed 42
+  lima buildmembrane --lipids DOPC 100 --box-size 12 --plane 5.5
 )";
 
 inline constexpr std::string_view MakeSimParamsHelp = R"(Usage: lima makesimparams [OPTION]...

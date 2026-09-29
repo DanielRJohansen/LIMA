@@ -208,10 +208,10 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		ShowcaseMultisim();
+		//ShowcaseMultisim();
 		//TestDisplayT4Batch();
 		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
-		return 0;
+		//return 0;
 
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
 		//return 0;

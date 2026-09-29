@@ -611,9 +611,7 @@ namespace TestUtils {
 		const fs::path workDir = AutomatedTestsDir() / folderName;
 		SimulationJob job;
 		job.workDir = workDir;
-		job.groPath = getMostSuitableGroFile(workDir);
-		job.topPath = workDir / "molecule/topol.top";
-		job.simParamsPath = workDir / "sim_params.txt";
+		job.grofile.emplace(getMostSuitableGroFile(workDir));
 		job.simParams = std::move(simParams);
 		job.mode = envmode;
 		job.postprocess = SimAnalysis::AnalyzeEnergy;

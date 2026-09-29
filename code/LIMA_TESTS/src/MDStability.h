@@ -15,8 +15,6 @@ namespace TestMDStability {
 	static SimulationJob MakeEnergyMinJob(const fs::path& workDir, EnvMode envmode) {
 		SimulationJob emJob;
 		emJob.workDir = workDir;
-		emJob.groPath = workDir / "molecule/conf.gro";
-		emJob.topPath = workDir / "molecule/topol.top";
 		emJob.simParams = SimParams::BasicEMSimParams();
 		emJob.mode = envmode;
 		return emJob;
@@ -30,7 +28,7 @@ namespace TestMDStability {
 
 		SimulationJob mdJob;
 		mdJob.workDir = workDir;
-		mdJob.simParamsPath = workDir / "sim_params.txt";
+		mdJob.simParams.emplace(workDir / "sim_params.txt");
 		mdJob.initialSimulation = std::move(minimized.simulation);
 		mdJob.mode = envmode;
 		mdJob.postprocess = SimAnalysis::AnalyzeEnergy;
@@ -55,7 +53,7 @@ namespace TestMDStability {
 			auto minimized = co_await std::move(emHandles[run]);
 			SimulationJob mdJob;
 			mdJob.workDir = workDir;
-			mdJob.simParamsPath = workDir / "sim_params.txt";
+			mdJob.simParams.emplace(workDir / "sim_params.txt");
 			mdJob.initialSimulation = std::move(minimized.simulation);
 			mdJob.mode = envmode;
 			mdJob.postprocess = SimAnalysis::AnalyzeEnergy;

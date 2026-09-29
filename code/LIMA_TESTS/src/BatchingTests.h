@@ -13,9 +13,6 @@ namespace BatchingTests {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
 		SimulationJob job;
 		job.workDir = workDir;
-		job.groPath = workDir / "molecule/conf.gro";
-		job.topPath = workDir / "molecule/topol.top";
-		job.simParamsPath = workDir / "sim_params.txt";
 		job.mode = Headless;// envmode;
 		job.mustRunAlone = mustRunAlone;
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {

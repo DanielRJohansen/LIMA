@@ -1,4 +1,4 @@
-; My Topology file
+; POPC(50.0%)_POPE(10.0%)_DDPC(10.0%)_DMPC(10.0%)_cholesterol(10.0%)_DOPC(10.0%)_
 
 #include "Slipids_2020.ff/forcefield.itp"
 

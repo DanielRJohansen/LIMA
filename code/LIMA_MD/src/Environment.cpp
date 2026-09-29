@@ -442,9 +442,8 @@ void Environment::PrintDevPerformanceReport() {
 }
 
 std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {
-	const fs::path simParamsPath = job.simParamsPath.is_absolute() ? job.simParamsPath : job.workDir / job.simParamsPath;
 	if (!job.simParams)
-		job.simParams.emplace(simParamsPath);
+		job.simParams.emplace(job.workDir / "sim_params.txt");
 
 	if (job.initialSimulation) {
 		auto simulation = std::make_unique<Simulation>(*job.simParams);
@@ -454,10 +453,8 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		return simulation;
 	}
 
-	const fs::path groPath = job.groPath.is_absolute() ? job.groPath : job.workDir / job.groPath;
-	const fs::path topPath = job.topPath.is_absolute() ? job.topPath : job.workDir / job.topPath;
-	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ groPath };
-	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ topPath };
+	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ job.workDir / "molecule/conf.gro" };
+	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ job.workDir / "molecule/topol.top" };
 	if (job.preprocess)
 		job.preprocess(grofile, topolfile, *job.simParams);
 	const SimParams& simParams = *job.simParams;

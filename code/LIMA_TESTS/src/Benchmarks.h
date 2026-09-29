@@ -44,9 +44,9 @@ namespace Benchmarks {
 		for (int run = 0; run < nRuns; run++) {
 			SimulationJob job;
 			job.workDir = workDir;
-			job.groPath = groPath;
-			job.topPath = topPath;
-			job.simParamsPath = simParamsPath;
+			job.grofile.emplace(groPath);
+			job.topfile.emplace(topPath);
+			job.simParams.emplace(simParamsPath);
 			job.mode = EnvMode::Headless;
 			job.mustRunAlone = true;
 			job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {

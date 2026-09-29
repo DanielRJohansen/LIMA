@@ -34,9 +34,6 @@ struct SimulationJob {
 		topfile(std::move(topfile)), mode(mode) {}
 
 	fs::path workDir;
-	fs::path groPath{ "molecule/conf.gro" };
-	fs::path topPath{ "molecule/topol.top" };
-	fs::path simParamsPath{ "sim_params.txt" };
 	std::optional<SimParams> simParams;
 	std::optional<GroFile> grofile;
 	std::optional<TopologyFile> topfile;

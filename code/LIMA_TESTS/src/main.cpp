@@ -177,6 +177,7 @@ void ShowcaseMultisim() {
 			};
 			job.configureSimulation = [seed](Simulation& simulation) {
 				simulation.name += std::format(" seed {}", seed);
+
 			};
 			minimizations.push_back(environment.Submit(std::move(job)));
 		}
@@ -204,8 +205,8 @@ void ShowcaseMultisim() {
 			const auto& membrane = *membranes[membraneId];
 			SimulationJob job;
 			job.workDir = workDir;
-			job.groPath = membrane.minimizedCoordinates;
-			job.topPath = membrane.topology;
+			job.grofile.emplace(membrane.minimizedCoordinates);
+			job.topfile.emplace(membrane.topology);
 			job.simParams = params;
 			job.mode = Full;
 			job.configureSimulation = [seed = membrane.seed, temperature](Simulation& simulation) {
@@ -301,10 +302,10 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		ShowcaseMultisim();
+		//ShowcaseMultisim();
 		//TestDisplayT4Batch();
 		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
-		return 0;
+		//return 0;
 		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
 		//return 0;
 		//PlotPmePotAsFactorOfDistance(envmode);

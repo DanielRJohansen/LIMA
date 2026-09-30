@@ -324,7 +324,8 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 			for (int z = 0; z < gridDim.z; z++) {
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
 				auto& particles = boxgrid[nodeindex];
-				for (int i = 0; i < desiredSolventsPerNm3 + 20; i++) {	// +20 so we can remove any particles that are too close
+				const int oversampling = std::min(20, desiredSolventsPerNm3);
+				for (int i = 0; i < desiredSolventsPerNm3 + oversampling; i++) {
 					const Float3 relPos = Float3{ dist(rng), dist(rng), dist(rng) };
 					particles.emplace_back(ParticlePlaceholder{ relPos, false });
 				}

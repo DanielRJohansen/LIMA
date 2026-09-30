@@ -60,6 +60,7 @@ public:
 
 	void CopySimulationToHost(size_t simulationId = 0);
 	const RunStatus& GetRunStatus(size_t simulationId = 0) const;
+	void StopSimulation(size_t simulationId = 0);
 	bool IsFinished() const;
 	void terminateSimulation();
 

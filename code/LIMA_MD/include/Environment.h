@@ -61,12 +61,16 @@ struct SimulationJob {
 	bool mustRunAlone = false;
 	// Captures every CUDA kernel executed while this job's Engine exists.
 	bool profileCuda = false;
+	// Stops the simulation after this much engine wall time. The current step is
+	// allowed to finish so device state and logging buffers remain consistent.
+	std::optional<std::chrono::duration<double>> maxRunTime;
 	bool run = true;
 };
 
 struct SimulationExecutionInfo {
 	int batchId = 0;
 	int batchSize = 1;
+	bool timedOut = false;
 };
 
 struct SimulationResult {
@@ -110,7 +114,7 @@ class Environment
 {
 	struct SimulationSession {
 		SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode,
-			const fs::path& workDir);
+			const fs::path& workDir, std::optional<std::chrono::duration<double>> maxRunTime = std::nullopt);
 		~SimulationSession();
 		SimulationSession(SimulationSession&&) noexcept;
 
@@ -123,6 +127,8 @@ class Environment
 		std::optional<float> initialEmMaxForce;
 		std::vector<float> avgStepTimes;
 		std::optional<std::chrono::duration<double>> engineTime;
+		std::optional<std::chrono::duration<double>> maxRunTime;
+		bool timedOut = false;
 		std::deque<LiveEdit::Command> liveEditCommandsQueue;
 		SimStatus simStatus{};
 		bool forceWriteSimstatusToDisplay = false;

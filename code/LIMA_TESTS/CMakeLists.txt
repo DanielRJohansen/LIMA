@@ -10,6 +10,7 @@ endif()
 set(SOURCE_FILES
     #src/AlgorithmTests.cu
     src/main.cpp
+    src/LimaTests.cpp
 )
 add_executable(limatest
     ${SOURCE_FILES}
@@ -27,6 +28,16 @@ target_include_directories(limatest PRIVATE
 
 target_link_libraries(limatest LIMA_BASE)
 target_link_libraries(limatest LIMA_MD)
+
+add_executable(agenttesting
+    src/agenttesting.cpp
+    src/EnergyMinimizationtests.cpp
+    ${RESOURCE_FILES}
+)
+target_include_directories(agenttesting PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(agenttesting LIMA_BASE LIMA_MD)
 
 
 if (UNIX)

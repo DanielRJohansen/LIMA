@@ -127,12 +127,13 @@ constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::SimulationSession::SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode,
-	const fs::path& workDir)
+	const fs::path& workDir, std::optional<std::chrono::duration<double>> maxRunTime)
 	: simulationId(simulationId)
 	, simulation(std::move(simulation))
 	, renderDataPipe(std::make_shared<RenderDataPipe>())
 	, mode(mode)
 	, workDir(workDir)
+	, maxRunTime(maxRunTime)
 	{}
 
 Environment::SimulationSession::~SimulationSession() = default;
@@ -369,7 +370,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 		batch.sessions.reserve(next.size());
 		for (auto& member : next)
 			batch.sessions.emplace_back(member.simulationId, std::move(member.simulation), member.job.mode,
-				member.job.workDir);
+				member.job.workDir, member.job.maxRunTime);
 		if (next.front().job.run)
 			RunSimulation(batch, next.front().job.profileCuda);
 		// RunSimulation destroys Engine before any of its nonowning simulation
@@ -388,7 +389,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 				std::move(sourceSystem),
 				std::nullopt, session.engineTime.value_or(std::chrono::duration<double>{}),
 				member.preprocessingTime + processTime, std::move(session.avgStepTimes),
-				SimulationExecutionInfo{ batchId, static_cast<int>(next.size()) } };
+				SimulationExecutionInfo{ batchId, static_cast<int>(next.size()), session.timedOut } };
 			processedSimulations.emplace_back(ProcessedSimulation{
 				std::move(member.job), member.state, std::move(result) });
 		}
@@ -644,6 +645,11 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			auto& session = batch.sessions[i];
 			if (session.engineTime) continue;
 			UpdateSimstatus(session, engine, true, true, i);
+			if (session.maxRunTime && std::chrono::steady_clock::now() - started >= *session.maxRunTime
+				&& !engine.GetRunStatus(i).simulation_finished) {
+				session.timedOut = true;
+				engine.StopSimulation(i);
+			}
 			if (session.mode == Full)
 				session.renderDataPipe->SetStatus(session.simStatus, engine.GetRunStatus(i).simulation_finished);
 			if (engine.GetRunStatus(i).simulation_finished) {

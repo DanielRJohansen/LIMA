@@ -1198,7 +1198,7 @@ std::string composeString(const std::vector<T>&elements) {
 
 void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 
-	const fs::path path = dir / (name + ".itp");
+	const fs::path path = dir / includePath.value_or(fs::path{ name + ".itp" });
 	
 	if (atoms.empty())
 		throw(std::runtime_error("Trying to print moleculetype to file, but it has no atoms"));

@@ -102,6 +102,10 @@ const RunStatus& Engine::GetRunStatus(size_t simulationId) const {
 	return batch->simulations.at(simulationId).runstatus;
 }
 
+void Engine::StopSimulation(size_t simulationId) {
+	FinalizeSimulation(batch->simulations.at(simulationId));
+}
+
 bool Engine::IsFinished() const {
 	return std::none_of(batch->simulations.begin(), batch->simulations.end(), [](const auto& sim) { return sim.device.active; });
 }

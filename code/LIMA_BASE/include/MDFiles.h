@@ -15,6 +15,7 @@
 #include <queue>
 #include <ranges>
 #include <map>
+#include <type_traits>
 
 
 const bool ENABLE_FILE_CACHING = true;
@@ -402,7 +403,31 @@ struct TopologyFile::GenericBond{
 		for (size_t i = 0; i < N; ++i) {
 			oss << std::setw(width) << std::right << ids[i] + 1; // convert back to 1-indexed
 		}
-		oss << std::setw(width) << std::right << funct << "\n";
+		oss << std::setw(width) << std::right << funct;
+		if (parameters) {
+			if constexpr (std::is_same_v<ParametersType, Bondtypes::SingleBond::Parameters>) {
+				oss << std::setw(width) << parameters->b0 << std::setw(width) << parameters->kb / KILO;
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::PairBond::Parameters>) {
+				oss << std::setw(width) << parameters->sigma << std::setw(width) << parameters->epsilon / KILO;
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::AngleUreyBradleyBond::Parameters>) {
+				oss << std::setw(width) << parameters->theta0 / DEG_TO_RAD
+					<< std::setw(width) << parameters->kTheta / KILO
+					<< std::setw(width) << parameters->ub0
+					<< std::setw(width) << parameters->kUB / KILO;
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::DihedralBond::Parameters>) {
+				oss << std::setw(width) << parameters->phi_0 / DEG_TO_RAD
+					<< std::setw(width) << parameters->k_phi * 2.f / KILO
+					<< std::setw(width) << static_cast<int>(parameters->n);
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::ImproperDihedralBond::Parameters>) {
+				oss << std::setw(width) << parameters->psi_0 / DEG_TO_RAD
+					<< std::setw(width) << parameters->k_psi / KILO;
+			}
+		}
+		oss << '\n';
 	}
 
     bool operator==(const GenericBond<N, ParametersType>& other) const {

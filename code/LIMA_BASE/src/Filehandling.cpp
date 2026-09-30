@@ -124,52 +124,21 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 	return pairs;
 }
 
-void FileUtils::SkipIfdefBlock(std::ifstream& file) {
-	std::string line;
-	while (std::getline(file, line)) {
-		// Trim leading whitespace in-place
-		auto pos = line.find_first_not_of(" \t");
-		if (pos == std::string::npos) continue; // Skip empty or whitespace-only lines
+std::string FileUtils::ReadFileToString(const fs::path& path) {
+	std::ifstream file(path, std::ios::binary | std::ios::ate);
+	if (!file)
+		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
 
-		// Check for preprocessor directives directly
-		if (line.compare(pos, 5, "#else") == 0 || line.compare(pos, 6, "#endif") == 0) {
-			return;
-		}
-	}
-	throw std::runtime_error("Failed to find #endif in file\n");
-}
-bool FileUtils::ChecklineForIfdefAndSkipIfFound(std::ifstream& file, const std::string& line, const std::unordered_set<std::string>& defines) {
-	auto pos = line.find_first_not_of(" ");
-	if (pos == std::string::npos) return false; // If no non-space character, skip
+	const std::streamsize size = file.tellg();
+	std::string contents(static_cast<size_t>(size), '\0');
 
-	if (line.size() >= pos + 6 && line.substr(pos, 6) == "#ifdef") {
-		auto keyword = line.substr(pos + 6);
-		if (defines.find(keyword) == defines.end()) {
-			SkipIfdefBlock(file);
-		}
-		return true;
-	}
-	else if (line.size() >= pos + 7 && line.substr(pos, 7) == "#ifndef") {
-		auto keyword = line.substr(pos + 7);
-		if (defines.find(keyword) != defines.end()) {
-			SkipIfdefBlock(file);
-		}
-		return true;
-	}
-	return false;
-}
+	file.seekg(0);
+	file.read(contents.data(), size);
 
-std::optional<std::string> FileUtils::ChechlineForDefine(std::string_view line) {
-	auto pos = line.find_first_not_of(" ");
+	if (!file)
+		throw std::runtime_error(std::format("Failed to read file {}\n", path.string()));
 
-	if (pos != std::string_view::npos) {
-		if (line.size() >= pos + 7 && line.substr(pos, 7) == "#define") {
-			std::string define = std::string(line.substr(pos + 7));
-			removeWhitespace(define);
-			return define;
-		}
-	}
-	return std::nullopt;
+	return contents;
 }
 
 std::vector<Float3> FileUtils::ReadCsvAsVectorOfFloat3(const fs::path& path) {

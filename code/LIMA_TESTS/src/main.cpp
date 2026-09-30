@@ -299,8 +299,8 @@ int main(int argc, char** argv) {
 	//Benchmarks::PrepareSimulation_stmv(envmode);
 			//TestBuildmembraneSmall(envmode, false);
 			// 
-		Benchmarks::Load3J3Q(env, envmode);
-		//RunAllUnitTests();
+		//Benchmarks::Load3J3Q(env, envmode);
+		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
@@ -384,6 +384,7 @@ void RunAllUnitTests() {
 
 	// Test Setup
 	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations);
+	ADD_TEST("TestTopologyPreprocessor", FileTests::TestTopologyPreprocessor);
 
 	// Programs test
 	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile);

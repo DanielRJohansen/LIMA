@@ -43,26 +43,38 @@ namespace Benchmarks {
 
 
 		TimeIt totalTimer;
-		TimeIt fileTimer;
 		SimulationJob job;
 		job.workDir = workDir;
+
+		TimeIt groTimer;
 		job.grofile.emplace(workDir / "conf.gro");
+		const std::chrono::duration<double> groTime = groTimer.stop();
+
+		TimeIt topTimer;
 		job.topfile.emplace(workDir / "topol.top");
+		const std::chrono::duration<double> topTime = topTimer.stop();
+
 		job.simParams.emplace();
 		job.mode = EnvMode::Headless;
 		job.mustRunAlone = true;
 		job.run = false;
-		const std::chrono::duration<double> fileTime = fileTimer.stop();
+		const std::chrono::duration<double> fileTime = groTime + topTime;
 
 		//auto completed = co_await environment.Submit(std::move(job));
 		const std::chrono::duration<double> totalTime = totalTimer.stop();
 
 		const std::chrono::seconds allowedFiletime{ 3 };
-		const std::chrono::seconds allowedTotaltime{ 10 };
+
+		const auto& top = *job.topfile;
+		const size_t nTopAtoms = std::ranges::distance(top.GetAllElements<TopologyFile::AtomsEntry>());
+
+		if (nTopAtoms != job.grofile->atoms.size())
+			co_return LimaUnittestResult{ false, std::format("3j3q atom count mismatch between gro({}) and top({})", job.grofile->atoms.size(), nTopAtoms), envmode == Full};
 
 		co_return LimaUnittestResult{ fileTime < allowedFiletime,
-			std::format("3j3q files: {:.3f} total: {:.3f} allowed: {:.3f} [s]",
-				fileTime.count(), totalTime.count(), std::chrono::duration<double>(allowedFiletime).count()),
+			std::format("gro: {:.2f} top: {:.2f} / {:.2f} [s]",
+				groTime.count(), topTime.count(), fileTime.count(), totalTime.count(),
+				std::chrono::duration<double>(allowedFiletime).count()),
 			envmode == Full };
 
 		/*if (!completed.simulation)

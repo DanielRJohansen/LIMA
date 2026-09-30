@@ -119,10 +119,10 @@ namespace ProgramsTests {
 		const TopologyFile& parsedTopology = conversion.topology;
 		GroFile parsedCoordinates = conversion.grofile;
 		std::size_t topologyAtomCount = 0;
-		for (const auto& molecule : parsedTopology.GetSystem().molecules) {
+		for (const auto& molecule : parsedTopology.GetSystem().Instances()) {
 			topologyAtomCount += molecule.moleculetype->atoms.size();
 		}
-		TEST_ASSERT(parsedTopology.GetSystem().molecules.size() == 2
+		TEST_ASSERT(parsedTopology.GetSystem().molecules.size() == 2 && parsedTopology.GetSystem().MoleculeCount() == 2
 			&& topologyAtomCount == parsedCoordinates.atoms.size(),
 			"Parsed multi-chain topology does not map one-to-one to GRO atoms");
 

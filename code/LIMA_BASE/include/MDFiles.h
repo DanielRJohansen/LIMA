@@ -178,10 +178,6 @@ public:
 		std::vector<CmapBond> cmapbonds;
 		std::optional<fs::path> positionRestraintsInclude;
 
-		// Only used during parsing!
-		//std::string mostRecentAtomsSectionName{};
-		std::unordered_map<int, int> groIdToLimaId; // Relative to moleculetype??! I dont like this
-
 		void ToFile(const fs::path& dir) const;
 
 		template <typename T>
@@ -217,16 +213,31 @@ public:
 		fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
 		GenericItpFile contents;
 	};
+	// count consecutive molecules of the same moleculetype, like a line in the [ molecules ] section
 	struct MoleculeEntry {
 		std::string name{};
 		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
-		//int count = 0; // TODO implement this
+		int count = 1;
 	};
 	struct System {
 		std::string title{ "noSystem" };
 		std::vector<MoleculeEntry> molecules;
 
 		bool IsInit() const { return title != "noSystem"; };
+
+		// Number of molecule instances, ie. the sum of the counts
+		size_t MoleculeCount() const {
+			size_t n = 0;
+			for (const auto& entry : molecules) n += entry.count;
+			return n;
+		}
+		// Every molecule instance, in order. An entry with count N is repeated N times
+		auto Instances() const {
+			return molecules
+				| std::views::transform([](const MoleculeEntry& entry) { return std::views::repeat(std::cref(entry), entry.count); })
+				| std::views::join
+				| std::views::transform([](std::reference_wrapper<const MoleculeEntry> entry) -> const MoleculeEntry& { return entry.get(); });
+		}
 	};
 
 	TopologyFile();										// Create an empty file	
@@ -282,9 +293,9 @@ public:
 
 	template <typename T>
 	auto GetAllElements() const {
-		// 1. First, transform each MoleculeEntry to get the vector of the desired element type.
+		// 1. First, transform each molecule instance to get the vector of the desired element type.
 		// 2. The lambda function does the transformation by calling GetElements<T> on each molecule's Moleculetype.
-		return m_system.molecules
+		return m_system.Instances()
 			| std::views::transform(
 				[](const MoleculeEntry& entry) -> const std::vector<T>&{return entry.moleculetype->GetElements<T>(); // Retrieve the vector for the specific bond type
 				})
@@ -312,7 +323,7 @@ public:
 	}
 
 	// Append a molecule of which the type is already known by the file
-	void AppendMolecule(const std::string& moleculename); // Its quite silly that mols like SOL are appened N times, instead of just once with N as an internal param
+	void AppendMolecule(const std::string& moleculename); // Increments the count of the last entry if it has the same name
 	void AppendMoleculetype(const std::shared_ptr<const Moleculetype> moltype, 
 		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
 	void AppendMolecule(const MoleculeEntry&);
@@ -328,32 +339,11 @@ public:
 
 private:
 	friend class GenericItpFile;
+	friend class TopologyParser;	// Loads a .top or .itp and all its includes into a TopologyFile
 
 	static const char commentChar = ';';
 
-	std::unordered_set<std::string> defines; // keywords that are defined using #define in a top or itp file. Not fully implemented yet
-
-	/// <summary> Load a .top or .itp into a TopologyFile </summary>
-	/// <param name="name">If this is called on an include file, 
-	/// this is the name of that include file in the parent file</param>
-	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath, 
-		std::optional<fs::path> includefileName =std::nullopt);
-
-	void ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile);
-
-	// Packs atoms and bond information in the moleculetype ptr
-	// Returns the next section in the topologyfile
-	static void ParseMoleculetypeEntry(TopologySection section, 
-		const std::string& entry, std::shared_ptr<Moleculetype> moleculetype);
-
-	static void ParseAtomsEntry(std::string_view sv, TopologyFile::AtomsEntry& atom, std::vector<int>& limaIdToGroId, int index /*relative to moleculetype*/);
-	static void ParseSingleBond(std::string_view line, TopologyFile::SingleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParsePairBond(std::string_view line, TopologyFile::PairBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseAngleBond(std::string_view line, TopologyFile::AngleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseDihedralBond(std::string_view line, TopologyFile::DihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseImproperDihedralBond(std::string_view line, TopologyFile::ImproperDihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseCmapBond(std::string_view line, TopologyFile::CmapBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-
+	std::unordered_set<std::string> defines; // keywords that are defined using #define in a top or itp file. Only used for #ifdef/#ifndef, macro values are not supported
 
 	System m_system{};
 };
@@ -387,7 +377,6 @@ struct TopologyFile::AtomsEntry {
 
 template <size_t N, typename ParametersType>
 struct TopologyFile::GenericBond{
-	virtual ~GenericBond() = default;
 	static const int n = N;
 	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
 	std::array<int,N> ids{-1};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded

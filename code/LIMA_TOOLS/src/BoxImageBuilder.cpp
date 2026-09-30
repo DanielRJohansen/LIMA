@@ -66,12 +66,11 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 	int nextUniqueParticleId = 0;
 	int indexInGrofile = 0;
-	moleculeInstances.reserve(system.molecules.size());
+	moleculeInstances.reserve(system.MoleculeCount());
 
 
 
-	for (int topologyMoleculeIndex = 0; topologyMoleculeIndex < system.molecules.size(); topologyMoleculeIndex++) {
-		const TopologyFile::MoleculeEntry& molecule = system.molecules[topologyMoleculeIndex];
+	for (const TopologyFile::MoleculeEntry& molecule : system.Instances()) {
 
 #if ENABLE_SOLVENTS != 1
 		if (molecule.name == "SOL" || molecule.name == "TIP3") {// TODO: Add the other Solvent labels

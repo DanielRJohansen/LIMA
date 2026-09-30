@@ -718,8 +718,8 @@ namespace TestUtils {
 		auto EqualUnordered = []<std::ranges::input_range R1, std::ranges::input_range R2>(R1&& a, R2&& b) {
 			using T = std::ranges::range_value_t<R1>;
 
-			std::vector<T> va(std::ranges::begin(a), std::ranges::end(a));
-			std::vector<T> vb(std::ranges::begin(b), std::ranges::end(b));
+			std::vector<T> va = std::ranges::to<std::vector<T>>(a);
+			std::vector<T> vb = std::ranges::to<std::vector<T>>(b);
 			if (va.size() != vb.size())
 				return false;
 

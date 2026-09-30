@@ -29,7 +29,7 @@ inline int64_t TimeSinceEpoch(std::filesystem::file_time_type fileTime) {
 }
 
 inline constexpr uint64_t CacheVersionNumberValue() {
-	const int cacheVersionNumber = 23;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	const int cacheVersionNumber = 24;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 }  
 
@@ -128,20 +128,48 @@ namespace cereal {
 } // namespace cereal
 
 
+// Gro cache layout:
+//	uint64 version, int64 timestamp, uint64 titleLength, char title[titleLength], Float3 box_size, uint64 nAtoms, GroRecord atoms[nAtoms]
+// The atoms are stored as raw memory, so they can be read in a single operation
+static_assert(std::is_trivially_copyable_v<GroRecord>, "GroRecord is stored in the binary cache as raw memory");
+
+template <typename T>
+inline void ReadRaw(std::ifstream& is, T& value) {
+	is.read(reinterpret_cast<char*>(&value), sizeof(T));
+}
+template <typename T>
+inline void WriteRaw(std::ofstream& os, const T& value) {
+	os.write(reinterpret_cast<const char*>(&value), sizeof(T));
+}
+
 inline void readGroFileFromBinaryCache(const fs::path& path, GroFile& file) {
-	std::ifstream is(path.string() + ".bin", std::ios::binary);
+	const fs::path binaryPath = path.string() + ".bin";
+	std::ifstream is(binaryPath, std::ios::binary);
 	if (!is.is_open()) {
 		throw std::runtime_error("Failed to open file for reading");
 	}
 
-	cereal::BinaryInputArchive archive(is);
 	uint64_t versionNumberValue;
-	archive(versionNumberValue);	// ignore
-	archive(file.lastModificationTimestamp);
+	ReadRaw(is, versionNumberValue);	// ignore
+	ReadRaw(is, file.lastModificationTimestamp);
 
-	archive(file.title);
-	archive(file.atoms);
-	archive(file.box_size);
+	uint64_t titleLength = 0;
+	ReadRaw(is, titleLength);
+	if (!is || titleLength > fs::file_size(binaryPath))
+		throw std::runtime_error(std::format("Corrupt cache file {}", binaryPath.string()));
+	file.title.resize(titleLength);
+	is.read(file.title.data(), titleLength);
+	ReadRaw(is, file.box_size);
+
+	uint64_t nAtoms = 0;
+	ReadRaw(is, nAtoms);
+	if (!is || fs::file_size(binaryPath) != static_cast<uint64_t>(is.tellg()) + nAtoms * sizeof(GroRecord))
+		throw std::runtime_error(std::format("Corrupt cache file {}", binaryPath.string()));
+
+	file.atoms.resize(nAtoms);
+	is.read(reinterpret_cast<char*>(file.atoms.data()), nAtoms * sizeof(GroRecord));
+	if (!is)
+		throw std::runtime_error(std::format("Failed to read cache file {}", binaryPath.string()));
 
 	file.readFromCache = true;
 }
@@ -154,13 +182,15 @@ inline void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> 
 		throw std::runtime_error("Failed to open file for writing: " + path.string() + ".bin");
 	}
 
-	cereal::BinaryOutputArchive archive(os);
-	archive(CacheVersionNumberValue());
-	archive(file.lastModificationTimestamp);
+	WriteRaw(os, CacheVersionNumberValue());
+	WriteRaw(os, file.lastModificationTimestamp);
 
-	archive(file.title);
-	archive(file.atoms);
-	archive(file.box_size);
+	WriteRaw(os, static_cast<uint64_t>(file.title.size()));
+	os.write(file.title.data(), file.title.size());
+	WriteRaw(os, file.box_size);
+
+	WriteRaw(os, static_cast<uint64_t>(file.atoms.size()));
+	os.write(reinterpret_cast<const char*>(file.atoms.data()), file.atoms.size() * sizeof(GroRecord));
 }
 
 //inline void readTopFileFromBinaryCache(const fs::path& path, TopologyFile::Moleculetype& moleculetype) {

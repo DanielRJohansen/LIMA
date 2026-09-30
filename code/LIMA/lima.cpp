@@ -590,7 +590,7 @@ int Cli::RunToGmx(int argc, char** argv) {
     const fs::path groPath = directory / (name.empty() ? "conf.gro" : name + ".gro");
     const fs::path topPath = directory / (name.empty() ? "topol.top" : name + ".top");
 
-    const auto& molecules = conversion.topology.GetSystem().molecules;
+    const auto molecules = conversion.topology.GetSystem().Instances() | std::ranges::to<std::vector<TopologyFile::MoleculeEntry>>();
     if (molecules.size() != conversion.positionRestraints.size()) {
         throw std::runtime_error("Converted molecule and position-restraint counts differ");
     }

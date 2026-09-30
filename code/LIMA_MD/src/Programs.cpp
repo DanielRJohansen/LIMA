@@ -156,7 +156,7 @@ void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& to
 	std::vector<MoleculeHullFactory> moleculeContainers;
 	int globalParticleIndex = 0;
 
-	for (const auto& molecule : topfile.GetSystem().molecules) {
+	for (const auto& molecule : topfile.GetSystem().Instances()) {
 		moleculeContainers.push_back({});
 
 		for (const auto& atom : molecule.moleculetype->atoms) {			

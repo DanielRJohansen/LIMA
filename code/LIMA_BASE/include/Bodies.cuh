@@ -337,6 +337,16 @@ public:
 		}
 		return result;
 	}
+
+	// values must be sorted and unique
+	static StaticSet CreateFromSorted(const std::vector<int>& values) {
+		if (values.size() > size)
+			throw std::runtime_error("Too many values in set, increase size or check your clustering");
+		StaticSet result;
+		for (int i = 0; i < values.size(); i++)
+			result.data[i] = values[i];
+		return result;
+	}
 };
 
 using ParticlesBondedToParticle = StaticSet<32>;

@@ -60,10 +60,8 @@ namespace Benchmarks {
 		job.run = false;
 		const std::chrono::duration<double> fileTime = groTime + topTime;
 
-		//auto completed = co_await environment.Submit(std::move(job));
-		const std::chrono::duration<double> totalTime = totalTimer.stop();
-
-		const std::chrono::seconds allowedFiletime{ 3 };
+		auto completed = co_await environment.Submit(std::move(job));
+		const std::chrono::duration<double> totalTime = totalTimer.stop();		
 
 		const auto& top = *job.topfile;
 		const size_t nTopAtoms = std::ranges::distance(top.GetAllElements<TopologyFile::AtomsEntry>());
@@ -71,19 +69,21 @@ namespace Benchmarks {
 		if (nTopAtoms != job.grofile->atoms.size())
 			co_return LimaUnittestResult{ false, std::format("3j3q atom count mismatch between gro({}) and top({})", job.grofile->atoms.size(), nTopAtoms), envmode == Full};
 
-		co_return LimaUnittestResult{ fileTime < allowedFiletime,
-			std::format("gro: {:.2f} top: {:.2f} / {:.2f} [s]",
-				groTime.count(), topTime.count(), fileTime.count(), totalTime.count(),
-				std::chrono::duration<double>(allowedFiletime).count()),
-			envmode == Full };
+		const std::chrono::seconds allowedFileTime{ 3 };
+		const std::chrono::seconds allowedTotalTime{ 10 };
 
-		/*if (!completed.simulation)
-			co_return LimaUnittestResult{ false, "3j3q load benchmark produced no simulation", envmode == Full };*/
-		/*co_return LimaUnittestResult{ totalTime < allowedTime,
+		if (fileTime > allowedFileTime)
+			co_return LimaUnittestResult{ false, std::format("gro: {:.2f} top: {:.2f} / {:.2f} [s]",
+				groTime.count(), topTime.count(), fileTime.count(), totalTime.count(), std::chrono::duration<double>(allowedFileTime).count()),
+				envmode == Full };
+
+		if (!completed.simulation)
+			co_return LimaUnittestResult{ false, "3j3q load benchmark produced no simulation", envmode == Full };
+		co_return LimaUnittestResult{ totalTime < totalTime,
 			std::format("3j3q files: {:.3f} build: {:.3f} total: {:.3f} allowed: {:.3f} [s]",
 				fileTime.count(), completed.environmentTime.count(), totalTime.count(),
-				std::chrono::duration<double>(allowedTime).count()),
-			envmode == Full };*/
+				std::chrono::duration<double>(allowedTotalTime).count()),
+			envmode == Full };
 	}
 
 	static TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
@@ -98,7 +98,7 @@ namespace Benchmarks {
 			job.grofile.emplace(groPath);
 			job.topfile.emplace(topPath);
 			job.simParams.emplace(simParamsPath);
-			job.mode = EnvMode::Headless;
+			job.mode = EnvMode::Full;
 			job.mustRunAlone = true;
 			job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
 				params.data_logging_interval = 20;

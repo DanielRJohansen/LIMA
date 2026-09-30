@@ -3,6 +3,8 @@
 #include "Engine.cuh"
 #include "RenderDataPipe.h"
 #include <stdexcept>
+#include "Lipids.h"
+#include "Workflow.h"
 
 namespace EngineBatchTests {
 	inline void Require(bool value, const char* message) {
@@ -219,5 +221,34 @@ namespace EngineBatchTests {
 		try { Engine engine({incompatibleA.get(), incompatibleB.get()}); } catch (const std::invalid_argument&) { rejected = true; }
 		Require(rejected, "Incompatible batch accepted");
 		std::cout << "Engine batch regression tests passed\n";
+	}
+
+	void ShowcaseMultisim() {
+		const std::filesystem::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
+		std::vector<Lipids::Selection> lipidSelections{
+			{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
+			{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
+		};
+
+		Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
+		workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
+			Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
+		SimParams minimization = SimParams::BasicEMSimParams(200.f);
+		minimization.n_steps = 5000;
+		workflow.AddStage({ "minimize", minimization, {},
+			{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
+
+		SimParams production;
+		production.n_steps = 1000;
+		production.apply_thermostat = true;
+		production.save_energy = true;
+		workflow.AddStage({ "production", production, {
+			{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
+			{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
+		}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
+		workflow.CompareDensityProfiles("composition", "temperature");
+		workflow.Run();
+
+		std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
 	}
 }

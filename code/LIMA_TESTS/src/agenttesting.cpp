@@ -20,34 +20,6 @@
 #include <thread>
 #include <vector>
 
-void ShowcaseMultisim() {
-	const std::filesystem::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
-	std::vector<Lipids::Selection> lipidSelections{
-		{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
-		{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
-	};
-
-	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
-	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
-		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
-	SimParams minimization = SimParams::BasicEMSimParams(800.f);
-	minimization.n_steps = 5000;
-	workflow.AddStage({ "minimize", minimization, {},
-		{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
-
-	SimParams production;
-	production.n_steps = 1000;
-	production.apply_thermostat = true;
-	production.save_energy = true;
-	workflow.AddStage({ "production", production, {
-		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
-		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
-	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
-	workflow.CompareDensityProfiles("composition", "temperature");
-	workflow.Run();
-
-	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
-}
 
 namespace {
 	void WriteTestSystem(const std::filesystem::path& directory, GroFile coordinates,
@@ -198,7 +170,7 @@ int main(int argc, char** argv) {
 			return 0;
 		}
 		if (argc == 2 && std::string_view(argv[1]) == "--showcase-multisim") {
-			ShowcaseMultisim();
+			EngineBatchTests::ShowcaseMultisim();
 			return 0;
 		}
 

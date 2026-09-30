@@ -5,6 +5,7 @@
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
     src/SimulationData.cpp
+    src/EnergyMinimizationHost.cpp
   "src/ParticleClusteringCPU.cpp"
 )
 

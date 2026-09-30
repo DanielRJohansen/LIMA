@@ -324,7 +324,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
  
 // blockDim=(16, 4, 1)
 template<typename BoundaryCondition, bool emvariant, bool logData>
-__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, AdamState* adamState, int data_logging_interval, const SCResult* const scResults,
+__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, Float3* const emForces /*Only available in EM*/, int data_logging_interval, const SCResult* const scResults,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
 	int64_t step, const IntegrationSimulationData* simulationData, int nSuperclusters, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
 	Float3 boxSize, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
@@ -395,24 +395,12 @@ const ForceEnergy* const nbForceenergy*/) {
 
 	const float mass = pcMeta[pcIdGlobal].mass[pidInPcluster];
 
-	// Energy minimize
+	// Energy minimize. The particles are moved by EM::UpdateKernel once the step is decided for the whole simulation
 	if constexpr (emvariant) {
-		
-		const Float3 safeForce = EngineUtils::ForceActivationFunction(pidGlobal - simulation.particles.offset, fe.force);
-
-		AdamState* const particleAdamState = &adamState[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
-		Float3 pos_now = EngineUtils::IntegratePositionADAM(pos, safeForce, particleAdamState, step);
-		//printf("posnow %f %f %f\n", pos_now.x, pos_now.y, pos_now.z);
-
-		// Overrule movement inferred by force, if this value is available AND nonzeory
-		/*if (fixedParticleMovementBuffer != nullptr) {
-			Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
-			if (fixedMovement.lenSquared() > 0) {
-				pos_now = pos + fixedMovement;
-			}
-		}*/
-
-		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
+		// Overlapping particles in unminimized structures can produce infinite forces. Push them apart in a pseudorandom
+		// direction, with a force large enough to still dominate the max force
+		const bool finite = isfinite(fe.force.lenSquared());
+		emForces[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster] = finite ? fe.force : EngineUtils::GenerateRandomForce(pidGlobal) * 1e9f;
 	}
 	else {
 

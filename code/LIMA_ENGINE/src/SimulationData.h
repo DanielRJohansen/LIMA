@@ -10,6 +10,7 @@
 #include "CudaBuffer.h"
 #include "Engine.cuh"
 #include "BatchLayout.cuh"
+#include "EnergyMinimizationTypes.h"
 
 class Thermostat;
 struct SuperClustersControl;
@@ -29,11 +30,6 @@ struct BoxState {
 	void FreeMembers() const;
 
 	PersistentclusterInterimState* pclusterInterimStates = nullptr;
-};
-
-struct AdamState {
-	Float3 firstMoment;
-	Float3 secondMoment;
 };
 
 
@@ -105,7 +101,6 @@ struct EngineSimulationData {
 	RunStatus runstatus;
 	BatchRange superclusters;
 	int64_t step = 0;
-	int64_t stepAtLastEarlystopCheck = INT_MIN;
 	size_t nLogEntriesTransferred = 0;
 	bool finalized = false;
 	std::vector<float> finalForcesMagnitudeSquared;
@@ -133,7 +128,17 @@ struct EngineBatchData {
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
 	CudaBuffer<float> forcesMagnitudeSquareDevice;
 	BoxState boxState;
-	AdamState* adamState = nullptr;
+
+	EM::Config emConfig;
+	CudaBuffer<EM::ParticleState> emParticles;		// Indexed by pcluster slot
+	CudaBuffer<Float3> emForces;					// Indexed by pcluster slot [J/mol/nm]
+	CudaBuffer<Float3> emPreconditionedForce;		// Indexed by pcluster slot
+	CudaBuffer<float> emInverseStiffness;			// Indexed by pcluster slot
+	CudaBuffer<uint8_t> emWholeMolecule;			// Indexed by pcluster
+	CudaBuffer<EM::Sums> emBlockSums;				// Indexed by simulation * nBlocks + block
+	CudaBuffer<unsigned int> emBlocksDone;			// Indexed by simulation
+	CudaBuffer<EM::SimState> emStates;				// Indexed by simulation
+	std::vector<EM::SimState> emStatesHost;
 
 	CudaBuffer<BondGroup> bondgroupDescriptors;
 	CudaBuffer<BondGroup::ParticleRef> bondgroupParticles;

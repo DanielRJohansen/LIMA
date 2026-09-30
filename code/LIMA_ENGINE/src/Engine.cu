@@ -3,6 +3,7 @@
 #include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
 #include "EngineKernels.cuh"
+#include "EnergyMinimization.cuh"
 #include "LimaPositionSystem.cuh"
 #include "PME.cuh"
 #include "SimulationData.h"
@@ -23,7 +24,6 @@
 EngineBatchData::~EngineBatchData() {
 	pmeController.reset();
 	boxState.FreeMembers();
-	cudaFree(adamState);
 	if (forceEnergyInterims) forceEnergyInterims->Free();
 	if (superClustersControl) superClustersControl->Free();
 	if (pclusterTransfermodule) pclusterTransfermodule->Free();
@@ -158,15 +158,15 @@ void Engine::RebuildActiveBatch() {
 		auto& newSim = rebuilt->simulations[id];
 		newSim.runstatus = oldSim.runstatus;
 		newSim.step = oldSim.step;
-		newSim.stepAtLastEarlystopCheck = oldSim.stepAtLastEarlystopCheck;
 		newSim.nLogEntriesTransferred = oldSim.nLogEntriesTransferred;
 		newSim.finalized = oldSim.finalized;
 		newSim.finalForcesMagnitudeSquared = oldSim.finalForcesMagnitudeSquared;
 		newSim.device.thermostatScalar = oldSim.device.thermostatScalar;
 		if (!active[id]) continue;
-		cudaMemcpy(rebuilt->adamState + newSim.device.pclusters.offset * PersistentCluster::maxParticles,
-			batch->adamState + oldSim.device.pclusters.offset * PersistentCluster::maxParticles,
-			sizeof(AdamState) * newSim.device.pclusters.count * PersistentCluster::maxParticles, cudaMemcpyDeviceToDevice);
+		cudaMemcpy(rebuilt->emParticles.Get() + newSim.device.pclusters.offset * PersistentCluster::maxParticles,
+			batch->emParticles.Get() + oldSim.device.pclusters.offset * PersistentCluster::maxParticles,
+			sizeof(EM::ParticleState) * newSim.device.pclusters.count * PersistentCluster::maxParticles, cudaMemcpyDeviceToDevice);
+		cudaMemcpy(rebuilt->emStates.Get() + id, batch->emStates.Get() + id, sizeof(EM::SimState), cudaMemcpyDeviceToDevice);
 	}
 	CopyParticleBuffer(batch->fixedParticleMovementBuffer, rebuilt->fixedParticleMovementBuffer, *batch, *rebuilt);
 	CopyParticleBuffer(batch->fixedParticleRotationBuffer, rebuilt->fixedParticleRotationBuffer, *batch, *rebuilt);
@@ -209,7 +209,10 @@ void Engine::step() {
 	if (mode == EngineRunMode::Interactive) {
 		auto& sim = batch->simulations.front();
 		// Live editing changes EM/MD and force selections between steps.
+		const bool wasEnergyMinimizing = batch->params.em_variant;
 		batch->params = sim.simulation->simParams;
+		if (batch->params.em_variant && !wasEnergyMinimizing)
+			ResetEnergyMinimization();
 		if (sim.device.dt != batch->params.dt) {
 			sim.device.dt = batch->params.dt;
 		}
@@ -417,14 +420,44 @@ void Engine::BootstrapTrajbufferWithCoords(EngineSimulationData& sim) {
 
 void Engine::HandleEarlyStoppingInEM(EngineSimulationData& sim) {
 	if (!batch->params.em_variant || sim.step == sim.simulation->simParams.n_steps) return;
-	if (sim.step <= sim.stepAtLastEarlystopCheck + 100) return;
-	Synchronize();
-	const auto range = sim.device.particles;
-	const auto forces = GenericCopyToHost(batch->forcesMagnitudeSquareDevice.Get() + range.offset, range.count);
-	sim.runstatus.greatestForce = std::sqrt(Statistics::Max(forces.data(), forces.size())) / KILO;
+	const EM::SimState& state = batch->emStatesHost[&sim - batch->simulations.data()];
+	sim.runstatus.greatestForce = state.maxForce / KILO;
 	sim.simulation->maxForceBuffer.emplace_back(sim.step, sim.runstatus.greatestForce);
+	Simulation::EmLogEntry& entry = sim.simulation->emLog.emplace_back();
+	entry.step = sim.step;
+	entry.maxForce = sim.runstatus.greatestForce;
+	entry.dt = state.dt;
 	if (sim.runstatus.greatestForce <= batch->params.em_force_tolerance) sim.runstatus.simulation_finished = true;
-	sim.stepAtLastEarlystopCheck = sim.step;
+}
+
+void Engine::ResetEnergyMinimization() {
+	Synchronize();
+	cudaMemset(batch->emParticles.Get(), 0, sizeof(EM::ParticleState) * batch->nPclusters * PersistentCluster::maxParticles);
+	cudaMemset(batch->emStates.Get(), 0, sizeof(EM::SimState) * batch->simulations.size());
+}
+
+// Moves the particles one preconditioned FIRE step, using the forces SuperclusterIntegrateKernel stored in emForces
+template <typename BoundaryCondition>
+void Engine::UpdateEnergyMinimization(Float3 boxSize) {
+	const int nSimulations = static_cast<int>(batch->simulations.size());
+	int maxSlots = 0;
+	for (const auto& sim : batch->simulations)
+		maxSlots = std::max(maxSlots, sim.device.pclusters.count * PersistentCluster::maxParticles);
+	if (maxSlots == 0) return;
+
+	EM::PreconditionKernel<BoundaryCondition><<<(batch->nPclusters + 63) / 64, 64, 0, cudaStreams[0]>>>(
+		batch->emConfig, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(), batch->emForces.Get(),
+		batch->emInverseStiffness.Get(), batch->emWholeMolecule.Get(), batch->emPreconditionedForce.Get(), batch->nPclusters, boxSize);
+	constexpr int blockSize = 256;
+	const int nBlocks = (maxSlots + blockSize - 1) / blockSize;
+	batch->emBlockSums.Expand(size_t(nBlocks) * nSimulations);
+	EM::ReduceAndDecideKernel<blockSize><<<dim3(nBlocks, nSimulations), blockSize, 0, cudaStreams[0]>>>(
+		batch->emConfig, batch->integrationSimulationDataDevice.Get(), batch->pClusterMetaDevice.Get(), batch->emForces.Get(),
+		batch->emPreconditionedForce.Get(), batch->emParticles.Get(), batch->emBlockSums.Get(), batch->emBlocksDone.Get(), batch->emStates.Get());
+	EM::UpdateKernel<BoundaryCondition><<<(batch->nSuperclusters + 3) / 4, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+		batch->emConfig, batch->emStates.Get(), batch->superClustersControl->scData, batch->superClustersControl->scMeta,
+		batch->pClusterDevice.Get(), batch->emPreconditionedForce.Get(), batch->emParticles.Get(), batch->nSuperclusters, boxSize);
+	cudaMemcpyAsync(batch->emStatesHost.data(), batch->emStates.Get(), sizeof(EM::SimState) * nSimulations, cudaMemcpyDeviceToHost, cudaStreams[0]);
 }
 
 template <typename BoundaryCondition, bool emvariant, bool logData>
@@ -469,7 +502,7 @@ void Engine::_deviceMaster() {
 
 		const int nBlocks = (nScs + 4 - 1) / 4;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-			*batch->forceEnergyInterims, batch->adamState, batch->params.data_logging_interval, batch->scResultsDevice.Get(),
+			*batch->forceEnergyInterims, batch->emForces.Get(), batch->params.data_logging_interval, batch->scResultsDevice.Get(),
 			batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
 			batch->boxState.pclusterInterimStates, batch->step, batch->integrationSimulationDataDevice.Get(), nScs,
 			batch->forcesMagnitudeSquareDevice.Get(), boxSize, batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
@@ -477,6 +510,8 @@ void Engine::_deviceMaster() {
 			batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr,
 			batch->dataBuffersDevice->traj_buffer, batch->dataBuffersDevice->potE_buffer, batch->dataBuffersDevice->vel_buffer,
 			batch->dataBuffersDevice->forceBuffer);
+		if constexpr (emvariant)
+			UpdateEnergyMinimization<BoundaryCondition>(boxSize);
 		cudaStreamSynchronize(cudaStreams[0]);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");

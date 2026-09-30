@@ -111,6 +111,9 @@ private:
 
 
 	void HandleEarlyStoppingInEM(EngineSimulationData& simData);
+	template <typename BoundaryCondition>
+	void UpdateEnergyMinimization(Float3 boxSize);
+	void ResetEnergyMinimization();
 	void RebuildActiveBatch();
 	void InitializePME();
 	void FinalizeSimulation(EngineSimulationData& simData);

@@ -49,42 +49,6 @@ namespace EngineUtils {
 	}
 	
 
-	__device__ static Float3 IntegratePositionADAM(const Float3& pos, Float3 force, AdamState* const adamState, int step) {
-
-		// TODO: Maybe figure out the highest force particle in the system, and scale each particles lr based on that, so only particles with high forces move, and the rest are relatively still
-		// untill the highest forces get down to their level?
-
-		if (adamState->firstMoment.isNan())
-			printf("AdamState NaN firstMoment\n");
-		if (adamState->secondMoment.isNan())
-			printf("AdamState NaN secondMoment\n");
-
-		const float alpha = 8000.f;        // Learning rate (can be tuned)
-		const float beta1 = 0.9f;          // Decay rate for first moment
-		const float beta2 = 0.999f;        // Decay rate for second moment
-		const float epsilon = 1e-8f;
-
-		force *= 1e-8;
-
-		// 2. Update Moment Estimates
-		const Float3 firstMoment = adamState->firstMoment * beta1 + force * (1 - beta1);
-		const Float3 secondMoment = adamState->secondMoment * beta2 + force * force * (1 - beta2);
-		adamState->firstMoment = firstMoment;
-		adamState->secondMoment = secondMoment;
-
-		// 4. Compute Bias-Corrected Estimates
-		const Float3 firstMomentCorrected = firstMoment / (1 - powf(beta1, step+1));
-		const Float3 secondMomentCorrected = secondMoment / (1 - powf(beta2, step+1));
-
-		const Float3 deltaPos = (firstMomentCorrected / (secondMomentCorrected.sqrtElementwise() + Float3{ epsilon })) * alpha;
-		/*if (deltaPos.len() > 5.f || deltaPos.isNan()) {
-			force.print('F');
-			deltaPos.print('D');
-		}*/
-
-		return pos +  deltaPos * 1e-8f;
-	}
-
 //	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
 //#ifndef ENABLE_INTEGRATEPOSITION
 //		return pos;

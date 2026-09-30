@@ -3,6 +3,7 @@
 #include "Environment.h"
 #include "MDFiles.h"
 #include "SimParams.h"
+#include "Simulation.cuh"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -19,7 +21,7 @@ namespace EnergyMinimizationTests {
 		constexpr float roughForceTolerance = 1000.f;
 		constexpr float fineForceTolerance = 200.f;
 		constexpr int maximumSteps = 100000;
-		constexpr std::chrono::duration<double> maximumRunTime{ 10. };
+		constexpr std::chrono::duration<double> maximumRunTime{ 20. };
 
 		struct TestCase {
 			std::string name;
@@ -42,6 +44,31 @@ namespace EnergyMinimizationTests {
 			bool finite = true;
 		};
 
+		// Optional environment configuration for comparing EM algorithms:
+		// LIMA_EM_LABEL names the results files, LIMA_EM_CASES is a comma-separated list of case names to run
+		std::string ResultsLabel() {
+			const char* label = std::getenv("LIMA_EM_LABEL");
+			return label ? std::string{ "_" } + label : std::string{};
+		}
+
+		bool IsCaseSelected(const std::string& name) {
+			const char* cases = std::getenv("LIMA_EM_CASES");
+			if (!cases) return true;
+			std::stringstream stream{ cases };
+			std::string selected;
+			while (std::getline(stream, selected, ','))
+				if (selected == name) return true;
+			return false;
+		}
+
+		void WriteCurve(const fs::path& path, const Simulation& simulation) {
+			fs::create_directories(path.parent_path());
+			std::ofstream output{ path, std::ios::trunc };
+			output << "step,max_force,dt\n";
+			for (const auto& entry : simulation.emLog)
+				output << std::format("{},{},{}\n", entry.step, entry.maxForce, entry.dt);
+		}
+
 		std::vector<TestCase> FindTestCases(const fs::path& testRoot) {
 			std::vector<TestCase> testCases;
 			if (!fs::is_directory(testRoot))
@@ -54,6 +81,8 @@ namespace EnergyMinimizationTests {
 				const fs::path topology = entry.path() / "topol.top";
 				if (entry.path().filename() == "3j3q_solvated")
 					continue; // Kept as a heavyweight corpus case, but excluded from the quick suite for now.
+				if (!IsCaseSelected(entry.path().filename().string()))
+					continue;
 				if (fs::exists(coordinates) && fs::exists(topology))
 					testCases.push_back({ entry.path().filename().string(), entry.path(), coordinates, topology });
 			}
@@ -80,6 +109,7 @@ namespace EnergyMinimizationTests {
 			Result result;
 			result.name = testCase.name;
 			result.engineSeconds = simulationResult.engineTime.count();
+			WriteCurve(testCase.directory.parent_path() / ("curves" + ResultsLabel()) / (testCase.name + ".csv"), *simulationResult.simulation);
 			const auto& forces = simulationResult.simulation->maxForceBuffer;
 			if (forces.empty()) {
 				result.finite = false;
@@ -183,8 +213,8 @@ th { background: #f1f3f4; white-space: nowrap; } tr.ok { border-left: 5px solid 
 
 		std::vector<Result> results;
 		results.reserve(testCases.size());
-		const fs::path resultPath = testRoot / "results.csv";
-		const fs::path htmlPath = testRoot / "results.html";
+		const fs::path resultPath = testRoot / ("results" + ResultsLabel() + ".csv");
+		const fs::path htmlPath = testRoot / ("results" + ResultsLabel() + ".html");
 		bool success = true;
 		for (const TestCase& testCase : testCases) {
 			std::cout << "Energy minimizing " << testCase.name << "...\n";

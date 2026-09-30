@@ -10,7 +10,7 @@ endif()
 set(SOURCE_FILES
     #src/AlgorithmTests.cu
     src/main.cpp
-    src/LimaTests.cpp
+    
 )
 add_executable(limatest
     ${SOURCE_FILES}

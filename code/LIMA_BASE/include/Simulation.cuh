@@ -155,6 +155,12 @@ public:
 
 	std::vector<float> temperature_buffer;	
 	std::vector<std::pair<int64_t,float>> maxForceBuffer; // {step,force} The maximum force experienced by any particle in the system
+	struct EmLogEntry {
+		int64_t step;
+		float maxForce;		// [kJ/mol/nm]
+		float dt;			// Unitless, see EnergyMinimizationTypes.h
+	};
+	std::vector<EmLogEntry> emLog; // One entry per step of energy minimization
 
 #ifdef GENERATETRAINDATA
 	std::vector<Float3> trainingdata;

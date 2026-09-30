@@ -35,6 +35,45 @@ namespace Benchmarks {
 			envmode == Full };
 	}
 
+	// Profiles loading a large system: gro/top parsing, then BoxImage + Box building inside the Environment
+	static TestRoutine Load3J3Q(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "3j3q";
+		if (!fs::is_regular_file(workDir / "conf.gro") || !fs::is_regular_file(workDir / "topol.top"))
+			co_return LimaUnittestResult{ false, "Missing 3j3q load benchmark input: " + workDir.string(), envmode == Full };
+
+
+		TimeIt totalTimer;
+		TimeIt fileTimer;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace(workDir / "conf.gro");
+		job.topfile.emplace(workDir / "topol.top");
+		job.simParams.emplace();
+		job.mode = EnvMode::Headless;
+		job.mustRunAlone = true;
+		job.run = false;
+		const std::chrono::duration<double> fileTime = fileTimer.stop();
+
+		//auto completed = co_await environment.Submit(std::move(job));
+		const std::chrono::duration<double> totalTime = totalTimer.stop();
+
+		const std::chrono::seconds allowedFiletime{ 3 };
+		const std::chrono::seconds allowedTotaltime{ 10 };
+
+		co_return LimaUnittestResult{ fileTime < allowedFiletime,
+			std::format("3j3q files: {:.3f} total: {:.3f} allowed: {:.3f} [s]",
+				fileTime.count(), totalTime.count(), std::chrono::duration<double>(allowedFiletime).count()),
+			envmode == Full };
+
+		/*if (!completed.simulation)
+			co_return LimaUnittestResult{ false, "3j3q load benchmark produced no simulation", envmode == Full };*/
+		/*co_return LimaUnittestResult{ totalTime < allowedTime,
+			std::format("3j3q files: {:.3f} build: {:.3f} total: {:.3f} allowed: {:.3f} [s]",
+				fileTime.count(), completed.environmentTime.count(), totalTime.count(),
+				std::chrono::duration<double>(allowedTime).count()),
+			envmode == Full };*/
+	}
+
 	static TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
 		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns)

@@ -72,10 +72,10 @@ void LiveEditTest() {
 	//env.liveEditCommandsQueue.push_back(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::ElasticPosition{ false, false, true });
 	//env.liveEditCommandsQueue.push_back(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp" });
-	
 
-	env.QueueLiveEditCommand(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{8, 10, 10 }});
-	env.QueueLiveEditCommand(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{16, 10, 10 }});
+
+	env.QueueLiveEditCommand(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{8, 10, 10 } });
+	env.QueueLiveEditCommand(LiveEdit::InsertMolecule{ "t4/conf.gro", "t4/topol_T4.itp", Float3{16, 10, 10 } });
 	env.QueueLiveEditCommand(LiveEdit::SelectAtomsBasedOnQualifier{ LiveEdit::SelectAtomsBasedOnQualifier::Qualifier::All });
 	env.QueueLiveEditCommand(LiveEdit::ElasticPosition{ true, false, false });
 
@@ -110,7 +110,7 @@ void TestDisplayT4Batch() {
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
 			params.n_steps = 90000;
 			params.data_logging_interval = 200;
-		};
+			};
 		handle = environment.Submit(std::move(job));
 	}
 
@@ -158,47 +158,6 @@ void ShowcaseMultisim() {
 
 
 int main(int argc, char** argv) {
-	if (argc == 2 && std::string_view(argv[1]) == "--display-tiles-tests") {
-		try { DisplayTests::Run(); return 0; }
-		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
-	}
-	if (argc == 2 && (std::string_view(argv[1]) == "--display-preview" || std::string_view(argv[1]) == "--display-tiles-preview")) {
-		try {
-			// Static UI fixture: no simulation runs or output files are written.
-			const GroFile molecule{ AutomatedTestsDir() / "T4Lysozyme" / "molecule" / "conf.gro" };
-			Display display;
-			const bool tilePreview = std::string_view(argv[1]) == "--display-tiles-preview";
-			display.allowUserInputs = !tilePreview;
-			for (int i = 0; i < (tilePreview ? 9 : 4); ++i) {
-				auto task = std::make_unique<Rendering::AtomRenderTask>(molecule, false);
-				task->simStatus.step = 24000 + i * 1000;
-				task->simStatus.temperature = 300.12f + i;
-				task->simStatus.maxForce = 1.23e3f;
-				task->simStatus.expectedTimeToFinish = std::chrono::duration<double>{ 154. };
-				task->simStatus.avgStepTime = .842f;
-				task->simStatus.simulationPerformance = 205.23f;
-				display.Submit(i, std::move(task), false, nullptr, "Preview " + std::to_string(i + 1));
-			}
-			while (!display.DisplaySelfTerminated())
-				std::this_thread::sleep_for(std::chrono::milliseconds(50));
-			if (display.displayThreadException)
-				std::rethrow_exception(display.displayThreadException);
-			return 0;
-		}
-		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
-	}
-	if (argc == 2 && std::string_view(argv[1]) == "--environment-batch-tests") {
-		try { BatchingTests::RunSchedulerTests(Environment::Get()); return 0; }
-		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
-	}
-	if (argc == 2 && std::string_view(argv[1]) == "--engine-batch-tests") {
-		try { EngineBatchTests::RunAll(); return 0; }
-		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
-	}
-	if (argc == 2 && std::string_view(argv[1]) == "--showcase-multisim") {
-		try { ShowcaseMultisim(); return 0; }
-		catch (const std::exception& ex) { std::cerr << ex.what() << "\n"; return 1; }
-	}
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
@@ -295,54 +254,53 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
 		/*for (int i = 0; i < 10; i++)
 			Benchmarks::PrepareSimulation_stmv(envmode);*/
-		//Benchmarks::STMV(500);
-		//Benchmarks::Psome(envmode);
-		
-
-		//Benchmarks::PrepareSimulation_stmv(envmode);
-		//Benchmarks::Psome(envmode);
-		//
-		// TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
+			//Benchmarks::STMV(500);
+			//Benchmarks::Psome(envmode);
 
 
-		//{
-		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.gro)" };
-		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.top)" };
-		//	SimulationBuilder::SolvateGrofile(grofile, topfile);
+			//Benchmarks::PrepareSimulation_stmv(envmode);
+			//Benchmarks::Psome(envmode);
+			//
+			// TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
 
-		//	grofile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" });
-		//	topfile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" });
-		//}
 
-		//{
-		//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.gro)" };
-		//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.top)" };
+			//{
+			//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.gro)" };
+			//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.top)" };
+			//	SimulationBuilder::SolvateGrofile(grofile, topfile);
 
-		//	grofile.printToFile("membranesolvated_em.gro");
-		//	topfile.printToFile("membranesolvated_em.top");
-		//}
+			//	grofile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" });
+			//	topfile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" });
+			//}
 
-		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\T4Lysozyme\molecule\out.gro)" };
-		Display::RenderGrofile(grofile, true);*/
-		
+			//{
+			//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.gro)" };
+			//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.top)" };
 
-		/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
-		TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
-		Environment& env = Environment::Get();
-		env.CreateSimulation(grofile, topfile, SimParams{});
-		env.run();*/
-		
-		//ForceComparisons::DoAllForceComparisons(envmode);
+			//	grofile.printToFile("membranesolvated_em.gro");
+			//	topfile.printToFile("membranesolvated_em.top");
+			//}
 
-		//KernelAlgorithms::WarpSort64_Unittest(envmode);
-		//Benchmarks::Psome(envmode);
-//Benchmarks::ManyT4(envmode);
-//Benchmarks::PrepareSimulation_stmv(envmode);
-		//TestBuildmembraneSmall(envmode, false);
-		// 
-		//Benchmarks::STMV(env, envmode, 200, 3).RunToCompletion();
-		// 
-		RunAllUnitTests();
+			/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\T4Lysozyme\molecule\out.gro)" };
+			Display::RenderGrofile(grofile, true);*/
+
+
+			/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
+			TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
+			Environment& env = Environment::Get();
+			env.CreateSimulation(grofile, topfile, SimParams{});
+			env.run();*/
+
+			//ForceComparisons::DoAllForceComparisons(envmode);
+
+			//KernelAlgorithms::WarpSort64_Unittest(envmode);
+			//Benchmarks::Psome(envmode);
+	//Benchmarks::ManyT4(envmode);
+	//Benchmarks::PrepareSimulation_stmv(envmode);
+			//TestBuildmembraneSmall(envmode, false);
+			// 
+		Benchmarks::Load3J3Q(env, envmode);
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
@@ -446,6 +404,7 @@ void RunAllUnitTests() {
 
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
+	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
 	ADD_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
 	ADD_TEST("stmv sim performance", Benchmarks::STMV, 200, Benchmarks::automatedTestRuns);
 

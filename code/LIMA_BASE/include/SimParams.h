@@ -10,6 +10,7 @@
 #include <tuple>
 #include <utility>
 
+enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
 enum BoundaryConditionSelect { NoBC, PBC };
 enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };
 enum class SimParamSection { Main, Physics, Thermostat, Output, Debug };

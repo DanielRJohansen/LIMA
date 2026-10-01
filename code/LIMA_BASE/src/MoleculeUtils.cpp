@@ -84,7 +84,7 @@ void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, con
 
 void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile& topfile) {
 	std::size_t atomOffset = 0;
-	for (const auto& molecule : topfile.GetSystem().molecules) {
+	for (const auto& molecule : topfile.GetSystem().Instances()) {
 		MakeMoleculeWholeAtOffset(grofile, *molecule.moleculetype, atomOffset);
 		atomOffset += molecule.moleculetype->atoms.size();
 	}

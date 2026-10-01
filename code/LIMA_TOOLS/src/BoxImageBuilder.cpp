@@ -2,6 +2,7 @@
 #include "Forcefield.h"
 #include "MoleculeGraph.h"
 #include "TimeIt.h"
+#include "ParallelFor.h"
 
 #include <unordered_set>
 #include <unordered_map>
@@ -9,6 +10,7 @@
 #include <array>
 #include <numeric>
 #include <set>
+#include <mutex>
 
 //#include "Display.h"
 using namespace LIMA_MOLECULEBUILD;
@@ -17,92 +19,181 @@ using namespace LimaMoleculeGraph;
 
 
 
-template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
-void SuperTopology::LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, int atomIdOffset, LIMAForcefield& forcefield,
-	std::vector<BondtypeFactory>& topology)
-{
-	for (const auto& bondTopol : bondsInTopfile) {
-		std::array<int, BondType::nAtoms> globalIds;
-		std::array<std::string, BondType::nAtoms> atomTypenames;
+namespace {
+	// The bonds of a moleculetype with their parameters, with particle ids relative to the molecule
+	struct MoleculetypeBonds {
+		std::vector<SingleBondFactory> singlebonds;
+		std::vector<PairBondFactory> pairbonds;
+		std::vector<AngleBondFactory> anglebonds;
+		std::vector<DihedralBondFactory> dihedralbonds;
+		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
+	};
 
-		bool bondExists = true;
-		for (int i = 0; i < BondType::nAtoms; ++i) {
-			if (bondTopol.ids[i] + atomIdOffset >= particles.size()) {
-				bondExists = false;
-				break;
+	// The atomtypes of a moleculetype, as small ids so we can make cheap lookup keys for bonds
+	struct MoleculetypeAtomtypes {
+		std::vector<int> atomToType;
+		std::vector<std::string> typeNames;	// In order of first appearance
+
+		explicit MoleculetypeAtomtypes(const TopologyFile::Moleculetype& molType) {
+			std::unordered_map<std::string, int> typeIds;
+			atomToType.reserve(molType.atoms.size());
+			for (const auto& atom : molType.atoms) {
+				const auto [it, inserted] = typeIds.try_emplace(atom.type, static_cast<int>(typeNames.size()));
+				if (inserted)
+					typeNames.push_back(atom.type);
+				atomToType.push_back(it->second);
 			}
 		}
-		if (!bondExists)
-			continue;
+	};
 
+	// Parameters come from the topology if present, otherwise from the forcefield. The forcefield is not thread safe,
+	// so it is only accessed under the mutex, but most lookups are served by the local cache
+	template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
+	void ResolveBonds(const std::vector<BondTypeTopologyfile>& bondsInTopfile, const MoleculetypeAtomtypes& atomtypes,
+		LIMAForcefield& forcefield, std::mutex& forcefieldMutex, std::vector<BondtypeFactory>& bonds)
+	{
+		std::unordered_map<uint64_t, const std::vector<typename BondType::Parameters>*> cache;
+		const int nAtoms = static_cast<int>(atomtypes.atomToType.size());
 
-		for (int i = 0; i < BondType::nAtoms; ++i) {
-			globalIds[i] = bondTopol.ids[i] + atomIdOffset;
-			atomTypenames[i] = particles[globalIds[i]].topologyAtom.type;
-		}
+		for (const auto& bondTopol : bondsInTopfile) {
+			if (std::ranges::any_of(bondTopol.ids, [nAtoms](int id) { return id >= nAtoms; }))
+				continue;
 
-
-		// Solvent's bonds are defined in the forcefield, rather the params are directly in the topology... Not sure how to deal with that rn
-		//const bool getParamsFromForcefield = particles[globalIds[0]].topologyAtom.residue != "SOL" && particles[globalIds[0]].topologyAtom.residue != "TIP3";
-		/*const bool getParamsFromForcefield = true;
-		const bool getParamsFromForcefield1 = bondTopol.parameters.has_value();*/
-
-		// In rare cases, the bond parameters are directly in the topology file
-		if (bondTopol.parameters.has_value()) {
-			topology.emplace_back(BondtypeFactory{ globalIds, bondTopol.parameters.value() });			
-		}
-		else {
-			// A bond may be described as multiple bonds, so this is a vector
-			const std::vector<typename BondType::Parameters>& bondParams = forcefield.GetBondParameters<BondType>(atomTypenames);
-
-			for (const auto& param : bondParams) {
-				topology.emplace_back(BondtypeFactory{ globalIds, param });
+			// In rare cases, the bond parameters are directly in the topology file
+			if (bondTopol.parameters.has_value()) {
+				bonds.emplace_back(BondtypeFactory{ bondTopol.ids, bondTopol.parameters.value() });
+				continue;
 			}
+
+			uint64_t key = 0;
+			for (const int id : bondTopol.ids)
+				key = (key << 16) | static_cast<uint64_t>(atomtypes.atomToType[id]);
+
+			auto cached = cache.find(key);
+			if (cached == cache.end()) {
+				std::array<std::string, BondType::nAtoms> atomTypenames;
+				for (int i = 0; i < BondType::nAtoms; ++i)
+					atomTypenames[i] = atomtypes.typeNames[atomtypes.atomToType[bondTopol.ids[i]]];
+
+				std::scoped_lock lock(forcefieldMutex);
+				// A bond may be described as multiple bonds, so this is a vector
+				cached = cache.emplace(key, &forcefield.GetBondParameters<BondType>(atomTypenames)).first;
+			}
+
+			for (const auto& param : *cached->second)
+				bonds.emplace_back(BondtypeFactory{ bondTopol.ids, param });
+		}
+	}
+
+	template <typename BondtypeFactory>
+	void InstantiateBonds(const std::vector<BondtypeFactory>& moleculetypeBonds, int particleOffset, BondtypeFactory* out) {
+		for (const auto& bond : moleculetypeBonds) {
+			*out = bond;
+			for (int& id : out->global_atom_indexes)
+				id += particleOffset;
+			out++;
 		}
 	}
 }
 
 SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield) {
+	moleculeInstances.reserve(system.MoleculeCount());
 
-	int nextUniqueParticleId = 0;
-	int indexInGrofile = 0;
-	moleculeInstances.reserve(system.molecules.size());
-
-
-
-	for (int topologyMoleculeIndex = 0; topologyMoleculeIndex < system.molecules.size(); topologyMoleculeIndex++) {
-		const TopologyFile::MoleculeEntry& molecule = system.molecules[topologyMoleculeIndex];
+	// Find the molecules, and the unique moleculetypes in order of appearance
+	std::unordered_map<const TopologyFile::Moleculetype*, int> moleculetypeIndices;
+	std::vector<const TopologyFile::Moleculetype*> moleculetypes;
+	std::vector<int> instanceMoleculetype;
+	int nParticles = 0;
+	for (const TopologyFile::MoleculeEntry& molecule : system.Instances()) {
 
 #if ENABLE_SOLVENTS != 1
 		if (molecule.name == "SOL" || molecule.name == "TIP3") {// TODO: Add the other Solvent labels
 			continue;
 		}
-#endif 
+#endif
 
-		const int particleIdOffset = nextUniqueParticleId;
 		const TopologyFile::Moleculetype& molType = *molecule.moleculetype;
-
 		if (molType.atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
 
-		moleculeInstances.push_back(MoleculeInstance{ molecule.moleculetype, particleIdOffset });
+		const auto [it, inserted] = moleculetypeIndices.try_emplace(&molType, static_cast<int>(moleculetypes.size()));
+		if (inserted)
+			moleculetypes.push_back(&molType);
+		instanceMoleculetype.push_back(it->second);
 
-		for (int localId = 0; localId < molType.atoms.size(); localId++) {
-
-			// Here's we fetch an LJ param, but we dont yet know if this particle is in a tinyMol. So this is a waste...
-			const int activeLJParamIndex = forcefield.GetActiveLjParameterIndex(molType.atoms[localId].type);
-
-			particles.push_back(ParticleFactory{ molType.atoms[localId], grofile.atoms[indexInGrofile].position, indexInGrofile, activeLJParamIndex });
-			nextUniqueParticleId++;
-			indexInGrofile++;
-		}
-
-		LoadBondsIntoTopology<SingleBond, SingleBondFactory, TopologyFile::SingleBond>(molType.singlebonds, particleIdOffset, forcefield, singlebonds);
-		LoadBondsIntoTopology<PairBond, PairBondFactory, TopologyFile::PairBond>(molType.pairbonds, particleIdOffset, forcefield, pairbonds);
-		LoadBondsIntoTopology<AngleUreyBradleyBond, AngleBondFactory, TopologyFile::AngleBond>(molType.anglebonds, particleIdOffset, forcefield, anglebonds);
-		LoadBondsIntoTopology<DihedralBond, DihedralBondFactory, TopologyFile::DihedralBond>(molType.dihedralbonds, particleIdOffset, forcefield, dihedralbonds);
-		LoadBondsIntoTopology<ImproperDihedralBond, ImproperDihedralBondFactory, TopologyFile::ImproperDihedralBond>(molType.improperdihedralbonds, particleIdOffset, forcefield, improperdihedralbonds);
+		moleculeInstances.push_back(MoleculeInstance{ molecule.moleculetype, nParticles, static_cast<int>(molType.atoms.size()) });
+		nParticles += static_cast<int>(molType.atoms.size());
 	}
+
+	std::vector<std::unique_ptr<MoleculetypeAtomtypes>> atomtypes(moleculetypes.size());
+	std::vector<MoleculetypeBonds> moleculetypeBonds(moleculetypes.size());
+	std::mutex forcefieldMutex;
+	ParallelUtils::ParallelFor(moleculetypes.size(), [&](size_t i) {
+		const TopologyFile::Moleculetype& molType = *moleculetypes[i];
+		atomtypes[i] = std::make_unique<MoleculetypeAtomtypes>(molType);
+		const MoleculetypeAtomtypes& types = *atomtypes[i];
+		MoleculetypeBonds& bonds = moleculetypeBonds[i];
+		ResolveBonds<SingleBond>(molType.singlebonds, types, forcefield, forcefieldMutex, bonds.singlebonds);
+		ResolveBonds<PairBond>(molType.pairbonds, types, forcefield, forcefieldMutex, bonds.pairbonds);
+		ResolveBonds<AngleUreyBradleyBond>(molType.anglebonds, types, forcefield, forcefieldMutex, bonds.anglebonds);
+		ResolveBonds<DihedralBond>(molType.dihedralbonds, types, forcefield, forcefieldMutex, bonds.dihedralbonds);
+		ResolveBonds<ImproperDihedralBond>(molType.improperdihedralbonds, types, forcefield, forcefieldMutex, bonds.improperdihedralbonds);
+		});
+
+	// The active LJ indices are assigned in the order the types are first requested, so this must be sequential and in order of appearance
+	std::vector<std::vector<int>> activeLJParamIndices(moleculetypes.size());
+	for (size_t i = 0; i < moleculetypes.size(); i++) {
+		std::vector<int> typeIndices;
+		for (const std::string& typeName : atomtypes[i]->typeNames)
+			typeIndices.push_back(forcefield.GetActiveLjParameterIndex(typeName));
+		for (const int type : atomtypes[i]->atomToType)
+			activeLJParamIndices[i].push_back(typeIndices[type]);
+	}
+
+	particles.reserve(nParticles);
+	for (size_t instanceId = 0; instanceId < moleculeInstances.size(); instanceId++) {
+		const MoleculeInstance& instance = moleculeInstances[instanceId];
+		const int moleculetypeIndex = instanceMoleculetype[instanceId];
+		const TopologyFile::Moleculetype& molType = *moleculetypes[moleculetypeIndex];
+		for (int localId = 0; localId < molType.atoms.size(); localId++) {
+			const int indexInGrofile = instance.particleOffset + localId;
+			particles.push_back(ParticleFactory{ molType.atoms[localId], grofile.atoms[indexInGrofile].position, indexInGrofile, activeLJParamIndices[moleculetypeIndex][localId] });
+		}
+	}
+
+	// Each molecule gets a contiguous range of each bondtype
+	size_t nSinglebonds = 0, nPairbonds = 0, nAnglebonds = 0, nDihedralbonds = 0, nImproperdihedralbonds = 0;
+	for (size_t instanceId = 0; instanceId < moleculeInstances.size(); instanceId++) {
+		MoleculeInstance& instance = moleculeInstances[instanceId];
+		const MoleculetypeBonds& bonds = moleculetypeBonds[instanceMoleculetype[instanceId]];
+		instance.firstSinglebond = static_cast<int>(nSinglebonds);
+		instance.firstPairbond = static_cast<int>(nPairbonds);
+		instance.firstAnglebond = static_cast<int>(nAnglebonds);
+		instance.firstDihedralbond = static_cast<int>(nDihedralbonds);
+		instance.firstImproperdihedralbond = static_cast<int>(nImproperdihedralbonds);
+		nSinglebonds += bonds.singlebonds.size();
+		nPairbonds += bonds.pairbonds.size();
+		nAnglebonds += bonds.anglebonds.size();
+		nDihedralbonds += bonds.dihedralbonds.size();
+		nImproperdihedralbonds += bonds.improperdihedralbonds.size();
+	}
+	if (nSinglebonds > INT_MAX || nPairbonds > INT_MAX || nAnglebonds > INT_MAX || nDihedralbonds > INT_MAX || nImproperdihedralbonds > INT_MAX)
+		throw std::runtime_error("Too many bonds in system");
+
+	singlebonds.resize(nSinglebonds);
+	pairbonds.resize(nPairbonds);
+	anglebonds.resize(nAnglebonds);
+	dihedralbonds.resize(nDihedralbonds);
+	improperdihedralbonds.resize(nImproperdihedralbonds);
+	ParallelUtils::ParallelForBlocked(moleculeInstances.size(), [&](size_t instanceId) {
+		const MoleculeInstance& instance = moleculeInstances[instanceId];
+		const MoleculetypeBonds& bonds = moleculetypeBonds[instanceMoleculetype[instanceId]];
+		InstantiateBonds(bonds.singlebonds, instance.particleOffset, singlebonds.data() + instance.firstSinglebond);
+		InstantiateBonds(bonds.pairbonds, instance.particleOffset, pairbonds.data() + instance.firstPairbond);
+		InstantiateBonds(bonds.anglebonds, instance.particleOffset, anglebonds.data() + instance.firstAnglebond);
+		InstantiateBonds(bonds.dihedralbonds, instance.particleOffset, dihedralbonds.data() + instance.firstDihedralbond);
+		InstantiateBonds(bonds.improperdihedralbonds, instance.particleOffset, improperdihedralbonds.data() + instance.firstImproperdihedralbond);
+		}, 64, 64);
 }
 
 void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const {
@@ -139,23 +230,6 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 // --------------------------------------------------------------- Factory Functions --------------------------------------------------------------- //
 
 
-std::shared_ptr<MoleculeGraph> MakeMoleculeGraph(const SuperTopology& system) {
-	std::vector<std::pair<int, std::string>> atoms;
-	atoms.reserve(system.particles.size());
-	for (int pid = 0; pid < system.particles.size(); pid++) {
-		atoms.push_back({ pid, system.particles[pid].topologyAtom.type });
-	}
-	std::vector<std::array<int, 2>> edges;
-	edges.reserve(system.singlebonds.size());
-	for (const auto& bond : system.singlebonds) {
-		edges.push_back(bond.global_atom_indexes);
-	}
-
-	// TODO: This is under the assumption that we get a ideally sorted graph back, ill need to verify that
-	auto systemGraph = std::make_shared<MoleculeGraph>(atoms, edges);
-	return systemGraph;
-}
-
 namespace {
 	struct PersistentParticleTemplate {
 		NBParams nbParams{};
@@ -167,8 +241,8 @@ namespace {
 	struct PersistentClusterTemplate {
 		std::vector<std::array<int, PersistentCluster::maxParticles>> clusters;
 		std::vector<int> particleToPcluster;
-		std::vector<std::set<int>> particleBondedToParticle;
-		std::vector<std::set<int>> pclusterBondedToPcluster;
+		std::vector<ParticlesBondedToParticle> particleBondedToParticle;	// Relative to the molecule
+		std::vector<PclustersBondedToPcluster> pclusterBondedToPcluster;	// Relative to the molecule
 		std::vector<PersistentParticleTemplate> particles;
 	};
 
@@ -176,21 +250,112 @@ namespace {
 		return residue == "SOL" || residue == "SPC" || residue == "SPCE" || residue == "TIP3" || residue == "TIP3P";
 	}
 
+	// The singlebond graph of a moleculetype, as flat arrays. Gives the same results as MoleculeGraph for the queries
+	// we need here, but without allocating for each query, as we do millions of them for large systems
+	class LocalMoleculeGraph {
+		static constexpr int maxNeighbors = 8;
+		std::vector<std::array<int, maxNeighbors>> neighbors;
+		std::vector<int> nNeighbors;
+
+		// Reused between searches
+		mutable std::vector<int> visitedStamp;
+		mutable int currentStamp = 0;
+		mutable std::vector<std::pair<int, int>> queue;	// { nodeId, depth }
+
+		std::span<const int> Neighbors(int id) const { return { neighbors[id].data(), static_cast<size_t>(nNeighbors[id]) }; }
+
+		void Connect(int a, int b) {
+			if (nNeighbors[a] >= maxNeighbors || nNeighbors[b] >= maxNeighbors)
+				throw std::runtime_error("Exceeded maximum number of neighbors for node " + std::to_string(nNeighbors[a] >= maxNeighbors ? a : b));
+			neighbors[a][nNeighbors[a]++] = b;
+			neighbors[b][nNeighbors[b]++] = a;
+		}
+
+		// Visits nodes in BFS order from start, until f(nodeId, depth) returns false
+		template <typename F>
+		void BFS(int start, F&& f) const {
+			if (++currentStamp == 0) {	// Overflow, reset
+				std::ranges::fill(visitedStamp, 0);
+				currentStamp = 1;
+			}
+			queue.clear();
+			queue.emplace_back(start, 0);
+			visitedStamp[start] = currentStamp;
+			for (size_t head = 0; head < queue.size(); head++) {
+				const auto [id, depth] = queue[head];
+				if (!f(id, depth))
+					return;
+				for (const int neighbor : Neighbors(id)) {
+					if (visitedStamp[neighbor] != currentStamp) {
+						visitedStamp[neighbor] = currentStamp;
+						queue.emplace_back(neighbor, depth + 1);
+					}
+				}
+			}
+		}
+
+	public:
+		explicit LocalMoleculeGraph(const TopologyFile::Moleculetype& molecule) {
+			const int n = static_cast<int>(molecule.atoms.size());
+			for (int i = 0; i < n; i++)
+				if (molecule.atoms[i].id != i)
+					throw std::runtime_error(std::format("Moleculetype {}: atom at index {} has id {}", molecule.name, i, molecule.atoms[i].id));
+
+			neighbors.resize(n);
+			nNeighbors.resize(n, 0);
+			visitedStamp.resize(n, 0);
+			for (const auto& bond : molecule.singlebonds) {
+				if (bond.ids[0] < 0 || bond.ids[0] >= n || bond.ids[1] < 0 || bond.ids[1] >= n)
+					continue;
+				Connect(bond.ids[0], bond.ids[1]);
+			}
+		}
+
+		// Connected components in BFS order, starting from the lowest id of each
+		std::vector<std::vector<int>> ConnectedComponents() const {
+			std::vector<std::vector<int>> components;
+			std::vector<bool> visited(neighbors.size(), false);
+			for (int id = 0; id < neighbors.size(); id++) {
+				if (visited[id])
+					continue;
+				auto& component = components.emplace_back();
+				BFS(id, [&](int node, int) { visited[node] = true; component.push_back(node); return true; });
+			}
+			return components;
+		}
+
+		// Shortest path length, or nullopt if it is longer than maxDistance
+		std::optional<int> Distance(int from, int to, int maxDistance) const {
+			std::optional<int> result;
+			BFS(from, [&](int node, int depth) {
+				if (depth > maxDistance)
+					return false;
+				if (node == to) {
+					result = depth;
+					return false;
+				}
+				return true;
+				});
+			return result;
+		}
+	};
+
 	std::vector<std::array<int, PersistentCluster::maxParticles>> MakeLocalPersistentClusters(
 		const TopologyFile::Moleculetype& molecule
 	) {
-		const MoleculeGraph moleculeGraph(molecule);
-		const std::vector<std::vector<int>> connectedComponents = moleculeGraph.GetListOfListsofConnectedNodeids();
+		const LocalMoleculeGraph moleculeGraph(molecule);
+		const std::vector<std::vector<int>> connectedComponents = moleculeGraph.ConnectedComponents();
 
 		std::vector<std::array<int, PersistentCluster::maxParticles>> clusters;
 		clusters.reserve((molecule.atoms.size() + PersistentCluster::maxParticles - 1) / PersistentCluster::maxParticles);
 
+		// Only distances up to 4 affect the result
 		auto CanAppendToCluster = [&moleculeGraph](int particleId, const auto& cluster, int nextIndex) {
 			if (nextIndex == 0)
 				return true;
 
-			const std::optional<int> distanceToPreviousNode = moleculeGraph.DistanceBetweenNodes(cluster[nextIndex - 1], particleId, 5);
-			const std::optional<int> distanceToFirstNode = moleculeGraph.DistanceBetweenNodes(cluster[0], particleId, 5);
+			const std::optional<int> distanceToPreviousNode = moleculeGraph.Distance(cluster[nextIndex - 1], particleId, 4);
+			const std::optional<int> distanceToFirstNode = moleculeGraph.Distance(cluster[0], particleId, 4);
 
 			return distanceToFirstNode.value_or(INT_MAX) < 3 ||
 				distanceToFirstNode.value_or(INT_MAX) <= 4 && distanceToPreviousNode.value_or(INT_MAX) <= 2;
@@ -239,15 +404,18 @@ namespace {
 		return clusters;
 	}
 
+	void SortAndRemoveDuplicates(std::vector<int>& values) {
+		std::ranges::sort(values);
+		values.erase(std::unique(values.begin(), values.end()), values.end());
+	}
+
 	PersistentClusterTemplate BuildPersistentClusterTemplate(
 		const TopologyFile::Moleculetype& molecule,
-		LIMAForcefield& forcefield
+		const LIMAForcefield& forcefield
 	) {
 		PersistentClusterTemplate result;
 		result.clusters = MakeLocalPersistentClusters(molecule);
 		result.particleToPcluster.resize(molecule.atoms.size(), -1);
-		result.particleBondedToParticle.resize(molecule.atoms.size());
-		result.pclusterBondedToPcluster.resize(result.clusters.size());
 		result.particles.resize(molecule.atoms.size());
 
 		for (int pcid = 0; pcid < result.clusters.size(); pcid++) {
@@ -257,6 +425,9 @@ namespace {
 			}
 		}
 
+		// Collect as vectors and sort afterwards, which is much faster than inserting into sets
+		std::vector<std::vector<int>> particleBondedToParticle(molecule.atoms.size());
+		std::vector<std::vector<int>> pclusterBondedToPcluster(result.clusters.size());
 		auto AddBond = [&](const auto& bond) {
 			const auto& ids = bond.ids;
 			for (const int id : ids) {
@@ -274,10 +445,10 @@ namespace {
 					const int pcidOther = result.particleToPcluster[pidOther];
 					assert(pcidOther != -1);
 
-					result.particleBondedToParticle[pidSelf].insert(pidOther);
-					result.particleBondedToParticle[pidOther].insert(pidSelf);
-					result.pclusterBondedToPcluster[pcidSelf].insert(pcidOther);
-					result.pclusterBondedToPcluster[pcidOther].insert(pcidSelf);
+					particleBondedToParticle[pidSelf].push_back(pidOther);
+					particleBondedToParticle[pidOther].push_back(pidSelf);
+					pclusterBondedToPcluster[pcidSelf].push_back(pcidOther);
+					pclusterBondedToPcluster[pcidOther].push_back(pcidSelf);
 				}
 			}
 		};
@@ -291,11 +462,28 @@ namespace {
 		for (const auto& bond : molecule.improperdihedralbonds)
 			AddBond(bond);
 
+		result.particleBondedToParticle.reserve(particleBondedToParticle.size());
+		for (auto& values : particleBondedToParticle) {
+			SortAndRemoveDuplicates(values);
+			result.particleBondedToParticle.push_back(ParticlesBondedToParticle::CreateFromSorted(values));
+		}
+		result.pclusterBondedToPcluster.reserve(pclusterBondedToPcluster.size());
+		for (auto& values : pclusterBondedToPcluster) {
+			SortAndRemoveDuplicates(values);
+			result.pclusterBondedToPcluster.push_back(PclustersBondedToPcluster::CreateFromSorted(values));
+		}
+
+		// Many atoms share a type, so we only look each type up in the forcefield once
+		std::unordered_map<std::string, std::pair<NBParams, std::optional<AtomType>>> forcefieldTypes;
 		for (int particleId = 0; particleId < molecule.atoms.size(); particleId++) {
 			const TopologyFile::AtomsEntry& atom = molecule.atoms[particleId];
 			PersistentParticleTemplate& particle = result.particles[particleId];
 
-			particle.nbParams = forcefield.GetLjParameters(atom.type);
+			auto type = forcefieldTypes.find(atom.type);
+			if (type == forcefieldTypes.end())
+				type = forcefieldTypes.emplace(atom.type, std::pair{ forcefield.GetLjParameters(atom.type), forcefield.GetAtomtype(atom.type) }).first;
+
+			particle.nbParams = type->second.first;
 			if (atom.charge.has_value())
 				particle.nbParams.charge = atom.charge.value() * elementaryChargeToKiloCoulombPerMole;
 
@@ -303,7 +491,7 @@ namespace {
 				particle.mass = atom.mass.value() / KILO;
 			}
 			else {
-				const std::optional<AtomType> atomType = forcefield.GetAtomtype(atom.type);
+				const std::optional<AtomType>& atomType = type->second.second;
 				if (atomType.has_value())
 					particle.mass = atomType->mass;
 			}
@@ -317,20 +505,29 @@ namespace {
 	}
 }
 
-PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIMAForcefield& forcefield) {
-	std::unordered_map<const TopologyFile::Moleculetype*, PersistentClusterTemplate> templates;
-	std::vector<const PersistentClusterTemplate*> instanceTemplates;
+PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, const LIMAForcefield& forcefield) {
+	// Build a template per moleculetype in parallel, then instantiate the templates for each molecule
+	std::unordered_map<const TopologyFile::Moleculetype*, int> templateIndices;
+	std::vector<const TopologyFile::Moleculetype*> uniqueMoleculetypes;
+	std::vector<int> instanceTemplates;
 	instanceTemplates.reserve(system.moleculeInstances.size());
-
-	size_t totalClusterCount = 0;
 	for (const SuperTopology::MoleculeInstance& instance : system.moleculeInstances) {
-		auto templateIt = templates.find(instance.type.get());
-		if (templateIt == templates.end())
-			templateIt = templates.emplace(instance.type.get(), BuildPersistentClusterTemplate(*instance.type, forcefield)).first;
-
-		instanceTemplates.push_back(&templateIt->second);
-		totalClusterCount += templateIt->second.clusters.size();
+		const auto [it, inserted] = templateIndices.try_emplace(instance.type.get(), static_cast<int>(uniqueMoleculetypes.size()));
+		if (inserted)
+			uniqueMoleculetypes.push_back(instance.type.get());
+		instanceTemplates.push_back(it->second);
 	}
+
+	std::vector<PersistentClusterTemplate> templates(uniqueMoleculetypes.size());
+	ParallelUtils::ParallelFor(uniqueMoleculetypes.size(), [&](size_t i) {
+		templates[i] = BuildPersistentClusterTemplate(*uniqueMoleculetypes[i], forcefield);
+		});
+
+	// Each instance gets a contiguous range of pclusters
+	std::vector<int> instancePclusterOffsets(system.moleculeInstances.size() + 1, 0);
+	for (size_t instanceId = 0; instanceId < system.moleculeInstances.size(); instanceId++)
+		instancePclusterOffsets[instanceId + 1] = instancePclusterOffsets[instanceId] + static_cast<int>(templates[instanceTemplates[instanceId]].clusters.size());
+	const size_t totalClusterCount = instancePclusterOffsets.back();
 
 	PersistentClusterFactory pcFactory{};
 	pcFactory.pClusters.resize(totalClusterCount);
@@ -339,10 +536,11 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIM
 	pcFactory.particleBondedToParticle.resize(system.particles.size());
 	pcFactory.pclusterBondedToPcluster.resize(totalClusterCount);
 
-	int pclusterOffset = 0;
-	for (int instanceId = 0; instanceId < system.moleculeInstances.size(); instanceId++) {
+	// Instances write to disjoint ranges, so they can be instantiated in parallel
+	ParallelUtils::ParallelForBlocked(system.moleculeInstances.size(), [&](size_t instanceId) {
 		const SuperTopology::MoleculeInstance& instance = system.moleculeInstances[instanceId];
-		const PersistentClusterTemplate& persistentTemplate = *instanceTemplates[instanceId];
+		const PersistentClusterTemplate& persistentTemplate = templates[instanceTemplates[instanceId]];
+		const int pclusterOffset = instancePclusterOffsets[instanceId];
 
 		for (int localPcid = 0; localPcid < persistentTemplate.clusters.size(); localPcid++) {
 			const int globalPcid = pclusterOffset + localPcid;
@@ -371,19 +569,18 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, LIM
 		}
 
 		for (int localParticleId = 0; localParticleId < persistentTemplate.particleBondedToParticle.size(); localParticleId++) {
-			pcFactory.particleBondedToParticle[instance.particleOffset + localParticleId] =
-				ParticlesBondedToParticle::Create(persistentTemplate.particleBondedToParticle[localParticleId], instance.particleOffset);
+			ParticlesBondedToParticle bonded = persistentTemplate.particleBondedToParticle[localParticleId];
+			bonded.AddOffset(instance.particleOffset);
+			pcFactory.particleBondedToParticle[instance.particleOffset + localParticleId] = bonded;
 		}
 
 		for (int localPcid = 0; localPcid < persistentTemplate.pclusterBondedToPcluster.size(); localPcid++) {
-			pcFactory.pclusterBondedToPcluster[pclusterOffset + localPcid] =
-				PclustersBondedToPcluster::Create(persistentTemplate.pclusterBondedToPcluster[localPcid], pclusterOffset);
+			PclustersBondedToPcluster bonded = persistentTemplate.pclusterBondedToPcluster[localPcid];
+			bonded.AddOffset(pclusterOffset);
+			pcFactory.pclusterBondedToPcluster[pclusterOffset + localPcid] = bonded;
 		}
+		}, 64, 16);
 
-		pclusterOffset += static_cast<int>(persistentTemplate.clusters.size());
-	}
-
-	assert(pclusterOffset == totalClusterCount);
 	return pcFactory;
 }
 
@@ -603,27 +800,16 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	std::future<BondGroupFactory> bgfFuture = std::async(std::launch::async, [&]{ return BondGroupFactory(superTopology); });
 
 	// Make PersistenClusters
-	std::shared_ptr<MoleculeGraph> systemGraph = MakeMoleculeGraph(superTopology);
 	std::future<PersistentClusterFactory> pcFactoryFuture = std::async(std::launch::async, [&]{ return MakePersistentClusters(superTopology, forcefield); });
-	
+
 	BondGroupFactory bgFactory = bgfFuture.get();
-	const auto particleToBondgroupMap = bgFactory.MakeParticleToBondgroupsMap(superTopology.particles.size());
 
 
 	PersistentClusterFactory pcFactory = pcFactoryFuture.get();
 	bgFactory.AddPclusterRefs(pcFactory.particleToPclusterMap);
 
+	bgFactory.AddBondgroupRefsToPclusters(pcFactory.particleToPclusterMap, pcFactory.pClusterMetas);
 	BondGroups bondGroups = bgFactory.GetBondgroups();
-	
-
-	for (int i = 0; i < pcFactory.particleToPclusterMap.size(); i++) {
-		const auto pcRef = pcFactory.particleToPclusterMap[i];
-		const std::set<BondgroupRef>& bgRefs = particleToBondgroupMap[i];
-
-		for (const BondgroupRef& bgRef : bgRefs) {
-			pcFactory.pClusterMetas[pcRef.pcid].bondgroupReferences[pcRef.pid].Add(bgRef);
-		}
-	}
 
 
 
@@ -649,7 +835,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	return std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		std::move(superTopology),
-		systemGraph,
 		std::move(bondGroups),
 		std::move(pcFactory.pClusters),
 		std::move(pcFactory.pClusterMetas),
@@ -658,5 +843,4 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		std::move(gpidToPcidAndPid),
 		nParticles
 	);
-
 }

@@ -10,92 +10,13 @@
 using namespace LIMA_Print;
 
 
-
-
-// ---------------------------------------------------------------- Private Functions ---------------------------------------------------------------- //
-
-void InsertCompoundInBox(const PersistentCluster& pcluster, Box& box, const SimParams& simparams, Float3 offset = Float3{})
-{
-	PersistentclusterInterimState pcState{};
-	memset(&pcState, 0, sizeof(PersistentclusterInterimState));
-	for (int i = 0; i < PersistentCluster::maxParticles; i++) {
-		//pcState.// TODO!!!
-	}
-	box.pclusterInterimStates.push_back(pcState);
-
-}
-
-int SolvateBox(Box& box)	// Accepts the position of the center or Oxygen of a solvate molecule. No checks are made wh
-{
-	//for (const auto& tinyMol : tinyMols) {
-	//	if (box.boxparams.nTinymolParticles + tinyMol.nParticles >= MAX_SOLVENTS) {
-	//		throw std::runtime_error("Solvents surpass MAX_SOLVENT");
-	//	}
-
-	//	auto [nodeIndexOfTinymol, _] = LIMAPOSITIONSYSTEM::absolutePositionPlacement(tinyMol.positions[0], box.boxparams.boxSize, simparams.bc_select);
-	//	SolventBlock& solventBlock = SolventBlocksCircularQueue::GetBlockRef(box.solventblockgrid_circularqueue, nodeIndexOfTinymol, 0, box.boxparams.boxSize);
-	//	
-	//	std::vector<Coord> relPos(tinyMol.nParticles);
-	//	std::vector<uint32_t> ids(tinyMol.nParticles);
-	//	std::vector<uint8_t> atomtypeIds(tinyMol.nParticles);
-	//	std::vector<TinyMolParticleState> states(tinyMol.nParticles);
-	//	for (int i = 0; i < tinyMol.nParticles; i++) {
-	//		Float3 hyperPos = tinyMol.positions[i];
-	//		BoundaryConditionPublic::applyHyperposNM(tinyMol.positions[0], hyperPos, box.boxparams.BoxSizeFloat(), PBC);
-	//		//auto relposFloat = hyperPos - nodeIndexOfTinymol.toFloat3();
-	//		relPos[i] = LIMAPOSITIONSYSTEM::getRelativeCoord(hyperPos, nodeIndexOfTinymol, 1, box.boxparams.BoxSizeFloat(), PBC);
-	//		//relPos[i] = Coord{ hyperPos - nodeIndexOfTinymol.toFloat3()};
-	//		ids[i] = box.boxparams.nTinymolParticles + i; // TODO: THese should've been made in compoundbuilder
-	//		atomtypeIds[i] = tinyMol.states[i].tinymolTypeIndex;
-	//		states[i] = tinyMol.states[i];
-	//	}
-
-	//	solventBlock.addSolvent(relPos, ids, atomtypeIds, tinyMol.bondgroup, states);
-	//	box.boxparams.nTinymolParticles += tinyMol.nParticles;
-	//	box.boxparams.nTinymols++;
-	//}
-
-	//std::mt19937 gen(1238971);
-	//std::uniform_real_distribution<float> distribution(-1.f, 1.f); // TODO: GROMACS COMPARISON: This is why we dont match gromacs in RMSD
-
-	//// Setup forces and vel's for VVS
-	//box.tinyMolParticlesState.resize(0);
-	//box.tinyMolParticlesState.reserve(box.boxparams.nTinymols);
-	//for (int i = 0; i < box.boxparams.nTinymols; i++) {
-	//	
-	//	// Give a random velocity. This seems.. odd, but accoring to chatGPT this is what GROMACS does
-
-	//	const float moleculeMass = std::accumulate(tinyMols[i].states.begin(), tinyMols[i].states.begin() + tinyMols[i].nParticles, 0.f, 
-	//		[&forcefield](float sum, const TinyMolParticleState& state) {return sum + forcefield.types[state.tinymolTypeIndex].mass; }
-	//	);
-	//	const Float3 direction = Float3{ distribution(gen), distribution(gen), distribution(gen) }.norm();
-	//	const float velocity = PhysicsUtils::tempToVelocity(DEFAULT_TINYMOL_START_TEMPERATURE, moleculeMass);
-
-	//	for (int j = 0; j < tinyMols[i].nParticles; j++) {
-	//		box.tinyMolParticlesState.emplace_back() = tinyMols[i].states[j];
-	//		box.tinyMolParticlesState.back().vel_prev = direction * velocity;
-	//	}
-
-	//	
-
-	//	//box.tinyMols.emplace_back(TinyMolParticleState{ direction * velocity, Float3{}, tinyMols[i].state.tinymolTypeIndex });
-	//}    
-	//box.boxparams.total_particles += box.boxparams.nTinymolParticles;
-	//return box.boxparams.nTinymolParticles;
-	return 0;
-}
-
-
 // ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
 
-std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage) {
+std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage, EnvMode envmode) {
 	auto box = std::make_unique<Box>(boxImage.grofile.box_size);
 
-	/*box->compoundInterimStates.reserve(boxImage.compounds.size());
-	box->compoundCoordsBuffer.reserve(boxImage.compounds.size());*/
-	for (const PersistentCluster& pc : boxImage.persistentClusters) {
-		InsertCompoundInBox(pc, *box, simparams);
-	}	
+	// All pclusters start with zero previous forces and velocities
+	box->pclusterInterimStates.resize(boxImage.persistentClusters.size());
 
 	/*box->boxparams.total_compound_particles = boxImage.total_compound_particles;
 	box->boxparams.total_particles += boxImage.total_compound_particles;*/
@@ -123,7 +44,10 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->persistentClustersMetadata = boxImage.persistentClustersMetadata;
 	box->particlesBondedToParticle = std::move(boxImage.particleBondedToParticle);
 	box->pclustersBondedToPcluster = std::move(boxImage.pclusterBondedToPcluster);
-	box->backboneChains = InterpretBackboneChains(boxImage.grofile);
+
+	// Only display uses backbones, so if no display we dont need backbone
+	if (envmode == EnvMode::Full)
+		box->backboneChains = InterpretBackboneChains(boxImage.grofile);
 	//box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
 
 	return box;

@@ -123,7 +123,41 @@ void TestDisplayT4Batch() {
 }
 
 
-int main() {
+// Demonstrates LIMA's parallel simulation workflow.
+// Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
+// Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
+void ShowcaseMultisim() {
+	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
+	std::vector<Lipids::Selection> lipidSelections{
+		{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
+		{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
+	};
+
+	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
+	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
+		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
+	SimParams minimization = SimParams::BasicEMSimParams(800.f);
+	minimization.n_steps = 5000;
+	workflow.AddStage({ "minimize", minimization, {},
+		{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
+
+	SimParams production;
+	production.n_steps = 1000;
+	production.apply_thermostat = true;
+	production.save_energy = true;
+	workflow.AddStage({ "production", production, {
+		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
+		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
+	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
+	workflow.CompareDensityProfiles("composition", "temperature");
+	workflow.Run();
+
+	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
+}
+
+
+
+int main(int argc, char** argv) {
 	try {
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
@@ -265,11 +299,8 @@ int main() {
 	//Benchmarks::PrepareSimulation_stmv(envmode);
 			//TestBuildmembraneSmall(envmode, false);
 			// 
-			//Benchmarks::STMV(env, envmode, 200, 3).RunToCompletion();
-			// 
-
-//EngineBatchTests::ShowcaseMultisim();
-		RunAllUnitTests();
+		Benchmarks::Load3J3Q(env, envmode);
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
@@ -353,6 +384,7 @@ void RunAllUnitTests() {
 
 	// Test Setup
 	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations);
+	ADD_TEST("TestTopologyPreprocessor", FileTests::TestTopologyPreprocessor);
 
 	// Programs test
 	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile);
@@ -373,6 +405,7 @@ void RunAllUnitTests() {
 
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
+	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
 	ADD_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
 	ADD_TEST("stmv sim performance", Benchmarks::STMV, 200, Benchmarks::automatedTestRuns);
 

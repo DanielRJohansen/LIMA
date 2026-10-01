@@ -150,50 +150,9 @@ namespace PhysicsUtilsDevice {
 	}
 
 
-	__device__ inline Float3 CalcCoulumbForceChebyshevPiecewise(
-		const float chargeProduct, const Float3& diff, const float distSq, const float ewaldKappa)
-	{
-		if (distSq < 0.1f || distSq > (1.2f*1.2f)) {
-			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, distSq, ewaldKappa);
-		}
-
-		const float domainCutoff = 0.5f;
-		static constexpr std::array<float, 9> coeffsNeardomain{
-			2801.6250509480,
-			-59908.3311363743,
-			614658.4828306455,
-			-3747455.1890168283,
-			14453034.7755872533,
-			-35615387.2337769344,
-			54376097.6685821563,
-			-46859432.2084176466,
-			17421550.6577042267,
-		}; // The magnitude of these is quite an issue...
-
-		static constexpr std::array<float, 9> coeffsFardomain{
-			229.0823566196,
-			-1589.6481393717,
-			4956.6701841007,
-			-8980.2657392603,
-			10263.5436292686,
-			-7537.0226890896,
-			3459.8949570903,
-			-905.3826409340,
-			103.2156813554,
-		};
-
-		const auto& a = distSq < domainCutoff ? coeffsNeardomain : coeffsFardomain;
-		const float invLenCubedTimesErfcScalarApprox = LAL::EvalPoly<9>(distSq, a);
-
-		return diff * chargeProduct * invLenCubedTimesErfcScalarApprox;
-	}
-
 	// TODO: Include modified coulumb constant here
 	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, float distSq, const float ewaldKappa) {
-		if constexpr (COULUMB_USE_CHEBYSHEV_APPROXIMATION)			
-			return CalcCoulumbForceChebyshevPiecewise(chargeProduct, diff, distSq, ewaldKappa);
-		else
-			return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared(), ewaldKappa);
+		return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared(), ewaldKappa);
 	}
 
 	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, const float ewaldKappa) {
@@ -234,54 +193,9 @@ namespace PhysicsUtilsDevice {
 		return potential;
 	}
 
-	__device__ inline float CalcCoulumbPotentialChebyshevPiecewise(
-		const float chargeProduct, const float distSq, const float ewaldKappa)
-	{
-		if (distSq < 0.1f || distSq >(1.2f * 1.2f)) {
-			return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa) * modifiedCoulombConstant * 0.5f;
-		}
-
-		// TODO: It's kind of an issue that these scalars are so large. It will lead to some serious imprecision
-		// We could, as we're computing these params scale them to be <1, and then rescale the result accordingly.
-		const float domainCutoff = 0.5f;
-		static constexpr std::array<float, 10> coeffsNeardomain{
-			34.0379978922,
-			-661.4914286200,
-			6882.6123761172,
-			-45966.2677339184,
-			206170.4678880951,
-			-626888.8898421292,
-			1274173.0836184307,
-			-1656858.2279262797,
-			1245661.5552110448,
-			-411659.2654445015,
-		};
-
-		static constexpr std::array<float, 10> coeffsFardomain{
-			7.3918879318,
-			-54.9064293050,
-			188.6443996713,
-			-388.6586874083,
-			524.1132887011,
-			-476.3149712651,
-			290.2059096899,
-			-113.8773273801,
-			26.0453693742,
-			-2.6403995315,
-		};
-
-		const auto& a = distSq < domainCutoff ? coeffsNeardomain : coeffsFardomain;
-		const float potentialApproximation = LAL::EvalPoly<10>(distSq, a);
-
-		return chargeProduct * potentialApproximation;
-	}
-
 	__device__ inline float CalcCoulumbPotential(const float chargeProduct, const float distSq, const float ewaldKappa)
 	{
-		if constexpr (COULUMB_USE_CHEBYSHEV_APPROXIMATION)
-			return CalcCoulumbPotentialChebyshevPiecewise(chargeProduct, distSq, ewaldKappa);
-		else
-			return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa);
+		return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa);
 	}
 
 }

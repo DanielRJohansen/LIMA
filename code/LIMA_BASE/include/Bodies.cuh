@@ -491,13 +491,34 @@ struct alignas(16) SuperClusterMeta {
 	//}
 };
 
+// SoA layout so each component load is fully coalesced, and so potE (only computed on logging steps) occupies
+// its own sectors which are never touched on non-logging steps
 struct SCResult {
-	ForceEnergy fe[SuperCluster::maxParticles];
+	float fx[SuperCluster::maxParticles];
+	float fy[SuperCluster::maxParticles];
+	float fz[SuperCluster::maxParticles];
+	float potE[SuperCluster::maxParticles]; // Only written/read when withPotE
+
+	template <bool withPotE>
+	__device__ void Store(int pid, const ForceEnergy& fe) {
+		fx[pid] = fe.force.x;
+		fy[pid] = fe.force.y;
+		fz[pid] = fe.force.z;
+		if constexpr (withPotE)
+			potE[pid] = fe.potE;
+	}
+
+	template <bool withPotE>
+	__device__ ForceEnergy Load(int pid) const {
+		if constexpr (withPotE)
+			return ForceEnergy{ Float3{ fx[pid], fy[pid], fz[pid] }, potE[pid] };
+		else
+			return ForceEnergy{ Float3{ fx[pid], fy[pid], fz[pid] }, 0.f };
+	}
 
 	__host__ bool operator!=(const SCResult& other) const {
 		for (int i = 0; i < SuperCluster::maxParticles; i++) {
-			if (fe[i].force != other.fe[i].force ||
-				fe[i].potE != other.fe[i].potE)
+			if (fx[i] != other.fx[i] || fy[i] != other.fy[i] || fz[i] != other.fz[i] || potE[i] != other.potE[i])
 				return true;
 		}
 		return false;

@@ -236,6 +236,7 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 // blockdim=16,4,1
+// computePotE must match logData of the following SuperclusterIntegrateKernel, as results only contain potE when computePotE
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
 __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices, 
 	const SuperClusterMeta* const superClusterMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
@@ -288,7 +289,8 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 			fe.force.x = __shfl_sync(0xFFFFFFFFu, fe.force.x, sourceLane, 16);
 			fe.force.y = __shfl_sync(0xFFFFFFFFu, fe.force.y, sourceLane, 16);
 			fe.force.z = __shfl_sync(0xFFFFFFFFu, fe.force.z, sourceLane, 16);
-			fe.potE = __shfl_sync(0xFFFFFFFFu, fe.potE, sourceLane, 16);
+			if constexpr (computePotE)
+				fe.potE = __shfl_sync(0xFFFFFFFFu, fe.potE, sourceLane, 16);
 
 			feInScSelf += fe.InvertForce();
 
@@ -297,7 +299,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		}
 
 		if (validQuery) {
-			results[resultIndices[indexInQueriesBuffer]].fe[threadIdx.x] = feInQuerySc;
+			results[resultIndices[indexInQueriesBuffer]].Store<computePotE>(threadIdx.x, feInQuerySc);
 		}
 		//__syncthreads(); // Im not sure this is necessary..
 	}
@@ -318,7 +320,7 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 	}	
 	if (threadIdx.y == 0) {
 		const int resultIndex = resultIndices[task.startIndexInQueriesBuffers];
-		results[resultIndex].fe[threadIdx.x] = feAcc[threadIdx.x];
+		results[resultIndex].Store<computePotE>(threadIdx.x, feAcc[threadIdx.x]);
 	}	
 }
  
@@ -378,8 +380,9 @@ const ForceEnergy* const nbForceenergy*/) {
 	ForceEnergy fe{};
 	// Gather from NB kernels
 	for (int i = resultsStartIndex[scIdLocal]; i < resultsStartIndex[scIdLocal] + nResults[scIdLocal]; i++) {
-		KernelHelpersWarnings::ForceCheck(scResults[i].fe[threadIdx.x].force);
-		fe += scResults[i].fe[threadIdx.x];
+		const ForceEnergy result = scResults[i].Load<logData>(threadIdx.x);
+		KernelHelpersWarnings::ForceCheck(result.force);
+		fe += result;
 	}
 //	fe += nbForceenergy[scIdGlobal * SuperCluster::nParticles + threadIdx.x];
 	fe += forceEnergies.bonded[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];

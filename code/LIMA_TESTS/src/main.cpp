@@ -185,10 +185,11 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark({ "t4", "manyt4" });
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
-		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
+		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
+		Benchmarks::STMV(env, envmode, 1000);
 
 		//Benchmarks::Load3J3Q(env, envmode);
-		RunAllUnitTests();
+		//RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;

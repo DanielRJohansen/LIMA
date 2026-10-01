@@ -235,6 +235,38 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 
 
+// Deterministic accumulation of NB forces, replacing SCResult for MD: each partial force is converted to 64-bit fixed point
+// and summed with integer atomics. Unlike float atomics, integer addition is associative, so the sum is bitwise
+// independent of the order the atomics arrive in. The accumulator is small enough to stay L2 resident.
+// Not used in EM, where forces can exceed the fixed point range.
+struct NbForceAccumulator {
+	static constexpr float scale = 16777216.f;		// 2^24 -> resolution 6e-8 J/mol/nm, range +-5.5e11 J/mol/nm
+	static constexpr float scaleInv = 1.f / scale;	// Power of 2, so ToFloat is exactly the rounded sum
+
+	// SoA, indexed by scId * SuperCluster::maxParticles + particleIndex. potE is only zeroed/used on logging steps
+	unsigned long long* fx = nullptr;
+	unsigned long long* fy = nullptr;
+	unsigned long long* fz = nullptr;
+	unsigned long long* potE = nullptr;
+
+	__device__ static unsigned long long ToFixed(float v) { return static_cast<unsigned long long>(llrintf(v * scale)); }
+	__device__ static float ToFloat(unsigned long long v) { return static_cast<float>(static_cast<long long>(v)) * scaleInv; }
+
+	template <bool withPotE>
+	__device__ void Add(int index, const ForceEnergy& fe) const {
+		atomicAdd(&fx[index], ToFixed(fe.force.x));
+		atomicAdd(&fy[index], ToFixed(fe.force.y));
+		atomicAdd(&fz[index], ToFixed(fe.force.z));
+		if constexpr (withPotE)
+			atomicAdd(&potE[index], ToFixed(fe.potE));
+	}
+
+	template <bool withPotE>
+	__device__ ForceEnergy Load(int index) const {
+		return ForceEnergy{ Float3{ ToFloat(fx[index]), ToFloat(fy[index]), ToFloat(fz[index]) }, withPotE ? ToFloat(potE[index]) : 0.f };
+	}
+};
+
 // blockdim=16,4,1
 // computePotE must match logData of the following SuperclusterIntegrateKernel, as results only contain potE when computePotE
 //
@@ -246,7 +278,9 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 // - If future changes need more than 48 registers, the compiler spills to (slow) local memory instead of growing,
 //   so after larger changes check ncu for local memory traffic, and revisit the bound
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices, 
+__global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks,
+	SCResult* const results /*Only used in EM*/, const NbForceAccumulator nbForceAcc /*Only used in MD*/,
+	const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices,
 	const SuperClusterMeta* const superClusterMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
 	const int scId = blockIdx.x;
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
@@ -315,10 +349,22 @@ __global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* c
 		}
 
 		if (validQuery) {
-			results[resultIndices[indexInQueriesBuffer]].Store<computePotE>(threadIdx.x, feInQuerySc);
+			if constexpr (energyMinimize)
+				results[resultIndices[indexInQueriesBuffer]].Store<computePotE>(threadIdx.x, feInQuerySc);
+			// The self-task's query forces are dropped: its pairs are evaluated in both orders, so the reaction forces in feInScSelf
+			// already hold the full force. (In the EM path this result is overwritten by the self reduction below)
+			else if (queryScId != scId)
+				nbForceAcc.Add<computePotE>(queryScId * SuperCluster::maxParticles + threadIdx.x, feInQuerySc);
 		}
 		//__syncthreads(); // Im not sure this is necessary..
 	}
+
+	if constexpr (!energyMinimize) {
+		// No need to reduce the rows first, the fixed point sum is order independent
+		nbForceAcc.Add<computePotE>(scId * SuperCluster::maxParticles + threadIdx.x, feInScSelf);
+		return;
+	}
+
 	__syncthreads();
 
 
@@ -342,7 +388,8 @@ __global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* c
  
 // blockDim=(16, 4, 1)
 template<typename BoundaryCondition, bool emvariant, bool logData>
-__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, Float3* const emForces /*Only available in EM*/, int data_logging_interval, const SCResult* const scResults,
+__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, Float3* const emForces /*Only available in EM*/, int data_logging_interval, 
+	const SCResult* const scResults /*Only used in EM*/, const NbForceAccumulator nbForceAcc /*Only used in MD*/,
 	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
 	int64_t step, const IntegrationSimulationData* simulationData, int nSuperclusters, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
 	Float3 boxSize, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
@@ -395,8 +442,15 @@ const ForceEnergy* const nbForceenergy*/) {
 	// Collect ForceEnergy from all sources
 	ForceEnergy fe{};
 	// Gather from NB kernels
-	for (int i = resultsStartIndex[scIdLocal]; i < resultsStartIndex[scIdLocal] + nResults[scIdLocal]; i++) {
-		const ForceEnergy result = scResults[i].Load<logData>(threadIdx.x);
+	if constexpr (emvariant) {
+		for (int i = resultsStartIndex[scIdLocal]; i < resultsStartIndex[scIdLocal] + nResults[scIdLocal]; i++) {
+			const ForceEnergy result = scResults[i].Load<logData>(threadIdx.x);
+			KernelHelpersWarnings::ForceCheck(result.force);
+			fe += result;
+		}
+	}
+	else {
+		const ForceEnergy result = nbForceAcc.Load<logData>(scIdGlobal * SuperCluster::maxParticles + threadIdx.x);
 		KernelHelpersWarnings::ForceCheck(result.force);
 		fe += result;
 	}

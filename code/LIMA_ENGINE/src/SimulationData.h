@@ -153,7 +153,8 @@ struct EngineBatchData {
 	CudaBuffer<int> idsOfQuerySuperclustersDevice;
 	CudaBuffer<int> resultIndicesDevice;
 	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
-	CudaBuffer<SCResult> scResultsDevice;
+	CudaBuffer<SCResult> scResultsDevice;					// EM only
+	CudaBuffer<unsigned long long> nbForceAccumulatorDevice;	// MD only, see NbForceAccumulator. [fx|fy|fz|potE] each nSuperclusters*16
 	CudaBuffer<IntegrationSimulationData> integrationSimulationDataDevice;
 
 	std::unique_ptr<SuperClustersControl> superClustersControl;

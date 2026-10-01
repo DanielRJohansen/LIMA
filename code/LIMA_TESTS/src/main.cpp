@@ -123,6 +123,27 @@ void TestDisplayT4Batch() {
 }
 
 
+// Runs the STMV benchmark system with the display, to visually inspect the simulation
+void ShowcaseSTMV(int nSteps = 50000) {
+	const fs::path workDir = HeavyTestsDir() / "benchmarking" / "stmv";
+	SimulationJob job;
+	job.workDir = workDir;
+	job.grofile.emplace(workDir / "conf.gro");
+	job.topfile.emplace(workDir / "topol.top");
+	job.simParams.emplace(workDir / "sim_params.txt");
+	job.mode = EnvMode::Full;
+	job.mustRunAlone = true;
+	job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
+		params.data_logging_interval = 20;
+		params.enable_electrostatics = true;
+		params.n_steps = nSteps;
+	};
+	auto result = Environment::Get().Submit(std::move(job)).Get();
+	if (!result.simulation || result.simulation->getStep() != nSteps)
+		throw std::runtime_error("STMV showcase did not run fully");
+	std::cout << "STMV showcase completed: " << nSteps << " steps\n";
+}
+
 // Demonstrates LIMA's parallel simulation workflow.
 // Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
 // Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
@@ -168,6 +189,7 @@ int main(int argc, char** argv) {
 		//Benchmarks::ToGmxLargeCif(envmode);
 
 		//ShowcaseMultisim();
+		//ShowcaseSTMV();
 
 		//Lipids::_MakeLipid("cholesterol");
 
@@ -189,6 +211,7 @@ int main(int argc, char** argv) {
 		//Benchmarks::STMV(env, envmode, 1000);
 
 		//Benchmarks::Load3J3Q(env, envmode);
+		//ShowcaseSTMV();
 		RunAllUnitTests();
 	}
 	catch (std::runtime_error ex) {

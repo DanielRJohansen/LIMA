@@ -513,13 +513,24 @@ void Engine::_deviceMaster() {
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
 		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
 			nScs, batch->forceEnergyInterims->pme);
+	NbForceAccumulator nbForceAcc{};
+	if constexpr (emvariant) {
+		batch->scResultsDevice.Expand(batch->nResults, 1.2); // Noop once allocated. Not allocated at all in MD, where it would be ~1GB for large systems
+	}
+	else {
+		const size_t n = size_t(nScs) * SuperCluster::maxParticles;
+		unsigned long long* const base = batch->nbForceAccumulatorDevice.Get();
+		nbForceAcc = NbForceAccumulator{ base, base + n, base + 2 * n, base + 3 * n };
+		if (nScs > 0)
+			cudaMemsetAsync(base, 0, sizeof(unsigned long long) * n * (logData ? 4 : 3), cudaStreams[0]);
+	}
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const auto* scMeta = batch->superClustersControl->scMeta;
 		const Float3 boxSizeInv = boxSize.Inv();
 		// Blocksize must not exceed 64 threads, see __launch_bounds__ on the kernel
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, true><<<nScs, dim3(16,4,1), 0, cudaStreams[0]>>>(
-			scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), batch->idsOfQuerySuperclustersDevice.Get(),
+			scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), nbForceAcc, batch->idsOfQuerySuperclustersDevice.Get(),
 			batch->resultIndicesDevice.Get(), batch->noInteractionMatricesDevice.Get(), scMeta, boxSize, boxSizeInv, batch->ewaldKappa);
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
@@ -548,7 +559,7 @@ void Engine::_deviceMaster() {
 
 		const int nBlocks = (nScs + 4 - 1) / 4;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-			*batch->forceEnergyInterims, batch->emForces.Get(), batch->params.data_logging_interval, batch->scResultsDevice.Get(),
+			*batch->forceEnergyInterims, batch->emForces.Get(), batch->params.data_logging_interval, batch->scResultsDevice.Get(), nbForceAcc,
 			batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
 			batch->boxState.pclusterInterimStates, batch->step, batch->integrationSimulationDataDevice.Get(), nScs,
 			batch->forcesMagnitudeSquareDevice.Get(), boxSize, batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,

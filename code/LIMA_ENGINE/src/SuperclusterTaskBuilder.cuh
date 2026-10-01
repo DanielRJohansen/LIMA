@@ -616,7 +616,8 @@ bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {
 	batch->idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
 	batch->resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
 	batch->noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
-	batch->scResultsDevice.Expand(batch->nResults, 1.2);
+	// scResultsDevice (EM only) is expanded lazily in _deviceMaster, since a batch may switch between EM and MD between task builds
+	batch->nbForceAccumulatorDevice.Expand(size_t(batch->nSuperclusters) * SuperCluster::maxParticles * 4, 1.2);
 
 	BuildTasks << <(batch->nSuperclusters + 31) / 32, 32, 0, stream >> > (
 		batch->taskbuilderControl->contents,

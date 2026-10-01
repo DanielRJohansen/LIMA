@@ -24,7 +24,7 @@ if (UNIX)
     target_compile_options(LIMA_ENGINE PRIVATE -use_fast_math -O3)
 elseif (WIN32)
        target_compile_options(LIMA_ENGINE PRIVATE 
-        $<$<CONFIG:Release>:/use_fast_math>
+        $<$<COMPILE_LANGUAGE:CUDA>:-use_fast_math>
         $<$<CONFIG:Release>:/O2>
         $<$<COMPILE_LANGUAGE:CUDA>:--maxrregcount=255>
     )

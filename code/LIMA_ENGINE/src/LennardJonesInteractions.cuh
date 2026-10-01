@@ -116,7 +116,7 @@ namespace LJ {
 		
 		if (sc0.epsilonSqrt[sc0Index] != -1.f && pdOwned.params.epsilonSqrt != -1.f) {
 			//diff.print('d');
-			fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1. / diff.lenSquared(), fe.potE,
+			fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1.f / diff.lenSquared(), fe.potE,
 				CalcSigma(sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf),
 				CalcEpsilon(sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt),
 				//precomputedOO.sigma, precomputedOO.epsilon,

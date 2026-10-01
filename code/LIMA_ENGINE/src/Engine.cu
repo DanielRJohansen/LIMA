@@ -50,6 +50,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 	}
 	verifyEngine();
 	try {
+		if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
 		cudaStreamCreate(&pmeStream);
 		for (size_t simulationId = 0; simulationId < renderDataPipes.size(); ++simulationId) {
@@ -133,6 +134,48 @@ namespace {
 	}
 }
 
+bool Engine::UsesEnergyMinimization() const {
+	return mode == EngineRunMode::Interactive || batch->params.em_variant;
+}
+
+void Engine::PrepareEnergyMinimization(Simulation& simulation) {
+	if (!simulation.box) throw std::invalid_argument("Cannot prepare energy minimization without a box");
+	// Engines use the default EM::Config
+	auto preconditioner = EM::MakePreconditioner(*simulation.box, EM::Config{}.nonbondedStiffness);
+	simulation.emInverseStiffness = std::move(preconditioner.inverseStiffness);
+	simulation.emWholeMolecule = std::move(preconditioner.wholeMolecule);
+}
+
+// Each simulation's preconditioner is made once, from its coordinates when this engine first sees it, and reused when
+// the batch is rebuilt, so neither the cost nor the result depends on when other members retire
+void Engine::UploadEnergyMinimizationPreconditioner() {
+	std::vector<const Box*> boxes;
+	std::vector<EM::Preconditioner*> preconditioners;
+	for (auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		if (sim.emPreconditioner.inverseStiffness.empty()) {
+			sim.emPreconditioner.inverseStiffness = std::move(sim.simulation->emInverseStiffness);
+			sim.emPreconditioner.wholeMolecule = std::move(sim.simulation->emWholeMolecule);
+			sim.simulation->emInverseStiffness.clear();
+			sim.simulation->emWholeMolecule.clear();
+		}
+		boxes.push_back(sim.simulation->box.get());
+		preconditioners.push_back(&sim.emPreconditioner);
+	}
+	EM::MakeMissingPreconditioners(boxes, preconditioners, batch->emConfig.nonbondedStiffness);
+
+	std::vector<float> inverseStiffness(size_t(batch->nPclusters) * PersistentCluster::maxParticles, 0.f);
+	std::vector<uint8_t> wholeMolecule(batch->nPclusters, 0);
+	for (const auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		const auto range = sim.device.pclusters;
+		std::ranges::copy(sim.emPreconditioner.inverseStiffness, inverseStiffness.begin() + size_t(range.offset) * PersistentCluster::maxParticles);
+		std::ranges::copy(sim.emPreconditioner.wholeMolecule, wholeMolecule.begin() + range.offset);
+	}
+	batch->emInverseStiffness.SetData(inverseStiffness);
+	batch->emWholeMolecule.SetData(wholeMolecule);
+}
+
 void Engine::RebuildActiveBatch() {
 	Synchronize();
 	std::vector<Simulation*> simulations;
@@ -163,6 +206,7 @@ void Engine::RebuildActiveBatch() {
 		newSim.finalForcesMagnitudeSquared = oldSim.finalForcesMagnitudeSquared;
 		newSim.device.thermostatScalar = oldSim.device.thermostatScalar;
 		if (!active[id]) continue;
+		newSim.emPreconditioner = std::move(batch->simulations[id].emPreconditioner);
 		cudaMemcpy(rebuilt->emParticles.Get() + newSim.device.pclusters.offset * PersistentCluster::maxParticles,
 			batch->emParticles.Get() + oldSim.device.pclusters.offset * PersistentCluster::maxParticles,
 			sizeof(EM::ParticleState) * newSim.device.pclusters.count * PersistentCluster::maxParticles, cudaMemcpyDeviceToDevice);
@@ -175,6 +219,7 @@ void Engine::RebuildActiveBatch() {
 
 	auto oldBatch = std::move(batch);
 	batch = std::move(rebuilt);
+	if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 	batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
 	batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
 	batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));

@@ -9,8 +9,11 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/cereal.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <format>
 #include <fstream>
+#include <thread>
 
 using namespace FileUtils;
 using namespace MDFiles;
@@ -173,24 +176,43 @@ inline void readGroFileFromBinaryCache(const fs::path& path, GroFile& file) {
 
 	file.readFromCache = true;
 }
+// The cache is written to a unique temporary file and then renamed into place, so threads or processes reading the
+// same file concurrently never see a partially written cache. The cache is only an optimization, so losing a race
+// to replace it is not an error
 inline void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> _path = std::nullopt) {
 	const fs::path path = _path.value_or(file.m_path);
 	if (path.empty())
 		throw std::runtime_error("Tried to cache a Gro file with no path");
-	std::ofstream os(path.string() + ".bin", std::ios::binary);
-	if (!os.is_open()) {
-		throw std::runtime_error("Failed to open file for writing: " + path.string() + ".bin");
+	const fs::path binaryPath = path.string() + ".bin";
+	static std::atomic<uint64_t> nextTemporaryId = 0;
+	const fs::path temporaryPath = std::format("{}.{}.{}.{}.tmp", binaryPath.string(),
+		std::hash<std::thread::id>{}(std::this_thread::get_id()),
+		std::chrono::steady_clock::now().time_since_epoch().count(), nextTemporaryId++);
+	bool written = false;
+	{
+		std::ofstream os(temporaryPath, std::ios::binary);
+		if (!os.is_open()) {
+			throw std::runtime_error("Failed to open file for writing: " + temporaryPath.string());
+		}
+
+		WriteRaw(os, CacheVersionNumberValue());
+		WriteRaw(os, file.lastModificationTimestamp);
+
+		WriteRaw(os, static_cast<uint64_t>(file.title.size()));
+		os.write(file.title.data(), file.title.size());
+		WriteRaw(os, file.box_size);
+
+		WriteRaw(os, static_cast<uint64_t>(file.atoms.size()));
+		os.write(reinterpret_cast<const char*>(file.atoms.data()), file.atoms.size() * sizeof(GroRecord));
+		os.close();
+		written = !os.fail();
 	}
 
-	WriteRaw(os, CacheVersionNumberValue());
-	WriteRaw(os, file.lastModificationTimestamp);
-
-	WriteRaw(os, static_cast<uint64_t>(file.title.size()));
-	os.write(file.title.data(), file.title.size());
-	WriteRaw(os, file.box_size);
-
-	WriteRaw(os, static_cast<uint64_t>(file.atoms.size()));
-	os.write(reinterpret_cast<const char*>(file.atoms.data()), file.atoms.size() * sizeof(GroRecord));
+	std::error_code error;
+	if (written)
+		fs::rename(temporaryPath, binaryPath, error);
+	if (!written || error)
+		fs::remove(temporaryPath, error);
 }
 
 //inline void readTopFileFromBinaryCache(const fs::path& path, TopologyFile::Moleculetype& moleculetype) {

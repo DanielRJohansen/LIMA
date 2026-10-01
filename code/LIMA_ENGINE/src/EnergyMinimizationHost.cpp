@@ -1,5 +1,7 @@
 #include "EnergyMinimizationTypes.h"
 #include "Bodies.cuh"
+#include "Simulation.cuh"
+#include "ParallelFor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -97,6 +99,29 @@ namespace EM {
 			for (int i = 0; i < group.nImproperdihedralbonds; i++) Mark(bonds.improperdihedralbonds[group.indexOfFirstImproperdihedralbond + i].atom_indexes, 4);
 		}
 		return wholeMolecule;
+	}
+
+	bool Preconditioner::Fits(const Box& box) const {
+		return inverseStiffness.size() == box.persistentClusters.size() * PersistentCluster::maxParticles
+			&& wholeMolecule.size() == box.persistentClusters.size();
+	}
+
+	Preconditioner MakePreconditioner(const Box& box, float nonbondedStiffness) {
+		return {
+			ComputeInverseStiffness(box.persistentClusters, box.persistentClustersMetadata, box.bondgroups,
+				box.boxparams.BoxSizeFloat(), nonbondedStiffness),
+			FindWholeMoleculePclusters(box.persistentClusters.size(), box.bondgroups)
+		};
+	}
+
+	void MakeMissingPreconditioners(const std::vector<const Box*>& boxes, const std::vector<Preconditioner*>& preconditioners,
+		float nonbondedStiffness) {
+		if (boxes.size() != preconditioners.size())
+			throw std::invalid_argument("Preconditioner count does not match box count");
+		ParallelUtils::ParallelFor(boxes.size(), [&](size_t i) {
+			if (!preconditioners[i]->Fits(*boxes[i]))
+				*preconditioners[i] = MakePreconditioner(*boxes[i], nonbondedStiffness);
+			});
 	}
 
 }

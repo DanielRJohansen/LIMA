@@ -138,15 +138,12 @@ namespace EngineBatch {
 		batch.forceEnergyInterims = std::make_unique<ForceEnergyInterims>(CheckedCount(bonds.particles.size()), batch.nParticles, batch.nPclusters);
 		batch.forcesMagnitudeSquareDevice.Expand(batch.nParticles);
 		cudaMemset(batch.forcesMagnitudeSquareDevice.Get(), 0, sizeof(float) * batch.nParticles);
-		{ // Allocated for all batches, since interactive engines can switch to EM at any step
+		{ // Allocated for all batches, since interactive engines can switch to EM at any step. The preconditioner is uploaded by the Engine
 			const size_t nSlots = size_t(batch.nPclusters) * PersistentCluster::maxParticles;
-			const Float3 boxSizeNm{ float(batch.boxSize.x), float(batch.boxSize.y), float(batch.boxSize.z) };
 			batch.emParticles.Expand(nSlots);
 			cudaMemset(batch.emParticles.Get(), 0, sizeof(EM::ParticleState) * nSlots);
 			batch.emForces.Expand(nSlots);
 			batch.emPreconditionedForce.Expand(nSlots);
-			batch.emInverseStiffness.SetData(EM::ComputeInverseStiffness(pclusters, metadata, bonds, boxSizeNm, batch.emConfig.nonbondedStiffness));
-			batch.emWholeMolecule.SetData(EM::FindWholeMoleculePclusters(pclusters.size(), bonds));
 			batch.emBlocksDone.Expand(batch.simulations.size());
 			cudaMemset(batch.emBlocksDone.Get(), 0, sizeof(unsigned int) * batch.simulations.size());
 			batch.emStates.Expand(batch.simulations.size());

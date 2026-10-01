@@ -5,6 +5,7 @@
 #include <functional>
 #include <array>
 #include <fstream>
+#include <mutex>
 
 #include <format>
 #include <cctype>
@@ -87,6 +88,9 @@ fs::path FileUtils::GetLimaDir() {
 #ifdef __linux__
 	return {"/usr/share/LIMA"};
 #else
+	// Called concurrently by Environment's worker threads
+	static std::mutex mutex;
+	const std::lock_guard lock(mutex);
 	static fs::path cachedPath{"C:\\Users\\Daniel\\git_repo\\LIMA"};
 	if (fs::exists(cachedPath))
 		return cachedPath;

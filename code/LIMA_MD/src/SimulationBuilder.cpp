@@ -29,6 +29,15 @@ void centerMoleculeAroundOrigo(GroFile& grofile) {
 	}
 }
 
+// Lipid structures are shared between copies of a selection, which may be building membranes concurrently,
+// so the selection gets centered copies instead of centering the shared structures in place
+static void UseCenteredLipidCopies(Lipids::Selection& lipidselection) {
+	for (auto& lipid : lipidselection) {
+		lipid.grofile = std::make_shared<GroFile>(*lipid.grofile);
+		centerMoleculeAroundOrigo(*lipid.grofile);
+	}
+}
+
 float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection) {
 	float max_dist = 0;
 	for (const auto& lipid : lipidselection) {
@@ -524,9 +533,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 {
 	RandomUniformGenerator genRandomAngle(-PI, PI);
 
-	for (auto& lipid : lipidselection) {
-		centerMoleculeAroundOrigo(*lipid.grofile);
-	}
+	UseCenteredLipidCopies(lipidselection);
 
 
 	GetNextRandomLipid genNextRandomLipid{ lipidselection };
@@ -1054,8 +1061,10 @@ static void CreateEllipsoidMembrane(GroFile& grofile, TopologyFile& topfile,
 }
 
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry, int randomSeed) {
-	validateLipidselection(lipidselection);
+	const Lipids::Selection& sharedLipidselection, const MembraneGeometry::Figure& geometry, int randomSeed) {
+	validateLipidselection(sharedLipidselection);
+	Lipids::Selection lipidselection = sharedLipidselection;
+	UseCenteredLipidCopies(lipidselection);
 	const std::string name = Lipids::NameSelection(lipidselection);
 	if (grofile.title.empty())
 		grofile.title = name;
@@ -1063,8 +1072,6 @@ void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
 		topfile.title = name;
 	if (!topfile.HasSystem())
 		topfile.SetSystem(name);
-	for (const auto& lipid : lipidselection)
-		centerMoleculeAroundOrigo(*lipid.grofile);
 
 	std::visit([&](const auto& figure) {
 		using FigureType = std::decay_t<decltype(figure)>;

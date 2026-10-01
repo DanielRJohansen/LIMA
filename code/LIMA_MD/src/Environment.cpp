@@ -176,6 +176,19 @@ Environment::~Environment() {
 	StopScheduling();
 }
 
+size_t Environment::WorkerSlots::Reserve() {
+	const auto free = std::ranges::find(busy, char{ 0 });
+	if (free == busy.end())
+		throw std::logic_error("No free worker slot");
+	*free = 1;
+	return static_cast<size_t>(free - busy.begin());
+}
+
+size_t Environment::DefaultWorkerCount() {
+	// Preparation and analysis parallelize internally too, so a few concurrent jobs are enough to keep the GPU fed
+	return std::clamp<size_t>(std::thread::hardware_concurrency() / 4, 1, 4);
+}
+
 void Environment::StartScheduling() {
 	const std::lock_guard lock(schedulingMutex);
 	stopping = false;
@@ -214,18 +227,19 @@ bool Environment::MustRunAlone(const PreparedSimulation& next) {
 }
 
 bool Environment::IsDrained() const {
-	return stopping && unpreparedSimulations == 0 && !preparingSimulation
+	return stopping && unpreparedSimulations == 0 && preprocessWorkers.Running() == 0
 		&& preparedSimulations.empty() && !runningSimulation
-		&& processedSimulations.empty() && !postprocessingSimulation;
+		&& processedSimulations.empty() && postprocessWorkers.Running() == 0;
 }
 
 bool Environment::CanPrepare() const {
-	return !preparingSimulation && !pendingSimulations.empty()
-		&& preparedSimulations.size() < maxPreparedSimulations;
+	// Simulations being prepared count against the bound, as they will all become prepared
+	return preprocessWorkers.HasFree() && !pendingSimulations.empty()
+		&& preparedSimulations.size() + preprocessWorkers.Running() < maxPreparedSimulations;
 }
 
 bool Environment::CanPostprocess() const {
-	return !postprocessingSimulation && !processedSimulations.empty();
+	return postprocessWorkers.HasFree() && !processedSimulations.empty();
 }
 
 bool Environment::CanStartBatch() const {
@@ -275,14 +289,17 @@ std::vector<Environment::PreparedSimulation> Environment::TakeReadyBatch() {
 void Environment::MainLoop() {
 	timingStarted = std::chrono::steady_clock::now();
 
-	std::jthread preprocessThread;
+	// Indexed by worker slot. Reassigning a slot joins its previous thread, which has already released the slot
+	std::vector<std::jthread> preprocessThreads(preprocessWorkers.busy.size());
 	std::jthread simulationThread;
-	std::jthread postprocessThread;
+	std::vector<std::jthread> postprocessThreads(postprocessWorkers.busy.size());
 
 	while (true) {
 		std::optional<QueuedSimulation> toPrepare;
 		std::optional<ProcessedSimulation> toPostprocess;
 		std::vector<PreparedSimulation> toRun;
+		size_t preprocessWorker = 0;
+		size_t postprocessWorker = 0;
 		int batchId = 0;
 		{
 			std::unique_lock lock(schedulingMutex);
@@ -297,12 +314,12 @@ void Environment::MainLoop() {
 			if (CanPrepare()) {
 				toPrepare.emplace(std::move(pendingSimulations.front()));
 				pendingSimulations.pop_front();
-				preparingSimulation = true;
+				preprocessWorker = preprocessWorkers.Reserve();
 			}
 			if (CanPostprocess()) {
 				toPostprocess.emplace(std::move(processedSimulations.front()));
 				processedSimulations.pop_front();
-				postprocessingSimulation = true;
+				postprocessWorker = postprocessWorkers.Reserve();
 			}
 			if (CanStartBatch()) {
 				toRun = TakeReadyBatch();
@@ -312,12 +329,12 @@ void Environment::MainLoop() {
 		}
 
 		if (toPrepare) {
-			preprocessThread = std::jthread(
-				[this, next = std::move(*toPrepare)]() mutable { Preprocess(std::move(next)); });
+			preprocessThreads[preprocessWorker] = std::jthread([this, next = std::move(*toPrepare), preprocessWorker]() mutable {
+				Preprocess(std::move(next), preprocessWorker); });
 		}
 		if (toPostprocess) {
-			postprocessThread = std::jthread(
-				[this, next = std::move(*toPostprocess)]() mutable { Postprocess(std::move(next)); });
+			postprocessThreads[postprocessWorker] = std::jthread([this, next = std::move(*toPostprocess), postprocessWorker]() mutable {
+				Postprocess(std::move(next), postprocessWorker); });
 		}
 		if (!toRun.empty()) {
 			simulationThread = std::jthread(
@@ -326,7 +343,7 @@ void Environment::MainLoop() {
 	}
 }
 
-void Environment::Preprocess(QueuedSimulation next) {
+void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
 		auto simulation = BuildSimulation(next.job);
@@ -346,9 +363,13 @@ void Environment::Preprocess(QueuedSimulation next) {
 			simulation->name = next.job.name;
 		if (next.job.run)
 			simulation->PrepareDataBuffers();
+		if (next.job.run && simulation->simParams.em_variant)
+			Engine::PrepareEnergyMinimization(*simulation);
 		const auto elapsed = std::chrono::steady_clock::now() - started;
 		const std::lock_guard lock(schedulingMutex);
-		preparedSimulations.emplace_back(PreparedSimulation{
+		// Workers finish out of order. Keep the prepared queue in submission order, which batching treats as FIFO
+		const auto position = std::ranges::upper_bound(preparedSimulations, next.simulationId, {}, &PreparedSimulation::simulationId);
+		preparedSimulations.insert(position, PreparedSimulation{
 			next.simulationId, std::move(next.job), next.state, std::move(simulation), elapsed });
 	}
 	catch (...) {
@@ -357,7 +378,7 @@ void Environment::Preprocess(QueuedSimulation next) {
 	{
 		const std::lock_guard lock(schedulingMutex);
 		preprocessTime += std::chrono::steady_clock::now() - started;
-		preparingSimulation = false;
+		preprocessWorkers.Release(worker);
 		--unpreparedSimulations;
 	}
 	schedulerWakeup.notify_one();
@@ -406,7 +427,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 	schedulerWakeup.notify_one();
 }
 
-void Environment::Postprocess(ProcessedSimulation next) {
+void Environment::Postprocess(ProcessedSimulation next, size_t worker) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
 		if (next.job.outputs.contains(OutputSelect::FinalCoordinates)) {
@@ -428,7 +449,7 @@ void Environment::Postprocess(ProcessedSimulation next) {
 	{
 		const std::lock_guard lock(schedulingMutex);
 		postprocessTime += std::chrono::steady_clock::now() - started;
-		postprocessingSimulation = false;
+		postprocessWorkers.Release(worker);
 	}
 	schedulerWakeup.notify_one();
 }

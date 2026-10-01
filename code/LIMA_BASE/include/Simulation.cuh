@@ -172,7 +172,11 @@ public:
 	std::shared_ptr<BoxImage> boxImage = nullptr;
 	SimParams simParams;
 
-
+private:
+	// Energy-minimization preconditioner made ahead of time by Engine::PrepareEnergyMinimization, so the host work
+	// can overlap another running engine. Moved into the first Engine that runs this simulation
+	std::vector<float> emInverseStiffness;
+	std::vector<uint8_t> emWholeMolecule;
 
 	friend class Engine;
 };

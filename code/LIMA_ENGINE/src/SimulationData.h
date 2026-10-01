@@ -104,6 +104,7 @@ struct EngineSimulationData {
 	size_t nLogEntriesTransferred = 0;
 	bool finalized = false;
 	std::vector<float> finalForcesMagnitudeSquared;
+	EM::Preconditioner emPreconditioner; // Empty unless the engine uses energy minimization
 };
 
 struct EngineBatchData {

@@ -7,6 +7,7 @@
 struct PersistentCluster;
 struct PersistentClusterMeta;
 struct BondGroups;
+struct Box;
 
 // Energy minimization is preconditioned FIRE 2.0 (Guénolé et al. 2020, Comput. Mater. Sci. 175, 109584). Instead of F/m the
 // dynamics are driven by G = P^-1 F, where P is
@@ -41,6 +42,19 @@ namespace EM {
 
 	// 1 for pclusters that contain an entire molecule, i.e. no bonds to other pclusters
 	std::vector<uint8_t> FindWholeMoleculePclusters(size_t nPclusters, const BondGroups& bonds);
+
+	// The preconditioner of a single simulation, in its local pcluster indices. Computed per simulation, so it does not
+	// depend on which simulations share the batch, and is computed only once even when the batch is rebuilt
+	struct Preconditioner {
+		std::vector<float> inverseStiffness;	// See ComputeInverseStiffness
+		std::vector<uint8_t> wholeMolecule;		// See FindWholeMoleculePclusters
+
+		bool Fits(const Box& box) const;
+	};
+	Preconditioner MakePreconditioner(const Box& box, float nonbondedStiffness);
+	// Makes the preconditioners that do not fit their box, in parallel. Boxes and preconditioners are paired by index
+	void MakeMissingPreconditioners(const std::vector<const Box*>& boxes, const std::vector<Preconditioner*>& preconditioners,
+		float nonbondedStiffness);
 
 	// Sums over the particles of one simulation, first per block and then in a fixed order, so the result is deterministic
 	// and independent of which other simulations share the batch

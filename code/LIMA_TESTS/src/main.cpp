@@ -168,72 +168,6 @@ int main(int argc, char** argv) {
 		//Benchmarks::ToGmxLargeCif(envmode);
 
 		//ShowcaseMultisim();
-		//TestDisplayT4Batch();
-		//Display::RenderGrofile(TestUtils::AutomatedTestsDir() / "BuildMembraneSmall" / "molecule" / "membrane.gro");
-		//return 0;
-
-		//TestFourT4BatchMatchReference(env, envmode).RunToCompletion();
-		//return 0;
-		//PlotPmePotAsFactorOfDistance(envmode);
-		//TestConsistentEnergyWhenGoingFromLresToSres(envmode);
-		//TestLongrangeEsNoLJTwoParticles(envmode);
-		//TestLongrangeEsNoLJManyParticles(envmode);
-		//Lipids::_MakeLipids(true, false);
-		//PairbondForceAndPotentialSanityCheck(envmode);
-		//loadAndRunBasicSimulation("DisplayTest", envmode);
-		//Display::TestDisplay();
-		//TestDisplayT4();
-		//doPoolBenchmark(envmode);			// Two 1-particle molecules colliding
-		//loadAndRunBasicSimulation("PoolElectrostatic", envmode);
-		//doPoolCompSolBenchmark(envmode);	// One 1-particle molecule colliding with 1 solvent
-		//SinglebondForceAndPotentialSanityCheck(envmode);
-		//UreyBradleyForceAndPotentialSanityCheck(envmode);
-		//SinglebondOscillationTest(envmode);
-		//doSinglebondBenchmark(envmode);
-		//doAnglebondBenchmark(envmode);
-		//doDihedralbondBenchmark(envmode);
-		//loadAndRunBasicSimulation("SinglebondDaisychained", envmode, 0.0002);
-		//TestUtils::loadAndRunBasicSimulation("Dihedralbond2", envmode, 0.0002);
-		//doImproperDihedralBenchmark(envmode);
-		//TestUtils::loadAndRunBasicSimulation("improper", envmode, 7e-5, 2.3e-7);
-		//TestUtils::loadAndRunBasicSimulation("Met", envmode, 6.3e-4, 2e-6);
-		//loadAndEMAndRunBasicSimulation("Met", envmode, 4.1e-4, 2e-6);
-		//TestUtils::loadAndRunBasicSimulation("Phe", envmode, 4.1e-4, 2e-6);
-		//doPhenylalanineBenchmark(envmode);
-		//doEightResiduesNoSolvent(envmode);
-		//loadAndRunBasicSimulation("Solvents", envmode, 5.85e-6f, 1.1e-7);
-				//TestLongrangeEsNoLJ(envmode);
-		//MakeChargeParticlesSim();
-		//TestChargedParticlesVelocityInUniformElectricField(envmode);
-		//CoulombForceSanityCheck(envmode);
-		//TestElectrostaticsManyParticles(envmode);
-		//doPoolBenchmarkES(envmode);
-		//TestAttractiveParticlesInteractingWithESandLJ(envmode);
-		//TestIntegration(envmode);
-
-		//TestUtils::TestIsDeterministic([]() {return loadAndEMAndRunBasicSimulation("T4Lysozyme", Headless, 2.8e-2, 5e-4); }, 2, envmode);
-		//LoadEnergyMinAndRunBasicSimulation(env, envmode, "T4Lysozyme", "T4Lysozyme");
-		//loadAndRunBasicSimulation("T4Lysozyme", envmode,"T4Lysozyme");
-		//LoadAndRunBasicSimulation(env, envmode, "Solvents", "SolventBenchmark");
-
-		//const fs::path workDir = simulations_dir / "test";
-		//Lipids::Selection lipids;
-		//lipids.emplace_back(Lipids::Select{ "DPPE", workDir, 30.5 });
-		//lipids.emplace_back(Lipids::Select{ "DMPG", workDir, 39.5 });
-		//lipids.emplace_back(Lipids::Select{ "Cholesterol", workDir, 10 });
-		//lipids.emplace_back(Lipids::Select{ "SM18", workDir, 20 });
-		//GroFile grofile;
-		//grofile.box_size = Float3{ 20.f };
-		//TopologyFile topfile;
-		//topfile.SetSystem("Membrane");
-		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 5.f);
-		//SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 15.f);
-		//grofile->printToFile(workDir / "membrane.gro");
-		//topfile->printToFile(workDir / "membrane.top");
-
-		//TestBuildmembraneWithCustomlipidAndCustomForcefield(envmode);
-		//TestBuildmembraneSmall(envmode, false);
-		//TestAllStockholmlipids(env, envmode);
 
 		//Lipids::_MakeLipid("cholesterol");
 
@@ -252,53 +186,7 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark("membrane20", "membranesolvated_em");
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark("stmv", std::nullopt, 1000);
-		/*for (int i = 0; i < 10; i++)
-			Benchmarks::PrepareSimulation_stmv(envmode);*/
-			//Benchmarks::STMV(500);
-			//Benchmarks::Psome(envmode);
 
-
-			//Benchmarks::PrepareSimulation_stmv(envmode);
-			//Benchmarks::Psome(envmode);
-			//
-			// TopologyFile topfile1{ R"(C:\Users\Daniel\git_repo\LIMA_data\Solvents\molecule\topol.top)" };
-
-
-			//{
-			//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.gro)" };
-			//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4.top)" };
-			//	SimulationBuilder::SolvateGrofile(grofile, topfile);
-
-			//	grofile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.gro)" });
-			//	topfile.printToFile(fs::path{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\manyt4\manyt4_solvated.top)" });
-			//}
-
-			//{
-			//	GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.gro)" };
-			//	TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\membrane20\membranesolvated.top)" };
-
-			//	grofile.printToFile("membranesolvated_em.gro");
-			//	topfile.printToFile("membranesolvated_em.top");
-			//}
-
-			/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\T4Lysozyme\molecule\out.gro)" };
-			Display::RenderGrofile(grofile, true);*/
-
-
-			/*GroFile grofile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\em.gro)" };
-			TopologyFile topfile{ R"(C:\Users\Daniel\git_repo\LIMA_data\benchmarking\stmv\topol.top)" };
-			Environment& env = Environment::Get();
-			env.CreateSimulation(grofile, topfile, SimParams{});
-			env.run();*/
-
-			//ForceComparisons::DoAllForceComparisons(envmode);
-
-			//KernelAlgorithms::WarpSort64_Unittest(envmode);
-			//Benchmarks::Psome(envmode);
-	//Benchmarks::ManyT4(envmode);
-	//Benchmarks::PrepareSimulation_stmv(envmode);
-			//TestBuildmembraneSmall(envmode, false);
-			// 
 		//Benchmarks::Load3J3Q(env, envmode);
 		RunAllUnitTests();
 	}

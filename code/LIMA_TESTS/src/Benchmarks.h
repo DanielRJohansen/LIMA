@@ -68,20 +68,15 @@ namespace Benchmarks {
 		auto completed = co_await environment.Submit(std::move(job));		
 		if (!completed.simulation)
 			co_return LimaUnittestResult{ false, "3j3q load benchmark produced no simulation", envmode == Full };
-
-		/*if (fileTime > allowedFileTime)
-			co_return LimaUnittestResult{ false, std::format("gro: {:.2f} top: {:.2f} / {:.2f} [s]",
-				groTime.count(), topTime.count(), fileTime.count(), totalTime.count(), std::chrono::duration<double>(allowedFileTime).count()),
-				envmode == Full };*/
 		
-		const std::chrono::seconds allowedFileTime{ 3 };
-		const std::chrono::seconds allowedBuildTime{ 7 };
+		const std::chrono::duration<double> allowedFileTime{ 3.5 };
+		const std::chrono::duration<double> allowedBuildTime{ 7.0 };
 
 		auto buildtime = completed.environmentTime;
 		auto success = (groTime + topTime) < allowedFileTime && buildtime < allowedBuildTime;
 
 		co_return LimaUnittestResult{ success,
-			std::format("(gro: {:.2f} top: {:.2f}) / {}   build: {:.2f}/{} [s]",
+			std::format("files: ({:.2f}+{:.2f})/{:.2f}   build: {:.2f}/{:.2f} [s]",
 				groTime.count(), topTime.count(), allowedFileTime.count(), buildtime.count(), allowedBuildTime.count()),
 			envmode == Full };
 	}

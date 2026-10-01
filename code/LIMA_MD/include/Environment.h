@@ -8,6 +8,7 @@
 #include "LiveEditCommands.h"
 #include "RenderTask.h"
 
+#include <algorithm>
 #include <memory>
 #include <chrono>
 #include <condition_variable>
@@ -54,6 +55,8 @@ struct SimulationJob {
 	std::optional<TopologyFile> topfile;
 	std::unique_ptr<Simulation> initialSimulation;
 	EnvMode mode = EnvMode::Headless;
+	// Callbacks of different jobs may run concurrently on Environment's worker threads,
+	// so they must not modify state shared with other jobs without synchronization.
 	std::function<void(GroFile&, TopologyFile&, SimParams&)> preprocess;
 	std::function<void(Simulation&)> configureSimulation;
 	std::function<void(SimulationResult&)> postprocess;
@@ -198,6 +201,17 @@ private:
 		SimulationResult result;
 	};
 
+	// Worker slots of one pipeline stage. Reserved by MainLoop and released by the worker, both with schedulingMutex held.
+	struct WorkerSlots {
+		explicit WorkerSlots(size_t count) : busy(count, 0) {}
+		size_t Running() const { return std::ranges::count(busy, char{ 1 }); }
+		bool HasFree() const { return Running() < busy.size(); }
+		size_t Reserve();
+		void Release(size_t slot) { busy.at(slot) = 0; }
+		std::vector<char> busy;
+	};
+	static size_t DefaultWorkerCount();
+
 	void StartScheduling();
 	void StopScheduling();
 	void MainLoop();
@@ -211,9 +225,9 @@ private:
 
 
 	// Functions that are only run by their own dedicated worker thread
-	void Preprocess(QueuedSimulation next);					// preprocessor thread	
+	void Preprocess(QueuedSimulation next, size_t worker);	// preprocessor threads
 	void RunPreparedSimulations(std::vector<PreparedSimulation> next, int batchId);	// simulation thread
-	void Postprocess(ProcessedSimulation next);				// postprocessor thread
+	void Postprocess(ProcessedSimulation next, size_t worker);	// postprocessor threads
 	//
 
 
@@ -257,9 +271,10 @@ private:
 	SimulationId nextSimulationId = 1;
 	std::deque<PreparedSimulation> preparedSimulations;
 	std::deque<ProcessedSimulation> processedSimulations;
-	bool preparingSimulation = false;
+	// Preparation and postprocessing are CPU work, so several jobs may be in either stage while the GPU runs a batch.
+	WorkerSlots preprocessWorkers{ DefaultWorkerCount() };
 	bool runningSimulation = false;
-	bool postprocessingSimulation = false;
+	WorkerSlots postprocessWorkers{ DefaultWorkerCount() };
 	bool stopping = false;
 	std::jthread coordinator;
 

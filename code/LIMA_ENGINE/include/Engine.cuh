@@ -66,6 +66,10 @@ public:
 
 	static bool TestAlgorithms();
 
+	// Optional. Makes the energy-minimization preconditioner of an EM simulation before an Engine is constructed for it,
+	// so this host work does not delay the GPU. The simulation must not be modified before it is run
+	static void PrepareEnergyMinimization(Simulation& simulation);
+
 	// Offloads current pcluster state to another (existing) device buffer, and returns a reference to that
 	// 1. This ensure that this funciton is rather quick, and the caller can continue sim immediately after this
 	// kernel, and do copytohost async afterwards
@@ -114,6 +118,8 @@ private:
 	template <typename BoundaryCondition>
 	void UpdateEnergyMinimization(Float3 boxSize);
 	void ResetEnergyMinimization();
+	bool UsesEnergyMinimization() const;
+	void UploadEnergyMinimizationPreconditioner();
 	void RebuildActiveBatch();
 	void InitializePME();
 	void FinalizeSimulation(EngineSimulationData& simData);

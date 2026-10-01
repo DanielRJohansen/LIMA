@@ -99,9 +99,9 @@ namespace LJ {
 		return force;	// [1/24 J/mol/nm]
 	}
 
-	// Returns fe on p0, invert to get fe on p1
+	// EM variant of ComputeParticleParticleNB, kept separate since the force activation function is applied to the LJ force alone
 	template<bool computePotE, bool emvariant>
-	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId, float ewaldKappa)
+	__device__ inline ForceEnergy ComputeParticleParticleNBEm(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId, float ewaldKappa)
 	{
 		ForceEnergy fe{}; // on p0
 		
@@ -158,6 +158,72 @@ namespace LJ {
 					diff.x, diff.y, diff.z,
 					sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt,
 					sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf,
+					sc0.charge[sc0Index], pdOwned.params.charge,
+					diff.len());
+			}
+		}
+
+		return fe;
+	}
+
+	// Returns fe on p0, invert to get fe on p1
+	// Branchless: LJ and coulomb share a single rsqrt, and are combined into a single scalar applied to diff.
+	// Padding particles (epsilonSqrt -1, charge 0) may overlap other particles, so their (possibly NaN) terms are discarded with selects
+	template<bool computePotE, bool emvariant>
+	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId, float ewaldKappa)
+	{
+		if constexpr (emvariant)
+			return ComputeParticleParticleNBEm<computePotE, emvariant>(pdOwned, sc0, sc0Index, p0ParticleGlobalId, p1ParticleGlobalId, ewaldKappa);
+
+		ForceEnergy fe{}; // on p0
+
+		const Float3 diff{
+			sc0.posX[sc0Index] - pdOwned.position.x,
+			sc0.posY[sc0Index] - pdOwned.position.y,
+			sc0.posZ[sc0Index] - pdOwned.position.z
+		};
+		const float distSq = diff.lenSquared();
+		const float distInv = rsqrtf(distSq);
+		const float distSqInv = 1.f / distSq; // Not distInv^2, the steep LJ terms amplify the rsqrt error into noticeable energy drift
+
+		float forceScalar = 0.f; // force = diff * forceScalar, attractive when positive
+
+		if constexpr (ENABLE_LJ) {
+			const bool ljValid = sc0.epsilonSqrt[sc0Index] != -1.f && pdOwned.params.epsilonSqrt != -1.f;
+			const float sigma = CalcSigma(sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf);
+			const float epsilon = CalcEpsilon(sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt);
+
+			float s = (sigma * sigma) * distSqInv;
+			s = s * s * s;
+			const float ljScalar = 24.f * epsilon * s * distSqInv * (1.f - 2.f * s);	// [J/mol/nm^2]
+			forceScalar += ljValid ? ljScalar : 0.f;
+
+			if constexpr (computePotE && ENABLE_POTE)
+				fe.potE += ljValid ? 4.f * epsilon * s * (s - 1.f) * 0.5f : 0.f;	// 0.5 to account for splitting the potential between the 2 particles
+		}
+
+		if constexpr (ENABLE_ES_SR) {
+			const float chargeProduct = sc0.charge[sc0Index] * pdOwned.params.charge;
+			const bool coulombValid = chargeProduct != 0.f;
+
+			// Repulsive for equal charges, hence the negation
+			float coulombScalar = -chargeProduct * PhysicsUtilsDevice::modifiedCoulombConstant * distInv * distSqInv;
+			if constexpr (ENABLE_ERFC_FOR_EWALD)
+				coulombScalar *= PhysicsUtilsDevice::CalcErfcScalar(distSq * distInv, distSq, ewaldKappa);
+			forceScalar += coulombValid ? coulombScalar : 0.f;
+
+			if constexpr (computePotE)
+				fe.potE += coulombValid ? PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq, ewaldKappa) : 0.f;
+		}
+
+		fe.force = diff * forceScalar;
+
+		if constexpr (FORCE_CHECKS) {
+			if (fe.force.isNan() || isnan(fe.potE)) {
+				printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
+					diff.x, diff.y, diff.z,
+					sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf,
+					sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt,
 					sc0.charge[sc0Index], pdOwned.params.charge,
 					diff.len());
 			}

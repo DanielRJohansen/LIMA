@@ -193,9 +193,10 @@ namespace PhysicsUtilsDevice {
 		return potential;
 	}
 
+	// Returns [J/mol], with 0.5 to account for splitting the potential between the 2 particles
 	__device__ inline float CalcCoulumbPotential(const float chargeProduct, const float distSq, const float ewaldKappa)
 	{
-		return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa);
+		return CalcCoulumbPotentialTrueImplementation(chargeProduct, distSq, ewaldKappa) * modifiedCoulombConstant * 0.5f;
 	}
 
 }

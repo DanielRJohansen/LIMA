@@ -20,7 +20,7 @@ namespace EnergyMinimizationTests {
 	namespace {
 		constexpr float roughForceTolerance = 1000.f;
 		constexpr float fineForceTolerance = 200.f;
-		constexpr int maximumSteps = 100000;
+		constexpr int maximumSteps = 2000;
 		constexpr std::chrono::duration<double> maximumRunTime{ 20. };
 
 		struct TestCase {
@@ -93,6 +93,7 @@ namespace EnergyMinimizationTests {
 		Result RunTestCase(const TestCase& testCase) {
 			SimParams params = SimParams::BasicEMSimParams(fineForceTolerance);
 			params.n_steps = maximumSteps;
+			params.data_logging_interval = 0; // Trajectory buffers are preallocated for n_steps, which does not fit in memory for 3J3Q
 
 			SimulationJob job{
 				testCase.directory,

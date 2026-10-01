@@ -166,14 +166,25 @@ namespace LJ {
 		return fe;
 	}
 
+	// The non-EM ComputeParticleParticleNB expects both particles' epsilonSqrt and charge to be pre-scaled with these,
+	// so the pair product directly yields 24*epsilon and modifiedCoulombConstant*chargeProduct
+	constexpr float ljEpsilonSqrtScale = 4.898979485566356f; // sqrt(24)
+	__device__ inline float CoulombChargeScale() { return sqrtf(PhysicsUtilsDevice::modifiedCoulombConstant); }
+	__device__ inline void PrescaleNBParams(float& epsilonSqrt, float& charge) {
+		epsilonSqrt *= ljEpsilonSqrtScale;
+		charge *= CoulombChargeScale();
+	}
+
 	// Returns fe on p0, invert to get fe on p1
 	// Branchless: LJ and coulomb share a single rsqrt, and are combined into a single scalar applied to diff.
-	// Padding particles (epsilonSqrt -1, charge 0) may overlap other particles, so their (possibly NaN) terms are discarded with selects
+	// Masked pairs (bonded, self or padding, see BuildNointeractionMatricesKernel) are discarded with a select,
+	// since padding particles may overlap other particles and produce NaN.
+	// Non-EM: epsilonSqrt and charge of both particles must be pre-scaled with PrescaleNBParams
 	template<bool computePotE, bool emvariant>
-	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId, float ewaldKappa)
+	__device__ inline ForceEnergy ComputeParticleParticleNB(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, bool masked, float ewaldKappa)
 	{
 		if constexpr (emvariant)
-			return ComputeParticleParticleNBEm<computePotE, emvariant>(pdOwned, sc0, sc0Index, p0ParticleGlobalId, p1ParticleGlobalId, ewaldKappa);
+			return masked ? ForceEnergy{} : ComputeParticleParticleNBEm<computePotE, emvariant>(pdOwned, sc0, sc0Index, -1, -1, ewaldKappa);
 
 		ForceEnergy fe{}; // on p0
 
@@ -189,34 +200,32 @@ namespace LJ {
 		float forceScalar = 0.f; // force = diff * forceScalar, attractive when positive
 
 		if constexpr (ENABLE_LJ) {
-			const bool ljValid = sc0.epsilonSqrt[sc0Index] != -1.f && pdOwned.params.epsilonSqrt != -1.f;
 			const float sigma = CalcSigma(sc0.sigmaHalf[sc0Index], pdOwned.params.sigmaHalf);
-			const float epsilon = CalcEpsilon(sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt);
+			const float epsilonTimes24 = CalcEpsilon(sc0.epsilonSqrt[sc0Index], pdOwned.params.epsilonSqrt); // Pre-scaled
 
 			float s = (sigma * sigma) * distSqInv;
 			s = s * s * s;
-			const float ljScalar = 24.f * epsilon * s * distSqInv * (1.f - 2.f * s);	// [J/mol/nm^2]
-			forceScalar += ljValid ? ljScalar : 0.f;
+			forceScalar += epsilonTimes24 * s * distSqInv * (1.f - 2.f * s);	// [J/mol/nm^2]
 
 			if constexpr (computePotE && ENABLE_POTE)
-				fe.potE += ljValid ? 4.f * epsilon * s * (s - 1.f) * 0.5f : 0.f;	// 0.5 to account for splitting the potential between the 2 particles
+				fe.potE += epsilonTimes24 * (1.f / 12.f) * s * (s - 1.f);	// 4*eps*s*(s-1) * 0.5 to account for splitting the potential between the 2 particles
 		}
 
 		if constexpr (ENABLE_ES_SR) {
-			const float chargeProduct = sc0.charge[sc0Index] * pdOwned.params.charge;
-			const bool coulombValid = chargeProduct != 0.f;
+			const float chargeProductTimesK = sc0.charge[sc0Index] * pdOwned.params.charge; // Pre-scaled
 
 			// Repulsive for equal charges, hence the negation
-			float coulombScalar = -chargeProduct * PhysicsUtilsDevice::modifiedCoulombConstant * distInv * distSqInv;
+			float coulombScalar = -chargeProductTimesK * distInv * distSqInv;
 			if constexpr (ENABLE_ERFC_FOR_EWALD)
 				coulombScalar *= PhysicsUtilsDevice::CalcErfcScalar(distSq * distInv, distSq, ewaldKappa);
-			forceScalar += coulombValid ? coulombScalar : 0.f;
+			forceScalar += coulombScalar;
 
 			if constexpr (computePotE)
-				fe.potE += coulombValid ? PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, distSq, ewaldKappa) : 0.f;
+				fe.potE += PhysicsUtilsDevice::CalcCoulumbPotentialTrueImplementation(chargeProductTimesK, distSq, ewaldKappa) * 0.5f; // 0.5 to account for splitting the potential between the 2 particles
 		}
 
-		fe.force = diff * forceScalar;
+		fe.force = diff * (masked ? 0.f : forceScalar);
+		fe.potE = masked ? 0.f : fe.potE;
 
 		if constexpr (FORCE_CHECKS) {
 			if (fe.force.isNan() || isnan(fe.potE)) {

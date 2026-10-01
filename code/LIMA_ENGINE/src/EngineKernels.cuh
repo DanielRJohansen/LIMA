@@ -237,8 +237,16 @@ __global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclu
 
 // blockdim=16,4,1
 // computePotE must match logData of the following SuperclusterIntegrateKernel, as results only contain potE when computePotE
+//
+// __launch_bounds__(64, 20): max 64 threads per block, and we want at least 20 blocks resident per SM.
+// This kernel is bound by instruction issue, so it needs many resident warps to always have one ready to issue.
+// Residency is limited by the SM's 64K register file: 65536 / (20 blocks * 64 threads) = 51 -> 48 registers per thread.
+// Without the bound the compiler happily picks ~59 registers (rounded to 64), which only fits 16 blocks and was measurably slower.
+// - The kernel must never be launched with more than 64 threads per block, or the launch fails
+// - If future changes need more than 48 registers, the compiler spills to (slow) local memory instead of growing,
+//   so after larger changes check ncu for local memory traffic, and revisit the bound
 template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices, 
+__global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks, SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices, 
 	const SuperClusterMeta* const superClusterMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
 	const int scId = blockIdx.x;
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
@@ -253,8 +261,14 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		task = tasks[scId];
 	}	
 	//feAcc[threadIdx.x] = ForceEnergy{};
-	cooperative_groups::wait(tb);	
+	cooperative_groups::wait(tb);
 	__syncthreads();
+
+	if constexpr (!energyMinimize) {
+		if (threadIdx.y == 0)
+			LJ::PrescaleNBParams(scSelf.epsilonSqrt[threadIdx.x], scSelf.charge[threadIdx.x]);
+		__syncthreads();
+	}
 
 
 	ForceEnergy feInScSelf{};
@@ -269,6 +283,8 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 		//cooperative_groups::memcpy_async(tb, &nointeractionsMatrix, &nointeractionMatrices[task.nointeractionMatrixIndex[indexInQueriesBuffer]], sizeof(BoolMatrix16x16));
 		PData pdataQueryAtom{};
 		superClusters[queryScId].LoadPdata(pdataQueryAtom, threadIdx.x);
+		if constexpr (!energyMinimize)
+			LJ::PrescaleNBParams(pdataQueryAtom.params.epsilonSqrt, pdataQueryAtom.params.charge);
 		BoundaryCondition::ApplyHyperpos(Float3{ scSelf.posX[0], scSelf.posY[0], scSelf.posZ[0] }, pdataQueryAtom.position, boxSize, boxSizeInv);
 		const uint16_t noInteractions = validQuery
 			? nointeractionMatrices[indexInQueriesBuffer].GetRow(threadIdx.x)
@@ -279,9 +295,9 @@ __global__ void NbNonlocalKernel(const SuperCluster* const superClusters, const 
 
 		for (int i = 0; i < 16; i++) {
 			const int indexInScSelf = (threadIdx.x + i) & 15; //% SuperCluster::maxParticles;
-			const bool skip = BoolMatrix16x16::Get(noInteractions, indexInScSelf);
+			const bool masked = BoolMatrix16x16::Get(noInteractions, indexInScSelf);
 
-			ForceEnergy fe = skip ? ForceEnergy{} : LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pdataQueryAtom, scSelf, indexInScSelf, -1, -1, ewaldKappa);
+			ForceEnergy fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pdataQueryAtom, scSelf, indexInScSelf, masked, ewaldKappa);
 			feInQuerySc += fe;
 
 			const int sourceLane = (threadIdx.x - i) & 15;

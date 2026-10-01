@@ -517,6 +517,7 @@ void Engine::_deviceMaster() {
 		const auto* scData = batch->superClustersControl->scData;
 		const auto* scMeta = batch->superClustersControl->scMeta;
 		const Float3 boxSizeInv = boxSize.Inv();
+		// Blocksize must not exceed 64 threads, see __launch_bounds__ on the kernel
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, true><<<nScs, dim3(16,4,1), 0, cudaStreams[0]>>>(
 			scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), batch->idsOfQuerySuperclustersDevice.Get(),
 			batch->resultIndicesDevice.Get(), batch->noInteractionMatricesDevice.Get(), scMeta, boxSize, boxSizeInv, batch->ewaldKappa);

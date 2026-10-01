@@ -503,25 +503,24 @@ __global__ void BuildNointeractionMatricesKernel(
 
 		uint16_t rowData = 0;
 
-		if (token.UseNointeractionMatrix()) {
-			const int scIdQuery = token.GetQueryId();
-			const bool isSelfInteractionTask = scId == scIdQuery;
+		// Padding pairs are always masked, so the NB kernel does not need to check particle validity per pair
+		const int scIdQuery = token.GetQueryId();
+		const bool isSelfInteractionTask = scId == scIdQuery;
+		const int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
 
-			for (int col = 0; col < 16; ++col) {
-				const int pidSelf = superClusterMetas[scId].globalParticleIds[col];
-				const int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
+		for (int col = 0; col < 16; ++col) {
+			const int pidSelf = superClusterMetas[scId].globalParticleIds[col];
 
-				if (pidSelf == -1 || pidQuery == -1)
-					continue;
+			bool noInteraction;
+			if (pidSelf == -1 || pidQuery == -1)
+				noInteraction = true;
+			else if (token.UseNointeractionMatrix())
+				noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery) || (isSelfInteractionTask && row == col);
+			else
+				noInteraction = false;
 
-				bool noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery);
-
-				if (isSelfInteractionTask && row == col)
-					noInteraction = true;
-
-				if (noInteraction)
-					BoolMatrix16x16::SetValueInRow(col, rowData);
-			}
+			if (noInteraction)
+				BoolMatrix16x16::SetValueInRow(col, rowData);
 		}
 
 		nointeractionMatrices[matrixIndex].SetRow(row, rowData);

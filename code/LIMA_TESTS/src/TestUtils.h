@@ -356,6 +356,13 @@ namespace TestUtils {
 		std::string message;
 	};
 
+	// Number of LimaUnittestManagers alive on this thread. Without one, nothing resumes a suspended test,
+	// so co_await instead blocks until the simulation is done. This lets tests be called directly, eg. from main
+	inline int& ActiveTestManagers() {
+		thread_local int count = 0;
+		return count;
+	}
+
 	// Coroutine used only by the test runner. A test runs immediately until it
 	// awaits a SimulationHandle; LimaUnittestManager resumes it when that handle
 	// becomes ready. This keeps sequences of dependent submissions linear without
@@ -391,7 +398,8 @@ namespace TestUtils {
 				promise_type& promise;
 				SimulationHandle handle;
 
-				bool await_ready() const { return handle.IsReady(); }
+				// Without a test manager we dont suspend, and await_resume blocks on the result instead
+				bool await_ready() const { return handle.IsReady() || ActiveTestManagers() == 0; }
 				void await_suspend(std::coroutine_handle<>) { promise.awaitedSimulation = handle; }
 				SimulationResult await_resume() {
 					promise.awaitedSimulation.reset();
@@ -528,9 +536,10 @@ namespace TestUtils {
 
 	class LimaUnittestManager {
 	public:
-		LimaUnittestManager() { ResetVarianceCoefficientResults(); }
+		LimaUnittestManager() { ResetVarianceCoefficientResults(); ActiveTestManagers()++; }
 		~LimaUnittestManager() {
 			Run();
+			ActiveTestManagers()--;
 			WriteActualVarianceCoefficientResults();
 			Environment::Get().PrintDevPerformanceReport();
 			if (successCount == tests.size()) setConsoleTextColorGreen();
@@ -616,7 +625,7 @@ namespace TestUtils {
 		job.mode = envmode;
 		job.postprocess = SimAnalysis::AnalyzeEnergy;
 
-		auto completed = envmode == EnvMode::Full ? environment.Submit(std::move(job)).Get() : co_await environment.Submit(std::move(job));
+		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation)
 			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
 		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {

@@ -79,8 +79,8 @@ namespace Benchmarks {
 
 		if (!completed.simulation)
 			co_return LimaUnittestResult{ false, "3j3q load benchmark produced no simulation", envmode == Full };
-		co_return LimaUnittestResult{ totalTime < totalTime,
-			std::format("3j3q files: {:.3f} build: {:.3f} total: {:.3f} allowed: {:.3f} [s]",
+		co_return LimaUnittestResult{ totalTime < allowedTotalTime,
+			std::format("3j3q files: {:.2f} build: {:.2f} total: {:.2f}/{:.2f} [s]",
 				fileTime.count(), completed.environmentTime.count(), totalTime.count(),
 				std::chrono::duration<double>(allowedTotalTime).count()),
 			envmode == Full };

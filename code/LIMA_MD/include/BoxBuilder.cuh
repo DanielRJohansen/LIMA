@@ -7,7 +7,7 @@
 
 namespace BoxBuilder
 {
-	std::unique_ptr<Box> BuildBox(const SimParams& params, BoxImage& boxImage);
+	std::unique_ptr<Box> BuildBox(const SimParams&, BoxImage&, EnvMode);
 
 	// This function expects all ptr's of simulation->box to be pre-allocated on host
 	void copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsrc, uint32_t boxsrc_current_step);

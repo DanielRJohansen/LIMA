@@ -7,6 +7,8 @@
 #include <optional>
 #include <string_view>
 #include <unordered_set>
+#include <unordered_map>
+#include <cstdint>
 
 #include <glm/glm.hpp>
 
@@ -218,17 +220,45 @@ void AssignSecondaryStructure(InterpretedChains& structure)
 	for (const InterpretedChain& chain : structure)
 		sheetContacts.emplace_back(chain.size(), false);
 
+	// Residues can only be in contact if their CAs are within maxCaDistance, so instead of comparing all pairs,
+	// we put the residues in a grid, and only compare with residues in the neighboring cells. The criteria are symmetric
+	// and only ever set contacts to true, so checking each pair once gives the same result as checking all ordered pairs
+	constexpr float maxCaDistance = 0.75f;
+	constexpr float cellSize = 0.8f; // Slightly larger than maxCaDistance, so rounding can never hide a neighbor
+	struct ResidueRef { std::size_t chain; std::size_t index; };
+	auto CellOf = [](const glm::vec3& position) { return glm::ivec3(glm::floor(position / cellSize)); };
+	auto CellKey = [](const glm::ivec3& cell) {
+		constexpr uint64_t mask = (1ull << 21) - 1;
+		return ((static_cast<uint64_t>(cell.x) & mask) << 42) | ((static_cast<uint64_t>(cell.y) & mask) << 21) | (static_cast<uint64_t>(cell.z) & mask);
+		};
+
+	// Helices are never part of a sheet contact
+	std::unordered_map<uint64_t, std::vector<ResidueRef>> grid;
+	for (std::size_t chain = 0; chain < structure.size(); ++chain)
+		for (std::size_t i = 0; i < structure[chain].size(); ++i)
+			if (structure[chain][i].secondaryStructure != SecondaryStructure::Helix)
+				grid[CellKey(CellOf(structure[chain][i].ca))].push_back({ chain, i });
+
 	for (std::size_t chainA = 0; chainA < structure.size(); ++chainA) {
 		for (std::size_t i = 0; i < structure[chainA].size(); ++i) {
-			for (std::size_t chainB = chainA; chainB < structure.size(); ++chainB) {
-				for (std::size_t j = 0; j < structure[chainB].size(); ++j) {
-					if (chainA == chainB && (i > j ? i - j : j - i) < 3)
+			InterpretedResidue& a = structure[chainA][i];
+			if (a.secondaryStructure == SecondaryStructure::Helix)
+				continue;
+
+			const glm::ivec3 cellA = CellOf(a.ca);
+			for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) for (int dz = -1; dz <= 1; dz++) {
+				const auto cell = grid.find(CellKey(cellA + glm::ivec3{ dx, dy, dz }));
+				if (cell == grid.end())
+					continue;
+
+				for (const auto [chainB, j] : cell->second) {
+					// Each unordered pair once
+					if (chainB < chainA || (chainB == chainA && j <= i))
 						continue;
-					InterpretedResidue& a = structure[chainA][i];
+					if (chainA == chainB && j - i < 3)
+						continue;
 					InterpretedResidue& b = structure[chainB][j];
-					if (a.secondaryStructure == SecondaryStructure::Helix
-						|| b.secondaryStructure == SecondaryStructure::Helix
-						|| glm::length(a.ca - b.ca) > 0.75f
+					if (glm::length(a.ca - b.ca) > maxCaDistance
 						|| (!extendedCandidates[chainA][i] && !extendedCandidates[chainB][j]))
 						continue;
 

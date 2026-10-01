@@ -496,7 +496,7 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		grofile, topolfile, V1,
 		std::make_unique<LimaLogger>(LimaLogger::normal, job.mode, "moleculebuilder", job.workDir),
 		IGNORE_HYDROGEN, simParams);
-	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage));
+	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage, job.mode));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
 	simulation->name = grofile.title;
 	job.grofile.emplace(std::move(grofile));
@@ -518,7 +518,7 @@ void Environment::InitializeLiveEditSimulation(
 		params
 		);
 
-	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage));
+	auto simulation = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *boxImage, mode));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage));
 	simulation->name = grofile.title;
 	SetLiveEditSimulation(std::move(simulation), mode, workDir);

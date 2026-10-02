@@ -5,7 +5,6 @@
 #include "Constants.h"
 #include "Simulation.cuh"
 #include "SimulationData.h"
-#include "EngineUtilsWarnings.cuh"
 #include "LimaPositionSystem.cuh"
 #include "LimaTypes.cuh"
 #include "Constants.h"
@@ -25,15 +24,6 @@ namespace EngineUtils {
 		return BoxGrid::Get1dIndex(newNodeIndex, boxSize);
 	}
 
-	// returns pos_tadd1
-	__device__ static Coord integratePositionVVS(const Coord& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
-		if constexpr (!ENABLE_INTEGRATEPOSITION) {
-			return pos;
-		}
-
-		const Coord pos_tadd1 = pos + Coord{ (vel * dt + force * (0.5f / mass * dt * dt)) };				// precise version
-		return pos_tadd1;
-	}
 	constexpr static Float3 IntegratePositionVVS(const Float3& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
 		if constexpr (!ENABLE_INTEGRATEPOSITION) {
 			return pos;

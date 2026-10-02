@@ -15,10 +15,7 @@
 
 
 class Thermostat;
-class CompoundGridNode;
-struct CompoundQuickData;
 struct ForceEnergyInterims;
-class TinymolTransferModule;
 struct SuperClustersControl;
 struct PClusterTransfermodule;
 struct PersistentCluster;

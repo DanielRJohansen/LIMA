@@ -755,7 +755,7 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 
 
 __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gridpointsPerDim,
-	Double3 boxLen,		// [nm]
+	double boxLenX, double boxLenY, double boxLenZ,		// [nm]
 	double ewaldKappa	// [nm^-1]
 ) {
 	const Int3 halfNodes = gridpointsPerDim / 2;
@@ -775,15 +775,15 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gri
 	// Ewald kappa fixed
 	//double delta = boxLen / (double)gridpointsPerDim;		// [nm]
 	double delta = std::min(std::min(	// TODO: Compute this on host instead
-		boxLen.x / (double)gridpointsPerDim.x,
-		boxLen.y / (double)gridpointsPerDim.y),
-		boxLen.z / (double)gridpointsPerDim.z);	// [nm]
+		boxLenX / (double)gridpointsPerDim.x,
+		boxLenY / (double)gridpointsPerDim.y),
+		boxLenZ / (double)gridpointsPerDim.z);	// [nm]
 
 
 	// Physical wavevectors
-	double kx = (2.0 * PI * (double)kxIndex) / boxLen.x;
-	double ky = (2.0 * PI * (double)kyShiftedIndex) / boxLen.y;
-	double kz = (2.0 * PI * (double)kzShiftedIndex) / boxLen.z;
+	double kx = (2.0 * PI * (double)kxIndex) / boxLenX;
+	double ky = (2.0 * PI * (double)kyShiftedIndex) / boxLenY;
+	double kz = (2.0 * PI * (double)kzShiftedIndex) / boxLenZ;
 
 	double kSquared = kx * kx + ky * ky + kz * kz;
 
@@ -875,7 +875,7 @@ PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations
 	selfenergyCorrections.SetData(corrections);
 	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
 	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
-		greensFunctionScalars, gridpointsPerDim, Double3{boxlenNm}, ewaldKappa);
+		greensFunctionScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa);
 	LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel");
 	SetActiveSimulations(simulations);
 }

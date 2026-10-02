@@ -6,7 +6,6 @@
 #include "EngineUtils.cuh"
 
 #include "BoundaryCondition.cuh"
-#include "SolventBlockTransfers.cuh"
 #include "DeviceAlgorithms.cuh"
 
 //#include <cuda/pipeline>

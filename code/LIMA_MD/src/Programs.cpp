@@ -45,7 +45,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 	SimParams params;
 	params.em_variant = true;
-	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, V1, {}, false, params);
+	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, params);
 
 	std::vector<std::string> atomNames;
 	for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {

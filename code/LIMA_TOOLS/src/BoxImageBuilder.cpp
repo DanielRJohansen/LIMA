@@ -791,9 +791,6 @@ std::vector<int> ReorderSubchains(const std::vector<int>& ids, const std::unorde
 std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	const GroFile& grofile,
 	const TopologyFile& topol_file,
-	VerbosityLevel vl,
-	std::unique_ptr<LimaLogger> logger,
-	bool ignore_hydrogens,
 	const SimParams& simparams
 )
 {

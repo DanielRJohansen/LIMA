@@ -7,7 +7,6 @@
 #include "Constants.h"
 #include "Simulation.cuh"
 
-#include "EngineUtilsWarnings.cuh"
 #include "BoundaryConditionPublic.h"
 
 #include "LimaTypes.cuh"
@@ -43,37 +42,6 @@ namespace LIMAPOSITIONSYSTEM {
 		};
 	}
 
-	static Coord getRelativeCoord(const Float3& absPosNM, const NodeIndex& nodeindex, const int max_node_diff, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
-		// Subtract nodeindex from abs position to get relative position
-		Float3 hyperPos = absPosNM;
-		const Float3 nodePos = nodeIndexToAbsolutePosition(nodeindex);
-		BoundaryConditionPublic::applyHyperposNM(nodePos, hyperPos, boxlen_nm, bc);
-
-		const Float3 relpos = hyperPos - nodePos;
-
-		if (relpos.LargestMagnitudeElement() > static_cast<float>(max_node_diff)*BoxGrid::blocksizeNM) {
-			/*auto absPos = absolute_position.toFloat3();
-			auto hPos = hyperPos.toFloat3();
-			auto nPos = nodePos.toFloat3();*/
-			throw std::runtime_error("Tried to place a position that was not correcly assigned a node.");
-			// Pos: " + absPos.toString() + " hyperpos : " + hPos.toString() + " nodePos : " + nPos.toString());
-			//+ "% f % f % f Hyperpos % f % f % f node % f % f % f");
-		}
-
-		return Coord{ relpos };
-	}
-
-	__host__ static std::tuple<NodeIndex, Coord> absolutePositionPlacement(const Float3& position, const Int3& boxlen_nm, BoundaryConditionSelect bc) {
-		NodeIndex nodeindex = PositionToNodeIndexNM(position);	// TEMP
-		BoundaryConditionPublic::applyBC(nodeindex, boxlen_nm, bc);
-
-		const Coord relpos = getRelativeCoord(position, nodeindex, 1, Float3::FromInt3(boxlen_nm), bc);
-		return std::make_tuple(nodeindex, relpos);
-	}
-
-	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Coord& coord) {
-		return nodeindex.toFloat3() + coord.ToRelpos();
-	}
 	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Float3& relposNM) {
 		return nodeIndexToAbsolutePosition(nodeindex) + relposNM;
 	}
@@ -116,34 +84,6 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 
-
-	__device__ static NodeIndex getOnehotDirection(const Coord relpos, const int32_t threshold) {
-		const int32_t magnitude_x = std::abs(relpos.x);
-		const int32_t magnitude_y = std::abs(relpos.y);
-		const int32_t magnitude_z = std::abs(relpos.z);
-
-		const bool out_of_bounds = 
-			(relpos.x < -threshold || relpos.x >= threshold) ||
-			(relpos.y < -threshold || relpos.y >= threshold) ||
-			(relpos.z < -threshold || relpos.z >= threshold);
-
-		const bool is_x_largest = (magnitude_x >= magnitude_y) && (magnitude_x >= magnitude_z);
-		const bool is_y_largest = (magnitude_y >= magnitude_x) && (magnitude_y >= magnitude_z);
-		const bool is_z_largest = (magnitude_z >= magnitude_x) && (magnitude_z >= magnitude_y);
-
-		const int x_component = out_of_bounds * is_x_largest * (relpos.x < 0 ? -1 : 1);
-		const int y_component = out_of_bounds * is_y_largest * (relpos.y < 0 ? -1 : 1);
-		const int z_component = out_of_bounds * is_z_largest * (relpos.z < 0 ? -1 : 1);
-
-		return NodeIndex{ x_component, y_component, z_component };
-	}
-
-	// Since coord is rel to 0,0,0 of a block, we need to offset the positions so they are scattered around the origo instead of above it
-	// We also need a threshold of half a blocklen, otherwise we should not transfer, and return{0,0,0}
-	__device__ static NodeIndex getTransferDirection(const Coord& relpos) {
-		EngineUtilsWarnings::verifyValidRelpos(relpos);
-		return getOnehotDirection(relpos, Coord::nanoToLima_i / 2);
-	}
 
 	// Returns a one-hot vector of the largest magnitude axis, IF the abs of that axis is above threshold
 	__device__ static NodeIndex GetTransferDirection(const Float3& pos, float threshold = 0.5f) { // optim consider making the threshold a template param

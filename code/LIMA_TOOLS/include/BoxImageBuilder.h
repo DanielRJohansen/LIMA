@@ -62,8 +62,6 @@ struct ParticleToBridgeMapping {
 	int bridgeId = -1;
 	int localIdInBridge = -1;
 };
-using ParticleToCompoundMap = std::vector<ParticleToCompoundMapping>;
-using ParticleToBridgeMap = std::vector<std::optional<ParticleToBridgeMapping>>;
 
 struct ParticleToPclusterMapping {
 	int pcid;
@@ -121,9 +119,6 @@ namespace LIMA_MOLECULEBUILD {
 	std::unique_ptr<BoxImage> buildMolecules(
 		const GroFile& gro_file,
 		const TopologyFile& top_file,
-		VerbosityLevel vl,
-		std::unique_ptr<LimaLogger>,
-		bool ignore_hydrogens,
 		const SimParams& simparams
 	);
 }

@@ -293,34 +293,6 @@ struct ForceEnergy {
 };
 
 
-struct Double3 {
-	__host__ __device__ Double3() {}
-	__host__ __device__ Double3(double a) : x(a), y(a), z(a) {}
-	__host__ __device__ Double3(double x, double y, double z) : x(x), y(y), z(z) {}
-	__host__ __device__ Double3(const Float3& a) : x((double)a.x), y((double)a.y), z((double)a.z) {}
-
-	__host__ __device__ inline Double3 operator + (const Float3 a) const {
-		return Double3(x + (double)a.x, y + (double)a.y, z + (double)a.z);
-	}
-	__host__ __device__ inline Double3 operator + (const Double3 a) const { return Double3(x + a.x, y + a.y, z + a.z); }
-	__host__ __device__ inline Double3 operator / (const double a) const { return Double3(x / a, y / a, z / a); }
-	__host__ __device__ inline void operator += (const Float3 a) { x += (double)a.x; y += (double)a.y; z += (double)a.z; }
-	__host__ __device__ inline void operator += (const Double3 a) { x += a.x; y += a.y; z += a.z; }
-	__host__ __device__ inline Double3 operator - (const Double3 a) const { return Double3(x - a.x, y - a.y, z - a.z); }
-
-	__host__ __device__ inline double len() const { return (double)sqrt(x * x + y * y + z * z); }
-
-	__host__ __device__ Float3 toFloat3() const {
-		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
-	}
-
-	__host__ __device__ void print(char c = '_') const {
-		printf("%c %.10f %.10f %.10f\n", c, x, y, z);
-	}
-
-	double x = 0, y = 0, z = 0;
-};
-
 struct NodeIndex : public Int3 {
 	constexpr NodeIndex() : Int3() {}
 	constexpr NodeIndex(const int& x, const int& y, const int& z) : Int3(x, y, z) {}
@@ -353,90 +325,6 @@ struct NodeIndex : public Int3 {
 };
 
 
-
-// Very fine-grained integer position, counted in [lm]
-struct Coord {
-
-	static const int nanoToLima_i = 100'000'000;
-	static constexpr float nanoToLima_f = static_cast<float>(nanoToLima_i);
-	static constexpr float limaToNano_f = static_cast<float>(1. / static_cast<double>(nanoToLima_f));
-
-	int32_t x = 0, y = 0, z = 0;	// [lm]
-
-	constexpr Coord() {};
-	constexpr Coord(int32_t a) : x(a), y(a), z(a) {}
-	constexpr Coord(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
-
-	__device__ __host__ explicit Coord(Float3 pos) :
-		x(static_cast<int32_t>(pos.x * nanoToLima_f)),
-		y(static_cast<int32_t>(pos.y * nanoToLima_f)),
-		z(static_cast<int32_t>(pos.z * nanoToLima_f))
-		{
-		if constexpr (POSITION_CHECKS) {
-			if (std::abs(pos.x) > 1000.f || std::abs(pos.y) > 1000.f || std::abs(pos.z) > 1000.f) {// TODO magic nr,relates to intmax, fix!
-				printf("pos %f %f %f\n", pos.x, pos.y, pos.z);
-			}
-		}
-	}
-
-	__device__ __host__ explicit Coord(const NodeIndex& nodeIndex) 
-		: x(nodeIndex.x*nanoToLima_i), y(nodeIndex.y* nanoToLima_i), z(nodeIndex.z* nanoToLima_i) {
-		if constexpr (POSITION_CHECKS) {
-			if (std::abs(nodeIndex.x) > 1000 || std::abs(nodeIndex.y) > 1000 || std::abs(nodeIndex.z) > 1000) {// TODO magic nr,relates to intmax, fix!
-				printf("NodeIndex %d %d %d\n", nodeIndex.x, nodeIndex.y, nodeIndex.z);
-			}
-		}
-	}
-
-	constexpr Float3 ToRelpos() const {
-		return Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } * limaToNano_f;
-	}
-
-
-
-
-
-	constexpr Coord operator + (const Coord& a) const { return Coord(x + a.x, y + a.y, z + a.z); }
-	constexpr Coord operator - (const Coord& a) const { return Coord(x - a.x, y - a.y, z - a.z); }
-	constexpr Coord operator / (const int32_t& a) const { return Coord(x / a, y / a, z / a); }
-	constexpr Coord operator - () const { return Coord(-x, -y, -z); }
-	constexpr void operator += (const Coord& a) { x += a.x; y += a.y; z += a.z; };
-	constexpr void operator -= (const Coord& a) { x -= a.x; y -= a.y; z -= a.z; };
-	constexpr Coord operator * (const int32_t a) const { return Coord{ x * a, y * a, z * a }; }
-	constexpr Coord operator * (const float) const = delete;
-	constexpr bool operator == (const Coord& a) const { return x == a.x && y == a.y && z == a.z; }
-	constexpr bool operator != (const Coord& a) const { return !(*this == a); }
-	
-	constexpr int32_t dot(const Coord& a) const { return (x * a.x + y * a.y + z * a.z); }
-	__host__ __device__ void print(char c = '_', bool nl=1) const { 
-		if (nl) printf(" %c %d %d %d\n", c, x, y, z);
-		else printf(" %c %d %d %d", c, x, y, z);
-	}
-	// Print in pico, assuming baseline is lima
-	__host__ __device__ void printS(char c = '_') const { 
-		printf(" %c %d %d %d [pico]\n", c, x / 100000, y / 100000, z / 100000); }
-	constexpr bool isZero() const { return (x == 0 && y == 0 && z == 0); }
-
-	__device__ __host__ int32_t maxElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
-
-	__host__ int32_t* get(int dim) {
-		switch (dim)
-		{
-		case 0:
-			return &x;
-		case 1:
-			return &y;
-		case 2:
-			return &z;
-		default:
-			throw std::runtime_error("Requested bad dimension");
-		}
-	}
-
-	//__host__ __device__ Float3 toFloat3() const { 
-	//	return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)); 
-	//}
-};
 
 struct Rotation {
 	Float3 center{};
@@ -539,15 +427,6 @@ T* GenericCopyToDevice(const std::vector<T>& src) {
 
 
  
-// Order is critical, as many times something like "bool verbose = vl > V1" occurs
-enum VerbosityLevel {
-	SILENT,
-	CRITICAL_INFO, 
-	V1,
-	V2,
-	V3
-};
-
 enum EnvMode { Full, ConsoleOnly, Headless };
 
 struct RenderAtom {

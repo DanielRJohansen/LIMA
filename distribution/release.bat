@@ -1,12 +1,14 @@
 @echo off
 rem Builds, tests and packages a LIMA release for Windows and Linux, and uploads it as a draft GitHub release.
 rem
-rem   distribution\release.bat [--dry-run]
+rem   distribution\release.bat [--dry-run | --upload-only]
 rem
 rem It shows the version in the top-level CMakeLists.txt and asks which version to release. Choosing a new one
 rem bumps CMakeLists.txt, and commits and pushes that change, before anything is built.
 rem --dry-run builds, tests and packages everything into distribution\out, but allows uncommitted changes
 rem and skips the upload. It always uses the current version, and the Linux build uses the last commit.
+rem --upload-only skips the builds and uploads the files already in distribution\out\<version>, for retrying an
+rem upload that failed. It releases the commit those files were built from.
 rem
 rem One-time setup: see distribution\README.md
 setlocal EnableDelayedExpansion
@@ -18,9 +20,11 @@ rem RTX 40 (89), H100 (90), B200 (100), RTX 50 (120), plus PTX of the newest. Ke
 set "CUDA_ARCHITECTURES=89-real;90-real;100-real;120"
 
 set DRY_RUN=0
+set UPLOAD_ONLY=0
 if "%~1"=="--dry-run" set DRY_RUN=1
-if not "%~1"=="" if not "%~1"=="--dry-run" (
-    echo Usage: release.bat [--dry-run]
+if "%~1"=="--upload-only" set UPLOAD_ONLY=1
+if not "%~1"=="" if not "%~1"=="--dry-run" if not "%~1"=="--upload-only" (
+    echo Usage: release.bat [--dry-run ^| --upload-only]
     exit /b 2
 )
 
@@ -34,6 +38,7 @@ if "%VERSION%"=="" call :fail "Could not read the version from CMakeLists.txt" &
 rem ---------------------------------------------------------------- Version
 echo Current version in CMakeLists.txt: %VERSION%
 if %DRY_RUN%==1 goto :version_chosen
+if %UPLOAD_ONLY%==1 goto :version_chosen
 set "NEW_VERSION="
 set /p "NEW_VERSION=Version to release (Enter keeps %VERSION%): "
 if "%NEW_VERSION%"=="" set "NEW_VERSION=%VERSION%"
@@ -54,12 +59,16 @@ set "VERSION=%NEW_VERSION%"
 
 for /f %%c in ('git rev-parse HEAD') do set "COMMIT=%%c"
 set "OUT=%REPO%\distribution\out\%VERSION%"
+if %UPLOAD_ONLY%==1 (
+    if not exist "%OUT%\commit.txt" call :fail "Nothing to upload, %OUT% has no finished release. Run release.bat first" & exit /b 1
+    set /p COMMIT=<"%OUT%\commit.txt"
+)
 echo ### LIMA %VERSION% from commit %COMMIT%
 
 rem ---------------------------------------------------------------- Preflight
 for /f %%s in ('git status --porcelain') do set DIRTY=1
 if %DRY_RUN%==0 (
-    if defined DIRTY call :fail "There are uncommitted changes. Commit them, or use --dry-run" & exit /b 1
+    if defined DIRTY if %UPLOAD_ONLY%==0 call :fail "There are uncommitted changes. Commit them, or use --dry-run" & exit /b 1
     git fetch --quiet origin || (call :fail "git fetch failed" & exit /b 1)
     set ON_REMOTE=
     for /f %%b in ('git branch -r --contains %COMMIT%') do set ON_REMOTE=1
@@ -78,8 +87,11 @@ set CHECK_ARGS=
 if %DRY_RUN%==0 set CHECK_ARGS=--upload
 wsl -d %WSL_DISTRO% -- bash "%SCRIPTS_WSL%/check-wsl.sh" %CHECK_ARGS% || (call :fail "WSL is not set up" & exit /b 1)
 
+if %UPLOAD_ONLY%==1 goto :release
+
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%"
+> "%OUT%\commit.txt" echo %COMMIT%
 
 rem ---------------------------------------------------------------- Windows
 echo.
@@ -110,6 +122,10 @@ echo ### Arch package
 wsl -d %WSL_DISTRO% -- bash "%SCRIPTS_WSL%/package-arch.sh" %VERSION% "%OUT_WSL%" || (call :fail "PKGBUILD generation or install test failed" & exit /b 1)
 
 rem ---------------------------------------------------------------- Release
+:release
+for %%f in ("%OUT%\lima-%VERSION%-windows-x64.zip" "%OUT%\lima-%VERSION%-linux-x86_64.tar.gz" "%OUT%\lima_%VERSION%_amd64.deb" "%OUT%\PKGBUILD") do (
+    if not exist %%f call :fail "Missing %%~nxf in %OUT%" & exit /b 1
+)
 powershell -NoProfile -Command "(Get-Content '%REPO%\distribution\release-notes.md') -replace '@VERSION@','%VERSION%' | Set-Content -Encoding utf8 '%OUT%\release-notes.md'"
 set "ASSETS=%OUT_WSL%/lima-%VERSION%-windows-x64.zip %OUT_WSL%/lima-%VERSION%-linux-x86_64.tar.gz %OUT_WSL%/lima_%VERSION%_amd64.deb %OUT_WSL%/PKGBUILD"
 

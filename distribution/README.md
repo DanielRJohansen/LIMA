@@ -5,6 +5,7 @@ One command builds, tests and packages LIMA for Windows and Linux, and uploads i
 ```
 distribution\release.bat            # the real thing
 distribution\release.bat --dry-run  # everything except the upload, allows uncommitted changes
+distribution\release.bat --upload-only  # retry only the upload, using the files from the last run
 ```
 
 To release, bump `project(lima VERSION ...)` in the top-level `CMakeLists.txt`, commit, push, and run the script.

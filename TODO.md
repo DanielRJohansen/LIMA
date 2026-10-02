@@ -20,3 +20,7 @@ First milestone: Get engine up and running with this new paradigm. Dont focus on
 
 
 ## Add simulation tabs to Display. Tabs automatically appear/disappear as rendercontexts are made/freed. 
+
+## Compiling exposes hundres of warnings, could we fix?
+
+## Compiling takes forever. Can we optimize a bit?

@@ -104,8 +104,9 @@ namespace {
 		std::span<const ImproperDihedralBondFactory> improperdihedralbonds;
 	};
 
-	// Greedily groups bonds: Start a group with the bond containing the lowest available particle id, then add all bonds
-	// containing the particles of the group, as long as there is room. A molecule is always finished before the next is started,
+	// Greedily groups bonds: Add the bond containing the lowest available particle id, then add all bonds
+	// containing the particles of the group, as long as there is room. When a molecule is finished, the next molecule continues
+	// in the same group if it fits. A molecule is always finished before the next is started,
 	// so chunks of whole molecules can be grouped independently, and the results concatenated.
 	class BondgroupChunkBuilder {
 		static constexpr int maxParticlesPerBondgroup = 64;
@@ -162,41 +163,34 @@ namespace {
 				}
 				};
 
+			if (MoreWorkToBeDone())
+				PushNewGroup();
+
 			while (MoreWorkToBeDone()) {
 				// To start or continue a group, simple add the bond containing the next lowest particleId
 				const Bondtype typeOfBondWithLowestId = GetBondtypeWithLowestAvailableParticleId();
-
-				// Because if we start a new group with a zero-param bond, we skip that bond so this is to avoid empty groups..
-				if (bondgroups.empty() || bondgroups.groups.back().nParticles != 0) {
-					bondgroups.groups.push_back({
-						static_cast<int>(bondgroups.particles.size()), 0,
-						static_cast<int>(bondgroups.singlebonds.size()), 0,
-						static_cast<int>(bondgroups.pairbonds.size()), 0,
-						static_cast<int>(bondgroups.anglebonds.size()), 0,
-						static_cast<int>(bondgroups.dihedralbonds.size()), 0,
-						static_cast<int>(bondgroups.improperdihedralbonds.size()), 0
-						});
-				}
+				const size_t nGroupsBefore = bondgroups.groups.size();
+				const int nParticlesBefore = bondgroups.groups.back().nParticles;
 
 				switch (typeOfBondWithLowestId) {
 				case single:
-					AddBond(chunk.singlebonds[availableSinglebondIds.front()]);
+					AddFirstBond(chunk.singlebonds[availableSinglebondIds.front()]);
 					availableSinglebondIds.erase(availableSinglebondIds.front());
 					break;
 				case pair:
-					AddBond(chunk.pairbonds[availablePairbondIds.front()]);
+					AddFirstBond(chunk.pairbonds[availablePairbondIds.front()]);
 					availablePairbondIds.erase(availablePairbondIds.front());
 					break;
 				case angle:
-					AddBond(chunk.anglebonds[availableAnglebondIds.front()]);
+					AddFirstBond(chunk.anglebonds[availableAnglebondIds.front()]);
 					availableAnglebondIds.erase(availableAnglebondIds.front());
 					break;
 				case dihedral:
-					AddBond(chunk.dihedralbonds[availableDihedralbondIds.front()]);
+					AddFirstBond(chunk.dihedralbonds[availableDihedralbondIds.front()]);
 					availableDihedralbondIds.erase(availableDihedralbondIds.front());
 					break;
 				case improper:
-					AddBond(chunk.improperdihedralbonds[availableImproperDihedralbondIds.front()]);
+					AddFirstBond(chunk.improperdihedralbonds[availableImproperDihedralbondIds.front()]);
 					availableImproperDihedralbondIds.erase(availableImproperDihedralbondIds.front());
 					break;
 				}
@@ -205,7 +199,10 @@ namespace {
 				// For each particle find all bonds that contain said particle, and add those bonds to this group IF we have room
 				// Then move to the next particle and repeat
 				// We exit when, either we have no more bonds in the chain, or the group has no more room
-				for (int currentParticleIndexInGroup = 0; currentParticleIndexInGroup < bondgroups.groups.back().nParticles; currentParticleIndexInGroup++) {
+				// Particles from previously packed molecules have no bonds left to add, so start from the first particle this bond added
+				// (or 0 if it started a new group)
+				const int scanStart = bondgroups.groups.size() != nGroupsBefore ? 0 : nParticlesBefore;
+				for (int currentParticleIndexInGroup = scanStart; currentParticleIndexInGroup < bondgroups.groups.back().nParticles; currentParticleIndexInGroup++) {
 					const int currentParticleId = particleGlobalIds[bondgroups.groups.back().indexOfFirstParticle + currentParticleIndexInGroup];
 
 					AddBondsFromMap(pid2SinglebondIdMap[currentParticleId], availableSinglebondIds, chunk.singlebonds);
@@ -218,6 +215,28 @@ namespace {
 		}
 
 	private:
+		void PushNewGroup() {
+			bondgroups.groups.push_back({
+				static_cast<int>(bondgroups.particles.size()), 0,
+				static_cast<int>(bondgroups.singlebonds.size()), 0,
+				static_cast<int>(bondgroups.pairbonds.size()), 0,
+				static_cast<int>(bondgroups.anglebonds.size()), 0,
+				static_cast<int>(bondgroups.dihedralbonds.size()), 0,
+				static_cast<int>(bondgroups.improperdihedralbonds.size()), 0
+				});
+		}
+
+		// Adds the first bond of a new connected component. Groups need not be connected, so small molecules (e.g. water)
+		// are packed into the current group while there is room, instead of each getting their own mostly-idle 64-thread block.
+		// A new group is only started when the bond does not fit
+		template <typename BondFactoryType>
+		void AddFirstBond(const BondFactoryType& bond) {
+			if (!AddBond(bond)) {
+				PushNewGroup();
+				AddBond(bond);
+			}
+		}
+
 		int FindLocalParticleId(const BondGroup& group, int globalId) const {
 			for (int i = 0; i < group.nParticles; i++) {
 				if (particleGlobalIds[group.indexOfFirstParticle + i] == globalId)

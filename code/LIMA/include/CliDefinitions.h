@@ -7,11 +7,12 @@ namespace Cli {
 
 using CommandHandler = int(*)(int argc, char** argv);
 
+// Handler-free so tools other than lima (eg. limaclitest) can enumerate the commands.
+// lima.cpp maps each name to its handler.
 struct CommandDefinition {
     std::string_view name;
     std::string_view summary;
     std::string_view helpText;
-    CommandHandler handler;
 };
 
 int RunMdrun(int argc, char** argv);
@@ -202,18 +203,18 @@ Water models: tip3p, tip4p, tips3p, tip5p, spc, spce
 )";
 
 inline constexpr std::array Commands{
-    CommandDefinition{ "mdrun", "Run a molecular dynamics simulation.", MdrunHelp, RunMdrun },
-    CommandDefinition{ "buildmembrane", "Build a membrane structure.", BuildMembraneHelp, RunBuildMembrane },
-    CommandDefinition{ "makesimparams", "Write default simulation parameters.", MakeSimParamsHelp, RunMakeSimParams },
-    CommandDefinition{ "selftest", "Run LIMA's internal self-test.", SelfTestHelp, RunSelfTest },
-    CommandDefinition{ "render", "Render a molecular structure.", RenderHelp, RunRender },
-    CommandDefinition{ "makebox", "Create an empty simulation box.", MakeBoxHelp, RunMakeBox },
-    CommandDefinition{ "solvate", "Fill a simulation box with SPC/E water.", SolvateHelp, RunSolvate },
-    CommandDefinition{ "insertmolecule", "Insert one molecule into a box.", InsertMoleculeHelp, RunInsertMolecule },
-    CommandDefinition{ "insertmolecules", "Insert multiple molecules into a box.", InsertMoleculesHelp, RunInsertMolecules },
-    CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp, RunEditConf },
-    CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp, RunEnergyMinimization },
-    CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 files.", ToGmxHelp, RunToGmx },
+    CommandDefinition{ "mdrun", "Run a molecular dynamics simulation.", MdrunHelp },
+    CommandDefinition{ "buildmembrane", "Build a membrane structure.", BuildMembraneHelp },
+    CommandDefinition{ "makesimparams", "Write default simulation parameters.", MakeSimParamsHelp },
+    CommandDefinition{ "selftest", "Run LIMA's internal self-test.", SelfTestHelp },
+    CommandDefinition{ "render", "Render a molecular structure.", RenderHelp },
+    CommandDefinition{ "makebox", "Create an empty simulation box.", MakeBoxHelp },
+    CommandDefinition{ "solvate", "Fill a simulation box with SPC/E water.", SolvateHelp },
+    CommandDefinition{ "insertmolecule", "Insert one molecule into a box.", InsertMoleculeHelp },
+    CommandDefinition{ "insertmolecules", "Insert multiple molecules into a box.", InsertMoleculesHelp },
+    CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp },
+    CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp },
+    CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 files.", ToGmxHelp },
 };
 
 } // namespace Cli

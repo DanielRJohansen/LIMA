@@ -536,18 +536,30 @@ namespace TestUtils {
 
 	class LimaUnittestManager {
 	public:
-		LimaUnittestManager() { ResetVarianceCoefficientResults(); ActiveTestManagers()++; }
-		~LimaUnittestManager() {
+		// Suites that never touch the Environment (eg. limaclitest) should not construct one just to print its report
+		explicit LimaUnittestManager(bool printEnvironmentReport = true) : printEnvironmentReport(printEnvironmentReport) {
+			ResetVarianceCoefficientResults(); ActiveTestManagers()++;
+		}
+		~LimaUnittestManager() { Finish(); }
+
+		// Runs all remaining tests, prints the summary and returns the number of failed tests
+		int Finish() {
+			if (finished) return static_cast<int>(tests.size()) - successCount;
+			finished = true;
 			Run();
 			ActiveTestManagers()--;
-			WriteActualVarianceCoefficientResults();
-			Environment::Get().PrintDevPerformanceReport();
+			// Only write when something was recorded, so suites without VC tests dont wipe vc_results.csv
+			if (!ActualVarianceCoefficientResults().empty())
+				WriteActualVarianceCoefficientResults();
+			if (printEnvironmentReport)
+				Environment::Get().PrintDevPerformanceReport();
 			if (successCount == tests.size()) setConsoleTextColorGreen();
 			else setConsoleTextColorRed();
 			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successCount, tests.size());
 			for (const auto& test : tests)
 				if (!test->testresult->success) test->testresult->printStatus();
 			setConsoleTextColorDefault();
+			return static_cast<int>(tests.size()) - successCount;
 		}
 
 		template<typename Factory>
@@ -608,6 +620,8 @@ namespace TestUtils {
 		size_t nextToPrint = 0;
 		int successCount = 0;
 		bool hasRun = false;
+		bool finished = false;
+		const bool printEnvironmentReport;
 	};
 
 	static TestRoutine LoadAndRunBasicSimulation(

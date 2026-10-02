@@ -39,6 +39,20 @@ target_include_directories(agenttesting PRIVATE
 )
 target_link_libraries(agenttesting LIMA_BASE LIMA_MD)
 
+# Release tests for the lima CLI programs. Runs lima.exe as a child process, so Windows only for now
+if (WIN32)
+    add_executable(limaclitest
+        src/CliTests.cpp
+        ${RESOURCE_FILES}
+    )
+    target_include_directories(limaclitest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/code/LIMA/include
+    )
+    target_link_libraries(limaclitest LIMA_BASE LIMA_MD)
+    add_dependencies(limaclitest lima)
+endif()
+
 
 if (UNIX)
     target_compile_options(limatest PRIVATE -O3)

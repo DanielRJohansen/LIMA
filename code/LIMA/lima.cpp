@@ -420,17 +420,24 @@ int Cli::RunInsertMolecule(int argc, char** argv) {
     parser.AddOption({ "--position", "-p", "-position" }, false, position);
     parser.Parse(argc, argv);
 
+    confTgtPath = fs::absolute(confTgtPath);
+    topTgtPath = fs::absolute(topTgtPath);
+
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);
     GroFile groTgt{ confTgtPath };
     TopologyFile topTgt{ topTgtPath };
-
+    // Eg. an empty box from 'lima makebox' has no system yet
+    if (!topTgt.HasSystem())
+        topTgt.SetSystem(topSrc->HasSystem() ? topSrc->GetSystem().title : "System");
 
     if (position.x == FLT_MAX) {
         position = groTgt.box_size / 2.f;
 	}
 
     SimulationBuilder::InsertSubmoleculeInSimulation(groTgt, topTgt, groSrc, topSrc, position);
+    groTgt.printToFile(confTgtPath);
+    topTgt.printToFile(topTgtPath);
 
     return 0;
 }
@@ -471,12 +478,16 @@ int Cli::RunInsertMolecules(int argc, char** argv) {
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);
     GroFile groTgt{ confTgtPath };
-    TopologyFile topTgt{};
-    topTgt.SetSystem(topSrc->GetSystem().title + " " + std::to_string(nInsertions));
+    // Keep the molecules already in the target, so the topology still matches the coordinates
+    TopologyFile topTgt{ topTgtPath };
+    if (!topTgt.HasSystem())
+        topTgt.SetSystem(topSrc->GetSystem().title + " " + std::to_string(nInsertions));
 
 
+    // Always headless: a Full-mode job leaves the Environment's Display alive, and StaticbodyEnergyMinimize opens
+    // its own. Two Displays drive GLFW from two threads at once, which crashes
     auto emResult = Environment::Get().Submit(SimulationJob{
-        fs::current_path(), groSrc, *topSrc, SimParams::BasicEMSimParams(), display ? Full : Headless }).Get();
+        fs::current_path(), groSrc, *topSrc, SimParams::BasicEMSimParams(), Headless }).Get();
     emResult.WriteCoordinatesTo(groSrc);
 
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
@@ -656,9 +667,36 @@ int Cli::RunSelfTest(int argc, char** argv) {
 
 namespace {
 
+struct CommandHandlerEntry {
+    std::string_view name;
+    Cli::CommandHandler handler;
+};
+
+constexpr std::array CommandHandlers{
+    CommandHandlerEntry{ "mdrun", Cli::RunMdrun },
+    CommandHandlerEntry{ "buildmembrane", Cli::RunBuildMembrane },
+    CommandHandlerEntry{ "makesimparams", Cli::RunMakeSimParams },
+    CommandHandlerEntry{ "selftest", Cli::RunSelfTest },
+    CommandHandlerEntry{ "render", Cli::RunRender },
+    CommandHandlerEntry{ "makebox", Cli::RunMakeBox },
+    CommandHandlerEntry{ "solvate", Cli::RunSolvate },
+    CommandHandlerEntry{ "insertmolecule", Cli::RunInsertMolecule },
+    CommandHandlerEntry{ "insertmolecules", Cli::RunInsertMolecules },
+    CommandHandlerEntry{ "editconf", Cli::RunEditConf },
+    CommandHandlerEntry{ "em", Cli::RunEnergyMinimization },
+    CommandHandlerEntry{ "togmx", Cli::RunToGmx },
+};
+static_assert(CommandHandlers.size() == Cli::Commands.size() && std::ranges::all_of(Cli::Commands, [](const auto& command) {
+        return std::ranges::find(CommandHandlers, command.name, &CommandHandlerEntry::name) != CommandHandlers.end();
+    }), "Every command in Cli::Commands needs exactly one handler");
+
 const Cli::CommandDefinition* FindCommand(const std::string_view name) {
     const auto command = std::ranges::find(Cli::Commands, name, &Cli::CommandDefinition::name);
     return command == Cli::Commands.end() ? nullptr : &*command;
+}
+
+Cli::CommandHandler HandlerOf(const Cli::CommandDefinition& command) {
+    return std::ranges::find(CommandHandlers, command.name, &CommandHandlerEntry::name)->handler;
 }
 
 void PrintGeneralHelp() {
@@ -705,7 +743,7 @@ int Dispatch(int argc, char** argv) {
 
     const auto* command = FindCommand(argument);
     if (!command) throw CliError(std::format("unrecognized command '{}'", argument));
-    return command->handler(argc, argv);
+    return HandlerOf(*command)(argc, argv);
 }
 
 } // namespace

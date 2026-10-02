@@ -105,6 +105,8 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 	ConvexHullEngine chEngine{};
 
 	auto d = renderProgress ? std::make_shared<Display>() : nullptr;
+	// Otherwise a fast minimization can finish, and destroy the display, before its window even exists
+	if (d) d->WaitForDisplayReady();
 	auto renderCallback = [&d, &mhCol, &boxSize]() mutable {
 		if (d != nullptr)
 			d->Submit(0, std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));

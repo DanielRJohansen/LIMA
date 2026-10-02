@@ -7,7 +7,6 @@
 #include "FileTests.h"
 #include "ForcefieldTests.h"
 #include "SetupTests.h"
-#include "Userinterface.h"
 #include "Display.h"
 #include "ForceComparisons.h"
 #include "ProgramsTests.h"
@@ -325,7 +324,6 @@ void RunAllUnitTests() {
 	//doPool50x(EnvMode::Headless);
 
 
-	//ADD_SERIAL_TEST("TestBuildmembranesInterface", UserinterfaceTests::TestBuildmembranesInterface(envmode));
 
 	// Total test status will print as testman is destructed
 }

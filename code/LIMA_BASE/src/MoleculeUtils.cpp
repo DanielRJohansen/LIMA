@@ -129,9 +129,9 @@ void MoleculeUtils::RotateMolecule(GroFile& grofile, Float3 rotation) {
 
 	std::function<void(Float3&)> position_transform = [&](Float3& pos) {
 		pos -= center;
-		Float3::rodriguesRotatation(pos, Float3(0, 0, 1), rotation.z);
-		Float3::rodriguesRotatation(pos, Float3(0, 1, 0), rotation.y);
-		Float3::rodriguesRotatation(pos, Float3(1, 0, 0), rotation.x);
+		pos = Float3::rodriguesRotatation(pos, Float3(0, 0, 1), rotation.z);
+		pos = Float3::rodriguesRotatation(pos, Float3(0, 1, 0), rotation.y);
+		pos = Float3::rodriguesRotatation(pos, Float3(1, 0, 0), rotation.x);
 		pos += center;
 	};
 

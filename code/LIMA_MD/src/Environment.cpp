@@ -104,11 +104,27 @@ MolecularSystem SimulationResult::FinalSystem() {
 }
 
 Trajectory SimulationResult::MakeTrajectory() const {
-	if (!simulation || !simulation->boxImage)
-		throw std::runtime_error("Cannot write a trajectory without a simulation result and BoxImage");
-	return Trajectory{ static_cast<int>(simulation->getStep()),
-		static_cast<int>(simulation->boxImage->grofile.atoms.size()),
-		simulation->boxImage->grofile.box_size, simulation->simParams.dt };
+	if (!simulation || !simulation->boxImage || !simulation->traj_buffer)
+		throw std::runtime_error("Cannot write a trajectory without a simulation result, BoxImage and trajectory buffer");
+	const int loggingInterval = simulation->simParams.data_logging_interval;
+	if (loggingInterval <= 0)
+		throw std::runtime_error("Cannot write a trajectory when data_logging_interval is 0");
+
+	// One frame per logged step, with atoms in the order of the input coordinates
+	const int nFrames = static_cast<int>(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), loggingInterval));
+	Trajectory trajectory{ nFrames, static_cast<int>(simulation->boxImage->grofile.atoms.size()),
+		simulation->boxImage->grofile.box_size, simulation->simParams.dt * loggingInterval };
+	for (int frame = 0; frame < nFrames; frame++) {
+		for (int clusterId = 0; clusterId < simulation->box->persistentClustersMetadata.size(); clusterId++) {
+			const auto& metadata = simulation->box->persistentClustersMetadata[clusterId];
+			for (int particleId = 0; particleId < PersistentCluster::maxParticles; particleId++) {
+				const int globalId = metadata.particleIdsGlobal[particleId];
+				if (globalId >= 0)
+					trajectory.Set(frame, globalId, simulation->traj_buffer->GetDatapoint(clusterId, particleId, frame));
+			}
+		}
+	}
+	return trajectory;
 }
 
 void SimulationResult::WriteTrajectoryAsUff(const fs::path& path) const {

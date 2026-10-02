@@ -6,11 +6,21 @@
 #include <array>
 #include <fstream>
 #include <mutex>
+#include <optional>
 
 #include <format>
 #include <cctype>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 
 namespace fs = std::filesystem;
@@ -84,32 +94,57 @@ std::string_view FileUtils::ExtractBetweenQuotemarks(const std::string& input) {
 }
 
 
-fs::path FileUtils::GetLimaDir() {
-#ifdef __linux__
-	return {"/usr/share/LIMA"};
+namespace {
+	fs::path ExecutableDir() {
+#ifdef _WIN32
+		wchar_t buffer[MAX_PATH];
+		const DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+		return length > 0 && length < MAX_PATH ? fs::path(buffer).parent_path() : fs::path{};
 #else
-	// Called concurrently by Environment's worker threads
-	static std::mutex mutex;
-	const std::lock_guard lock(mutex);
-	static fs::path cachedPath{"C:\\Users\\Daniel\\git_repo\\LIMA"};
-	if (fs::exists(cachedPath))
-		return cachedPath;
-	else
-		cachedPath.clear();
-
-
-	fs::path path = fs::current_path();
-	while (!path.empty() && path!= path.parent_path()) {
-		if (fs::exists(path / "lima_main_dir.txt")) {
-			cachedPath = path;
-			break;
-		}
-		path = path.parent_path();
+		std::error_code error;
+		const fs::path executable = fs::read_symlink("/proc/self/exe", error);
+		return error ? fs::path{} : executable.parent_path();
+#endif
 	}
 
-	return cachedPath;
-	//return { R"(C:\Users\Daniel\git_repo\LIMA)" };
+	std::optional<fs::path> FindRepositoryRoot(fs::path path) {
+		while (!path.empty() && path != path.parent_path()) {
+			if (fs::exists(path / "lima_main_dir.txt"))
+				return path;
+			path = path.parent_path();
+		}
+		return std::nullopt;
+	}
+
+	fs::path FindLimaDir() {
+		const fs::path executableDir = ExecutableDir();
+		if (!executableDir.empty()) {
+			// Windows release: resources next to lima.exe
+			if (fs::exists(executableDir / "resources"))
+				return executableDir;
+			// Linux packages and tarball: bin/lima with share/LIMA/resources
+			if (fs::exists(executableDir.parent_path() / "share" / "LIMA" / "resources"))
+				return executableDir.parent_path() / "share" / "LIMA";
+			// Development builds live inside the repository
+			if (auto root = FindRepositoryRoot(executableDir))
+				return *root;
+		}
+		if (auto root = FindRepositoryRoot(fs::current_path()))
+			return *root;
+#ifdef __linux__
+		if (fs::exists("/usr/share/LIMA/resources"))
+			return "/usr/share/LIMA";
 #endif
+		throw std::runtime_error(std::format(
+			"Could not find LIMA's resources directory. Searched next to the executable ({}), in ../share/LIMA, and in the parent directories",
+			executableDir.string()));
+	}
+}
+
+fs::path FileUtils::GetLimaDir() {
+	// Thread safe, as it is called concurrently by Environment's worker threads
+	static const fs::path limaDir = FindLimaDir();
+	return limaDir;
 }
 
 std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const fs::path& dir) {

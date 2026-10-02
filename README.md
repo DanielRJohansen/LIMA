@@ -1,33 +1,34 @@
 # LIMA
-The private LIMA-Dynamics main repo
+LIMA is a GPU accelerated molecular dynamics engine, with tools to build, solvate, energy-minimize, simulate and
+render molecular systems.
 
-All source code in this directory is property of Daniel Rathleff Johansen, and use of it is not allowed without explicit written confirmation.
+## Install
+Download the latest release for Windows, Ubuntu/Debian, Arch or other Linux from the
+[Releases page](https://github.com/DanielRJohansen/LIMA/releases), and run `lima --help` to get started.
 
+LIMA requires an NVIDIA GPU of the RTX 40-series or newer (or H100, B200 and similar), with a recent NVIDIA driver.
 
-## How to install
+## License
+LIMA is free for small companies, for noncommercial use and for academia, and can be evaluated by anyone.
+It is available under your choice of three licenses, see [LICENSE.txt](LICENSE.txt):
 
-### Easy install
-Clone the repo and run the install script, with the following 4 cmds:
-	git clone https://github.com/DanielRJohansen/LIMAMD
-	cd LIMAMD
-	chmod +x install.sh
+- **PolyForm Small Business 1.0.0**: any use by companies with fewer than 100 people and less than 1,000,000 USD
+  revenue.
+- **PolyForm Noncommercial 1.0.0**: noncommercial use, and use by universities, public research organizations,
+  charities and government institutions.
+- **PolyForm Free Trial 1.0.0**: evaluation by anyone for less than 32 consecutive days.
 
-### Advanced install. 
-Ensure that all dependencies are installed. The list of dependencies can be seen in install.sh
-Copy all files to **/opt/LIMA** navigate to **build** and run **cmake ..**
+Other use, such as by a larger company beyond evaluation, requires a commercial license.
+Contact daniel@lima-dynamics.com.
 
+LIMA includes third-party software under its own licenses, see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
+## Building from source
+- Windows: Visual Studio 2022 with the C++ workload and the CUDA toolkit. Open the folder in Visual Studio, or
+  configure with CMake and Ninja.
+- Linux: run `install.sh`, which builds LIMA and installs it to /usr/bin and /usr/share/LIMA.
 
-
-
-
-
-
-
-
-
-
-
+Releases are built with `distribution/release.bat`, see [distribution/README.md](distribution/README.md).
 
 
 ## LIMA would not be possible without scientific contributions of many researchers. Citations for resources below:

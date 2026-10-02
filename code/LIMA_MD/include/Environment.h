@@ -123,7 +123,7 @@ class Environment
 
 		SimulationId simulationId;
 		std::unique_ptr<Simulation> simulation;
-		std::unique_ptr<Engine> engine = nullptr;
+		std::unique_ptr<Engine> engine;	// No "= nullptr": gcc would then need Engine complete here
 		std::shared_ptr<RenderDataPipe> renderDataPipe;
 		std::chrono::steady_clock::time_point time0;
 		std::optional<TimeIt> simulationTimer;
@@ -257,7 +257,7 @@ private:
 	
 
 
-	std::unique_ptr<Display> display = nullptr;
+	std::unique_ptr<Display> display;	// No "= nullptr": gcc would then need Display complete here
 	std::unique_ptr<SimulationSession> liveEditSession;
 
 	std::mutex schedulingMutex;

@@ -860,6 +860,10 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 
 	while (getline(file, line)) {
+		// Files written on Windows have CRLF line endings, which only Windows' text streams strip. Elsewhere a blank
+		// line would be "\r", and be parsed as an entry of the current section
+		if (!line.empty() && line.back() == '\r')
+			line.pop_back();
 
 		if (line.empty())
 			continue;

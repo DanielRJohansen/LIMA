@@ -89,12 +89,6 @@ echo -e "\n\t LIMA has been installed successfully \n\n\n"
 
 
 
-# Move files to LIMAMD, prepared for distribution
-rm ~/Downloads/LIMAMD/lima
-cp /usr/bin/lima ~/Downloads/LIMAMD/
-rm -rf ~/Downloads/LIMAMD/resources
-cp -r /usr/share/LIMA/resources ~/Downloads/LIMAMD
-
 if [ "$1" != "-notest" ] && [ "$2" != "-notest" ]; then    SIMS_DIR=/$HOME/LIMA/simulations
     lima selftest
 fi

@@ -1,6 +1,8 @@
 #include "LiveEditCommands.h"
 #include "argparser.h"
 
+#include <cfloat>
+
 
 namespace LiveEdit {
 

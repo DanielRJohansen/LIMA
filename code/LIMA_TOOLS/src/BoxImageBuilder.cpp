@@ -150,6 +150,13 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			activeLJParamIndices[i].push_back(typeIndices[type]);
 	}
 
+#if ENABLE_SOLVENTS == 1	// Otherwise solvents are skipped above, and the counts legitimately differ
+	// Every particle below indexes the coordinates, so a mismatch would read past their end
+	if (nParticles != static_cast<int>(grofile.atoms.size()))
+		throw std::runtime_error(std::format("The topology describes {} atoms, but the coordinates contain {}",
+			nParticles, grofile.atoms.size()));
+#endif
+
 	particles.reserve(nParticles);
 	for (size_t instanceId = 0; instanceId < moleculeInstances.size(); instanceId++) {
 		const MoleculeInstance& instance = moleculeInstances[instanceId];

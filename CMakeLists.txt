@@ -6,9 +6,14 @@ if(UNIX)
     set(CMAKE_INSTALL_MESSAGE NEVER)  # Install silently.
 endif()
 
-set(CMAKE_CUDA_ARCHITECTURES "89")
+# Dev builds target only the dev GPU (RTX 40-series) to keep compile times down. Release builds pass
+# -DCMAKE_CUDA_ARCHITECTURES=... to target every supported GPU, see distribution/release.bat
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES "89")
+endif()
 
-project(lima LANGUAGES CXX CUDA C)
+# The single source of the release version. distribution/release.bat publishes whatever is set here
+project(lima VERSION 1.3.0 LANGUAGES CXX CUDA C)
 
 if (MSVC)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:preprocessor /Zc:__cplusplus")

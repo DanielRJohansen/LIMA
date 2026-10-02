@@ -721,7 +721,7 @@ int Dispatch(int argc, char** argv) {
         return 0;
     }
     if (argument == "--version") {
-        std::cout << "lima (development build)\n";
+        std::cout << "lima " LIMA_VERSION "\n";
         return 0;
     }
     if (argument == "help") {

@@ -27,7 +27,7 @@ if (UNIX)
     target_compile_options(LIMA_CONVEXHULLENGINE PRIVATE -use_fast_math -O3)
 elseif (WIN32)
        target_compile_options(LIMA_CONVEXHULLENGINE PRIVATE 
-        $<$<CONFIG:Release>:/use_fast_math>
-        $<$<CONFIG:Release>:/O2>
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-use_fast_math>
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CXX>>:/O2>
     )
 endif()

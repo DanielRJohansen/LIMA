@@ -4,9 +4,7 @@
 #include "Engine.cuh"
 #include "SimulationData.h"
 #include "DebugUtils.h"
-#include <thrust/device_ptr.h>
-#include <thrust/execution_policy.h>
-#include <thrust/scan.h>
+#include "ThrustWrappers.h"
 #include "BoundaryCondition.cuh"
 #include <numeric>
 #include <limits>
@@ -639,8 +637,8 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	{
 		const int nElements = nBlocks + 1; // Extra element for total sum at end
 		//DebugUtils::VerifyIdentical(batch->superclusterStagingControl->nClustersPerBlock, nElements, "nClustersPerBlock", batch->step);
-		thrust::exclusive_scan(thrust::cuda::par.on(stream), batch->superclusterStagingControl->nClustersPerBlock,
-			batch->superclusterStagingControl->nClustersPerBlock + nElements, batch->superclusterStagingControl->nClustersPrefixSum);
+		ThrustWrappers::ExclusiveScan(batch->superclusterStagingControl->nClustersPerBlock,
+			batch->superclusterStagingControl->nClustersPerBlock + nElements, batch->superclusterStagingControl->nClustersPrefixSum, stream);
 		LIMA_UTILS::genericErrorCheckNoSync("Error after Prefixsum");
 		cudaMemcpyAsync(&batch->nSuperclusters, batch->superclusterStagingControl->nClustersPrefixSum + nElements - 1,
 			sizeof(int), cudaMemcpyDeviceToHost, stream);

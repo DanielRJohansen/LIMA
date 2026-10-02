@@ -65,11 +65,33 @@ endif()
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/applications")
  
 add_compile_definitions(GLEW_STATIC)
+# Thrust/CUB otherwise emit NVTX profiler ranges, which drags windows.h into every file using them (~23% of Engine.cu's parsing)
+add_compile_definitions(CCCL_DISABLE_NVTX)
 
-add_subdirectory(code/LIMA_DEPENDS)
-add_subdirectory(code/LIMA_BASE)
+# Lets a target's objects compile without waiting for the static libraries it links to
+set(CMAKE_OPTIMIZE_DEPENDENCIES ON)
+
+# Precompiled header for the host (C++) code of a target. CUDA files are left alone, nvcc handles PCH poorly.
+# MSVC lowercases the .pch path, which fails if the source tree is inside a case-sensitive directory
+# (fsutil file queryCaseSensitiveInfo <dir>), so this is opt-in
+option(LIMA_PCH "Use a precompiled header for host code" OFF)
+function(lima_pch target)
+	if (LIMA_PCH)
+		if (target STREQUAL "LIMA_BASE")
+			target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/code/LIMA_BASE/include/lima_pch.h>")
+		else()
+			# One PCH for the whole project, instead of ~7 s to build one per target
+			target_precompile_headers(${target} REUSE_FROM LIMA_BASE)
+		endif()
+	endif()
+endfunction()
+
+# Ninja starts jobs in the order targets are defined, so the CUDA libraries go first: they are the slowest
+# compiles by far (~70 s each), and every other target can be built alongside them
 add_subdirectory(code/LIMA_ENGINE)
 add_subdirectory(code/LIMA_CONVEXHULLENGINE)
+add_subdirectory(code/LIMA_DEPENDS)
+add_subdirectory(code/LIMA_BASE)
 add_subdirectory(code/LIMA_TOOLS)
 add_subdirectory(code/LIMA_MD)
 add_subdirectory(code/LIMA_TESTS)

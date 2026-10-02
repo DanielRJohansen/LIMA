@@ -399,10 +399,6 @@ CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState(size_t simulationId)
 	return batch->pdataCopyBuffer;
 }
 
-struct SqrtFloat {
-	__device__ float operator()(float x) const { return sqrtf(x); }
-};
-
 CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer(size_t simulationId) {
 	const auto& sim = batch->simulations.at(simulationId);
 	const auto range = sim.device.particles;
@@ -411,8 +407,7 @@ CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer(size_t simulationId) {
 	batch->forcesMagnitudeCopyBuffer.Expand(count);
 	if (sim.finalized) cudaMemcpy(batch->forcesMagnitudeCopyBuffer.Get(), sim.finalForcesMagnitudeSquared.data(), sizeof(float) * count, cudaMemcpyHostToDevice);
 	else cudaMemcpy(batch->forcesMagnitudeCopyBuffer.Get(), batch->forcesMagnitudeSquareDevice.Get() + range.offset, sizeof(float) * count, cudaMemcpyDeviceToDevice);
-	thrust::device_ptr<float> begin(batch->forcesMagnitudeCopyBuffer.Get());
-	thrust::transform(thrust::device, begin, begin + count, begin, SqrtFloat{});
+	ThrustWrappers::SqrtInPlace(batch->forcesMagnitudeCopyBuffer.Get(), count);
 	return batch->forcesMagnitudeCopyBuffer;
 }
 

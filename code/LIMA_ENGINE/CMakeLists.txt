@@ -1,9 +1,11 @@
 #LIMA_ENGINE
 
-# Do NOT add any other .cu files, the engine should be a single compilation unit
-# in order to access __constant__ memory
+# Do NOT add any other .cu files with kernels, the engine should be a single compilation unit in order to access
+# __constant__ memory. ThrustWrappers.cu is the exception: it has no __constant__ access, and keeping thrust's
+# headers out of Engine.cu makes that (the slowest file in the build) compile ~16 s faster
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
+    src/ThrustWrappers.cu
     src/SimulationData.cpp
     src/EnergyMinimizationHost.cpp
   "src/ParticleClusteringCPU.cpp"

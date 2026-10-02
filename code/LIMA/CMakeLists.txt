@@ -26,3 +26,5 @@ else()
 
     target_sources(lima PRIVATE ${CMAKE_SOURCE_DIR}/resources/logo/logoicon.rc)
 endif()
+
+lima_pch(lima)

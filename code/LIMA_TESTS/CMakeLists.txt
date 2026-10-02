@@ -78,3 +78,7 @@ target_link_libraries(limaprofile LIMA_BASE LIMA_MD)
 #elseif (WIN32)
 #    #target_compile_options(limaprofile PRIVATE /O2)
 #endif()
+
+lima_pch(limatest)
+lima_pch(agenttesting)
+lima_pch(limaprofile)

@@ -15,7 +15,6 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
-#include <curand_kernel.h>  // For generating random numbers
 
 namespace EngineUtils {
 

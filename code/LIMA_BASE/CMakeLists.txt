@@ -37,7 +37,7 @@ target_include_directories(LIMA_BASE PUBLIC
 
 )
 
-#target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<vector>>" )
+lima_pch(LIMA_BASE)
 if (UNIX)  
     target_link_libraries(LIMA_BASE PUBLIC
         LIMA_DEPENDS

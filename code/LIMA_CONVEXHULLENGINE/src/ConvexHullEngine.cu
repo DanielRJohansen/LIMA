@@ -6,10 +6,6 @@
 #include <gtx/rotate_vector.hpp>
 #undef GLM_ENABLE_EXPERIMENTAL
 
-#include <thrust/device_vector.h>
-#include <thrust/transform.h>
-#include <thrust/functional.h>
-#include <thrust/tuple.h>
 
 #include "DeviceAlgorithms.cuh"
 #include "Utilities.h"
@@ -435,18 +431,19 @@ __global__ void ApplyTransformations(MoleculeHull* moleculeHulls, Facet* facetsB
 		moleculeHulls[blockIdx.x].nCollisions = 0;
 }
 
-// Define a functor for the transformation matrix computation
-struct ComputeTransformationMatrix
+// One thread per collision
+__global__ void ComputeTransformationMatrices(const glm::vec3* const rotationPivotPoints, const glm::vec3* const forceApplicationPoints,
+	const glm::vec3* const forceDirections, const float* const forceMagnitudes, glm::mat4* const transformationMatrices, int nElements)
 {
-	__host__ __device__
-		glm::mat4 operator()(const thrust::tuple<glm::vec3, glm::vec3, glm::vec3, float>& t) const
+	const int index = blockIdx.x * blockDim.x + threadIdx.x;
+	if (index >= nElements) return;
 	{
 		const float magnitudeScalar = 0.003f;
 
-		glm::vec3 rotationPivotPoint = thrust::get<0>(t);
-		glm::vec3 forceApplicationPoint = thrust::get<1>(t);
-		glm::vec3 forceDirection = thrust::get<2>(t);
-		float forceMagnitude = thrust::get<3>(t) * magnitudeScalar;
+		glm::vec3 rotationPivotPoint = rotationPivotPoints[index];
+		glm::vec3 forceApplicationPoint = forceApplicationPoints[index];
+		glm::vec3 forceDirection = forceDirections[index];
+		float forceMagnitude = forceMagnitudes[index] * magnitudeScalar;
 
 		// Step 2: Compute the torque axis
 		glm::vec3 torqueAxis = glm::cross(forceApplicationPoint - rotationPivotPoint, forceDirection);
@@ -472,9 +469,9 @@ struct ComputeTransformationMatrix
 		// Step 7: Combine the matrices
 		glm::mat4 transformationMatrix = translationMatrix * translationMatrixBack * rotationMatrix * translationMatrixToPivot;
 
-		return transformationMatrix;
+		transformationMatrices[index] = transformationMatrix;
 	}
-};
+}
 
 
 
@@ -538,11 +535,6 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 	cudaMalloc(&transformMatrices, mhCol.nMoleculeHulls * maxCollisionsPerMH * sizeof(glm::mat4));
 
 
-	thrust::device_ptr<glm::vec3> rotationPivotPointsPtr(reinterpret_cast<glm::vec3*>(pivotPoints));
-	thrust::device_ptr<glm::vec3> forceApplicationPointsPtr(reinterpret_cast<glm::vec3*>(forceApplicationPoints));
-	thrust::device_ptr<glm::vec3> forceDirectionsPtr(reinterpret_cast<glm::vec3*>(forceDirections));
-	thrust::device_ptr<float> forceMagnitudesPtr(forceMagnitudes);
-	thrust::device_ptr<glm::mat4> transformationMatricesPtr(transformMatrices);
 
 	float* totalOverlapDev;
 	cudaMalloc(&totalOverlapDev, sizeof(float)*2);
@@ -574,15 +566,11 @@ void ConvexHullEngine::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCo
 			FindForceDirection << <mhCol.nMoleculeHulls, 32 >> > (mhCol.moleculeHulls, mhCol.facets, forceApplicationPoints, forceDirections, nVerticesOutDev, queryMoleculeId);
 		}
 
-		// Apply the transformation using thrust::transform
 		const int totalElements = mhCol.nMoleculeHulls * maxCollisionsPerMH;
-		thrust::transform(
-			thrust::make_zip_iterator(thrust::make_tuple(rotationPivotPointsPtr, forceApplicationPointsPtr, forceDirectionsPtr, forceMagnitudesPtr)),
-			thrust::make_zip_iterator(thrust::make_tuple(rotationPivotPointsPtr + totalElements, forceApplicationPointsPtr + totalElements, forceDirectionsPtr + totalElements, forceMagnitudesPtr + totalElements)),
-			transformationMatricesPtr,
-			ComputeTransformationMatrix()
-		);
-		LIMA_UTILS::genericErrorCheck("Thrust error: ");
+		ComputeTransformationMatrices<<<(totalElements + 63) / 64, 64>>>(reinterpret_cast<const glm::vec3*>(pivotPoints),
+			reinterpret_cast<const glm::vec3*>(forceApplicationPoints), reinterpret_cast<const glm::vec3*>(forceDirections),
+			forceMagnitudes, transformMatrices, totalElements);
+		LIMA_UTILS::genericErrorCheck("ComputeTransformationMatrices");
 
 		cudaDeviceSynchronize();
 

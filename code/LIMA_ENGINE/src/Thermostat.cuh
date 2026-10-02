@@ -4,10 +4,7 @@
 #include "PhysicsUtilsDevice.cuh"
 #include "BatchLayout.cuh"
 
-#include <thrust/device_vector.h>
-#include <thrust/transform.h>
-#include <thrust/reduce.h>
-#include <thrust/execution_policy.h>
+#include "ThrustWrappers.h"
 
 #include <cuda_runtime.h>
 
@@ -60,8 +57,7 @@ public:
 	// Keep each simulation's reduction order and degrees of freedom independent.
 	std::pair<float, float> Temperature(const BoxParams& boxparams, const SimParams& simparams, BatchRange pclusters, cudaStream_t stream) {
 		const float* begin = intermediate + pclusters.offset * PersistentCluster::maxParticles;
-		const double totalKineticEnergy = thrust::reduce(thrust::cuda::par.on(stream),
-			begin, begin + pclusters.count * PersistentCluster::maxParticles, 0.0);
+		const double totalKineticEnergy = ThrustWrappers::Sum(begin, begin + pclusters.count * PersistentCluster::maxParticles, stream);
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
 		return {temperature, _Thermostat::ComputeThermostatScalar(temperature, simparams)};
 	}

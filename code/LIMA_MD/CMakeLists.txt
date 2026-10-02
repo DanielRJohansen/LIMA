@@ -79,3 +79,6 @@ endif()
 # Self-test executable
 add_executable(md_self_test src/Main.cpp "src/Shaders.h" "src/LiveEditCommands.cpp" "src/DisplayControls.cpp" "src/EnvironmentLiveedit.cpp")
 target_link_libraries(md_self_test LIMA_MD ${GLFW_LIBRARIES})
+
+lima_pch(LIMA_MD)
+lima_pch(md_self_test)

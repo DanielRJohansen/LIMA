@@ -10,7 +10,7 @@ CUDA_PACKAGE_VERSION=$(basename "$CUDA_DIR" | sed 's/^cuda-//; s/\./-/')	# /usr/
 echo "### Build tools and LIMA's dependencies"
 sudo apt-get update
 sudo apt-get install -y build-essential gcc-14 g++-14 ninja-build cmake git wget ca-certificates \
-    libglfw3-dev libglm-dev libtbb-dev libgl-dev dpkg-dev gh
+    libglfw3-dev libglm-dev libtbb-dev libgl-dev dpkg-dev gh wslu
 
 echo "### CUDA ${CUDA_PACKAGE_VERSION/-/.} toolkit for WSL"
 # NVIDIA's WSL repository ships the toolkit without a driver; WSL uses the Windows driver
@@ -51,6 +51,8 @@ docker version --format 'Docker {{.Server.Version}}' \
 if ! gh auth status > /dev/null 2>&1; then
     echo
     echo "### Log in to GitHub, to upload releases"
+    echo "If this fails, log in with a fine-grained token instead (Contents: read and write on the LIMA repo):"
+    echo "  gh auth login --with-token"
     gh auth login --hostname github.com --git-protocol https --web
 fi
 

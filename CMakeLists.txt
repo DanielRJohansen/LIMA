@@ -72,9 +72,9 @@ add_compile_definitions(CCCL_DISABLE_NVTX)
 set(CMAKE_OPTIMIZE_DEPENDENCIES ON)
 
 # Precompiled header for the host (C++) code of a target. CUDA files are left alone, nvcc handles PCH poorly.
-# MSVC lowercases the .pch path, which fails if the source tree is inside a case-sensitive directory
-# (fsutil file queryCaseSensitiveInfo <dir>), so this is opt-in
-option(LIMA_PCH "Use a precompiled header for host code" OFF)
+# MSVC lowercases the .pch path, which fails if the build tree is inside a case-sensitive directory
+# (fsutil file queryCaseSensitiveInfo <dir>). Configure with -DLIMA_PCH=OFF there
+option(LIMA_PCH "Use a precompiled header for host code" ON)
 function(lima_pch target)
 	if (LIMA_PCH)
 		if (target STREQUAL "LIMA_BASE")

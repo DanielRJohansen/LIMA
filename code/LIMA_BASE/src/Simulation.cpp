@@ -44,13 +44,13 @@ Simulation::Simulation(const SimParams& params, std::unique_ptr<Box> _box) :
 
 void Simulation::PrepareDataBuffers() {
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
-	const auto n_steps = std::max(simParams.n_steps, uint64_t{ 1 });
+	const auto n_steps = std::max(simParams.n_steps.value, uint64_t{ 1 });
 	// Standard Data Buffers 
 	{
 		// Permanent Outputs for energy & trajectory analysis
 		const int nPclusters = box->persistentClusters.size();
 		const int particlesUpperbound = nPclusters * PersistentCluster::maxParticles;
-		const size_t n_datapoints = particlesUpperbound * n_steps / simParams.data_logging_interval;
+		const size_t n_datapoints = simParams.data_logging_interval > 0 ? particlesUpperbound * n_steps / simParams.data_logging_interval : 0;
 		const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
 		
 		//m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");

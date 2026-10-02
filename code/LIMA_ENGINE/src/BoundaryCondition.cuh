@@ -1,16 +1,14 @@
 #pragma once
 
-#include "KernelConstants.cuh"
-
 class NoBoundaryCondition {
 public:
-	__device__ __host__ void static applyBC(NodeIndex& origo) {}
+	__device__ __host__ void static applyBC(NodeIndex& origo, const Int3& gridDim) {}
 
 	__device__ constexpr static NodeIndex applyBC(const NodeIndex& nodeindex, const Int3& nodesPerDim) { return nodeindex; }
-	static void constexpr applyBCNM(const Float3&) {}
-	__device__ __host__ static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {}
+	static void constexpr applyBCNM(Float3& currentPosition, const Float3& boxSize) {}
+	__device__ __host__ static void applyHyperpos(const NodeIndex& staticIndex, NodeIndex& movableIndex, const Int3& gridDim) {}
 
-	__device__ __host__ static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {}
+	__device__ __host__ static inline void applyHyperposNM(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize) {}
 	
 	__device__ static inline void ApplyBC(Float3& currentPosition, const Float3& boxSize, const Float3& boxSizeInv) {}
 	__device__ constexpr static inline void ApplyHyperpos(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize, const Float3& boxSizeInv) {}
@@ -22,11 +20,10 @@ public:
 
 class PeriodicBoundaryCondition {
 public:
-	__device__ constexpr static void applyBC(NodeIndex& origo) {
-		origo.x += DeviceConstants::boxSize.blocksPerDim.x * ((origo.x < 0) - (origo.x >= DeviceConstants::boxSize.blocksPerDim.x));
-		origo.y += DeviceConstants::boxSize.blocksPerDim.y * ((origo.y < 0) - (origo.y >= DeviceConstants::boxSize.blocksPerDim.y));
-		origo.z += DeviceConstants::boxSize.blocksPerDim.z * ((origo.z < 0) - (origo.z >= DeviceConstants::boxSize.blocksPerDim.z));
-
+	__device__ constexpr static void applyBC(NodeIndex& origo, const Int3& gridDim) {
+		origo.x += gridDim.x * ((origo.x < 0) - (origo.x >= gridDim.x));
+		origo.y += gridDim.y * ((origo.y < 0) - (origo.y >= gridDim.y));
+		origo.z += gridDim.z * ((origo.z < 0) - (origo.z >= gridDim.z));
 	}
 
 	__device__ constexpr static NodeIndex applyBC(const NodeIndex& nodeindex, const Int3& gridDim) {
@@ -37,25 +34,26 @@ public:
 		return output;
 	}
 
-	__device__ constexpr static void applyHyperpos(const NodeIndex& static_index, NodeIndex& movable_index) {
-		const NodeIndex difference = static_index - movable_index;
-		movable_index.x += DeviceConstants::boxSize.blocksPerDim.x * (difference.x > (DeviceConstants::boxSize.blocksPerDimHalf.x));		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
-		movable_index.x -= DeviceConstants::boxSize.blocksPerDim.x * (difference.x < -(DeviceConstants::boxSize.blocksPerDimHalf.x));
-        movable_index.y += DeviceConstants::boxSize.blocksPerDim.y * (difference.y > (DeviceConstants::boxSize.blocksPerDimHalf.y));
-		movable_index.y -= DeviceConstants::boxSize.blocksPerDim.y * (difference.y < -(DeviceConstants::boxSize.blocksPerDimHalf.y));
-		movable_index.z += DeviceConstants::boxSize.blocksPerDim.z * (difference.z > (DeviceConstants::boxSize.blocksPerDimHalf.z));
-		movable_index.z -= DeviceConstants::boxSize.blocksPerDim.z * (difference.z < -(DeviceConstants::boxSize.blocksPerDimHalf.z));
+	__device__ constexpr static void applyHyperpos(const NodeIndex& staticIndex, NodeIndex& movableIndex, const Int3& gridDim) {
+		const NodeIndex difference = staticIndex - movableIndex;
+		const Int3 gridDimHalf = gridDim / 2;
+		movableIndex.x += gridDim.x * (difference.x > gridDimHalf.x);		// Dont need to +1 to account of uneven, this is correct (im pretty sure)
+		movableIndex.x -= gridDim.x * (difference.x < -gridDimHalf.x);
+        movableIndex.y += gridDim.y * (difference.y > gridDimHalf.y);
+		movableIndex.y -= gridDim.y * (difference.y < -gridDimHalf.y);
+		movableIndex.z += gridDim.z * (difference.z > gridDimHalf.z);
+		movableIndex.z -= gridDim.z * (difference.z < -gridDimHalf.z);
 	}
 
-	__device__ constexpr static inline void applyHyperposNM(const Float3& static_particle, Float3& movable_particle) {
-		const Float3 boxlenhalf_nm = DeviceConstants::boxSize.boxSizeNM_f * 0.5f;
+	__device__ constexpr static inline void applyHyperposNM(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize) {
+		const Float3 boxSizeHalf = boxSize * 0.5f;
 
-		movable_particle.x += DeviceConstants::boxSize.boxSizeNM_f.x * ((static_particle.x - movable_particle.x) > boxlenhalf_nm.x);
-		movable_particle.x -= DeviceConstants::boxSize.boxSizeNM_f.x * ((static_particle.x - movable_particle.x) < -boxlenhalf_nm.x);
-		movable_particle.y += DeviceConstants::boxSize.boxSizeNM_f.y * ((static_particle.y - movable_particle.y) > boxlenhalf_nm.y);
-		movable_particle.y -= DeviceConstants::boxSize.boxSizeNM_f.y * ((static_particle.y - movable_particle.y) < -boxlenhalf_nm.y);
-		movable_particle.z += DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) > boxlenhalf_nm.z);
-		movable_particle.z -= DeviceConstants::boxSize.boxSizeNM_f.z * ((static_particle.z - movable_particle.z) < -boxlenhalf_nm.z);
+		movableParticle.x += boxSize.x * ((staticParticle.x - movableParticle.x) > boxSizeHalf.x);
+		movableParticle.x -= boxSize.x * ((staticParticle.x - movableParticle.x) < -boxSizeHalf.x);
+		movableParticle.y += boxSize.y * ((staticParticle.y - movableParticle.y) > boxSizeHalf.y);
+		movableParticle.y -= boxSize.y * ((staticParticle.y - movableParticle.y) < -boxSizeHalf.y);
+		movableParticle.z += boxSize.z * ((staticParticle.z - movableParticle.z) > boxSizeHalf.z);
+		movableParticle.z -= boxSize.z * ((staticParticle.z - movableParticle.z) < -boxSizeHalf.z);
 	}
 
 	__device__  static inline void ApplyHyperpos(const Float3& staticParticle, Float3& movableParticle, const Float3& boxSize, const Float3& boxSizeInv) {
@@ -90,12 +88,12 @@ public:
 	}
 
 // TODO: CHECK ALL THESE! Most are wrong, its CRITICAL we do >= not just >!!!
-	__device__ constexpr static void applyBCNM(Float3& current_position) {	// Only changes position if position is outside of box;		
-		current_position.x += DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x < 0.f);
-		current_position.x -= DeviceConstants::boxSize.boxSizeNM_f.x * (current_position.x >= DeviceConstants::boxSize.boxSizeNM_f.x);
-		current_position.y += DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y < 0.f);
-		current_position.y -= DeviceConstants::boxSize.boxSizeNM_f.y * (current_position.y >= DeviceConstants::boxSize.boxSizeNM_f.y);
-		current_position.z += DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z < 0.f);
-		current_position.z -= DeviceConstants::boxSize.boxSizeNM_f.z * (current_position.z >= DeviceConstants::boxSize.boxSizeNM_f.z);
+	__device__ constexpr static void applyBCNM(Float3& currentPosition, const Float3& boxSize) {	// Only changes position if position is outside of box;
+		currentPosition.x += boxSize.x * (currentPosition.x < 0.f);
+		currentPosition.x -= boxSize.x * (currentPosition.x >= boxSize.x);
+		currentPosition.y += boxSize.y * (currentPosition.y < 0.f);
+		currentPosition.y -= boxSize.y * (currentPosition.y >= boxSize.y);
+		currentPosition.z += boxSize.z * (currentPosition.z < 0.f);
+		currentPosition.z -= boxSize.z * (currentPosition.z >= boxSize.z);
 	}
 };

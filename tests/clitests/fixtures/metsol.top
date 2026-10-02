@@ -1,0 +1,32 @@
+; ;
+;	File 'topol.top' was generated
+;	By user: unknown (11042)
+;	On host: j-81498-job-0
+;	At date: Wed Jul 27 22:25:46 2022
+;
+;	This is a standalone topology file
+;
+;	Created by:
+;	                    :-) GROMACS - gmx pdb2gmx, 2020.6 (-:
+;	
+;	Executable:   /gromacs/bin.AVX_512/gmx
+;	Data prefix:  /gromacs
+;	Working dir:  /work/Bio_sim/THESIS/ENDGAME/A3
+;	Command line:
+;	  gmx pdb2gmx -f 6lzm_noligand.pdb
+;	Force field was read from the standard GROMACS share directory.
+;
+
+
+#include "charmm27.ff/forcefield.itp"
+
+#include "Protein_chain_A.itp"
+#include "SOL.itp"
+
+[ system ]
+T4 LYSOZYME in water
+
+[ molecules ]
+Protein_chain_A 1
+SOL 890
+

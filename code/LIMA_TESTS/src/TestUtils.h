@@ -15,10 +15,16 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <atomic>
+#include <condition_variable>
+#include <coroutine>
+#include <thread>
 #include <sstream>
+#include <utility>
 
 namespace TestUtils {
-
+	// Analysis accesses CUDA-backed simulation data; keep it inside the GPU lease
+	// and return an owning copy so callers can aggregate results without the lock.
 	fs::path AutomatedTestsDir() { return FileUtils::GetLimaDir() / "tests" / "automatedtests"; }
 	fs::path HeavyTestsDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
 
@@ -30,6 +36,24 @@ namespace TestUtils {
 		}
 		else {
 			return conf;
+		}
+	}
+
+	bool MayModifyDir(const fs::path& path) {
+		if (path.string().find("LIMA_data") == std::string::npos && path.string().find("automatedtests") == std::string::npos) {
+			throw std::runtime_error("LIMA is not allowed to clean this directory");
+			return false;
+		}
+		return true;
+	}
+
+	void TryDeleteFile(const fs::path& path) {
+		MayModifyDir(path);
+		try {
+			fs::remove(path);
+		}
+		catch (const fs::filesystem_error& e) {
+			std::cerr << "Error removing " << path << ": " << e.what() << '\n';
 		}
 	}
 
@@ -64,12 +88,7 @@ namespace TestUtils {
 		// Remove all files that do not contain "reference" in their name
 		for (auto& p : fs::recursive_directory_iterator(dir)) {
 			if (fs::is_regular_file(p) && p.path().filename().string().find(except) == std::string::npos) {
-				try {
-					fs::remove(p);
-				}
-				catch (const fs::filesystem_error& e) {
-					std::cerr << "Error removing " << p.path() << ": " << e.what() << '\n';
-				}
+				TryDeleteFile(p.path());
 			}
 		}
 
@@ -95,26 +114,6 @@ namespace TestUtils {
 				}
 			}
 		}
-	}
-
-	// Creates a simulation from the folder which should contain a molecule with conf and topol
-	// Returns an environment where solvents and compound can still be modified, and nothing (i hope) have
-	// yet been moved to device. I should find a way to enforce this...
-	static std::unique_ptr<Environment> basicSetup(const std::string& foldername, std::optional<SimParams> simparams, EnvMode envmode) {
-		
-		const fs::path work_folder = AutomatedTestsDir() / foldername;
-		const GroFile conf{getMostSuitableGroFile(work_folder)};
-		const TopologyFile topol {work_folder / "molecule/topol.top"};
-		const fs::path simpar = work_folder / "sim_params.txt";
-
-		auto env = std::make_unique<Environment>(work_folder, envmode);
-
-		const SimParams ip = simparams.value_or(SimParams{ simpar });
-
-
-		env->CreateSimulation(conf, topol, ip);
-
-		return std::move(env);
 	}
 
 	// assumes that all the values are positive
@@ -148,9 +147,9 @@ namespace TestUtils {
 		return results;
 	}
 
-	bool& VarianceCoefficientSuiteStarted() {
-		static bool started = false;
-		return started;
+	std::map<std::string, VarianceCoefficientThresholds>*& ActiveVarianceCoefficientResults() {
+		thread_local std::map<std::string, VarianceCoefficientThresholds>* results = nullptr;
+		return results;
 	}
 
 	void WriteActualVarianceCoefficientResults() {
@@ -165,10 +164,29 @@ namespace TestUtils {
 		}
 	}
 
-	void BeginVarianceCoefficientTestSuite() {
+	void ResetVarianceCoefficientResults() {
 		ActualVarianceCoefficientResults().clear();
-		VarianceCoefficientSuiteStarted() = true;
-		WriteActualVarianceCoefficientResults();
+	}
+
+	void MergeVarianceCoefficientResult(
+		std::map<std::string, VarianceCoefficientThresholds>& results,
+		const std::string& testName,
+		float maxVc,
+		float maxGradient) {
+		auto [entry, inserted] = results.try_emplace(
+			testName, VarianceCoefficientThresholds{ maxVc, maxGradient });
+		if (!inserted) {
+			entry->second.max_vc = std::max(entry->second.max_vc, maxVc);
+			entry->second.max_gradient = std::max(entry->second.max_gradient, maxGradient);
+		}
+	}
+
+	void PublishVarianceCoefficientResults(
+		const std::map<std::string, VarianceCoefficientThresholds>& results) {
+		for (const auto& [testName, result] : results) {
+			MergeVarianceCoefficientResult(
+				ActualVarianceCoefficientResults(), testName, result.max_vc, result.max_gradient);
+		}
 	}
 
 	void RecordActualVarianceCoefficientResult(
@@ -179,9 +197,6 @@ namespace TestUtils {
 		if (VCs.empty() || energy_gradients.empty()) {
 			throw std::runtime_error("Variance coefficient tests must provide at least one VC and energy gradient");
 		}
-		if (!VarianceCoefficientSuiteStarted()) {
-			BeginVarianceCoefficientTestSuite();
-		}
 
 		const float max_vc = *std::max_element(VCs.begin(), VCs.end());
 		const float max_gradient = std::abs(*std::max_element(
@@ -189,13 +204,14 @@ namespace TestUtils {
 			[](float lhs, float rhs) { return std::abs(lhs) < std::abs(rhs); }
 		));
 
-		auto [entry, inserted] = ActualVarianceCoefficientResults().try_emplace(
-			test_name, VarianceCoefficientThresholds{ max_vc, max_gradient });
-		if (!inserted) {
-			entry->second.max_vc = std::max(entry->second.max_vc, max_vc);
-			entry->second.max_gradient = std::max(entry->second.max_gradient, max_gradient);
+		auto* results = ActiveVarianceCoefficientResults();
+		if (results != nullptr) {
+			MergeVarianceCoefficientResult(*results, test_name, max_vc, max_gradient);
+			return;
 		}
-		WriteActualVarianceCoefficientResults();
+
+		MergeVarianceCoefficientResult(
+			ActualVarianceCoefficientResults(), test_name, max_vc, max_gradient);
 	}
 
 	const std::map<std::string, VarianceCoefficientThresholds>& VarianceCoefficientTargets() {
@@ -332,115 +348,311 @@ namespace TestUtils {
 		}
 
 		bool success;
-		std::string error_description;		
+		std::string error_description;
+		std::optional<std::chrono::duration<double>> environmentTime;
 	};
+
+	struct TestFailure {
+		std::string message;
+	};
+
+	// Number of LimaUnittestManagers alive on this thread. Without one, nothing resumes a suspended test,
+	// so co_await instead blocks until the simulation is done. This lets tests be called directly, eg. from main
+	inline int& ActiveTestManagers() {
+		thread_local int count = 0;
+		return count;
+	}
+
+	// Coroutine used only by the test runner. A test runs immediately until it
+	// awaits a SimulationHandle; LimaUnittestManager resumes it when that handle
+	// becomes ready. This keeps sequences of dependent submissions linear without
+	// adding continuations, threads, or test-specific behavior to Environment.
+	class TestRoutine {
+	public:
+		struct promise_type;
+
+		TestRoutine(const TestRoutine&) = delete;
+		TestRoutine& operator=(const TestRoutine&) = delete;
+		TestRoutine(TestRoutine&& other) noexcept : coroutine(std::exchange(other.coroutine, {})) {}
+		TestRoutine& operator=(TestRoutine&& other) noexcept {
+			if (this != &other) {
+				if (coroutine)
+					coroutine.destroy();
+				coroutine = std::exchange(other.coroutine, {});
+			}
+			return *this;
+		}
+		~TestRoutine() {
+			if (coroutine)
+				coroutine.destroy();
+		}
+
+		bool IsComplete() const { return coroutine.done(); }
+		bool ResumeIfReady();
+		LimaUnittestResult RunToCompletion();
+		LimaUnittestResult TakeResult();
+		std::chrono::duration<double> Elapsed() const;
+
+		struct promise_type {
+			struct SimulationAwaiter {
+				promise_type& promise;
+				SimulationHandle handle;
+
+				// Without a test manager we dont suspend, and await_resume blocks on the result instead
+				bool await_ready() const { return handle.IsReady() || ActiveTestManagers() == 0; }
+				void await_suspend(std::coroutine_handle<>) { promise.awaitedSimulation = handle; }
+				SimulationResult await_resume() {
+					promise.awaitedSimulation.reset();
+					auto result = handle.Get();
+					promise.environmentTime += result.environmentTime;
+					return result;
+				}
+			};
+
+			TestRoutine get_return_object() {
+				return TestRoutine{ std::coroutine_handle<promise_type>::from_promise(*this) };
+			}
+			// Start during ADD_TEST so every test can enqueue its first simulation
+			// before LimaUnittestManager begins waiting for results.
+			std::suspend_never initial_suspend() noexcept { return {}; }
+			// Keep the completed frame alive until the manager has collected its result.
+			std::suspend_always final_suspend() noexcept { return {}; }
+			// This promise-local conversion is why SimulationHandle itself does not need
+			// coroutine support: co_await is available only inside test routines.
+			SimulationAwaiter await_transform(SimulationHandle handle) {
+				return SimulationAwaiter{ *this, std::move(handle) };
+			}
+			void return_value(LimaUnittestResult value) {
+				if (environmentTime != std::chrono::duration<double>{})
+					value.environmentTime = environmentTime;
+				result.emplace(std::move(value));
+				finished = std::chrono::steady_clock::now();
+			}
+			void unhandled_exception() {
+				try {
+					throw;
+				}
+				catch (const TestFailure& failure) {
+					result.emplace(false, failure.message, false);
+				}
+				catch (...) {
+					error = std::current_exception();
+				}
+				finished = std::chrono::steady_clock::now();
+			}
+
+			std::optional<SimulationHandle> awaitedSimulation;
+			std::optional<LimaUnittestResult> result;
+			std::exception_ptr error;
+			std::chrono::duration<double> environmentTime{};
+			std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point finished{};
+		};
+
+	private:
+		explicit TestRoutine(std::coroutine_handle<promise_type> coroutine) : coroutine(coroutine) {}
+		std::coroutine_handle<promise_type> coroutine;
+	};
+
+	inline bool TestRoutine::ResumeIfReady() {
+		if (IsComplete())
+			return false;
+		auto& awaited = coroutine.promise().awaitedSimulation;
+		if (!awaited || !awaited->IsReady())
+			return false;
+		coroutine.resume();
+		return true;
+	}
+
+	inline LimaUnittestResult TestRoutine::TakeResult() {
+		if (!IsComplete())
+			throw std::runtime_error("Cannot take the result of an incomplete test");
+		auto& promise = coroutine.promise();
+		if (promise.error)
+			std::rethrow_exception(promise.error);
+		return std::move(*promise.result);
+	}
+
+	inline LimaUnittestResult TestRoutine::RunToCompletion() {
+		while (!IsComplete()) {
+			if (!ResumeIfReady())
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		return TakeResult();
+	}
+
+	inline std::chrono::duration<double> TestRoutine::Elapsed() const {
+		const auto& promise = coroutine.promise();
+		return promise.finished - promise.started;
+	}
 
 #define ASSERT(condition, errorMsg) \
     do { \
         if (!(condition)) { \
             std::string msg = errorMsg; \
-            return LimaUnittestResult{ false, msg, (envmode) == Full }; \
+            throw TestFailure{ std::move(msg) }; \
         } \
     } while (0)
 
+#define TEST_ASSERT(condition, errorMsg) ASSERT(condition, errorMsg)
+
 	struct LimaUnittest {
-		LimaUnittest(const std::string& name, std::function<LimaUnittestResult()> test) :
-			name(name),
-			test(test)
-		{}
+		LimaUnittest(std::string name, TestRoutine test)
+			: name(std::move(name)), test(std::move(test)) {}
 
-		void execute() {
-
+		void CollectResult() noexcept {
+			if (!test.IsComplete() || testresult)
+				return;
+			auto*& activeResults = ActiveVarianceCoefficientResults();
+			auto* previousResults = activeResults;
+			activeResults = &varianceResults;
 			try {
-				TimeIt timer{};
-				std::cout << "Test " << name << " ";
-				testresult = std::make_unique<LimaUnittestResult>(test());
-
-				int str_len = 6 + name.length();
-				while (str_len++ < 61) { std::cout << " "; }
-
-				//testresult->printStatus(" (" + timer.ElapsedPretty() + ")");
-				testresult->printStatus();
-
+				testresult = std::make_unique<LimaUnittestResult>(test.TakeResult());
+				elapsed = testresult->environmentTime.value_or(test.Elapsed());
 			}
-			catch (const std::runtime_error& ex) {
-				const std::string err_desc = "Test threw exception: " + std::string(ex.what());
-				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult{ false, err_desc, true });
+			catch (const std::exception& ex) {
+				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw exception: " + std::string(ex.what()), false);
 			}
+			catch (...) {
+				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw an unknown exception", false);
+			}
+			activeResults = previousResults;
 		}
 
-		const std::function<LimaUnittestResult()> test;
-		std::unique_ptr<LimaUnittestResult> testresult;
-		const std::string name;
-	};
+		void Print() const {
+			std::cout << "Test " << name << " ";
+			int length = 6 + static_cast<int>(name.length());
+			while (length++ < 61) std::cout << ' ';
+			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed, 1, 2) + ")");
+			std::cout << std::flush;
+		}
 
+		std::string name;
+		TestRoutine test;
+		std::unique_ptr<LimaUnittestResult> testresult;
+		std::chrono::duration<double> elapsed{};
+		std::map<std::string, VarianceCoefficientThresholds> varianceResults;
+	};
 
 	class LimaUnittestManager {
 	public:
-		LimaUnittestManager(){ BeginVarianceCoefficientTestSuite(); }
-		~LimaUnittestManager() {
-			if (successCount == tests.size()) {
-				setConsoleTextColorGreen();
-			}
-			else {
-				setConsoleTextColorRed();
-			}
-			
+		// Suites that never touch the Environment (eg. limaclitest) should not construct one just to print its report
+		explicit LimaUnittestManager(bool printEnvironmentReport = true) : printEnvironmentReport(printEnvironmentReport) {
+			ResetVarianceCoefficientResults(); ActiveTestManagers()++;
+		}
+		~LimaUnittestManager() { Finish(); }
+
+		// Runs all remaining tests, prints the summary and returns the number of failed tests
+		int Finish() {
+			if (finished) return static_cast<int>(tests.size()) - successCount;
+			finished = true;
+			Run();
+			ActiveTestManagers()--;
+			// Only write when something was recorded, so suites without VC tests dont wipe vc_results.csv
+			if (!ActualVarianceCoefficientResults().empty())
+				WriteActualVarianceCoefficientResults();
+			if (printEnvironmentReport)
+				Environment::Get().PrintDevPerformanceReport();
+			if (successCount == tests.size()) setConsoleTextColorGreen();
+			else setConsoleTextColorRed();
 			std::printf("\n\n#--- Unittesting finished with %d successes of %zu tests ---#\n\n", successCount, tests.size());
-
-			for (const auto& test : tests) {
-				if (!test->testresult->success) {
-					test->testresult->printStatus();
-				}
-			}
-
+			for (const auto& test : tests)
+				if (!test->testresult->success) test->testresult->printStatus();
 			setConsoleTextColorDefault();
+			return static_cast<int>(tests.size()) - successCount;
 		}
 
-		void addTest(std::unique_ptr<LimaUnittest> test) {
-			test->execute();
-
-			if (test->testresult->success) { successCount++; }
-
+		template<typename Factory>
+		void AddTest(std::string name, Factory&& factory) {
+			auto*& activeResults = ActiveVarianceCoefficientResults();
+			auto* previousResults = activeResults;
+			std::map<std::string, VarianceCoefficientThresholds> initialResults;
+			activeResults = &initialResults;
+			auto routine = std::forward<Factory>(factory)();
+			activeResults = previousResults;
+			auto test = std::make_unique<LimaUnittest>(std::move(name), std::move(routine));
+			test->varianceResults = std::move(initialResults);
 			tests.push_back(std::move(test));
+			PumpReadyTests();
 		}
 
 	private:
+		bool PumpReadyTests() {
+			bool madeProgress = false;
+			for (auto& test : tests) {
+				if (!test->test.IsComplete()) {
+					auto*& activeResults = ActiveVarianceCoefficientResults();
+					auto* previousResults = activeResults;
+					activeResults = &test->varianceResults;
+					madeProgress |= test->test.ResumeIfReady();
+					activeResults = previousResults;
+				}
+				if (test->test.IsComplete() && !test->testresult) {
+					test->CollectResult();
+					completedCount++;
+					madeProgress = true;
+				}
+			}
+
+			while (nextToPrint < tests.size() && tests[nextToPrint]->testresult) {
+				auto& test = tests[nextToPrint++];
+				PublishVarianceCoefficientResults(test->varianceResults);
+				test->Print();
+				if (test->testresult->success)
+					successCount++;
+			}
+			return madeProgress;
+		}
+
+		void Run() {
+			if (hasRun) return;
+			hasRun = true;
+			// Drive every ready test forward by one or more sequential Submit() calls.
+			// Results may complete in any order, but nextToPrint preserves registration order.
+			while (completedCount < tests.size()) {
+				if (!PumpReadyTests())
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+		}
+
 		std::vector<std::unique_ptr<LimaUnittest>> tests;
+		size_t completedCount = 0;
+		size_t nextToPrint = 0;
 		int successCount = 0;
+		bool hasRun = false;
+		bool finished = false;
+		const bool printEnvironmentReport;
 	};
 
-
-
-
-	static LimaUnittestResult loadAndRunBasicSimulation(
-		const string& folder_name,
+	static TestRoutine LoadAndRunBasicSimulation(
+		Environment& environment,
 		EnvMode envmode,
-		const std::string& test_name,
-		std::optional<SimParams> ip = {}
-	)
-	{		
-		auto env = TestUtils::basicSetup(folder_name, ip, envmode);
-		env->run();
+		std::string folderName,
+		std::string testName,
+		std::optional<SimParams> simParams = {})
+	{
+		const fs::path workDir = AutomatedTestsDir() / folderName;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace(getMostSuitableGroFile(workDir));
+		job.simParams = std::move(simParams);
+		job.mode = envmode;
+		job.postprocess = SimAnalysis::AnalyzeEnergy;
 
-		const auto analytics = env->getAnalyzedPackage();
-		
-		float varcoff = analytics.variance_coefficient;
-		
-
-		if (envmode != Headless) {
-			analytics.Print();
-			//LIMA_Print::printPythonVec("potE", std::vector<float>{ analytics.pot_energy});
-			//LIMA_Print::printPythonVec("kinE", std::vector<float>{ analytics.kin_energy});
-			//LIMA_Print::printPythonVec("totE", std::vector<float>{ analytics.total_energy});
-			//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
+		auto completed = co_await environment.Submit(std::move(job));
+		if (!completed.simulation)
+			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
+		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
+			co_return LimaUnittestResult{ false,
+				std::format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
+				envmode == Full };
 		}
-		ASSERT(env->getSimPtr()->getStep() == env->getSimPtr()->simParams.n_steps, std::format("Simulation did not finish {}/{}",
-			env->getSimPtr()->getStep(), env->getSimPtr()->simParams.n_steps));
+		if (!completed.analysis)
+			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
 
-		const auto result = evaluateTest(test_name, { varcoff }, {analytics.energy_gradient});
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+		const auto evaluation = evaluateTest(testName,
+			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
+		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 	}
 
 	void stressTest(std::function<void()> func, size_t reps) {
@@ -483,8 +695,8 @@ namespace TestUtils {
 	}
 
 
-	void CompareForces1To1(const fs::path& workDir, Environment& env, bool overwriteRef) {
-		const ParticleDataBuffer<Float3>* forcebuffer = env.getSimPtr()->forceBuffer.get();
+	void CompareForces1To1(const fs::path& workDir, const Simulation& simulation, bool overwriteRef) {
+		const ParticleDataBuffer<Float3>* forcebuffer = simulation.forceBuffer.get();
 		std::vector<Float3> forces(forcebuffer->GetBufferAtStep(0), forcebuffer->GetBufferAtStep(0) + forcebuffer->n_particles_upperbound);
 
 		if (overwriteRef)
@@ -524,6 +736,86 @@ namespace TestUtils {
 		}
 	}
 
+	LimaUnittestResult CompareTopologyFiles(const TopologyFile& newTop, const TopologyFile& refTop, EnvMode envmode) {
+
+		auto EqualUnordered = []<std::ranges::input_range R1, std::ranges::input_range R2>(R1&& a, R2&& b) {
+			using T = std::ranges::range_value_t<R1>;
+
+			std::vector<T> va = std::ranges::to<std::vector<T>>(a);
+			std::vector<T> vb = std::ranges::to<std::vector<T>>(b);
+			if (va.size() != vb.size())
+				return false;
+
+			// Bonded interactions are invariant under complete atom-order reversal.
+			auto canonicalize = [](T& interaction) {
+				auto reversedIds = interaction.ids;
+				std::ranges::reverse(reversedIds);
+				if (reversedIds < interaction.ids)
+					interaction.ids = reversedIds;
+			};
+			std::ranges::for_each(va, canonicalize);
+			std::ranges::for_each(vb, canonicalize);
+
+			auto byIdsAndFunction = [](const T& lhs, const T& rhs) {
+				if (lhs.ids != rhs.ids)
+					return lhs.ids < rhs.ids;
+				return lhs.funct < rhs.funct;
+			};
+			std::ranges::sort(va, byIdsAndFunction);
+			std::ranges::sort(vb, byIdsAndFunction);
+
+			return va == vb;
+		};
+
+		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology AtomsEntry Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology SingleBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::PairBond>(), refTop.GetAllElements<TopologyFile::PairBond>()), "Topology PairBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology AngleBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology DihedralBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology ImproperDihedralBond Mismatch");
+		ASSERT(EqualUnordered(newTop.GetAllElements<TopologyFile::CmapBond>(), refTop.GetAllElements<TopologyFile::CmapBond>()), "Topology CmapBond Mismatch");
+		return LimaUnittestResult{ true, "Success", false };
+	}
+
+	LimaUnittestResult CompareGroFiles(const GroFile& newGro, const GroFile& refGro, EnvMode envmode,
+		float maxCoordinateError=0.0015, float maxBoxError=0.f,
+		std::optional<float> maxCoordinateRmsd=std::nullopt) {
+		ASSERT(std::abs(newGro.box_size.x - refGro.box_size.x) <= maxBoxError
+			&& std::abs(newGro.box_size.y - refGro.box_size.y) <= maxBoxError
+			&& std::abs(newGro.box_size.z - refGro.box_size.z) <= maxBoxError, "Box size mismatch");
+		ASSERT(newGro.atoms.size() == refGro.atoms.size(), "Atom count mismatch");
+		double squaredCoordinateError = 0.0;
+		for (int i = 0; i < newGro.atoms.size(); i++) {
+			const auto& newAtom = newGro.atoms[i];
+			const auto& refAtom = refGro.atoms[i];
+			ASSERT(newAtom.residue_number == refAtom.residue_number, "Residue number mismatch");
+			ASSERT(newAtom.residueName == refAtom.residueName, "Residue name mismatch");
+			ASSERT(newAtom.atomName== refAtom.atomName, "Atom name mismatch");
+			ASSERT(newAtom.gro_id== refAtom.gro_id, "Atom number mismatch");
+
+
+			bool errX = std::abs(newAtom.position.x - refAtom.position.x) > maxCoordinateError;
+			bool errY = std::abs(newAtom.position.y - refAtom.position.y) > maxCoordinateError;
+			bool errZ = std::abs(newAtom.position.z - refAtom.position.z) > maxCoordinateError;
+			const double dx = newAtom.position.x - refAtom.position.x;
+			const double dy = newAtom.position.y - refAtom.position.y;
+			const double dz = newAtom.position.z - refAtom.position.z;
+			squaredCoordinateError += dx * dx + dy * dy + dz * dz;
+			if (errX || errY || errZ) {
+				std::string errorMsg = std::format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
+					newAtom.gro_id,
+					newAtom.position.x, newAtom.position.y, newAtom.position.z,
+					refAtom.position.x, refAtom.position.y, refAtom.position.z);
+				return LimaUnittestResult{ false, errorMsg, envmode != Headless };
+			}
+
+		}
+		if (maxCoordinateRmsd) {
+			const double rmsd = std::sqrt(squaredCoordinateError / static_cast<double>(newGro.atoms.size()));
+			ASSERT(rmsd <= *maxCoordinateRmsd,
+				std::format("Coordinate RMSD {:.6f} exceeds allowed {:.6f}", rmsd, *maxCoordinateRmsd));
+		}
+		return LimaUnittestResult{ true, "Success", false };
+	}
+
 } // namespace TestUtils
-
-

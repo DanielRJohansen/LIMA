@@ -29,6 +29,15 @@ void centerMoleculeAroundOrigo(GroFile& grofile) {
 	}
 }
 
+// Lipid structures are shared between copies of a selection, which may be building membranes concurrently,
+// so the selection gets centered copies instead of centering the shared structures in place
+static void UseCenteredLipidCopies(Lipids::Selection& lipidselection) {
+	for (auto& lipid : lipidselection) {
+		lipid.grofile = std::make_shared<GroFile>(*lipid.grofile);
+		centerMoleculeAroundOrigo(*lipid.grofile);
+	}
+}
+
 float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection) {
 	float max_dist = 0;
 	for (const auto& lipid : lipidselection) {
@@ -288,8 +297,6 @@ void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, co
 
 
 void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3) {
-
-	throw std::runtime_error("SolvateGrofile is not implemented yet");
 	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
 		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
 	}
@@ -315,27 +322,33 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
 	// but it will be slightly more complex code
 
-	// First add excessive solvents to all blocks
-	// TODO: Make OMP
-	for (int x = 0; x < gridDim.x; x++) {
-		// The x-column decides the seed
-		std::mt19937 rng(x);
-		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+	// Keep newly placed water atoms outside the van der Waals envelope of the
+	// existing system. The previous 0.12 nm cutoff filled membrane-occupied grid
+	// cells at bulk-water density and could overflow the engine's cluster bins.
+	const float distanceThreshold = 0.25f;	// [nm]
 
-		for (int y = 0; y < gridDim.y; y++) {
-			for (int z = 0; z < gridDim.z; z++) {
-				const NodeIndex nodeindex = NodeIndex{ x, y, z };
-				auto& particles = boxgrid[nodeindex];
-				for (int i = 0; i < desiredSolventsPerNm3 + 20; i++) {	// +20 so we can remove any particles that are too close
-					const Float3 relPos = Float3{ dist(rng), dist(rng), dist(rng) };
-					particles.emplace_back(ParticlePlaceholder{ relPos, false });
-				}
+	// Place candidate waters on a box-wide cubic lattice at the desired density. Random placement with the
+	// exclusion distance above saturates at ~40% of bulk water density. The lattice spacing at bulk density
+	// (~0.31 nm) exceeds the exclusion distance, so only waters overlapping the input system are removed below
+	const Int3 latticeDim{
+		std::max(1, static_cast<int>(std::round(grofile.box_size.x * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
+		std::max(1, static_cast<int>(std::round(grofile.box_size.y * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
+		std::max(1, static_cast<int>(std::round(grofile.box_size.z * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))) };
+	const Float3 latticeSpacing{ grofile.box_size.x / latticeDim.x, grofile.box_size.y / latticeDim.y, grofile.box_size.z / latticeDim.z };
+	if (std::min({ latticeSpacing.x, latticeSpacing.y, latticeSpacing.z }) < distanceThreshold)
+		throw std::invalid_argument(std::format("Solvent density {}/nm^3 is too high, the maximum is {}",
+			desiredSolventsPerNm3, static_cast<int>(1.f / (distanceThreshold * distanceThreshold * distanceThreshold))));
+
+	for (int x = 0; x < latticeDim.x; x++) {
+		for (int y = 0; y < latticeDim.y; y++) {
+			for (int z = 0; z < latticeDim.z; z++) {
+				const Float3 position{ (x + 0.5f) * latticeSpacing.x, (y + 0.5f) * latticeSpacing.y, (z + 0.5f) * latticeSpacing.z };
+				const NodeIndex nodeindex{ static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y)), static_cast<int>(std::floor(position.z)) };
+				const Float3 relPos = position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
+				boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, false });
 			}
 		}
 	}
-
-
-	const float distanceThreshold = 0.12;	// [nm]
 
 	// Now mark all particles too close to another for deletion, if said particle is the "lower" id/block compared to the other
 	for (int x = 0; x < gridDim.x; x++) {
@@ -425,7 +438,6 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 		for (int y = 0; y < gridDim.y; y++) {
 			for (int z = 0; z < gridDim.z; z++) {
 				const NodeIndex nodeindex = NodeIndex{ x, y, z };
-				int nSolventsInBlock = 0;
 				for (const auto& solvent : boxgrid[nodeindex]) {
 					if (solvent.markedForDeletion || solvent.presentInInputfile)
 						continue;
@@ -442,23 +454,20 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("HW1"), (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
 					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("HW2"), (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
 
-					nSolventsInBlock++;
 					atomCount += 3;
 					solventCount++;
-					if (nSolventsInBlock >= desiredSolventsPerNm3)
-						break;
 				}
 			}
 		}
 	}
 
-	//topfile.AppendSolvents(solventCount, FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff" / "spce.itp");
-	//topfile.AppendSolvents()
-	/*TopologyFile solventTop{ FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff" / "spce.itp" };
-	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr(), solventTop.forcefieldInclude);
-	for (size_t i = 0; i < solventCount; i++) {
+	TopologyFile solventTop{
+		FileUtils::GetLimaDir() / "resources/forcefields/combined/Slipids_2020.ff/spce.itp" };
+	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr());
+	// AppendMoleculetype also appends the first molecule.
+	for (int i = 1; i < solventCount; i++) {
 		topfile.AppendMolecule("SOL");
-	}*/
+	}
 }
 
 void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
@@ -522,9 +531,7 @@ void SimulationBuilder::InsertSubmoleculesOnSphere(
 {
 	RandomUniformGenerator genRandomAngle(-PI, PI);
 
-	for (auto& lipid : lipidselection) {
-		centerMoleculeAroundOrigo(*lipid.grofile);
-	}
+	UseCenteredLipidCopies(lipidselection);
 
 
 	GetNextRandomLipid genNextRandomLipid{ lipidselection };
@@ -637,7 +644,7 @@ static Float3 PlanarSurfaceNormal(float x, float y, const Float3& boxSize) {
 }
 
 static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, float membraneCenter) {
+	const Lipids::Selection& lipidselection, float membraneCenter, int randomSeed) {
 
 	const float lowestZpos = MinParticlePosInDimension(lipidselection, 2);
 	const float n_lipids_total = lipidDensity * grofile.box_size.x * grofile.box_size.y; // (per side)
@@ -650,12 +657,12 @@ static void CreatePlanarMembrane(GroFile& grofile, TopologyFile& topfile,
 
 	const float interLipidLayerSpaceHalf = 0.01f; // [nm]
 
-	RandomUniformGenerator genRandomAngle(-PI, PI);
-	GetNextRandomLipid getNextRandomLipid{ lipidselection };
+	RandomUniformGenerator genRandomAngle(-PI, PI, 1238971 + randomSeed);
+	GetNextRandomLipid getNextRandomLipid{ lipidselection, randomSeed };
 	// Small independent protrusions are layered on top of the shared mid-plane
 	// undulation. Keeping these below 0.04 nm avoids tearing the initial bilayer.
-	RandomUniformGenerator topLeafletProtrusion(-0.035f, 0.035f, 571923);
-	RandomUniformGenerator bottomLeafletProtrusion(-0.035f, 0.035f, 927531);
+	RandomUniformGenerator topLeafletProtrusion(-0.035f, 0.035f, 571923 + randomSeed);
+	RandomUniformGenerator bottomLeafletProtrusion(-0.035f, 0.035f, 927531 + randomSeed);
 
 	std::map<std::string, std::vector<QueuedInsertion>> queuedInsertions; // Must be ordered, so we get the same sequence each time
 	for (auto& lipid : lipidselection) {
@@ -987,7 +994,7 @@ static void QueueEllipsoidalLeaflet(
 
 static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, const Float3& center, const Float3& radii,
-	const std::string& shapeName) {
+	const std::string& shapeName, int randomSeed) {
 	if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z))
 		throw std::invalid_argument(std::format("Membrane {} center must contain finite coordinates.", shapeName));
 	if (!std::isfinite(radii.x) || !std::isfinite(radii.y) || !std::isfinite(radii.z)
@@ -1020,9 +1027,9 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 		queuedInsertions.try_emplace(lipid.lipidname);
 
 	QueueEllipsoidalLeaflet(queuedInsertions, lipidselection, center, radii,
-		leafletHalfThickness, outerLipidCount, true, 0);
+		leafletHalfThickness, outerLipidCount, true, randomSeed);
 	QueueEllipsoidalLeaflet(queuedInsertions, lipidselection, center, radii,
-		-leafletHalfThickness, innerLipidCount, false, 1);
+		-leafletHalfThickness, innerLipidCount, false, randomSeed + 1);
 
 	int totalIncoming = 0;
 	for (const auto& [_, insertions] : queuedInsertions) {
@@ -1040,35 +1047,42 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 }
 
 static void CreateSphericalMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere) {
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Sphere& sphere, int randomSeed) {
 	CreateEllipsoidalMembrane(grofile, topfile, lipidselection, sphere.center,
-		Float3{ sphere.radius }, "sphere");
+		Float3{ sphere.radius }, "sphere", randomSeed);
 }
 
 static void CreateEllipsoidMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Ellipsoid& ellipsoid) {
+	const Lipids::Selection& lipidselection, const MembraneGeometry::Ellipsoid& ellipsoid, int randomSeed) {
 	CreateEllipsoidalMembrane(grofile, topfile, lipidselection, ellipsoid.center,
-		ellipsoid.radii, "ellipsoid");
+		ellipsoid.radii, "ellipsoid", randomSeed);
 }
 
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, const MembraneGeometry::Figure& geometry) {
-	validateLipidselection(lipidselection);
-	for (const auto& lipid : lipidselection)
-		centerMoleculeAroundOrigo(*lipid.grofile);
+	const Lipids::Selection& sharedLipidselection, const MembraneGeometry::Figure& geometry, int randomSeed) {
+	validateLipidselection(sharedLipidselection);
+	Lipids::Selection lipidselection = sharedLipidselection;
+	UseCenteredLipidCopies(lipidselection);
+	const std::string name = Lipids::NameSelection(lipidselection);
+	if (grofile.title.empty())
+		grofile.title = name;
+	if (topfile.title.empty())
+		topfile.title = name;
+	if (!topfile.HasSystem())
+		topfile.SetSystem(name);
 
 	std::visit([&](const auto& figure) {
 		using FigureType = std::decay_t<decltype(figure)>;
 		if constexpr (std::is_same_v<FigureType, MembraneGeometry::Plane>)
-			CreatePlanarMembrane(grofile, topfile, lipidselection, figure.z);
+			CreatePlanarMembrane(grofile, topfile, lipidselection, figure.z, randomSeed);
 		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Sphere>)
-			CreateSphericalMembrane(grofile, topfile, lipidselection, figure);
+			CreateSphericalMembrane(grofile, topfile, lipidselection, figure, randomSeed);
 		else if constexpr (std::is_same_v<FigureType, MembraneGeometry::Ellipsoid>)
-			CreateEllipsoidMembrane(grofile, topfile, lipidselection, figure);
+			CreateEllipsoidMembrane(grofile, topfile, lipidselection, figure, randomSeed);
 	}, geometry);
 }
 
 void SimulationBuilder::CreateMembrane(GroFile& grofile, TopologyFile& topfile,
-	const Lipids::Selection& lipidselection, float membraneCenter) {
-	CreateMembrane(grofile, topfile, lipidselection, MembraneGeometry::Plane{ membraneCenter });
+	const Lipids::Selection& lipidselection, float membraneCenter, int randomSeed) {
+	CreateMembrane(grofile, topfile, lipidselection, MembraneGeometry::Plane{ membraneCenter }, randomSeed);
 }

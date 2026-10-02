@@ -4,15 +4,14 @@
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Simulation.cuh"
+#include "SimulationData.h"
 #include "EngineUtilsWarnings.cuh"
 #include "LimaPositionSystem.cuh"
 #include "LimaTypes.cuh"
 #include "Constants.h"
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
-#include "SimulationDevice.cuh"
 #include "KernelWarnings.cuh"
-#include "KernelConstants.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/memcpy_async.h>
@@ -21,10 +20,10 @@
 namespace EngineUtils {
 
 	template <typename BoundaryCondition>
-	__device__ int static getNewBlockId(const NodeIndex& transfer_direction, const NodeIndex& origo) {
-		NodeIndex new_nodeindex = transfer_direction + origo;
-		BoundaryCondition::applyBC(new_nodeindex);
-		return BoxGrid::Get1dIndex(new_nodeindex, DeviceConstants::boxSize.boxSizeNM_i);
+	__device__ int static getNewBlockId(const NodeIndex& transferDirection, const NodeIndex& origo, const Int3& boxSize) {
+		NodeIndex newNodeIndex = transferDirection + origo;
+		BoundaryCondition::applyBC(newNodeIndex, boxSize);
+		return BoxGrid::Get1dIndex(newNodeIndex, boxSize);
 	}
 
 	// returns pos_tadd1
@@ -50,42 +49,6 @@ namespace EngineUtils {
 	}
 	
 
-	__device__ static Float3 IntegratePositionADAM(const Float3& pos, Float3 force, AdamState* const adamState, int step) {
-
-		// TODO: Maybe figure out the highest force particle in the system, and scale each particles lr based on that, so only particles with high forces move, and the rest are relatively still
-		// untill the highest forces get down to their level?
-
-		if (adamState->firstMoment.isNan())
-			printf("AdamState NaN firstMoment\n");
-		if (adamState->secondMoment.isNan())
-			printf("AdamState NaN secondMoment\n");
-
-		const float alpha = 8000.f;        // Learning rate (can be tuned)
-		const float beta1 = 0.9f;          // Decay rate for first moment
-		const float beta2 = 0.999f;        // Decay rate for second moment
-		const float epsilon = 1e-8f;
-
-		force *= 1e-8;
-
-		// 2. Update Moment Estimates
-		const Float3 firstMoment = adamState->firstMoment * beta1 + force * (1 - beta1);
-		const Float3 secondMoment = adamState->secondMoment * beta2 + force * force * (1 - beta2);
-		adamState->firstMoment = firstMoment;
-		adamState->secondMoment = secondMoment;
-
-		// 4. Compute Bias-Corrected Estimates
-		const Float3 firstMomentCorrected = firstMoment / (1 - powf(beta1, step+1));
-		const Float3 secondMomentCorrected = secondMoment / (1 - powf(beta2, step+1));
-
-		const Float3 deltaPos = (firstMomentCorrected / (secondMomentCorrected.sqrtElementwise() + Float3{ epsilon })) * alpha;
-		/*if (deltaPos.len() > 5.f || deltaPos.isNan()) {
-			force.print('F');
-			deltaPos.print('D');
-		}*/
-
-		return pos +  deltaPos * 1e-8f;
-	}
-
 //	__device__ static Coord IntegratePositionEM(const Coord& pos, const Float3& force, const float mass, const float dt, float progress/*step/nSteps*/, const Float3& deltaPosPrev) {
 //#ifndef ENABLE_INTEGRATEPOSITION
 //		return pos;
@@ -107,8 +70,8 @@ namespace EngineUtils {
 
 
 	// ChatGPT magic. generates a float with elements between -1 and 1
-	__device__ inline Float3 GenerateRandomForce() {
-		unsigned int seed = threadIdx.x + blockIdx.x*blockDim.x;
+	__device__ inline Float3 GenerateRandomForce(int pidGlobal) {
+		unsigned int seed = pidGlobal;
 
 		// Simple LCG (Linear Congruential Generator) for pseudo-random numbers
 		seed = (1664525 * seed + 1013904223);
@@ -124,11 +87,11 @@ namespace EngineUtils {
 	}
 
 	// Tanh activation functions that scales forces during EM
-	__device__ static Float3 ForceActivationFunction(const Float3 force, float scalar=1.f) {
+	__device__ static Float3 ForceActivationFunction(int pidGlobal /*Used as a random-seed*/, const Float3 force, float scalar = 1.f) {
 
 		// Handled inf forces by returning a pseudorandom z force based on global thread index
 		if (isinf(force.lenSquared())) {
-			return GenerateRandomForce();
+			return GenerateRandomForce(pidGlobal);
 		}
 
 		if (isnan(force.lenSquared())) {
@@ -154,36 +117,30 @@ namespace EngineUtils {
 		return scaledForce;
 	}
 
-	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound, SimulationDevice* simDev) {
+	__device__ inline void LogPclusterData(int pcId, int pidInPclusters, int64_t step, int data_logging_interval, Float3 position, float potential, Float3 force, float speed, int totalParticlesUpperbound,
+		Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer) {
 		//if (threadIdx.x >= compound.n_particles) { return; }
 
 		if (data_logging_interval == 0 || step % data_logging_interval != 0) { return; }
 
-		const int index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, data_logging_interval, totalParticlesUpperbound);
-		simDev->traj_buffer[index] = position;
-		simDev->potE_buffer[index] = potential;
-		simDev->vel_buffer[index] = speed;
-		simDev->forceBuffer[index] = force;
+		const size_t index = DatabuffersDeviceController::GetLogIndexOfParticle(pidInPclusters, pcId, step, data_logging_interval, totalParticlesUpperbound);
+		trajBuffer[index] = position;
+		potEBuffer[index] = potential;
+		velocityBuffer[index] = speed;
+		forceBuffer[index] = force;
 	}
 
 
-	__device__ constexpr bool isOutsideCutoff(const float dist_sq) {
+	__device__ constexpr bool isOutsideCutoff(const float distSq, const float cutoffNmSquared) {
 		if constexpr (HARD_CUTOFF) {
-			return dist_sq > DeviceConstants::cutoffNMSquared;	// (CUTOFF_LM * CUTOFF_LM);
+			return distSq > cutoffNmSquared;	// (CUTOFF_LM * CUTOFF_LM);
 		}
 		return false;
 	}
 
-	__device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal) {
-		if constexpr (HARD_CUTOFF) {
-			return dist_sq_reciprocal < DeviceConstants::cutoffNmSquaredReciprocal;	//  1. / (CUTOFF_LM * CUTOFF_LM);
-		}
-		return false;
-	}
-
-    __device__ constexpr bool isOutsideCutoff_recip(const float dist_sq_reciprocal, const float cutoff_reciprocal) {
+    __device__ constexpr bool isOutsideCutoff_recip(const float distSqReciprocal, const float cutoffNmSquaredReciprocal) {
         if constexpr (HARD_CUTOFF) {
-            return dist_sq_reciprocal < cutoff_reciprocal;
+            return distSqReciprocal < cutoffNmSquaredReciprocal;
         }
         return false;
     }

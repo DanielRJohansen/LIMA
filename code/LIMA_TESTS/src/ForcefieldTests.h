@@ -185,7 +185,7 @@ void ParseForcefieldFromItp(
 }
 
 
-LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode) 
+TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envmode)
 {
 	Programs::GetForcefieldParams(GroFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/conf.gro" },
 		TopologyFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/topol.top" },
@@ -291,5 +291,5 @@ LimaUnittestResult TestLimaChosesSameBondparametersAsGromacs(EnvMode envmode)
 		printf("%u ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
 	}
 
-    return LimaUnittestResult{ true, "No Error", envmode == Full };
+    co_return LimaUnittestResult{ true, "No Error", envmode == Full };
 }

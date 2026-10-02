@@ -12,6 +12,7 @@ target_include_directories(lima PRIVATE
 )
 
 target_link_libraries(lima LIMA_MD)
+target_compile_definitions(lima PRIVATE LIMA_VERSION="${PROJECT_VERSION}")
 
 
 #set_target_properties(lima PROPERTIES INSTALL_PREFIX ${CMAKE_SOURCE_DIR})

@@ -287,9 +287,21 @@ __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Flo
 
 // ------------------------------------------------------------ Forcecalc handlers ------------------------------------------------------------ //
 
+// A bondgroup may contain several molecules (small molecules are packed together), which can be far apart.
+// So periodic boundaries are applied per bond, placing each atom at the image nearest the bond's first atom
+template <typename BoundaryCondition, int n>
+__device__ inline void LoadBondPositions(const Float3* const positions, const uint8_t(&ids)[n], Float3(&out)[n], const Float3& boxSize, const Float3& boxSizeInv) {
+	out[0] = positions[ids[0]];
+	for (int i = 1; i < n; i++) {
+		out[i] = positions[ids[i]];
+		BoundaryCondition::ApplyHyperpos(out[0], out[i], boxSize, boxSizeInv);
+	}
+}
+
 // only works if n threads >= n bonds
-template<bool energyMinimization>
-__device__ inline void computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,	float4* const feInterrims, int bridgekernel)
+template<typename BoundaryCondition, bool energyMinimization>
+__device__ inline void computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,	float4* const feInterrims, int bridgekernel,
+	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_singlebonds; bond_offset++) {
 		const SingleBond* pb = nullptr;
@@ -300,9 +312,11 @@ __device__ inline void computeSinglebondForces(const SingleBond* const singlebon
 		if (bond_index < n_singlebonds) {
 			pb = &singlebonds[bond_index];
 
+			Float3 pos[SingleBond::nAtoms];
+			LoadBondPositions<BoundaryCondition>(positions, pb->idInBondgroup, pos, boxSize, boxSizeInv);
 			LimaForcecalc::calcSinglebondForces<energyMinimization>(
-				positions[pb->idInBondgroup[0]],
-				positions[pb->idInBondgroup[1]],
+				pos[0],
+				pos[1],
 				pb->params,
 				forces,
 				potential,
@@ -322,7 +336,9 @@ __device__ inline void computeSinglebondForces(const SingleBond* const singlebon
 	}
 }
 
-__device__ inline void computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,	float4* const feInterrims)
+template<typename BoundaryCondition>
+__device__ inline void computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,	float4* const feInterrims,
+	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_pairbonds; bond_offset++) {
 		const PairBond* pb = nullptr;
@@ -333,7 +349,9 @@ __device__ inline void computePairbondForces(const PairBond* const pairbonds, co
 		if (bond_index < n_pairbonds) {
 			pb = &pairbonds[bond_index];
 
-			const Float3 diff = positions[pb->atom_indexes[1]] - positions[pb->atom_indexes[0]];
+			Float3 pos[PairBond::nAtoms];
+			LoadBondPositions<BoundaryCondition>(positions, pb->atom_indexes, pos, boxSize, boxSizeInv);
+			const Float3 diff = pos[1] - pos[0];
 			const float distSqReciprocal = 1.f / diff.lenSquared();
 
 			const Float3 forceOnLeft = LJ::calcLJForceOptim<true, false>(diff, distSqReciprocal, potential, pb->params.sigma, pb->params.epsilon, LJ::CalcLJOrigin::Pairbond) * 24.f;
@@ -351,7 +369,9 @@ __device__ inline void computePairbondForces(const PairBond* const pairbonds, co
 	}
 }
 
-__device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions, float4* const feInterrims)
+template<typename BoundaryCondition>
+__device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions, float4* const feInterrims,
+	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_anglebonds; bond_offset++) {
 		const AngleUreyBradleyBond* ab = nullptr;
@@ -362,10 +382,12 @@ __device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const 
 		if (bond_index < n_anglebonds) {
 			ab = &anglebonds[bond_index];
 
+			Float3 pos[AngleUreyBradleyBond::nAtoms];
+			LoadBondPositions<BoundaryCondition>(positions, ab->atom_indexes, pos, boxSize, boxSizeInv);
 			LimaForcecalc::calcAnglebondForces(
-				positions[ab->atom_indexes[0]],
-				positions[ab->atom_indexes[1]],
-				positions[ab->atom_indexes[2]],
+				pos[0],
+				pos[1],
+				pos[2],
 				*ab,
 				forces,
 				potential
@@ -385,7 +407,9 @@ __device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const 
 }
 
 
-__device__ inline void computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,	float4* const feInterrims)
+template<typename BoundaryCondition>
+__device__ inline void computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,	float4* const feInterrims,
+	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_dihedrals; bond_offset++) {
 		const DihedralBond* db = nullptr;
@@ -395,11 +419,13 @@ __device__ inline void computeDihedralForces(const DihedralBond* const dihedrals
 
 		if (bond_index < n_dihedrals) {
 			db = &dihedrals[bond_index];
+			Float3 pos[DihedralBond::nAtoms];
+			LoadBondPositions<BoundaryCondition>(positions, db->atom_indexes, pos, boxSize, boxSizeInv);
 			LimaForcecalc::calcDihedralbondForces(
-				positions[db->atom_indexes[0]],
-				positions[db->atom_indexes[1]],
-				positions[db->atom_indexes[2]],
-				positions[db->atom_indexes[3]],
+				pos[0],
+				pos[1],
+				pos[2],
+				pos[3],
 				*db,
 				forces,
 				potential
@@ -418,8 +444,10 @@ __device__ inline void computeDihedralForces(const DihedralBond* const dihedrals
 	}
 }
 
-__device__ inline void computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,	float4* const feInterrims)
-{	
+template<typename BoundaryCondition>
+__device__ inline void computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,	float4* const feInterrims,
+	const Float3& boxSize, const Float3& boxSizeInv)
+{
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
 		const ImproperDihedralBond* db = nullptr;
 		Float3 forces[4] = { Float3{}, Float3{}, Float3{}, Float3{} };
@@ -430,11 +458,13 @@ __device__ inline void computeImproperdihedralForces(const ImproperDihedralBond*
 		if (bond_index < n_impropers) {
 			db = &impropers[bond_index];
 
+			Float3 pos[ImproperDihedralBond::nAtoms];
+			LoadBondPositions<BoundaryCondition>(positions, db->atom_indexes, pos, boxSize, boxSizeInv);
 			LimaForcecalc::calcImproperdihedralbondForces(
-				positions[db->atom_indexes[0]],
-				positions[db->atom_indexes[1]],
-				positions[db->atom_indexes[2]],
-				positions[db->atom_indexes[3]],
+				pos[0],
+				pos[1],
+				pos[2],
+				pos[3],
 				*db,
 				forces,
 				potential

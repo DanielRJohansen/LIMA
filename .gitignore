@@ -48,9 +48,6 @@ out*
 /dev/energy_data.bin
 /dev/PyTools/Energies.py
 
-# Ignore all files in the deb build folder, except the .deb file
-/distribution/debian/build/*
-!/distribution/debian/build/*.deb
 *.debhelper*
 
 /dev/VMDscripts/*
@@ -76,7 +73,6 @@ dev/VMDscripts/*.trr
 .clang-tidy
 .cmake-format.yaml
 .editorconfig
-.gitattributes
 .github/
 .pre-commit-config.yaml
 tools/

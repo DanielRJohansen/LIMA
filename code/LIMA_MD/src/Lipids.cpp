@@ -30,6 +30,13 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 		OrganizeLipidIntoCompoundsizedSections(*grofile, topfile->GetMoleculeType());
 }
 
+std::string Lipids::NameSelection(const Selection& selection) {
+	std::ostringstream oss;
+	for (const auto& sel : selection) {
+		oss << sel.lipidname << "(" << std::format("{:.1f}", sel.percentage) << "%)_";
+	}
+	return oss.str();
+}
 
 
 
@@ -234,7 +241,7 @@ void Lipids::_MakeLipid(const std::string& name) {
 	// Chicken before egg issue, cant load the lipid as it is not correctly part of the ff yet?
 	{
 		std::unique_ptr<Display> display = std::make_unique<Display>();
-		display->Render(std::make_unique<Rendering::GrofileTask>(grofile, true), true);
+		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(grofile, true), true);
 
 
 		//Environment env{ grofile.m_path.parent_path(), Headless };

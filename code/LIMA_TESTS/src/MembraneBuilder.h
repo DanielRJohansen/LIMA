@@ -51,7 +51,7 @@ namespace TestMembraneBuilder {
 		return minimumSpacing;
 	}
 
-	static LimaUnittestResult TestSphericalMembraneBuilder(EnvMode envmode) {
+	static TestRoutine TestSphericalMembraneBuilder(Environment&, EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "BuildMembraneSphere";
 		Lipids::Selection lipids;
 		lipids.emplace_back(Lipids::Select{ "DMPC", workDir, 100. });
@@ -197,11 +197,11 @@ namespace TestMembraneBuilder {
 			&& parsedEllipsoid.radii == Float3{ 4.f, 5.f, 6.f }),
 			"Live-edit ellipsoid geometry had incorrect values");
 
-		return LimaUnittestResult{ true, "", envmode == Full };
+		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
 	// This test checks topology compatibility and physically bounded coordinate generation, NOT considering EM.
-	static LimaUnittestResult TestBuildmembraneSmall(EnvMode envmode, bool do_em)
+	static TestRoutine TestBuildmembraneSmall(Environment& environment, EnvMode envmode, bool do_em)
 	{		
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 		const fs::path mol_dir = workDir / "molecule";
@@ -236,12 +236,10 @@ namespace TestMembraneBuilder {
 		//	std::string str = oss.str();
 		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
 		//}
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), refTop.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::SingleBond>(), refTop.GetAllElements<TopologyFile::SingleBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::PairBond>(), refTop.GetAllElements<TopologyFile::PairBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AngleBond>(), refTop.GetAllElements<TopologyFile::AngleBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::DihedralBond>(), refTop.GetAllElements<TopologyFile::DihedralBond>()), "Topology Atom Mismatch");
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::ImproperDihedralBond>(), refTop.GetAllElements<TopologyFile::ImproperDihedralBond>()), "Topology Atom Mismatch");
+
+		LimaUnittestResult topTestResults = TestUtils::CompareTopologyFiles(newTop, refTop, envmode);
+		if (!topTestResults.success)
+			co_return topTestResults;
 		
 		// Test the conf is identical to reference
 		GroFile newGro{ mol_dir / "membrane.gro" };
@@ -265,13 +263,15 @@ namespace TestMembraneBuilder {
 
 		// Finally test if we can stabilize the simulation
 		const float emtol = 200.f;
-		auto sim = Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, emtol);
-		float finalMaxForce = sim->maxForceBuffer.back().second;
+		auto emResult = co_await environment.Submit(SimulationJob{
+			workDir, gro, top, SimParams::BasicEMSimParams(emtol), envmode });
+		emResult.WriteCoordinatesTo(gro);
+		float finalMaxForce = emResult.simulation->maxForceBuffer.back().second;
 
-		return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Failed to energy minimize membrane {:.2f}/{:.2f}", sim->maxForceBuffer.back().second, emtol), envmode == Full};
+		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
 	}
 
-	static LimaUnittestResult TestBuildmembraneWithCustomlipidAndCustomForcefield(EnvMode envmode) {
+	static TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneCustom";
 		const fs::path mol_dir = workDir / "molecule";
 
@@ -291,7 +291,9 @@ namespace TestMembraneBuilder {
 		TopologyFile top;
 		top.SetSystem("Membrane");
 		SimulationBuilder::CreateMembrane(gro, top, lipidselection, 3.5f);
-		Programs::EnergyMinimize(gro, top, true, workDir, envmode, true, 300000.f); // high emtol, because we dont care about EM, we just want to see if the simulation can even start
+		auto emResult = co_await environment.Submit(SimulationJob{
+			workDir, gro, top, SimParams::BasicEMSimParams(300000.f), envmode });
+		emResult.WriteCoordinatesTo(gro);
 
 		gro.printToFile(mol_dir / "membrane.gro");
 		top.printToFile(mol_dir / "membrane.top");
@@ -313,13 +315,19 @@ namespace TestMembraneBuilder {
 
 		SimParams params{};
 		params.em_variant = true;
-		Environment env(workDir, envmode);
-		env.CreateSimulation(newGro, newTop, params);
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile = std::move(newGro);
+		job.topfile.emplace(std::move(newTop));
+		job.simParams = params;
+		job.mode = envmode;
+		job.run = false;
+		co_await environment.Submit(std::move(job));
 
-		return LimaUnittestResult{ true , "No error", envmode == Full };
+		co_return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
 
-	LimaUnittestResult TestAllStockholmlipids(EnvMode envmode) {
+	TestRoutine TestAllStockholmlipids(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 
 		const fs::path path = FileUtils::GetLimaDir() / "resources/Slipids";
@@ -352,11 +360,12 @@ namespace TestMembraneBuilder {
 
 		// The third test is to see if this function throws
 		const float emtol = 1000.f;
-		auto sim = Programs::EnergyMinimize(grofile, topfile, false, workDir, envmode, true, emtol);
+		auto emResult = co_await environment.Submit(SimulationJob{
+			workDir, std::move(grofile), std::move(topfile), SimParams::BasicEMSimParams(emtol), envmode });
 
-		ASSERT(sim->maxForceBuffer.back().second < emtol, "Failed to energy minimize membrane");
+		ASSERT(emResult.simulation->maxForceBuffer.back().second < emtol, "Failed to EM membrane");
 
-		return LimaUnittestResult{ true , "", envmode == Full };
+		co_return LimaUnittestResult{ true , "", envmode == Full };
 	}
 
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {

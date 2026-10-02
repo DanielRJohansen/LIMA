@@ -15,6 +15,7 @@
 #include <queue>
 #include <ranges>
 #include <map>
+#include <type_traits>
 
 
 const bool ENABLE_FILE_CACHING = true;
@@ -84,6 +85,7 @@ class GenericItpFile {
 public:
 	GenericItpFile() {}
 	GenericItpFile(const fs::path& path);
+	void printToFile(const fs::path& path) const;
 
 	const Section& GetSection(TopologySection section) const {
 		auto it = sections.find(section);
@@ -160,6 +162,7 @@ public:
 	struct AngleBond;
 	struct DihedralBond;
 	struct ImproperDihedralBond;
+	struct CmapBond;
 	struct Moleculetype {
 		Moleculetype() = default;
 		Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath=std::nullopt ) : name(name), includePath(includePath), nrexcl(nrexcl) {};
@@ -173,10 +176,8 @@ public:
 		std::vector<AngleBond> anglebonds;
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
-
-		// Only used during parsing!
-		//std::string mostRecentAtomsSectionName{};
-		std::unordered_map<int, int> groIdToLimaId; // Relative to moleculetype??! I dont like this
+		std::vector<CmapBond> cmapbonds;
+		std::optional<fs::path> positionRestraintsInclude;
 
 		void ToFile(const fs::path& dir) const;
 
@@ -188,6 +189,7 @@ public:
 			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+			else if constexpr (std::is_same_v<T, CmapBond>) return cmapbonds;
 			else static_assert(std::is_same_v<T, void>, "Unknown section type");
 		}
 		template <typename T>
@@ -198,6 +200,7 @@ public:
 			else if constexpr (std::is_same_v<T, AngleBond>) return anglebonds;
 			else if constexpr (std::is_same_v<T, DihedralBond>) return dihedralbonds;
 			else if constexpr (std::is_same_v<T, ImproperDihedralBond>) return improperdihedralbonds;
+			else if constexpr (std::is_same_v<T, CmapBond>) return cmapbonds;
 			else static_assert(std::is_same_v<T, void>, "Unknown section type");
 		}
 	};
@@ -211,16 +214,31 @@ public:
 		fs::path filename; // Either name in resources/forcefields, or a path relative to the topologyfile
 		GenericItpFile contents;
 	};
+	// count consecutive molecules of the same moleculetype, like a line in the [ molecules ] section
 	struct MoleculeEntry {
 		std::string name{};
 		const std::shared_ptr<const Moleculetype> moleculetype = nullptr;
-		//int count = 0; // TODO implement this
+		int count = 1;
 	};
 	struct System {
 		std::string title{ "noSystem" };
 		std::vector<MoleculeEntry> molecules;
 
 		bool IsInit() const { return title != "noSystem"; };
+
+		// Number of molecule instances, ie. the sum of the counts
+		size_t MoleculeCount() const {
+			size_t n = 0;
+			for (const auto& entry : molecules) n += entry.count;
+			return n;
+		}
+		// Every molecule instance, in order. An entry with count N is repeated N times
+		auto Instances() const {
+			return molecules
+				| std::views::transform([](const MoleculeEntry& entry) { return std::views::repeat(std::cref(entry), entry.count); })
+				| std::views::join
+				| std::views::transform([](std::reference_wrapper<const MoleculeEntry> entry) -> const MoleculeEntry& { return entry.get(); });
+		}
 	};
 
 	TopologyFile();										// Create an empty file	
@@ -267,6 +285,7 @@ public:
 			throw std::runtime_error("System not initialized");
 		return m_system;
 	}
+	bool HasSystem() const { return m_system.IsInit(); }
 	void SetSystem(const std::string& systemName) {
 		if (m_system.IsInit())
 			throw std::runtime_error("System already initialized");
@@ -275,9 +294,9 @@ public:
 
 	template <typename T>
 	auto GetAllElements() const {
-		// 1. First, transform each MoleculeEntry to get the vector of the desired element type.
+		// 1. First, transform each molecule instance to get the vector of the desired element type.
 		// 2. The lambda function does the transformation by calling GetElements<T> on each molecule's Moleculetype.
-		return m_system.molecules
+		return m_system.Instances()
 			| std::views::transform(
 				[](const MoleculeEntry& entry) -> const std::vector<T>&{return entry.moleculetype->GetElements<T>(); // Retrieve the vector for the specific bond type
 				})
@@ -305,7 +324,7 @@ public:
 	}
 
 	// Append a molecule of which the type is already known by the file
-	void AppendMolecule(const std::string& moleculename); // Its quite silly that mols like SOL are appened N times, instead of just once with N as an internal param
+	void AppendMolecule(const std::string& moleculename); // Increments the count of the last entry if it has the same name
 	void AppendMoleculetype(const std::shared_ptr<const Moleculetype> moltype, 
 		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
 	void AppendMolecule(const MoleculeEntry&);
@@ -321,31 +340,11 @@ public:
 
 private:
 	friend class GenericItpFile;
+	friend class TopologyParser;	// Loads a .top or .itp and all its includes into a TopologyFile
 
 	static const char commentChar = ';';
 
-	std::unordered_set<std::string> defines; // keywords that are defined using #define in a top or itp file. Not fully implemented yet
-
-	/// <summary> Load a .top or .itp into a TopologyFile </summary>
-	/// <param name="name">If this is called on an include file, 
-	/// this is the name of that include file in the parent file</param>
-	static void ParseFileIntoTopology(TopologyFile&, const fs::path& filepath, 
-		std::optional<fs::path> includefileName =std::nullopt);
-
-	void ParsePreprocessedFileIntoTopology(const std::string& preprocessedFile);
-
-	// Packs atoms and bond information in the moleculetype ptr
-	// Returns the next section in the topologyfile
-	static void ParseMoleculetypeEntry(TopologySection section, 
-		const std::string& entry, std::shared_ptr<Moleculetype> moleculetype);
-
-	static void ParseAtomsEntry(std::string_view sv, TopologyFile::AtomsEntry& atom, std::vector<int>& limaIdToGroId, int index /*relative to moleculetype*/);
-	static void ParseSingleBond(std::string_view line, TopologyFile::SingleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParsePairBond(std::string_view line, TopologyFile::PairBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseAngleBond(std::string_view line, TopologyFile::AngleBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseDihedralBond(std::string_view line, TopologyFile::DihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-	static void ParseImproperDihedralBond(std::string_view line, TopologyFile::ImproperDihedralBond& bond, const std::unordered_map<int, int>& groIdToLimaId, bool& err);
-
+	std::unordered_set<std::string> defines; // keywords that are defined using #define in a top or itp file. Only used for #ifdef/#ifndef, macro values are not supported
 
 	System m_system{};
 };
@@ -379,7 +378,6 @@ struct TopologyFile::AtomsEntry {
 
 template <size_t N, typename ParametersType>
 struct TopologyFile::GenericBond{
-	virtual ~GenericBond() = default;
 	static const int n = N;
 	//int atomGroIds[N]{};	// We intentionally discard the Incoming id's and give our own ids
 	std::array<int,N> ids{-1};	// 0-indexed ID's given by LIMA in the order that the atoms are loaded
@@ -394,11 +392,38 @@ struct TopologyFile::GenericBond{
 		for (size_t i = 0; i < N; ++i) {
 			oss << std::setw(width) << std::right << ids[i] + 1; // convert back to 1-indexed
 		}
-		oss << std::setw(width) << std::right << funct << "\n";
+		oss << std::setw(width) << std::right << funct;
+		if (parameters) {
+			if constexpr (std::is_same_v<ParametersType, Bondtypes::SingleBond::Parameters>) {
+				oss << std::setw(width) << parameters->b0 << std::setw(width) << parameters->kb / KILO;
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::PairBond::Parameters>) {
+				oss << std::setw(width) << parameters->sigma << std::setw(width) << parameters->epsilon / KILO;
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::AngleUreyBradleyBond::Parameters>) {
+				oss << std::setw(width) << parameters->theta0 / DEG_TO_RAD
+					<< std::setw(width) << parameters->kTheta / KILO
+					<< std::setw(width) << parameters->ub0
+					<< std::setw(width) << parameters->kUB / KILO;
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::DihedralBond::Parameters>) {
+				oss << std::setw(width) << parameters->phi_0 / DEG_TO_RAD
+					<< std::setw(width) << parameters->k_phi * 2.f / KILO
+					<< std::setw(width) << static_cast<int>(parameters->n);
+			}
+			else if constexpr (std::is_same_v<ParametersType, Bondtypes::ImproperDihedralBond::Parameters>) {
+				oss << std::setw(width) << parameters->psi_0 / DEG_TO_RAD
+					<< std::setw(width) << parameters->k_psi / KILO;
+			}
+		}
+		oss << '\n';
 	}
 
     bool operator==(const GenericBond<N, ParametersType>& other) const {
 		return std::equal(std::begin(ids), std::end(ids), std::begin(other.ids)) && funct == other.funct;
+	}
+	auto operator<=>(const GenericBond& other) const {
+		return ids <=> other.ids;
 	}
 };
 struct TopologyFile::SingleBond : GenericBond<2, Bondtypes::SingleBond::Parameters> {};
@@ -406,3 +431,4 @@ struct TopologyFile::PairBond : GenericBond<2, Bondtypes::PairBond::Parameters> 
 struct TopologyFile::AngleBond : GenericBond<3, Bondtypes::AngleUreyBradleyBond::Parameters> {};
 struct TopologyFile::DihedralBond : GenericBond<4, Bondtypes::DihedralBond::Parameters> {};
 struct TopologyFile::ImproperDihedralBond : GenericBond<4, Bondtypes::ImproperDihedralBond::Parameters> {};
+struct TopologyFile::CmapBond : GenericBond<5, std::array<float, 0>> {};

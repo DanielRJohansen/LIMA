@@ -16,13 +16,14 @@ namespace ElectrostaticsTests {
 	using namespace TestUtils;
 
 
-	static LimaUnittestResult CoulombForceSanityCheck(EnvMode envmode) {
+	static TestRoutine CoulombForceSanityCheck(Environment&, EnvMode envmode) {
 		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
-		ASSERT(std::abs(calcedForce - expectedForce) / expectedForce < 0.0001f, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce));
+		if (std::abs(calcedForce - expectedForce) / expectedForce >= 0.0001f)
+			co_return LimaUnittestResult{ false, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
 		// TODO: add potE to this also
-		return LimaUnittestResult{ true, "Success", envmode == Full};
+		co_return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
 
 	//static ForceEnergy CalcImmediateMirrorForceEnergy(const Float3& diff, const float chargeProduct, Float3 boxSize) {
@@ -69,9 +70,6 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestAttractiveParticlesInteractingWithESandLJ(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment env{ work_folder, envmode};
-
-
 		const int nSteps = 1000;
 
 
@@ -81,37 +79,33 @@ namespace ElectrostaticsTests {
 		params.enable_electrostatics = true;
 		params.data_logging_interval = 1;
 		params.cutoff_nm = 2.f;
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 8.f, 4.f, 4.f };
-		grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
-		grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
+		Environment& environment = Environment::Get();
+		SimulationJob job;
+		job.workDir = work_folder;
+		job.simParams = params;
+		job.mode = envmode;
+		job.postprocess = SimAnalysis::AnalyzeEnergy;
+		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams&) {
+			grofile.box_size = Float3{ 8.f, 4.f, 4.f };
+			grofile.atoms[0].position = Float3{ 1.f, 1.5f, 1.5f };
+			grofile.atoms[1].position = Float3{ 2.f, 1.5f, 1.5f };
+		};
+		auto result = environment.Submit(std::move(job)).Get();
 
-
-		env.CreateSimulation(grofile, topfile, params);
-
-		//env.getSimPtr()->forcefield.particle_parameters[1].epsilon = 0.f;
-
-		// Make the particles attractive
-		// TODO!!
-		//env.getSimPtr()->box->compounds[1].atom_charges[0] = -env.getSimPtr()->box->compounds[0].atom_charges[0];
-
-		env.run();
-
-
-		//LIMA_Print::printPythonVec("potE", env.getAnalyzedPackage()->pot_energy);
-
-		const float actualVC = env.getAnalyzedPackage().variance_coefficient;
+		const float actualVC = result.analysis->variance_coefficient;
 		const float maxVC = 1e-3;
 		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
-	static void MakeChargeParticlesSim(const std::string& dirName, const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
-		Environment env(AutomatedTestsDir() / dirName, EnvMode::Headless);
-
-		auto [grofile, topfile, simparams] = env.CreateSimulationFiles(Float3{ boxLen });
+	static void MakeChargeParticlesSim(
+		GroFile& grofile, TopologyFile& topfile, const fs::path& workDir,
+		const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
+		grofile.m_path = workDir / "conf.gro";
+		grofile.box_size = Float3{ boxLen };
+		topfile.SetSystem("MySystem");
+		topfile.path = workDir / "topol.top";
 
 		//MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		for (const auto& atom : atomsSelection) {
@@ -132,35 +126,42 @@ namespace ElectrostaticsTests {
 		topfile.printToFile();
 	}
 
-	static LimaUnittestResult TestChargedParticlesVelocityInUniformElectricField(EnvMode envmode) {
-		MakeChargeParticlesSim("ElectrostaticField", 7.f, 
-			AtomsSelection{
+	static TestRoutine TestChargedParticlesVelocityInUniformElectricField(
+		Environment& environment, EnvMode envmode) {
+		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
+		AtomsSelection atoms{
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx1", 0, -1.f, 10.f}, 15},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx2", 0, -.5f, 10.f}, 15},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx3", 0, -0.f, 10.f}, 40},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx4", 0, 0.5f, 10.f}, 15},
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt2", 0, "lxx", "lx5", 0, 1.f, 10.f},  15}
-			}, 
-			5.f
-			);
+			};
 
 		SimParams simparams;
 		simparams.dt = 0.2f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
 		simparams.data_logging_interval = 1;
 		simparams.snf_select.insert(HorizontalChargeField);
-		auto env = basicSetup("ElectrostaticField", { simparams }, envmode);
-
-		env->getSimPtr()->box->uniformElectricField = UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f};
-
-		env->run();	
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace();
+		job.topfile.emplace();
+		job.simParams = simparams;
+		job.mode = envmode;
+		job.preprocess = [workDir, atoms = std::move(atoms)](
+			GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			MakeChargeParticlesSim(grofile, topfile, workDir, 7.f, atoms, 5.f);
+		};
+		job.configureSimulation = [](Simulation& simulation) {
+			simulation.box->uniformElectricField =
+				UniformElectricField{ Float3{-1.f, 0.f, 0.f }, 12.f };
+		};
+		auto result = co_await environment.Submit(std::move(job));
 
 		if (envmode == Full)
-			TestUtils::CompareForces1To1(AutomatedTestsDir() / "ElectrostaticField", *env, false);
+			TestUtils::CompareForces1To1(workDir, *result.simulation, false);
 
-
-		auto sim = env->GetSim();
-
+		auto& sim = result.simulation;
 
 		std::map<float, std::vector<float>> velDistributions;
 
@@ -201,22 +202,23 @@ namespace ElectrostaticsTests {
 
 		if (slope >= 0.f) {
 			std::string errorMsg = std::format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
-			return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 		if (std::abs(intercept) > 50.f) {
 			std::string errorMsg = std::format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
-			return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
-		ASSERT(!std::isnan(r2), "R2 value is nan");
+		if (std::isnan(r2))
+			co_return LimaUnittestResult{ false, "R2 value is nan", envmode == Full };
 		if (r2 < 0.5f) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
-			return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
-		return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
+		co_return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
 	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -304,19 +306,15 @@ namespace ElectrostaticsTests {
 	//}
 
 
-	LimaUnittestResult TestLongrangeEsNoLJTwoParticles(EnvMode envmode) {
+	TestRoutine TestLongrangeEsNoLJTwoParticles(
+		Environment& environment, EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment env{ work_folder, envmode};
 
 		struct TestSetup {
 			Float3 p0, p1;
 			std::string name{};
 			Float3 mirrorDir{ -1,0, 0 };
 		};
-
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 30.f };
 
 		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
 		std::vector<TestSetup> testSetups{
@@ -325,7 +323,7 @@ namespace ElectrostaticsTests {
 			,{Float3{ 4.025f, 11.025f, 9.025f }, Float3{ 10.025f, 10.025f, 10.025f }, "3d force"}
 			,{Float3{ 9.6f, 10.f, 10.f }, Float3{ 10.f, 10.f, 10.f}, "Within SR range"}
 			,{Float3{ .1f, 10.f, 10.f }, Float3{ 5.6f, 10.f, 10.f }, "Close to boundary"}
-			,{Float3{ .1f, 10.f, 10.f }, Float3{ grofile.box_size.x - 2.f, 10.f, 10.f }, "With hyperpos closest", {0.f,0.f, 0.f}}
+			,{Float3{ .1f, 10.f, 10.f }, Float3{ 28.f, 10.f, 10.f }, "With hyperpos closest", {0.f,0.f, 0.f}}
 		};
 
 
@@ -337,31 +335,33 @@ namespace ElectrostaticsTests {
 		params.data_logging_interval = 1;
 		const float c0 = -1.f * elementaryChargeToKiloCoulombPerMole;
 		const float c1 = 1.f * elementaryChargeToKiloCoulombPerMole;
+		std::vector<SimulationHandle> handles;
+		handles.reserve(testSetups.size());
+		for (const auto& setup : testSetups) {
+			SimulationJob job;
+			job.workDir = work_folder;
+			job.simParams = params;
+			job.mode = envmode;
+			job.preprocess = [setup](GroFile& grofile, TopologyFile&, SimParams&) {
+				grofile.box_size = Float3{ 30.f };
+				grofile.atoms[0].position = setup.p0;
+				grofile.atoms[1].position = setup.p1;
+			};
+			job.configureSimulation = [c0, c1](Simulation& simulation) {
+				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
+				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
+			};
+			handles.push_back(environment.Submit(std::move(job)));
+		}
 
-		for (int testIndex = 0; testIndex < testSetups.size(); testIndex++) {
-			const auto setup = testSetups[testIndex];
-
-			grofile.atoms[0].position = setup.p0;
-			grofile.atoms[1].position = setup.p1;
-
-			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box->persistentClusters[0].pqd[0].params.charge = c0;
-			env.getSimPtr()->box->persistentClusters[1].pqd[0].params.charge = c1;
-
-
-
-			/*std::vector<ForceEnergy> forceEnergy(2);
-			PMEtest::computePME({ setup.p0, setup.p1 }, { c0, c1 }, grofile.box_size.x, 2.5f, forceEnergy);*/
-
-
-
-
-			Float3 hyperposOther = grofile.atoms[1].position;
-			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
+		for (size_t testIndex = 0; testIndex < testSetups.size(); testIndex++) {
+			const auto& setup = testSetups[testIndex];
+			Float3 hyperposOther = setup.p1;
+			BoundaryConditionPublic::applyHyperposNM(setup.p0, hyperposOther, Float3{ 30.f }, PBC);
 			
-			const Float3 diff = grofile.atoms[0].position - hyperposOther;
+			const Float3 diff = setup.p0 - hyperposOther;
 
-			const Float3 diffFromMirror = setup.p0 - (setup.p1 + (Float3(grofile.box_size) * setup.mirrorDir));
+			const Float3 diffFromMirror = setup.p0 - (setup.p1 + (Float3{ 30.f } * setup.mirrorDir));
 			const Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diffFromMirror);
 			const float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diffFromMirror.len()) * 0.5f;
 
@@ -370,9 +370,8 @@ namespace ElectrostaticsTests {
 			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff) + mirrorForce;
 
 
-
-			env.run();
-			const auto sim = env.GetSim();
+			auto completed = co_await std::move(handles[testIndex]);
+			auto sim = std::move(completed.simulation);
 
 			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
@@ -389,26 +388,25 @@ namespace ElectrostaticsTests {
 				printf("Expected pot %.3e GPU %.3e mirror %.3e\n", expectedPotential, actualPotential, mirrorPotential);
 			}
 
-			ASSERT(forceError < 0.07f, std::format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError));
+			if (forceError >= 0.07f)
+				co_return LimaUnittestResult{ false, std::format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError), envmode == Full };
 			// Potential is hopeless to match realspace and kspace
-			ASSERT(potEError < 3.f, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError));
+			if (potEError >= 3.f)
+				co_return LimaUnittestResult{ false, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError), envmode == Full };
 
 			const Float3 actualForceP1 = sim->forceBuffer->GetDatapoint(1, 0, 0);
-			ASSERT((actualForce + actualForceP1).len() / actualForce.len() < 0.001f,
-				std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
-					actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z));			
+			if ((actualForce + actualForceP1).len() / actualForce.len() >= 0.001f)
+				co_return LimaUnittestResult{ false,
+					std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
+						actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z), envmode == Full };
 		}
 
-		return LimaUnittestResult{ true, "Success", envmode == Full };
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment env{ work_folder, envmode };
-
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 30.f };
+		Environment& environment = Environment::Get();
 
 		SimParams params{};
 		params.n_steps = 1;
@@ -422,30 +420,39 @@ namespace ElectrostaticsTests {
 		std::vector<float> distances;
 
 		for (float dist = 15.f; dist > 0.4; dist -= 1.13f) {
-			grofile.atoms[0].position = Float3{ 15.025f, 10.025f, 10.025f };
-			grofile.atoms[1].position = grofile.atoms[0].position - Float3{ dist, 0.f, 0.f };
+			const Float3 p0{ 15.025f, 10.025f, 10.025f };
+			const Float3 p1 = p0 - Float3{ dist, 0.f, 0.f };
 
-			env.CreateSimulation(grofile, topfile, params);
-			env.getSimPtr()->box->persistentClusters[0].pqd[0].params.charge = c0;
-			env.getSimPtr()->box->persistentClusters[1].pqd[0].params.charge = c1;
+			SimulationJob job;
+			job.workDir = work_folder;
+			job.simParams = params;
+			job.mode = envmode;
+			job.preprocess = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
+				grofile.box_size = Float3{ 30.f };
+				grofile.atoms[0].position = p0;
+				grofile.atoms[1].position = p1;
+			};
+			job.configureSimulation = [c0, c1](Simulation& simulation) {
+				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
+				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
+			};
 
 
-			Float3 hyperposOther = grofile.atoms[1].position;
-			BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
-			const Float3 diff = grofile.atoms[0].position - hyperposOther;
+			Float3 hyperposOther = p1;
+			BoundaryConditionPublic::applyHyperposNM(p0, hyperposOther, Float3{ 30.f }, PBC);
+			const Float3 diff = p0 - hyperposOther;
 
-//			Float3 ghostforce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - grofile.box_size.x , 0.f, 0.f });
+
 			//ForceEnergy mirrorFE = CalcImmediateMirrorForceEnergy(diff, c0 * c1, grofile.box_size);
-			Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - grofile.box_size.x , 0.f, 0.f });
-			float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, (Float3{ diff.x - grofile.box_size.x , 0.f, 0.f }).len()) * 0.5f;
+			Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, Float3{ diff.x - 30.f, 0.f, 0.f });
+			float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, (Float3{ diff.x - 30.f, 0.f, 0.f }).len()) * 0.5f;
 			Float3 force = PhysicsUtils::CalcCoulumbForce(c0, c1, diff);
 			float pot = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f;
 
 			expectedPot.push_back(pot);
 			expectedForce.push_back(force + mirrorForce);
 
-			env.run();
-			const auto sim = env.GetSim();			
+			auto sim = environment.Submit(std::move(job)).Get().simulation;
 
 			actualPot.push_back(sim->potE_buffer->GetDatapoint(0, 0, 0));
 			actualForce.push_back(sim->forceBuffer->GetDatapoint(0, 0, 0));
@@ -468,48 +475,47 @@ namespace ElectrostaticsTests {
 
 	LimaUnittestResult TestConsistentEnergyWhenGoingFromLresToSres(EnvMode envmode) {
 		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-		Environment env{ work_folder, envmode };
+		Environment& environment = Environment::Get();
 
-
-		TopologyFile topfile{ work_folder / "molecule/topol.top" };
-		GroFile grofile{ work_folder / "molecule/conf.gro" };
-		grofile.box_size = Float3{ 20.f };
 
 		SimParams params{};
 		params.n_steps = 500;
 		params.data_logging_interval = 1;
 		params.dt = 1.f * FEMTO_TO_NANO;
 
-		grofile.atoms[0].position = Float3{ 7.0f, 10.f, 10.f };
-		grofile.atoms[1].position = Float3{ 9.f, 10.f, 10.f };
+		const Float3 p0{ 7.0f, 10.f, 10.f };
+		const Float3 p1{ 9.f, 10.f, 10.f };
 
 		const float c0 = 1.f * elementaryChargeToKiloCoulombPerMole;
 		const float c1 = -c0;
 
-		env.CreateSimulation(grofile, topfile, params);
-		// TODO
-		/*env.getSimPtr()->box->compounds[0].atom_charges[0] = c0;
-		env.getSimPtr()->box->compounds[1].atom_charges[0] = c1;*/
+		SimulationJob job;
+		job.workDir = work_folder;
+		job.simParams = params;
+		job.mode = envmode;
+		job.postprocess = SimAnalysis::AnalyzeEnergy;
+		job.preprocess = [p0, p1](GroFile& grofile, TopologyFile&, SimParams&) {
+			grofile.box_size = Float3{ 20.f };
+			grofile.atoms[0].position = p0;
+			grofile.atoms[1].position = p1;
+		};
 
-
-		//env.getSimPtr()->box->compoundInterimStates[0].vels_prev[0] = Float3{ 5000, 0, 0 };
-
-		Float3 hyperposOther = grofile.atoms[1].position;
-		BoundaryConditionPublic::applyHyperposNM(grofile.atoms[0].position, hyperposOther, grofile.box_size, PBC);
-		const Float3 diff = grofile.atoms[0].position - hyperposOther;
+		Float3 hyperposOther = p1;
+		BoundaryConditionPublic::applyHyperposNM(p0, hyperposOther, Float3{ 20.f }, PBC);
+		const Float3 diff = p0 - hyperposOther;
 		const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f;
 		const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff);
 
 
 
-		env.run();
+		auto result = environment.Submit(std::move(job)).Get();
 
 		// First go trough the traj data and find the step where the particles are less than 0.5 nm apart
 		int step = -1;
 		for (int i = 0; i < params.n_steps; i++)
 		{
-			const Float3 pos0 = env.getSimPtr()->traj_buffer->GetDatapoint(0, 0, i);
-			const Float3 pos1 = env.getSimPtr()->traj_buffer->GetDatapoint(1, 0, i);
+			const Float3 pos0 = result.simulation->traj_buffer->GetDatapoint(0, 0, i);
+			const Float3 pos1 = result.simulation->traj_buffer->GetDatapoint(1, 0, i);
 			const float dist = (pos0 - pos1).len();
 			if (dist < 0.4f) {
 				step = i;
@@ -518,7 +524,7 @@ namespace ElectrostaticsTests {
 		}
 
 		// Only use the energies up untill the step found above
-		auto anal = env.getAnalyzedPackage();
+		const auto& anal = *result.analysis;
 		//LIMA_Print::plotEnergies(std::span(anal.pot_energy).subspan(0, step), std::span(anal.kin_energy).subspan(0, step), std::span(anal.total_energy).subspan(0, step));
 
 		return LimaUnittestResult{ anal.variance_coefficient < 1e-3f, "", envmode == Full };
@@ -527,32 +533,36 @@ namespace ElectrostaticsTests {
 
 
 	// Create many pos charged Ions as compounds. Set all LJ to 0. Compute exact SR and LR interactions between all particles. Run simulation 1 step, and compare the errors
-	LimaUnittestResult TestLongrangeEsNoLJManyParticles(EnvMode envmode) {
+	TestRoutine TestLongrangeEsNoLJManyParticles(
+		Environment& environment, EnvMode envmode) {
 		const Float3 boxlen{ 20.f };
 		const float chargeExtern = 1.f;
 		const float charge = chargeExtern * elementaryChargeToKiloCoulombPerMole;
-		MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", boxlen.x,
-			AtomsSelection{
+		AtomsSelection atoms{
 				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
-			},
-			1.f
-			);
+			};
 
 		const fs::path work_folder = HeavyTestsDir() / "ShortrangeElectrostaticsCompoundOnly/";
-		Environment env{ work_folder, envmode };
 
 		
 		
 		SimParams params{};
 		params.n_steps = 2;
 		params.data_logging_interval = 1;
-		GroFile grofile{ work_folder / "conf.gro" };
-
-		TopologyFile topfile{ work_folder / "topol.top" };
-		//topfile.GetSystemMutable().molecules.resize(3);
-
-		env.CreateSimulation(grofile, topfile, params);
-		env.run();
+		SimulationJob job;
+		job.workDir = work_folder;
+		job.grofile.emplace();
+		job.topfile.emplace();
+		job.simParams = params;
+		job.mode = envmode;
+		auto generatedGrofile = std::make_shared<GroFile>();
+		job.preprocess = [work_folder, boxlen, atoms = std::move(atoms), generatedGrofile](
+			GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			MakeChargeParticlesSim(grofile, topfile, work_folder, boxlen.x, atoms, 1.f);
+			*generatedGrofile = grofile;
+		};
+		auto result = co_await environment.Submit(std::move(job));
+		const GroFile& grofile = *generatedGrofile;
 
 
 		// Now compute all expected forces and potentials
@@ -580,7 +590,7 @@ namespace ElectrostaticsTests {
 			expectedForces[i] = force;
 		}
 
-		const auto sim = env.GetSim();
+		const auto& sim = result.simulation;
 		const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
 
 		std::vector<float> potErrors(grofile.atoms.size());
@@ -610,10 +620,11 @@ namespace ElectrostaticsTests {
 		
 		const float maxForceError = *std::max_element(forceErrors.begin(), forceErrors.end());
 		const float meanForceError = Statistics::Mean(forceErrors);
-		ASSERT(meanForceError < 0.18f, std::format("Mean Force Error {:.3f}", meanForceError));
+		if (meanForceError >= 0.18f)
+			co_return LimaUnittestResult{ false, std::format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
 		//ASSERT(maxForceError < 0.8f, std::format("Max Force Error {:.3e}", maxForceError));
 
-		return LimaUnittestResult{ true, "", envmode == Full };
+		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}
 }
 

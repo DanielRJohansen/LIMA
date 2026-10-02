@@ -10,11 +10,17 @@ endif()
 set(SOURCE_FILES
     #src/AlgorithmTests.cu
     src/main.cpp
+    
 )
 add_executable(limatest
     ${SOURCE_FILES}
     ${RESOURCE_FILES}
 )
+
+option(ENABLE_EXPERIMENTAL_BATCH_TESTS "Enable tests that require shared-kernel batch execution" OFF)
+if (ENABLE_EXPERIMENTAL_BATCH_TESTS)
+    target_compile_definitions(limatest PRIVATE ENABLE_EXPERIMENTAL_BATCH_TESTS)
+endif()
 
 target_include_directories(limatest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -22,6 +28,30 @@ target_include_directories(limatest PRIVATE
 
 target_link_libraries(limatest LIMA_BASE)
 target_link_libraries(limatest LIMA_MD)
+
+add_executable(agenttesting
+    src/agenttesting.cpp
+    src/EnergyMinimizationtests.cpp
+    ${RESOURCE_FILES}
+)
+target_include_directories(agenttesting PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(agenttesting LIMA_BASE LIMA_MD)
+
+# Release tests for the lima CLI programs. Runs lima.exe as a child process, so Windows only for now
+if (WIN32)
+    add_executable(limaclitest
+        src/CliTests.cpp
+        ${RESOURCE_FILES}
+    )
+    target_include_directories(limaclitest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/code/LIMA/include
+    )
+    target_link_libraries(limaclitest LIMA_BASE LIMA_MD)
+    add_dependencies(limaclitest lima)
+endif()
 
 
 if (UNIX)

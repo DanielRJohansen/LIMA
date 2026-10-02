@@ -41,12 +41,12 @@ struct ParticleFactory {
 template <int n_Atoms, typename ParamsType>
 struct BondFactory {
 	static const int nAtoms = n_Atoms;
+	BondFactory() = default;
 	BondFactory(const std::array<int, nAtoms>& ids, const ParamsType& parameters)
 		: params(parameters), global_atom_indexes(ids) {}
 
-	ParamsType params;
-	std::array<int, nAtoms> global_atom_indexes;
-	std::string sourceLine;
+	ParamsType params{};
+	std::array<int, nAtoms> global_atom_indexes{};
 };
 using SingleBondFactory = BondFactory<2, SingleBond::Parameters>;
 using PairBondFactory = BondFactory<2, PairBond::Parameters>;
@@ -82,14 +82,18 @@ struct PersistentClusterFactory {
 namespace LIMA_MOLECULEBUILD {
 	class SuperTopology {
 
-		template <typename BondType, typename BondtypeFactory, typename BondTypeTopologyfile>
-		void LoadBondsIntoTopology(const std::vector<BondTypeTopologyfile>& bondsInTopfile, 
-			int atomIdOffset, LIMAForcefield& forcefield, std::vector<BondtypeFactory>& topology);
-
 	public:
 		struct MoleculeInstance {
-			const TopologyFile::Moleculetype* type = nullptr;
+			std::shared_ptr<const TopologyFile::Moleculetype> type;
 			int particleOffset = 0;
+			int nParticles = 0;
+
+			// Index of the first bond of this molecule in the respective vectors. The bonds of a molecule are contiguous
+			int firstSinglebond = 0;
+			int firstPairbond = 0;
+			int firstAnglebond = 0;
+			int firstDihedralbond = 0;
+			int firstImproperdihedralbond = 0;
 		};
 
 		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
@@ -127,51 +131,21 @@ namespace LIMA_MOLECULEBUILD {
 
 
 
+// Groups bonds into bondgroups of at most 64 particles. A bondgroup never spans multiple molecules
 class BondGroupFactory {
-
-	std::vector<BondGroup> bondgroups;
-	std::vector<std::array<int, BondGroup::maxParticles>> particleGlobalIds;
-
-	int FindLocalParticleId(int bgIndex, const int globalId) const;
-	void AddBondParticles(int bgIndex, std::span<const int> globalIds, std::span<const uint8_t> localIds);
-
-	template <int n>
-	std::array<uint8_t, n> GetLocalIds(const std::array<int, n>& globalIds) const;
-
-	
-	bool AddBond(int bondgroupIndex, const SingleBondFactory&);
-	bool AddBond(int bondgroupIndex, const PairBondFactory&);
-	bool AddBond(int bondgroupIndex, const AngleBondFactory&);
-	bool AddBond(int bondgroupIndex, const DihedralBondFactory&);
-	bool AddBond(int bondgroupIndex, const ImproperDihedralBondFactory&);
-
-	// Add bonds from a specific type to the bond group
-	void AddBondsFromMap(int bgIndex, const auto& bondMap, auto& availableBondIds, const auto& bonds) {
-		//TimeIt timer("addbondsfrommap");
-		for (const int bondId : bondMap) {
-			if (availableBondIds.contains(bondId)) {
-				if (AddBond(bgIndex, bonds[bondId]))
-					availableBondIds.erase(bondId);
-			}
-		}
-	};
+	static constexpr int maxParticlesPerBondgroup = 64;
+	BondGroups bondgroups;
+	std::vector<int> particleGlobalIds;	// The global id of each particle in bondgroups.particles
 
 public:
 	BondGroupFactory(const LIMA_MOLECULEBUILD::SuperTopology& topology);
-	
-	// Returns <nNewParticles, localParticleIds>, where localParticleIds may not be assigned yet..
-	template <int n>
-	std::tuple<int, std::array<uint8_t, n>> TryAssignLocalIds(int bgIndex, const std::array<int, n>& particleIds) const;
-
-
 
 	// Warning: unfinished bondgroups, run the function below before using
-	
 	void AddPclusterRefs(const ParticleToPclusterMap& particleToPclusterMap);
-	std::vector<std::set<BondgroupRef>> MakeParticleToBondgroupsMap(int nParticlesTotal) const;
-	std::vector<BondGroup> GetBondgroups();
 
-	//static std::vector<BondGroup> FinishBondgroups(const std::vector<BondGroupFactory>&);
+	// Adds a reference to each particle's pcluster, for each bondgroup the particle is in, in order of bondgroup
+	void AddBondgroupRefsToPclusters(const ParticleToPclusterMap& particleToPclusterMap, std::vector<PersistentClusterMeta>& pclusterMetas) const;
+	BondGroups GetBondgroups();
 };
 
 
@@ -183,9 +157,7 @@ struct BoxImage {
 
 	LIMA_MOLECULEBUILD::SuperTopology topology; // This is only used for debugging purposes
 
-	std::shared_ptr<LimaMoleculeGraph::MoleculeGraph> systemGraph;
-
-	std::vector<BondGroup> bondgroups;
+	BondGroups bondgroups;
 
 	// Clusters
 	std::vector<PersistentCluster> persistentClusters;

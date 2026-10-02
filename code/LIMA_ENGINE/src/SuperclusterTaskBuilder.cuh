@@ -42,7 +42,8 @@ public:
 
 	TaskBuilderControl(const TaskBuilderControl&) = delete;
 	TaskBuilderControl& operator=(const TaskBuilderControl&) = delete;
-	TaskBuilderControl(int nSuperclustersUpperbound, const std::vector<ParticlesBondedToParticle>& particlesBondedToParticle, const std::vector<PclustersBondedToPcluster>& pclustersBondedToPcluster)
+	TaskBuilderControl(int nSuperclustersUpperbound, const std::vector<ParticlesBondedToParticle>& particlesBondedToParticle,
+		const std::vector<PclustersBondedToPcluster>& pclustersBondedToPcluster, cudaStream_t stream)
 		: nSuperclustersUpperbound(nSuperclustersUpperbound)
 	{
 		contents.particlesBondedToParticle = GenericCopyToDevice(particlesBondedToParticle);
@@ -58,16 +59,20 @@ public:
 		cudaMalloc(&contents.nResultsPrefixsum, sizeof(int) * (nSuperclustersUpperbound + 1));
 		cudaMalloc(&contents.nQueryBuffersPrefixsum, sizeof(int) * (nSuperclustersUpperbound + 1));
 
-		Reset();
+		Reset(stream);
 	}
 
-	void Reset() {
-		cudaMemset(contents.interactionsOwned, 0xFF, sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
+	void Reset(cudaStream_t stream) {
+		cudaMemsetAsync(contents.interactionsOwned, 0xFF,
+			sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound, stream);
 		//cudaMemset(contents.scIdsQueryNonowned, 0xFF, sizeof(int) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
-		thrust::fill_n(thrust::device, contents.scIdsQueryNonowned, TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound, INT_MAX);
+		thrust::fill_n(thrust::cuda::par.on(stream), contents.scIdsQueryNonowned,
+			TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound, INT_MAX);
 	}
 
 	~TaskBuilderControl() {
+		cudaFree(contents.particlesBondedToParticle);
+		cudaFree(contents.pclustersBondedToPcluster);
 		cudaFree(contents.superclusterPositionSpheres);
 		cudaFree(contents.nInteractionsOwned);
 		cudaFree(contents.interactionsOwned);
@@ -239,8 +244,7 @@ __device__ inline bool Warp_DoesSuperclustersInteractFine(const SuperCluster* co
 
 
 		if (eps0 != -1 && eps1 != -1) {//if (p0.Valid() && p1.Valid()) {
-			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
-			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
+			PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 
 			const Float3 delta = pos0 - pos1;
 			const float distanceSq = delta.dot(delta);
@@ -276,8 +280,7 @@ __device__ inline bool Warp_DoesSuperclustersInteract(const std::array<float4, 4
 			Float3 pos0 = Float3{ p0 };
 			Float3 pos1 = Float3{ p1 };
 
-			PeriodicBoundaryCondition::applyHyperposNM(pos0, pos1);
-			//PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
+			PeriodicBoundaryCondition::ApplyHyperpos(pos0, pos1, boxSize, boxSizeInv);
 			const Float3 delta = pos0 - pos1;
 			const float radiusSum = p0.w + p1.w;
 			const float coarseCutoff = cutoffDistance + radiusSum;
@@ -313,8 +316,9 @@ __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const Super
 
 __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize, TaskBuilderControlContents tbContents, float cutoffNm, Float3 boxSizeFloat, Float3 boxSizeFloatInv) {
 
-	NodeIndex nodeIndex = BoxGrid::Get3dIndex(blockIdx.x, boxSize);
-	const int nodeId = BoxGrid::Get1dIndex(nodeIndex, boxSize);
+	const int gridOffset = (blockIdx.x / boxSize.InnerProduct()) * boxSize.InnerProduct();
+	NodeIndex nodeIndex = BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize);
+	const int nodeId = gridOffset + BoxGrid::Get1dIndex(nodeIndex, boxSize);
 
 	__shared__ int nOwnedInteractions;
 	__shared__ int nNonownedInteractions;
@@ -352,7 +356,7 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 		NodeIndex targetBlock =
 			PeriodicBoundaryCondition::applyBC(nodeIndex + targetBlockRelative, boxSize);
 
-		int targetIndex = BoxGrid::Get1dIndex(targetBlock, boxSize);
+		int targetIndex = gridOffset + BoxGrid::Get1dIndex(targetBlock, boxSize);
 
 		const bool validQuery = scIndexInQueryblock < scControl.nSuperclustersInBlocks[targetIndex];
 
@@ -499,25 +503,24 @@ __global__ void BuildNointeractionMatricesKernel(
 
 		uint16_t rowData = 0;
 
-		if (token.UseNointeractionMatrix()) {
-			const int scIdQuery = token.GetQueryId();
-			const bool isSelfInteractionTask = scId == scIdQuery;
+		// Padding pairs are always masked, so the NB kernel does not need to check particle validity per pair
+		const int scIdQuery = token.GetQueryId();
+		const bool isSelfInteractionTask = scId == scIdQuery;
+		const int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
 
-			for (int col = 0; col < 16; ++col) {
-				const int pidSelf = superClusterMetas[scId].globalParticleIds[col];
-				const int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
+		for (int col = 0; col < 16; ++col) {
+			const int pidSelf = superClusterMetas[scId].globalParticleIds[col];
 
-				if (pidSelf == -1 || pidQuery == -1)
-					continue;
+			bool noInteraction;
+			if (pidSelf == -1 || pidQuery == -1)
+				noInteraction = true;
+			else if (token.UseNointeractionMatrix())
+				noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery) || (isSelfInteractionTask && row == col);
+			else
+				noInteraction = false;
 
-				bool noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery);
-
-				if (isSelfInteractionTask && row == col)
-					noInteraction = true;
-
-				if (noInteraction)
-					BoolMatrix16x16::SetValueInRow(col, rowData);
-			}
+			if (noInteraction)
+				BoolMatrix16x16::SetValueInRow(col, rowData);
 		}
 
 		nointeractionMatrices[matrixIndex].SetRow(row, rowData);
@@ -538,109 +541,104 @@ __global__ void BuildNointeractionMatricesKernel(
 
 
 
-bool Engine::MakeSuperClusterTasksGPU() {
-	if (nSuperclusters == 0)
+bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {
+	if (batch->nSuperclusters == 0)
 		return true;
 
-	const Box& box = *simulation->box;
-	Int3 boxSize = box.boxparams.boxSize;
-	Float3 boxSizeF = simulation->box->boxparams.BoxSizeFloat();
+	const Int3 boxSize = batch->boxSize;
+	const Float3 boxSizeF = NodeIndex(boxSize).toFloat3();
 
-	const int nSuperclustersUpperbound = nSuperclusters * 2;
+	const int nSuperclustersUpperbound = batch->nSuperclusters * 2;
 
-	if (!taskbuilderControl)
-		taskbuilderControl = std::make_unique<TaskBuilderControl>(nSuperclustersUpperbound, box.particlesBondedToParticle, box.pclustersBondedToPcluster);
+	if (!batch->taskbuilderControl || batch->taskbuilderControl->nSuperclustersUpperbound < batch->nSuperclusters)
+		batch->taskbuilderControl = std::make_unique<TaskBuilderControl>(
+			nSuperclustersUpperbound, batch->particlesBondedToParticle, batch->pclustersBondedToPcluster, stream);
 
-	cudaDeviceSynchronize();
-
-	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel << <(nSuperclusters + 31) / 32, 32 >> > (
-		superClustersControl->scData,
-		superClustersControl->scMeta,
-		taskbuilderControl->contents.superclusterPositionSpheres,
-		nSuperclusters
+	ComputeMeanposAndRadiiForEachPclusterInEachSuperclusterKernel << <(batch->nSuperclusters + 31) / 32, 32, 0, stream >> > (
+		batch->superClustersControl->scData,
+		batch->superClustersControl->scMeta,
+		batch->taskbuilderControl->contents.superclusterPositionSpheres,
+		batch->nSuperclusters
 		);
-	cudaDeviceSynchronize();
+	cudaStreamSynchronize(stream);
 
 	{
-		taskbuilderControl->Reset();
-		cudaDeviceSynchronize();
+		batch->taskbuilderControl->Reset(stream);
 
-		const uint32_t nGridnodes = boxSize.InnerProduct();
+		const uint32_t nGridnodes = batch->nGridnodes;
 
 		ReserveInteractions << <
 			dim3(nGridnodes, SuperClustersControl::maxClustersPerBlock, 1),
-			256 >> > (
-				*superClustersControl,
+			256, 0, stream >> > (
+				*batch->superClustersControl,
 				boxSize,
-				taskbuilderControl->contents,
-				simulation->simParams.cutoff_nm,
+				batch->taskbuilderControl->contents,
+				batch->params.cutoff_nm,
 				boxSizeF,
 				Float3{ 1.0f } / boxSizeF
 				);
 
-		LIMA_UTILS::genericErrorCheck("ReserveInteractions");
+		LIMA_UTILS::genericErrorCheck(stream, "ReserveInteractions");
 
-		cudaDeviceSynchronize();
-
-		SortReserveInteractionsOutput << <nSuperclusters, TaskBuilderControlContents::maxTasksPerSc >> > (
-			taskbuilderControl->contents
+		SortReserveInteractionsOutput << <batch->nSuperclusters, TaskBuilderControlContents::maxTasksPerSc, 0, stream >> > (
+			batch->taskbuilderControl->contents
 			);
 
-		cudaDeviceSynchronize();
+		cudaStreamSynchronize(stream);
 	}
 
-	cudaMemset(taskbuilderControl->contents.nResults + nSuperclusters, 0, sizeof(int));
-	cudaMemset(taskbuilderControl->contents.nInteractionsOwned + nSuperclusters, 0, sizeof(int));
+	cudaMemsetAsync(batch->taskbuilderControl->contents.nResults + batch->nSuperclusters, 0, sizeof(int), stream);
+	cudaMemsetAsync(batch->taskbuilderControl->contents.nInteractionsOwned + batch->nSuperclusters, 0, sizeof(int), stream);
 
 	thrust::exclusive_scan(
-		thrust::device,
-		taskbuilderControl->contents.nResults,
-		taskbuilderControl->contents.nResults + nSuperclusters + 1,
-		taskbuilderControl->contents.nResultsPrefixsum
+		thrust::cuda::par.on(stream),
+		batch->taskbuilderControl->contents.nResults,
+		batch->taskbuilderControl->contents.nResults + batch->nSuperclusters + 1,
+		batch->taskbuilderControl->contents.nResultsPrefixsum
 	);
 
 	thrust::exclusive_scan(
-		thrust::device,
-		taskbuilderControl->contents.nInteractionsOwned,
-		taskbuilderControl->contents.nInteractionsOwned + nSuperclusters + 1,
-		taskbuilderControl->contents.nQueryBuffersPrefixsum
+		thrust::cuda::par.on(stream),
+		batch->taskbuilderControl->contents.nInteractionsOwned,
+		batch->taskbuilderControl->contents.nInteractionsOwned + batch->nSuperclusters + 1,
+		batch->taskbuilderControl->contents.nQueryBuffersPrefixsum
 	);
 
-	cudaDeviceSynchronize();
+	cudaMemcpyAsync(&batch->nResults, batch->taskbuilderControl->contents.nResultsPrefixsum + batch->nSuperclusters,
+		sizeof(int), cudaMemcpyDeviceToHost, stream);
+	int nTasks = batch->nSuperclusters;
+	int nQueryBufferEntries = 0;
+	cudaMemcpyAsync(&nQueryBufferEntries, batch->taskbuilderControl->contents.nQueryBuffersPrefixsum + batch->nSuperclusters,
+		sizeof(int), cudaMemcpyDeviceToHost, stream);
+	cudaStreamSynchronize(stream);
 
-	nResults = GenericCopyToHost(taskbuilderControl->contents.nResultsPrefixsum + nSuperclusters);
-	int nTasks = nSuperclusters;
+	batch->scscTasksDevice.Expand(nTasks, 1.2);
+	batch->idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
+	batch->resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
+	batch->noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
+	// scResultsDevice (EM only) is expanded lazily in _deviceMaster, since a batch may switch between EM and MD between task builds
+	batch->nbForceAccumulatorDevice.Expand(size_t(batch->nSuperclusters) * SuperCluster::maxParticles * 4, 1.2);
 
-	const int nQueryBufferEntries = GenericCopyToHost(taskbuilderControl->contents.nQueryBuffersPrefixsum + nSuperclusters);
-
-	scscTasksDevice.Expand(nTasks, 1.2);
-	idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
-	resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
-	noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
-	scResultsDevice.Expand(nResults, 1.2);
-
-	BuildTasks << <(nSuperclusters + 31) / 32, 32 >> > (
-		taskbuilderControl->contents,
-		superClustersControl->scMeta,
-		nSuperclusters,
-		scscTasksDevice.Get(),
-		idsOfQuerySuperclustersDevice.Get(),
-		resultIndicesDevice.Get()
+	BuildTasks << <(batch->nSuperclusters + 31) / 32, 32, 0, stream >> > (
+		batch->taskbuilderControl->contents,
+		batch->superClustersControl->scMeta,
+		batch->nSuperclusters,
+		batch->scscTasksDevice.Get(),
+		batch->idsOfQuerySuperclustersDevice.Get(),
+		batch->resultIndicesDevice.Get()
 		);
 
-	LIMA_UTILS::genericErrorCheck("BuildTasks");
+	LIMA_UTILS::genericErrorCheck(stream, "BuildTasks");
 
-	BuildNointeractionMatricesKernel << <nSuperclusters, 16 >> > (
-		superClustersControl->scMeta,
-		pClusterMetaDevice.Get(),
-		taskbuilderControl->contents,
-		noInteractionMatricesDevice.Get(),
-		nSuperclusters
+	BuildNointeractionMatricesKernel << <batch->nSuperclusters, 16, 0, stream >> > (
+		batch->superClustersControl->scMeta,
+		batch->pClusterMetaDevice.Get(),
+		batch->taskbuilderControl->contents,
+		batch->noInteractionMatricesDevice.Get(),
+		batch->nSuperclusters
 		);
 
-	LIMA_UTILS::genericErrorCheck("BuildNointeractionMatricesKernel");
-
-	cudaDeviceSynchronize();
+	LIMA_UTILS::genericErrorCheck(stream, "BuildNointeractionMatricesKernel");
 
 	return true;
 }

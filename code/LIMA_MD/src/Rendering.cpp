@@ -1,48 +1,43 @@
 #include "Display.h"
+#include "DisplayInternal.h"
 #include "Shaders.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 
 #include "RenderUtilities.cuh"
+#include "NewCartoonRenderer.h"
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "SSBO.h"
+#include <algorithm>
 
 const float deg2rad = 2.f * PI / 360.f;
 const float rad2deg = 1.f / deg2rad;
 
+namespace {
 
-glm::mat4 Camera::View() const {
-	glm::mat4 view = glm::mat4(1.0f);
-
-	// Translate the camera back by the camera distance
-	view = glm::translate(view, glm::vec3(0.0f, 0.0f, dist));
-
-	// Apply the fixed rotation to make Z up
-	view = glm::rotate(view, (-PI / 2.f), glm::vec3(1.0f, 0.0f, 0.0f));
-
-	// Apply pitch and yaw rotations
-	view = glm::rotate(view, pitch, glm::vec3(1.0f, 0.0f, 0.0f));  // Rotation around x-axis for pitch
-	view = glm::rotate(view, yaw, glm::vec3(0.0f, 0.0f, 1.0f));    // Rotation around z-axis for yaw
-
-	// Translate the world to the opposite direction of the camera position to look at the center
-	view = glm::translate(view, ToVec3(-center));
-
-	return view;
+void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, size_t atomId, size_t atomCount,
+	bool showSolvents, float forceMagnitude = 0.f) {
+	const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+	const float chargeNormalized = (atom.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
+	const auto coloringMethod = static_cast<ColoringMethod>(renderAtom.flags.y);
+	if (coloringMethod == ColoringMethod::Atomname || coloringMethod == ColoringMethod::NewCartoon)
+		renderAtom.color = RenderUtilities::getColor(atomType);
+	else if (coloringMethod == ColoringMethod::Charge)
+		renderAtom.color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
+	else if (coloringMethod == ColoringMethod::PersistentClusterId) {
+		constexpr int nElementsPerRevolution = 12;
+		const float fraction = static_cast<float>(std::max(atom.groupId, 0) % nElementsPerRevolution) / nElementsPerRevolution;
+		renderAtom.color = RenderUtilities::GetColorInGradientHue(fraction);
+	}
+	else if (coloringMethod == ColoringMethod::GradientFromAtomid)
+		renderAtom.color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / atomCount);
+	else if (coloringMethod == ColoringMethod::ForceMagnitude)
+		renderAtom.color = RenderUtilities::GetLogColorGradient(forceMagnitude, 1e5f, 1e11f);
+	if ((!showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon)
+		renderAtom.color.w = 0.f;
 }
 
-glm::mat4 Camera::Projection() const {
-	double fovY = 45.0;
-	double nearPlane = 0.1;
-	double farPlane = 1000.0;
-	double fH = tan(glm::radians(fovY / 2.0)) * nearPlane;
-	double fW = fH * aspectRatio;
-
-	return glm::frustum(-fW, fW, -fH, fH, nearPlane, farPlane);
-}
-
-glm::mat4 Camera::ViewProjection() const {
-	return Projection() * View();
 }
 
 glm::vec3 AnyPerpendicular(const glm::vec3& dir)
@@ -70,61 +65,6 @@ glm::mat4 RotationFromZAxisTo(const glm::vec3& direction)
 	const float angle = std::acos(c);
 	return glm::rotate(glm::mat4(1.f), angle, rotAxis);
 }
-
-Arrow::Arrow(glm::vec3 direction, glm::vec4 color, int id) : direction(glm::normalize(direction)), color(color), uniqueId(id) {
-	constexpr int radialSegments = 64;
-	constexpr float totalLength = 1.0f;
-	constexpr float shaftLength = 0.78f * totalLength;
-	constexpr float shaftRadius = 0.035f * totalLength;
-	constexpr float headLength = totalLength - shaftLength;
-	constexpr float headRadius = 0.09f * totalLength;
-
-	const glm::vec3 axis(0.f, 0.f, 1.f);
-	const glm::vec3 u(1.f, 0.f, 0.f);
-	const glm::vec3 v(0.f, 1.f, 0.f);
-
-	const glm::vec3 shaftStart(0.f, 0.f, 0.f);
-	const glm::vec3 shaftEnd(0.f, 0.f, shaftLength);
-	const glm::vec3 coneBase(0.f, 0.f, shaftLength);
-	const glm::vec3 apex(0.f, 0.f, totalLength);
-
-	vertices.reserve(radialSegments * 12);
-
-	auto AppendTriangle = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
-		const glm::vec3 normal = glm::normalize(glm::cross(b - a, c - a));
-		vertices.push_back({ a, normal });
-		vertices.push_back({ b, normal });
-		vertices.push_back({ c, normal });
-		};
-
-	for (int i = 0; i < radialSegments; ++i) {
-		const float a0 = 2.f * 3.1415f * static_cast<float>(i) / static_cast<float>(radialSegments);
-		const float a1 = 2.f * 3.1415f * static_cast<float>(i + 1) / static_cast<float>(radialSegments);
-
-		const glm::vec3 r0s = std::cos(a0) * u * shaftRadius + std::sin(a0) * v * shaftRadius;
-		const glm::vec3 r1s = std::cos(a1) * u * shaftRadius + std::sin(a1) * v * shaftRadius;
-
-		const glm::vec3 p0 = shaftStart + r0s;
-		const glm::vec3 p1 = shaftStart + r1s;
-		const glm::vec3 q0 = shaftEnd + r0s;
-		const glm::vec3 q1 = shaftEnd + r1s;
-
-		AppendTriangle(p0, p1, q1);
-		AppendTriangle(p0, q1, q0);
-
-		const glm::vec3 r0c = std::cos(a0) * u * headRadius + std::sin(a0) * v * headRadius;
-		const glm::vec3 r1c = std::cos(a1) * u * headRadius + std::sin(a1) * v * headRadius;
-
-		const glm::vec3 c0 = coneBase + r0c;
-		const glm::vec3 c1 = coneBase + r1c;
-
-		AppendTriangle(c0, c1, apex);
-		AppendTriangle(coneBase, c1, c0);
-	}
-
-	AppendTriangle(shaftStart, shaftStart + glm::vec3(shaftRadius, 0.f, 0.f), shaftStart + glm::vec3(0.f, shaftRadius, 0.f));
-}
-
 
 void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const {
 	//const float length = 2.f;
@@ -155,67 +95,6 @@ void Arrow::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::ve
 	shader->Draw(vertices, MVP, model, color, uniqueId);
 };
 
-Ring::Ring(glm::vec3 normal, glm::vec4 color, int id)
-	: normal(glm::normalize(normal)), color(color), uniqueId(id)
-{
-	constexpr int majorSegments = 96;
-	constexpr int minorSegments = 12;
-	constexpr float majorRadius = 1.45f;
-	constexpr float tubeRadius = 0.020f;
-
-	vertices.reserve(majorSegments * minorSegments * 6);
-
-	auto TorusPoint = [&](float u, float v) {
-		const float cu = std::cos(u);
-		const float su = std::sin(u);
-		const float cv = std::cos(v);
-		const float sv = std::sin(v);
-
-		const float r = majorRadius + tubeRadius * cv;
-		return glm::vec3(r * cu, r * su, tubeRadius * sv);
-		};
-
-	auto TorusNormal = [&](float u, float v) {
-		const float cu = std::cos(u);
-		const float su = std::sin(u);
-		const float cv = std::cos(v);
-		const float sv = std::sin(v);
-
-		return glm::normalize(glm::vec3(cv * cu, cv * su, sv));
-		};
-
-	auto AppendTri = [&](const glm::vec3& a, const glm::vec3& na,
-		const glm::vec3& b, const glm::vec3& nb,
-		const glm::vec3& c, const glm::vec3& nc)
-		{
-			vertices.push_back({ a, na });
-			vertices.push_back({ b, nb });
-			vertices.push_back({ c, nc });
-		};
-
-	for (int i = 0; i < majorSegments; ++i) {
-		const float u0 = 2.f * PI * static_cast<float>(i) / static_cast<float>(majorSegments);
-		const float u1 = 2.f * PI * static_cast<float>(i + 1) / static_cast<float>(majorSegments);
-
-		for (int j = 0; j < minorSegments; ++j) {
-			const float v0 = 2.f * PI * static_cast<float>(j) / static_cast<float>(minorSegments);
-			const float v1 = 2.f * PI * static_cast<float>(j + 1) / static_cast<float>(minorSegments);
-
-			const glm::vec3 p00 = TorusPoint(u0, v0);
-			const glm::vec3 p10 = TorusPoint(u1, v0);
-			const glm::vec3 p11 = TorusPoint(u1, v1);
-			const glm::vec3 p01 = TorusPoint(u0, v1);
-
-			const glm::vec3 n00 = TorusNormal(u0, v0);
-			const glm::vec3 n10 = TorusNormal(u1, v0);
-			const glm::vec3 n11 = TorusNormal(u1, v1);
-			const glm::vec3 n01 = TorusNormal(u0, v1);
-
-			AppendTri(p00, n00, p10, n10, p11, n11);
-			AppendTri(p00, n00, p11, n11, p01, n01);
-		}
-	}
-}
 
 void Ring::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec3& pos, float scale) const
 {
@@ -228,25 +107,6 @@ void Ring::Draw(DrawTrianglesShader* shader, const glm::mat4& VP, const glm::vec
 	shader->Draw(vertices, MVP, model, color, uniqueId);
 }
 
-void TransformGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) const {
-	const int axis = activeAxis.value_or(-1);
-
-	const float translateScaleX = activeMode == GizmoMode::Translate && axis == 0 ? 2.2f : 2.f;
-	const float translateScaleY = activeMode == GizmoMode::Translate && axis == 1 ? 2.2f : 2.f;
-	const float translateScaleZ = activeMode == GizmoMode::Translate && axis == 2 ? 2.2f : 2.f;
-
-	const float rotateScaleX = activeMode == GizmoMode::Rotate && axis == 0 ? 2.2f : 2.f;
-	const float rotateScaleY = activeMode == GizmoMode::Rotate && axis == 1 ? 2.2f : 2.f;
-	const float rotateScaleZ = activeMode == GizmoMode::Rotate && axis == 2 ? 2.2f : 2.f;
-
-	arrowX.Draw(shader, VP, position, translateScaleX);
-	arrowY.Draw(shader, VP, position, translateScaleY);
-	arrowZ.Draw(shader, VP, position, translateScaleZ);
-
-	ringX.Draw(shader, VP, position, rotateScaleX);
-	ringY.Draw(shader, VP, position, rotateScaleY);
-	ringZ.Draw(shader, VP, position, rotateScaleZ);
-}
 
 
 
@@ -254,31 +114,25 @@ void TransformGizmo::Draw(DrawTrianglesShader* shader, const glm::mat4& VP) cons
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-void Display::_RenderAtoms() {
+void Display::_RenderAtoms(const RenderContext& renderContext) {
 	
-	const glm::mat4 VP = camera.ViewProjection();
+	const glm::mat4 VP = renderContext.camera->ViewProjection();
+    if (!renderContext.renderAtoms)
+        return;
+	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry()) {
+		renderContext.newCartoonRenderer->Draw(*drawTrianglesShader, VP);
+	}
 
-	// TODO: Add coloringmethod flag, and let shaders discard a fragment if not showing solvents! (or just pass atomLetter colors as a buffer, where solvents can have alpha=0)
-	const glm::mat4 view = camera.View();
-	const glm::mat4 projection = camera.Projection();
+	const glm::mat4 view = renderContext.camera->View();
+	const glm::mat4 projection = renderContext.camera->Projection();
 
-	//drawAtomsPrettyShader->Draw(*renderAtomsBuffer, renderAtomsHost.size(), view, projection);	
-	drawAtomsFromCpuShader->Draw(*renderAtomsBuffer, renderAtomsHost.size(), view, projection);
+	if (!renderContext.renderAtomsBuffer)
+		return;
+	//drawAtomsPrettyShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);	
+	drawAtomsFromCpuShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
 }
 
-int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
+int Display::GetObjectIdAtPixel(glm::dvec2 cursor)
 {
 	if (!renderTargetControl || windowSize.x <= 0 || windowSize.y <= 0
 		|| framebufferSize.x <= 0 || framebufferSize.y <= 0)
@@ -286,29 +140,52 @@ int Display::GetObjectIdAtPixel(glm::ivec2 pixel)
 
 	// GLFW cursor positions are logical window coordinates; the picking
 	// attachment uses framebuffer pixels.
-	pixel.x = static_cast<int>(static_cast<double>(pixel.x) * framebufferSize.x / windowSize.x);
-	pixel.y = static_cast<int>(static_cast<double>(pixel.y) * framebufferSize.y / windowSize.y);
-	pixel.x = std::clamp(pixel.x, 0, framebufferSize.x - 1);
-	pixel.y = std::clamp(pixel.y, 0, framebufferSize.y - 1);
+	if (cursor.x < 0. || cursor.y < 0. || cursor.x >= windowSize.x || cursor.y >= windowSize.y)
+		return -1;
+	const glm::ivec2 pixel = glm::floor(cursor * glm::dvec2(framebufferSize) / glm::dvec2(windowSize));
 
+    if (!activeSimulationId || !viewports.contains(*activeSimulationId))
+        return -1;
+    const auto& viewport = viewports.at(*activeSimulationId);
+    if (pixel.x < viewport.pixelOrigin.x || pixel.y < viewport.pixelOrigin.y
+        || pixel.x >= viewport.pixelOrigin.x + viewport.pixelSize.x
+        || pixel.y >= viewport.pixelOrigin.y + viewport.pixelSize.y)
+        return -1;
 	auto scopedDrawBinding = renderTargetControl->BindForDraw();
+    SetViewport(viewport);
 	renderTargetControl->ClearForPicking();
 
-	_RenderAtoms();
+	if (activeRenderContext)
+		_RenderAtoms(*activeRenderContext);
 
 	// Must be done last!
-	if (activeGizmo) {
+	if (gizmoEnabled && activeRenderContext && activeRenderContext->activeGizmo) {
 		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth
-		activeGizmo->Draw(drawTrianglesShader.get(), camera.ViewProjection());
+		activeRenderContext->activeGizmo->Draw(drawTrianglesShader.get(), activeRenderContext->camera->ViewProjection());
 	}
 	int elementId = renderTargetControl->ReadIdAtPixel(pixel);
 	//printf("ElementId %d\n", elementId);
 	return elementId;
 }
 
-void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool ignorePosition)
+void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::AtomRenderTask& task, bool ignorePosition)
 {
-	camera.Update(task.boxparams.BoxSizeFloat());
+	if (!ignorePosition)
+		renderContext.renderSettings->showSolvents = task.showSolvents;
+	if (!ignorePosition) {
+        renderContext.selectedMolecule.reset();
+        renderContext.lastSelectedAtomId = -1;
+        renderContext.activeGizmo.reset();
+		renderContext.renderSettings->hasBackbone = !task.backboneChains.empty();
+		renderContext.renderSettings->hasForceData = false;
+		if (!renderContext.renderSettings->hasBackbone && renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon)
+			renderContext.renderSettings->coloringMethod = ColoringMethod::Atomname;
+		if (!renderContext.renderSettings->hasForceData && renderContext.renderSettings->coloringMethod == ColoringMethod::ForceMagnitude)
+			renderContext.renderSettings->coloringMethod = ColoringMethod::Atomname;
+	}
+
+
+	renderContext.camera->Update(task.boxSize);
 
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
@@ -322,89 +199,111 @@ void Display::PrepareNewRenderTask(const Rendering::SimulationTask& task, bool i
 		drawAtomsPrettyShader = std::make_unique<DrawAtomsPrettyShader>();
 	renderTargetControl->Resize(framebufferSize);
 
-	// Preprocess the renderAtoms
-	{
-		renderAtomsHost.resize(task.boxparams.totalParticles, RenderAtom{});
-		for (int pcid = 0; pcid < task.pcMeta.size(); pcid++) {
-			for (int pid = 0; pid < 4; pid++) {
-				const PersistentClusterMeta& pcMeta = task.pcMeta[pcid];
-				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
+	// Preprocess all renderAtoms
+	if (!ignorePosition)
+        renderContext.renderAtomsHost.assign(task.atoms.size(), RenderAtom{});
+	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
+		const Rendering::AtomRenderData& atom = task.atoms[atomId];
+		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+		if (!ignorePosition) {
+			renderContext.renderAtomsHost[atomId].position = task.positions[atomId].Tofloat4(RenderUtilities::getRadius(atomType));
+			renderContext.renderAtomsHost[atomId].flags.z = static_cast<unsigned int>(atomId);
+		}
 
-				if (pidGlobal == -1)
-					continue;
-
-				auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(pcMeta.atomLetter[pid], pcMeta.isSolvent);
-				const float chargeNormalized = (task.pclusters[pcid].pqd[pid].params.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f); // I... think this might be bullshit/wrong?? :D
-
-				if (!ignorePosition)
-					renderAtomsHost[pidGlobal].position = task.pclusters[pcid].pqd[pid].position.Tofloat4(RenderUtilities::getRadius(atomType));
-				renderAtomsHost[pidGlobal].flags.y = pcMeta.particleIdsGlobal[pid];
-
-				if (rendersettings.coloringMethod == ColoringMethod::Atomname)
-					renderAtomsHost[pidGlobal].color = RenderUtilities::getColor(atomType);
-				else if (rendersettings.coloringMethod == ColoringMethod::Charge) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
-				}
-				else if (rendersettings.coloringMethod == ColoringMethod::PersistentClusterId) {
-					int nElementsPerRevolution = 12;
-					float fraction = (static_cast<float>(pcid % nElementsPerRevolution) / static_cast<float>(nElementsPerRevolution));
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(fraction);
-				}
-				else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid) {					
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetColorInGradientHue(static_cast<float>(pidGlobal) / static_cast<float>(task.boxparams.totalParticles));
-				}
-				else if (rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(0, 1e3f, 1e6f);
-				}
-				if (!rendersettings.showSolvents && pcMeta.isSolvent)
-					renderAtomsHost[pidGlobal].color.w = 0.f;
-			}
+		// If no active selection, color all atoms
+		if (!renderContext.selectedMolecule) {
+			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
+			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), renderContext.renderSettings->showSolvents);
 		}
 	}
 
-	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsHost.size()) {
-		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
-		if (attachedAtomId < renderAtomsHost.size()) {
-			activeGizmo->position = glm::vec3(renderAtomsHost[attachedAtomId].position.x, renderAtomsHost[attachedAtomId].position.y, renderAtomsHost[attachedAtomId].position.z);
+
+	// If active selection, color only those
+	if (renderContext.selectedMolecule) {
+		for (auto& atomId : renderContext.selectedMolecule->atomIds) {
+			const Rendering::AtomRenderData& atom = task.atoms[atomId];
+			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
+			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), renderContext.renderSettings->showSolvents);
+		}
+	}
+
+	
+
+    BackboneChains cartoonChains;
+    for (const auto& source : task.backboneChains) {
+        BackboneChain chain;
+        for (const auto& point : source.points) {
+            if (point.particleId >= 0 && point.particleId < renderContext.renderAtomsHost.size()
+                && renderContext.renderAtomsHost[point.particleId].flags.y == static_cast<unsigned int>(ColoringMethod::NewCartoon)) {
+                chain.points.push_back(point);
+            }
+            else {
+                if (chain.points.size() >= 2) cartoonChains.push_back(std::move(chain));
+                chain = {};
+            }
+        }
+        if (chain.points.size() >= 2) cartoonChains.push_back(std::move(chain));
+    }
+    if (!cartoonChains.empty()) {
+        if (!renderContext.newCartoonRenderer)
+            renderContext.newCartoonRenderer = std::make_unique<NewCartoon::Renderer>();
+        renderContext.newCartoonRenderer->Prepare(cartoonChains, task.positions, task.boxSize);
+    }
+    else if (renderContext.newCartoonRenderer) {
+        renderContext.newCartoonRenderer->Clear();
+    }
+
+
+	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
+		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
+		if (attachedAtomId < renderContext.renderAtomsHost.size()) {
+			renderContext.activeGizmo->position = glm::vec3(renderContext.renderAtomsHost[attachedAtomId].position.x, renderContext.renderAtomsHost[attachedAtomId].position.y, renderContext.renderAtomsHost[attachedAtomId].position.z);
 		}
 	}
 
 	// Move the renderAtoms to device
-	renderAtomsBuffer->SetData(renderAtomsHost);
+	if (!renderContext.renderAtomsBuffer)
+		renderContext.renderAtomsBuffer = std::make_unique<SSBO>();
+	renderContext.renderAtomsBuffer->SetData(renderContext.renderAtomsHost);
 }
 
-void Display::PrepareNewRenderTask(Rendering::SimulationTask& currentTask, const Rendering::SimulationTaskUpdate& update)
+void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::AtomRenderTask& currentTask, const Rendering::SimulationTaskUpdate& update)
 {
 	currentTask.simStatus = update.simStatus;
+	if (update.forceMagnitudes)
+		renderContext.renderSettings->hasForceData = true;
 
 	// Update the renderAtoms
 	{
-		for (int pcid = 0; pcid < currentTask.pcMeta.size(); pcid++) {
-			for (int pid = 0; pid < 4; pid++) {
-				const PersistentClusterMeta& pcMeta = currentTask.pcMeta[pcid];
-				const int pidGlobal = pcMeta.particleIdsGlobal[pid];
-				if (pidGlobal == -1)
-					continue;
-				renderAtomsHost[pidGlobal].position = update.positions[pcid * PersistentCluster::maxParticles + pid].Tofloat4(renderAtomsHost[pidGlobal].position.w);
-				if (update.forceMagnitudes && rendersettings.coloringMethod == ColoringMethod::ForceMagnitude) {
-					renderAtomsHost[pidGlobal].color = RenderUtilities::GetLogColorGradient(update.forceMagnitudes[pidGlobal], 1e5f, 1e11f);
-				}
-			}
+		for (std::size_t atomId = 0; atomId < currentTask.atoms.size(); ++atomId) {
+			const int packedPositionIndex = currentTask.packedPositionIndices[atomId];
+			if (packedPositionIndex < 0)
+				continue;
+			currentTask.positions[atomId] = update.positions[packedPositionIndex];
+			renderContext.renderAtomsHost[atomId].position = currentTask.positions[atomId].Tofloat4(renderContext.renderAtomsHost[atomId].position.w);
+			if (update.forceMagnitudes)
+				ColorAtom(renderContext.renderAtomsHost[atomId], currentTask.atoms[atomId], atomId, currentTask.atoms.size(),
+					renderContext.renderSettings->showSolvents, update.forceMagnitudes[atomId]);
 		}
 	}
-	if (activeGizmo && activeGizmo->idOfAtomAttachedTo != -1 && activeGizmo->idOfAtomAttachedTo < renderAtomsHost.size()) {
-		int attachedAtomId = activeGizmo->idOfAtomAttachedTo;
-		if (attachedAtomId < renderAtomsHost.size()) {
-			activeGizmo->position = glm::vec3(renderAtomsHost[attachedAtomId].position.x, renderAtomsHost[attachedAtomId].position.y, renderAtomsHost[attachedAtomId].position.z);
+	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry())
+		renderContext.newCartoonRenderer->Update(currentTask.positions);
+	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
+		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
+		if (attachedAtomId < renderContext.renderAtomsHost.size()) {
+			renderContext.activeGizmo->position = glm::vec3(renderContext.renderAtomsHost[attachedAtomId].position.x, renderContext.renderAtomsHost[attachedAtomId].position.y, renderContext.renderAtomsHost[attachedAtomId].position.z);
 		}
 	}
 	// Move the renderAtoms to device
-	renderAtomsBuffer->SetData(renderAtomsHost);
+	if (renderContext.renderAtomsBuffer)
+		renderContext.renderAtomsBuffer->SetData(renderContext.renderAtomsHost);
 }
 
 
 
-void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
+void Display::PrepareNewRenderTask(RenderContext& renderContext, const Rendering::MoleculehullTask& task) {
+	if (renderContext.newCartoonRenderer)
+		renderContext.newCartoonRenderer->Clear();
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
@@ -417,49 +316,50 @@ void Display::PrepareNewRenderTask(const Rendering::MoleculehullTask& task) {
 	if (!drawNormalsShader)
 		drawNormalsShader = std::make_unique<DrawNormalsShader>();
 
-	camera.Update(task.boxSize);
+	renderContext.camera->Update(task.boxSize);
 
-	if (renderAtoms) {
+	if (renderContext.renderAtoms) {
 		// Map buffer object for writing from CUDA
 		RenderAtom* renderAtomsBuffer;
-		cudaGraphicsMapResources(1, &renderAtomsBufferCudaResource, 0);
+		cudaGraphicsMapResources(1, &renderContext.renderAtomsBufferCudaResource, 0);
 		size_t num_bytes = 0;
 
-		cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderAtomsBufferCudaResource);
+		cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderContext.renderAtomsBufferCudaResource);
 		assert(num_bytes >= task.molCollection.nParticles * sizeof(RenderAtom));
 
 		cudaMemcpy(renderAtomsBuffer, task.molCollection.particles, sizeof(RenderAtom) * task.molCollection.nParticles, cudaMemcpyDeviceToDevice);
 
 		// Release buffer object from CUDA
-		cudaGraphicsUnmapResources(1, &renderAtomsBufferCudaResource, 0);
+		cudaGraphicsUnmapResources(1, &renderContext.renderAtomsBufferCudaResource, 0);
 	}
 }
 
 
 
-void Display::_Render(const MoleculeHullCollection& molCollection, Float3 boxSize) {
+void Display::_Render(const RenderContext& renderContext, const MoleculeHullCollection& molCollection, Float3 boxSize) {
 	//const glm::mat4 MVP = GetMVPMatrix(camera_distance, camera_pitch * rad2deg, camera_yaw * rad2deg, screenWidth, screenHeight, boxSize.x);
-	const glm::mat4 V = camera.View();
-	const glm::mat4 P = camera.Projection();
-	const glm::mat4 VP = camera.ViewProjection();
+	const glm::mat4 V = renderContext.camera->View();
+	const glm::mat4 P = renderContext.camera->Projection();
+	const glm::mat4 VP = renderContext.camera->ViewProjection();
 
 	/*if (renderAtoms)
 		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, V, P, molCollection.nParticles);*/
 
-	if (renderFacets)
+	if (renderContext.renderFacets)
 		drawFacetsShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);
 
-	if (renderFacetsNormals)
+	if (renderContext.renderFacetsNormals)
 		drawNormalsShader->Draw(VP, molCollection.facets, molCollection.nFacets, boxSize);
 
 
-	fps.NewFrame();
-	std::string windowText = window_title + "    FPS: " + std::to_string(fps.GetFps());
+	fps->NewFrame();
+	std::string windowText = window_title + "    FPS: " + std::to_string(fps->GetFps());
 	glfwSetWindowTitle(window, windowText.c_str());
 }
 
-void Display::_Render(const Rendering::Task& currentRenderTask) {
-	glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+void Display::RenderScene(const RenderContext& renderContext, const RenderViewport& viewport) {
+    SetViewport(viewport);
+    const auto& currentRenderTask = renderContext.currentRenderTask;
 
 	// Check shaders is Init
 	if (!drawBackgroundGradientShader)
@@ -467,31 +367,23 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
-	SimStatus simStatus{};
 	Float3 boxSize{};
 
 	// First extract necessary information from the render task
 	if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
 		std::visit([&](auto& taskPtr) {
 			using T = std::decay_t<decltype(taskPtr)>;
-			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
-				const int nParticles = taskPtr->boxparams.totalParticles;
-				simStatus = taskPtr->simStatus;
-				boxSize = taskPtr->boxparams.BoxSizeFloat();
-				//_RenderAtoms(taskPtr->boxparams.BoxSizeFloat(), nParticles, false);
+			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::AtomRenderTask>>) {
+				boxSize = taskPtr->boxSize;
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
 				//_Render(taskPtr->molCollection, taskPtr->boxSize);
 				boxSize = taskPtr->boxSize;
 			}
-			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
-				//_RenderAtoms(taskPtr->grofile.box_size, taskPtr->nAtoms, false);
-				boxSize = taskPtr->grofile.box_size;
-			}
 			}, currentRenderTask);
 	}
 
-	const glm::mat4 VP = camera.ViewProjection();
+	const glm::mat4 VP = renderContext.camera->ViewProjection();
 
 
 	// START OF RENDERING
@@ -505,91 +397,86 @@ void Display::_Render(const Rendering::Task& currentRenderTask) {
 	if (!std::holds_alternative<Rendering::NoTask>(currentRenderTask)) {
 		std::visit([&](auto& taskPtr) {
 			using T = std::decay_t<decltype(taskPtr)>;
-			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::SimulationTask>>) {
-				const int nParticles = taskPtr->boxparams.totalParticles;
-				_RenderAtoms();
+			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::AtomRenderTask>>) {
+				_RenderAtoms(renderContext);
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {
-				_Render(taskPtr->molCollection, taskPtr->boxSize);
-			}
-			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::GrofileTask>>) {
-				_RenderAtoms();
+				_Render(renderContext, taskPtr->molCollection, taskPtr->boxSize);
 			}
 			}, currentRenderTask);
 	}
 
 	
-	if (activeGizmo) {
+	if (gizmoEnabled && renderContext.activeGizmo) {
 		// DO NOT RENDER ANYTHING IN 3D AFTER THIS POINT
 		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth
-		activeGizmo->Draw(drawTrianglesShader.get(), VP);
+		renderContext.activeGizmo->Draw(drawTrianglesShader.get(), VP);
 		glEnable(GL_DEPTH_TEST);
 	}
 
-	overlay->enableConsole = allowUserInputs;
-	overlay->Draw(rendersettings, simStatus, fps.GetFps(), mousePosAtRightBtnDown,
-		spinnerVisible.load());
-	mousePosAtRightBtnDown = std::nullopt;
-	overlay->Render();
-
-	glfwSwapBuffers(window);
 }
 
 
-void Display::PrepareNewRenderTask(Rendering::GrofileTask& task) {
-	int nAtoms = task.grofile.atoms.size();
-	if (!task.drawSolvent) {
-		for (int i = 0; i < task.grofile.atoms.size(); i++) {
-			auto resname = task.grofile.atoms[i].residueName;
-			if (resname == "SOL" || resname == "TIP3") {
-				nAtoms = i;
-				break;
-			}
-		}
-	}
-	task.nAtoms = nAtoms;
-
-	if (!drawBoxOutlineShader)
-		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
-
-	if (!drawAtomsFromCpuShader)
-		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader>();
-
-
-
-	camera.Update(task.grofile.box_size);
-
-	// Preprocess the renderAtoms
-	{
-		renderAtomsHost.resize(nAtoms);
-
-		for (int i = 0; i < nAtoms; i++) {
-			renderAtomsHost[i].position = task.grofile.atoms[i].position.Tofloat4(RenderUtilities::getRadius(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0])));
-
-			if (task.highlightedAtoms.contains(i))
-				renderAtomsHost[i].color = float4(227.f / 255.f, 28.f / 255.f, 121.f / 255.f, 1.f); // Highlighted atoms are pink
-			else if (rendersettings.coloringMethod == ColoringMethod::GradientFromAtomid)
-				renderAtomsHost[i].color = RenderUtilities::GetColorInGradientBlueRed(static_cast<float>(i) / nAtoms);
-			else
-				renderAtomsHost[i].color = RenderUtilities::getColor(RenderUtilities::RAS_getTypeFromAtomletter(task.grofile.atoms[i].atomName[0]));
-		}
-	}
-
-	// Move the renderAtoms to device
-	{
-		renderAtomsBuffer->SetData(renderAtomsHost);
-	}
-
+void Display::SetViewport(const RenderViewport& viewport) {
+    const int bottom = framebufferSize.y - viewport.pixelOrigin.y - viewport.pixelSize.y;
+    glViewport(viewport.pixelOrigin.x, bottom, viewport.pixelSize.x, viewport.pixelSize.y);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(viewport.pixelOrigin.x, bottom, viewport.pixelSize.x, viewport.pixelSize.y);
 }
 
-void Display::_UpdateSelection(const std::set<int>& selection) {
+void Display::RenderFrame(const std::vector<SimulationTab>& tabs) {
+    overlay->enableConsole = allowUserInputs;
+    RenderSettings menuSettings = *activeRenderContext->renderSettings;
+    menuSettings.hasBackbone = false;
+    menuSettings.hasForceData = false;
+    const bool anySelection = std::ranges::any_of(renderContexts, [](const auto& entry) {
+        return entry.second.selectedMolecule.has_value();
+    });
+    for (const auto& [id, context] : renderContexts) {
+        if (anySelection && !context.selectedMolecule) continue;
+        menuSettings.hasBackbone |= context.renderSettings->hasBackbone;
+        menuSettings.hasForceData |= context.renderSettings->hasForceData;
+    }
+    const float top = overlay->BeginFrame(menuSettings, fps->GetFps(), tabs, tiled, *activeSimulationId);
+    viewports.clear();
+    const int count = tiled ? static_cast<int>(renderContexts.size()) : 1;
+    int index = 0;
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    for (auto& [id, context] : renderContexts) {
+        if (!tiled && id != activeSimulationId) continue;
+        const auto viewport = RenderViewport::Tile(index++, count, windowSize, framebufferSize, tiled ? top : 0.);
+        viewports.emplace(id, viewport);
+        if (viewport.pixelSize.x <= 0 || viewport.pixelSize.y <= 0) continue;
+        context.camera->UpdateViewport(viewport.pixelSize);
+        RenderScene(context, viewport);
+        auto cardViewport = viewport;
+        if (!tiled) {
+            cardViewport.origin.y = top;
+            cardViewport.size.y -= top;
+        }
+        overlay->DrawTile(id, context, cardViewport, tiled);
+    }
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(0, 0, framebufferSize.x, framebufferSize.y);
+    overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, popupSimulationId, spinnerVisible.load());
+    mousePosAtRightBtnDown.reset();
+    overlay->Render();
+    glfwSwapBuffers(window);
+}
+
+
+void Display::_UpdateSelection(RenderContext& renderContext, const std::set<int>& selection) {
 	// This is purposefully done in 2 passes, as the selection is likely MUCH smaller that the renderatoms, and this no point in doing lookings.
-	for (auto& atom : renderAtomsHost) {
+
+	for (auto& atom : renderContext.renderAtomsHost) {
 		atom.HighLight(false);
 	}
 	for (int id : selection) {
-		if (id < renderAtomsHost.size())
-			renderAtomsHost[id].HighLight(true);
+		if (id >= 0 && id < renderContext.renderAtomsHost.size())
+			renderContext.renderAtomsHost[id].HighLight(true);
 	}
-	renderAtomsBuffer->SetData(renderAtomsHost);
+	if (renderContext.renderAtomsBuffer)
+		renderContext.renderAtomsBuffer->SetData(renderContext.renderAtomsHost);
 }

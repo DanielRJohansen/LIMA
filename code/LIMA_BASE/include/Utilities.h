@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <string_view>
 
 namespace LIMA_UTILS {
 
@@ -32,6 +33,16 @@ namespace LIMA_UTILS {
             throw std::runtime_error("genericErrorCheck failed");
         }
     }
+
+	static void genericErrorCheck(cudaStream_t stream, const char* text) {
+		const cudaError_t syncStatus = cudaStreamSynchronize(stream);
+		const cudaError_t cudaStatus = syncStatus == cudaSuccess ? cudaGetLastError() : syncStatus;
+		if (cudaStatus != cudaSuccess) {
+			std::cout << "\nCuda error code: " << cudaStatus << " - " << cudaGetErrorString(cudaStatus) << std::endl;
+			fprintf(stderr, text);
+			throw std::runtime_error("genericErrorCheck failed");
+		}
+	}
 
     static void genericErrorCheckNoSync(const char* text) {
         if constexpr (SYNC_ALL_KERNELS)
@@ -55,6 +66,8 @@ namespace LIMA_UTILS {
 
 namespace StringUtils {
     std::string FormatTime(std::chrono::duration<double> duration, int decimalPlacesBeforePoint, int decimalPlacesAfterPoint); // Formats into "%%.%% [s/min/hr/days/weeks/months/years]
+
+    std::vector<std::string> SplitWords(std::string_view line);
 }
 
 

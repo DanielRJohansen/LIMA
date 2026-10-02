@@ -6,9 +6,13 @@
 #include <filesystem>
 #include "BoxGrid.cuh"
 #include "SimParams.h"
+#include "Backbone.h"
+
 #include <set>
+#include <string>
 
 namespace MDFiles { struct TrrFile; }
+struct BoxImage;
 
 
 
@@ -30,7 +34,7 @@ public:
 	ParticleDataBuffer(size_t n_particles_upperbound, size_t n_steps, 
 		int loggingInterval, int nPclusters	) :
 		n_particles_upperbound(nPclusters * PersistentCluster::maxParticles),
-		n_indices(std::max(n_steps/ loggingInterval,static_cast<size_t>(1))), 
+		n_indices(loggingInterval > 0 ? std::max(n_steps / loggingInterval + (n_steps % loggingInterval != 0), size_t{1}) : size_t{1}),
 		buffer(nPclusters* PersistentCluster::maxParticles* n_indices, T{}),
 		loggingInterval(loggingInterval)
 		,nPclusters(nPclusters)
@@ -99,6 +103,7 @@ namespace LIMALOGSYSTEM {
 	}
 }
 
+
 struct Box {
 	Box() {}
 	Box(Float3 boxSize);
@@ -107,7 +112,7 @@ struct Box {
 
 	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 
-	std::vector<BondGroup> bondgroups;
+	BondGroups bondgroups;
 
 	UniformElectricField uniformElectricField;
 
@@ -117,6 +122,9 @@ struct Box {
 
 	std::vector<ParticlesBondedToParticle> particlesBondedToParticle;
 	std::vector<PclustersBondedToPcluster> pclustersBondedToPcluster;
+
+	// Backbone chains
+	BackboneChains backboneChains; // Only for rendering
 };
 
 
@@ -136,8 +144,8 @@ public:
 	std::unique_ptr<MDFiles::TrrFile> ToTracjectoryFile() const;
 
 	
-	bool ready_to_run = false;
 	bool finished = false;
+	std::string name;
 
 
 	std::unique_ptr<ParticleDataBuffer<Float3>> traj_buffer;	// [nm]
@@ -147,6 +155,12 @@ public:
 
 	std::vector<float> temperature_buffer;	
 	std::vector<std::pair<int64_t,float>> maxForceBuffer; // {step,force} The maximum force experienced by any particle in the system
+	struct EmLogEntry {
+		int64_t step;
+		float maxForce;		// [kJ/mol/nm]
+		float dt;			// Unitless, see EnergyMinimizationTypes.h
+	};
+	std::vector<EmLogEntry> emLog; // One entry per step of energy minimization
 
 #ifdef GENERATETRAINDATA
 	std::vector<Float3> trainingdata;
@@ -154,9 +168,15 @@ public:
 #endif
 
 	std::unique_ptr<Box> box = nullptr;
+	// BoxImage is defined in LIMA_TOOLS. shared_ptr keeps LIMA_BASE independent of LIMA_TOOLS.
+	std::shared_ptr<BoxImage> boxImage = nullptr;
 	SimParams simParams;
 
-
+private:
+	// Energy-minimization preconditioner made ahead of time by Engine::PrepareEnergyMinimization, so the host work
+	// can overlap another running engine. Moved into the first Engine that runs this simulation
+	std::vector<float> emInverseStiffness;
+	std::vector<uint8_t> emWholeMolecule;
 
 	friend class Engine;
 };
@@ -164,7 +184,8 @@ public:
 
 struct SimStatus {
 	// SimulationStatus
-	std::optional<size_t> step = 0;
+	std::optional<size_t> step = 0;	
+	std::optional<float> progress = std::nullopt;				// [0,1]. For bounded simulations, step/n_steps. For EM the log reduction in maximum force from its initial value to em_force_tolerance.
 	std::optional<float> temperature = std::nullopt;			// [K]
 	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
 	std::optional<std::chrono::duration<double>> expectedTimeToFinish = std::nullopt;

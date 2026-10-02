@@ -12,46 +12,66 @@
 namespace TestMDStability {
 	using namespace TestUtils;
 
-	static LimaUnittestResult loadAndEMAndRunBasicSimulation(
-		const string& folder_name,
-		EnvMode envmode,
-		const std::string& test_name) {
-		const fs::path workDir= AutomatedTestsDir() / folder_name; // TODO: folder name isnt even, should call with full path..
-
-		GroFile grofile{ workDir / "molecule"/"conf.gro" };
-		TopologyFile topfile{ workDir / "molecule" / "topol.top" };
-		auto sim = Programs::EnergyMinimize(grofile, topfile, true, workDir, envmode, false);
-
-		SimParams params{ workDir/"sim_params.txt"};
-		Environment env{ workDir, envmode };
-
-
-
-		env.CreateSimulation(*sim, params);
-		//env.CreateSimulation(grofile, topfile, params);
-		env.run();
-		//Analyzer::findAndDumpPiecewiseEnergies(*env->getSimPtr(), env->getWorkdir());
-
-		const auto analytics = env.getAnalyzedPackage();
-		
-		if (envmode != Headless) {
-			analytics.Print();
-			LIMA_Print::printMatlabVec("cv", std::vector<float>{ analytics.variance_coefficient});
-			LIMA_Print::printMatlabVec("energy_gradients", std::vector<float>{ analytics.energy_gradient});
-		}		
-
-		//LIMA_Print::printPythonVec("potE", analytics.pot_energy);
-		//LIMA_Print::printPythonVec("kinE", analytics.kin_energy);
-		//LIMA_Print::printPythonVec("totE", analytics.total_energy);
-		//LIMA_Print::plotEnergies(analytics.pot_energy, analytics.kin_energy, analytics.total_energy);
-
-		const auto result = evaluateTest(test_name, { analytics.variance_coefficient }, { analytics.energy_gradient });
-
-		return LimaUnittestResult{ result.first, result.second, envmode == Full };
+	static SimulationJob MakeEnergyMinJob(const fs::path& workDir, EnvMode envmode) {
+		SimulationJob emJob;
+		emJob.workDir = workDir;
+		emJob.simParams = SimParams::BasicEMSimParams();
+		emJob.mode = envmode;
+		return emJob;
 	}
 
-	LimaUnittestResult doEightResiduesNoSolvent(EnvMode envmode) {
-		return loadAndRunBasicSimulation("8ResNoSol", envmode, "doEightResiduesNoSolvent");
+	static TestRoutine LoadEnergyMinAndRunBasicSimulation(
+		Environment& environment, EnvMode envmode, std::string folderName, std::string testName)
+	{
+		const fs::path workDir = AutomatedTestsDir() / folderName;
+		auto minimized = co_await environment.Submit(MakeEnergyMinJob(workDir, envmode));
+
+		SimulationJob mdJob;
+		mdJob.workDir = workDir;
+		mdJob.simParams.emplace(workDir / "sim_params.txt");
+		mdJob.initialSimulation = std::move(minimized.simulation);
+		mdJob.mode = envmode;
+		mdJob.postprocess = SimAnalysis::AnalyzeEnergy;
+		auto completed = co_await environment.Submit(std::move(mdJob));
+		if (!completed.analysis)
+			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
+
+		const auto evaluation = evaluateTest(testName,
+			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
+		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
+	}
+
+	static TestRoutine TestDeterministic(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
+		constexpr int nRuns = 2;
+		std::array<SimulationHandle, nRuns> emHandles;
+		for (auto& handle : emHandles)
+			handle = environment.Submit(MakeEnergyMinJob(workDir, envmode));
+
+		std::array<SimulationHandle, nRuns> mdHandles;
+		for (int run = 0; run < nRuns; run++) {
+			auto minimized = co_await std::move(emHandles[run]);
+			SimulationJob mdJob;
+			mdJob.workDir = workDir;
+			mdJob.simParams.emplace(workDir / "sim_params.txt");
+			mdJob.initialSimulation = std::move(minimized.simulation);
+			mdJob.mode = envmode;
+			mdJob.postprocess = SimAnalysis::AnalyzeEnergy;
+			mdHandles[run] = environment.Submit(std::move(mdJob));
+		}
+
+		std::optional<float> referenceVc;
+		std::optional<float> referenceGradient;
+		for (auto& handle : mdHandles) {
+			auto completed = co_await std::move(handle);
+			const float vc = completed.analysis->variance_coefficient;
+			const float gradient = completed.analysis->energy_gradient;
+			if (referenceVc && (vc != *referenceVc || gradient != *referenceGradient))
+				co_return LimaUnittestResult{ false, "Simulation results were not deterministic", envmode == Full };
+			referenceVc = vc;
+			referenceGradient = gradient;
+		}
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
 	static bool doMoleculeTranslationTest(std::string foldername) {
@@ -119,4 +139,3 @@ namespace TestMDStability {
 		Viscosity Calculation Test: This test measures the viscosity of the system, which is related to diffusion and can be important for understanding the behavior of complex fluids.
 	*/
 }
-

@@ -1,0 +1,4 @@
+# Run inside WSL/Linux, where CRLF line endings break them
+*.sh text eol=lf
+PKGBUILD* text eol=lf
+*.bat text eol=crlf

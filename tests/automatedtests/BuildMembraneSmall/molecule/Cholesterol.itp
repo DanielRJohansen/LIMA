@@ -834,3 +834,6 @@ Cholesterol         3
 [ dihedrals ]
 ;        ai        aj        ak        al     funct        c0        c1        c2        c3
 
+[ cmap ]
+;        ai        aj        ak        al        am     funct
+

@@ -77,5 +77,119 @@ namespace FileTests {
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
+
+
+	namespace {
+		void WriteTextFile(const fs::path& path, std::string_view contents) {
+			std::ofstream file(path);
+			if (!file) throw std::runtime_error("Failed to write " + path.string());
+			file << contents;
+		}
+
+		std::vector<std::string> AtomNames(const TopologyFile& topology, const std::string& moleculetype) {
+			std::vector<std::string> names;
+			for (const auto& atom : topology.moleculetypes.at(moleculetype)->atoms)
+				names.push_back(atom.atomname);
+			return names;
+		}
+	}
+
+	// #defines behave like in the C preprocessor, which GROMACS uses: a #define in an included file applies to all lines after
+	// that #include, also in the parent file. The topology parser scans files in parallel, so this verifies it resolves in order
+	TestRoutine TestTopologyPreprocessor(Environment&, EnvMode envmode) {
+		const fs::path dir = fs::temp_directory_path() / "lima_topology_preprocessor_test";
+		fs::remove_all(dir);
+		fs::create_directories(dir);
+
+		// b.itp defines ruleB, which must exclude c.itp in the parent. It also tests #else, nested conditionals,
+		// multiple moleculetypes in 1 file, and bonds to missing atoms
+		WriteTextFile(dir / "b.itp", R"(#define ruleB
+[ moleculetype ]
+MolB 3
+
+[ atoms ]
+1 CT 1 RES C1 1 0.0 12.0
+#ifdef ruleB
+2 CT 1 RES C2 2 0.0 12.0
+#else
+2 CT 1 RES ELSE_WRONG 2 0.0 12.0
+#endif
+#ifdef ruleB
+  #ifndef ruleB
+3 CT 1 RES NESTED_WRONG 3 0.0 12.0
+  #else
+3 CT 1 RES C3 3 0.0 12.0
+  #endif
+#endif
+#ifdef NOT_DEFINED
+  #ifdef ruleB
+4 CT 1 RES NESTED_WRONG 4 0.0 12.0
+  #endif
+#endif
+
+[ bonds ]
+1 2 1
+2 3 1
+3 99 1 ; atom 99 does not exist, so this bond is discarded
+
+[ moleculetype ]
+MolB2 3
+
+[ atoms ]
+1 CT 1 RES D1 1 0.0 12.0
+)");
+		WriteTextFile(dir / "c.itp", R"([ moleculetype ]
+MolC 3
+
+[ atoms ]
+1 CT 1 RES C1 1 0.0 12.0
+)");
+		// d.itp undefines ruleB for the lines after it
+		WriteTextFile(dir / "d.itp", R"(#undef ruleB
+)");
+		WriteTextFile(dir / "e.itp", R"([ moleculetype ]
+MolE 3
+
+[ atoms ]
+1 CT 1 RES E1 1 0.0 12.0
+)");
+
+		WriteTextFile(dir / "topol.top", R"(; Preprocessor test
+
+#include "b.itp"
+#ifndef ruleB
+#include "c.itp"
+#endif
+#ifdef NOT_DEFINED
+#include "does_not_exist.itp"
+#endif
+#include "d.itp"
+#ifndef ruleB
+#include "e.itp"
+#endif
+
+[ system ]
+Test
+
+[ molecules ]
+MolB 2
+MolB2 1
+MolE 1
+)");
+
+		const TopologyFile topology{ dir / "topol.top" };
+
+		ASSERT(topology.moleculetypes.contains("MolB") && topology.moleculetypes.contains("MolB2"), "Moleculetypes from b.itp are missing");
+		ASSERT(!topology.moleculetypes.contains("MolC"), "c.itp was included, even though b.itp defined ruleB before the #ifndef");
+		ASSERT(topology.moleculetypes.contains("MolE"), "e.itp was not included, even though d.itp undefined ruleB");
+		ASSERT((AtomNames(topology, "MolB") == std::vector<std::string>{ "C1", "C2", "C3" }), "MolB atoms do not match the active #ifdef branches");
+		ASSERT((AtomNames(topology, "MolB2") == std::vector<std::string>{ "D1" }), "Second moleculetype in b.itp did not get its own atoms");
+		ASSERT(topology.moleculetypes.at("MolB")->singlebonds.size() == 2, "Bond to a missing atom was not discarded");
+		ASSERT(topology.GetSystem().MoleculeCount() == 4 && topology.GetSystem().molecules.size() == 3, "Wrong molecule count");
+		ASSERT(std::ranges::distance(topology.GetAllElements<TopologyFile::AtomsEntry>()) == 3 * 2 + 1 + 1, "Wrong total number of atoms");
+
+		fs::remove_all(dir);
+		co_return LimaUnittestResult{ true, "No error", envmode == Full };
+	}
 }
 

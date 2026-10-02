@@ -3,10 +3,10 @@
 #include "Display.h"
 #include "Programs.h"
 #include "SimulationBuilder.h"
-#include "Environment.h"
 #include "Forcefield.h"
 #include "ConvexHullEngine.cuh"
 #include "BoxImageBuilder.h"
+#include "TimeIt.h"
 
 #include <glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -105,9 +105,11 @@ void Programs::MoveMoleculesUntillNoOverlap(MoleculeHullCollection& mhCol, Float
 	ConvexHullEngine chEngine{};
 
 	auto d = renderProgress ? std::make_shared<Display>() : nullptr;
+	// Otherwise a fast minimization can finish, and destroy the display, before its window even exists
+	if (d) d->WaitForDisplayReady();
 	auto renderCallback = [&d, &mhCol, &boxSize]() mutable {
 		if (d != nullptr)
-			d->Render(std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
+			d->Submit(0, std::make_unique<Rendering::MoleculehullTask>(mhCol, boxSize));
 	};
 	chEngine.MoveMoleculesUntillNoOverlap(mhCol, boxSize, std::ref(renderCallback));
 
@@ -152,59 +154,11 @@ MoleculeHullCollection Programs::MakeLipidVesicle(GroFile& grofile, TopologyFile
 	return mhCol;
 }
 
-std::unique_ptr<Simulation> Programs::EnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool writePositionsToGrofile, 
-	const fs::path& workDir, EnvMode envmode, bool mayOverlapEdges, float emtol) {
-	Environment env{ workDir, envmode};
-	SimParams params;
-	params.em_variant = true;	
-	params.dt = 1.5f * FEMTO_TO_NANO;
-	params.em_force_tolerance = emtol;
-	params.data_logging_interval = 50;
-
-	//if (mayOverlapEdges) {
-	//	params.n_steps = 2000;
-	//	params.bc_select = BoundaryConditionSelect::NoBC;
-	//	params.snf_select = BoxEdgePotential;
-	//	params.enable_electrostatics = false;
-	//	env.CreateSimulation(grofile, topfile, params);
-	//	env.run(false);
-	//}
-
-	params.enable_electrostatics = true;
-	params.n_steps = 20000;
-	params.bc_select = BoundaryConditionSelect::PBC;
-
-	if (mayOverlapEdges && false)
-		env.CreateSimulation(*env.GetSim(), params);
-	else
-		env.CreateSimulation(grofile, topfile, params);
-	env.run();
-
-	const auto maxForceBuffer = env.getSimPtr()->maxForceBuffer;
-	if (maxForceBuffer.empty())
-		throw (std::runtime_error("No data in maxForceBuffer after energy minimization, happens for small EM's. This should be solved..."));
-	auto [minForceStep, minForce] = *std::min_element(maxForceBuffer.begin(), maxForceBuffer.end(),
-		[](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
-			return a.second < b.second;
-		}
-	);
-
-	if (writePositionsToGrofile) {
-		env.WriteBoxCoordinatesToFile(grofile, minForceStep);
-	}
-	
-	if (envmode == Full)
-		printf("Min force reached: %f\n", minForce);
-
-	return env.GetSim();
-}
-
-
 void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& topfile, bool render) {
 	std::vector<MoleculeHullFactory> moleculeContainers;
 	int globalParticleIndex = 0;
 
-	for (const auto& molecule : topfile.GetSystem().molecules) {
+	for (const auto& molecule : topfile.GetSystem().Instances()) {
 		moleculeContainers.push_back({});
 
 		for (const auto& atom : molecule.moleculetype->atoms) {			
@@ -218,4 +172,33 @@ void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& to
 	MoleculeHullCollection mhCol{ moleculeContainers, grofile.box_size };
 
 	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size, render);
+}
+
+SimulationJob Programs::MakeMembraneJob(fs::path workDir, Lipids::Selection composition,
+	Float3 boxSize, MembraneGeometry::Figure geometry, int seed, SimParams params, EnvMode mode,
+	bool solvate) {
+	SimulationJob job;
+	job.workDir = std::move(workDir);
+	job.grofile.emplace();
+	job.grofile->box_size = boxSize;
+	job.topfile.emplace();
+	job.simParams = std::move(params);
+	job.mode = mode;
+	job.preprocess = [composition = std::move(composition), geometry = std::move(geometry), seed, solvate](
+		GroFile& coordinates, TopologyFile& topology, SimParams&) {
+		SimulationBuilder::CreateMembrane(coordinates, topology, composition, geometry, seed);
+		if (solvate) SimulationBuilder::SolvateGrofile(coordinates, topology);
+	};
+	return job;
+}
+
+SimulationJob Programs::MakeSimulationJob(fs::path workDir, MolecularSystem system,
+	SimParams params, EnvMode mode) {
+	SimulationJob job;
+	job.workDir = std::move(workDir);
+	job.grofile = std::move(system.coordinates);
+	job.topfile = std::move(system.topology);
+	job.simParams = std::move(params);
+	job.mode = mode;
+	return job;
 }

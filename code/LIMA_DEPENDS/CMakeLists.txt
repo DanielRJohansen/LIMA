@@ -77,6 +77,7 @@ target_link_libraries(LIMA_DEPENDS PUBLIC
     ${OPENGL_LIBRARIES}
 )
 
-target_compile_definitions(LIMA_DEPENDS PUBLIC GLEW_STATIC)
+# GLEW_NO_GLU: LIMA does not use GLU, so dont require its headers or library
+target_compile_definitions(LIMA_DEPENDS PUBLIC GLEW_STATIC GLEW_NO_GLU)
 
 set_target_properties(LIMA_DEPENDS PROPERTIES LINKER_LANGUAGE CXX)

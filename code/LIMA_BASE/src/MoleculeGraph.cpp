@@ -374,6 +374,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 	overwriteParticleIds<>(molecule.anglebonds, map);
 	overwriteParticleIds<>(molecule.dihedralbonds, map);
 	overwriteParticleIds<>(molecule.improperdihedralbonds, map);
+	overwriteParticleIds<>(molecule.cmapbonds, map);
 
 	std::sort(grofile.atoms.begin(), grofile.atoms.end(), [](const GroRecord& a, const GroRecord& b) { return a.gro_id < b.gro_id; });
 
@@ -396,6 +397,7 @@ void LimaMoleculeGraph::reorderoleculeParticlesAccoringingToSubchains(GroFile& g
 	std::sort(molecule.anglebonds.begin(), molecule.anglebonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(molecule.dihedralbonds.begin(), molecule.dihedralbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 	std::sort(molecule.improperdihedralbonds.begin(), molecule.improperdihedralbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
+	std::sort(molecule.cmapbonds.begin(), molecule.cmapbonds.end(), [](const auto& a, const auto& b) { return a.ids[0] < b.ids[0]; });
 
 	for (int i = 0; i < molecule.atoms.size(); i++) {
 		if (molecule.atoms[i].id != i)

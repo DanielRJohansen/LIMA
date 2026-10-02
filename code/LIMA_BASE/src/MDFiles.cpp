@@ -1,8 +1,10 @@
 #include "MDFiles.h"
 #include "Filehandling.h"
 #include "MDFilesSerialization.h"
+#include "ParallelFor.h"
 
 #include <algorithm>
+#include <charconv>
 #include <format>
 
 
@@ -10,48 +12,42 @@ using namespace FileUtils;
 using namespace MDFiles;
 namespace fs = std::filesystem;
 
-GroRecord parseGroLine(const std::string& line) {
-	GroRecord record;
-
-	// Parse residue number (5 positions, integer) directly
-	record.residue_number = std::stoi(line.substr(0, 5));
-
-	// Direct assignment avoiding unnecessary erase-remove idiom
-	// Use std::string::find_first_not_of and find_last_not_of to trim spaces
-	auto constexpr trimSpaces = [](const std::string& str) -> std::string {
-		size_t start = str.find_first_not_of(' ');
-		size_t end = str.find_last_not_of(' ');
-		return start == std::string::npos ? "" : str.substr(start, end - start + 1);
-		};
-
-	// Parse residue name (5 characters)
-	record.residueName = std::string_view(trimSpaces(line.substr(5, 5)) );
-
-	// Parse atom name (5 characters)
-	record.atomName = std::string_view(trimSpaces(line.substr(10, 5)));
-
-	// Parse atom number (5 positions, integer) directly
-	record.gro_id = std::stoi(line.substr(15, 5));
-
-	// Parse position (in nm, x y z in 3 columns, each 8 positions with 3 decimal places)
-	// Using std::strtod for direct parsing from substring to double
-	auto parseDouble = [](const std::string& str) -> double {
-		return std::strtod(str.c_str(), nullptr);
-		};
-
-	record.position.x = parseDouble(line.substr(20, 8));
-	record.position.y = parseDouble(line.substr(28, 8));
-	record.position.z = parseDouble(line.substr(36, 8));
-
-	if (line.size() >= 68) {
-		record.velocity = Float3{};
-		// Parse velocity (in nm/ps (or km/s), x y z in 3 columns, each 8 positions with 4 decimal places)
-		record.velocity->x = parseDouble(line.substr(44, 8));
-		record.velocity->y = parseDouble(line.substr(52, 8));
-		record.velocity->z = parseDouble(line.substr(60, 8));
+namespace {
+	std::string_view TrimSpaces(std::string_view sv) {
+		while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) sv.remove_prefix(1);
+		while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t')) sv.remove_suffix(1);
+		return sv;
 	}
 
-	return record;
+	template <typename T>
+	T ParseGroField(std::string_view line, size_t pos, size_t len) {
+		const std::string_view field = TrimSpaces(line.substr(pos, len));
+		T value{};
+		const auto result = std::from_chars(field.data(), field.data() + field.size(), value);
+		if (field.empty() || result.ec != std::errc{})
+			throw std::runtime_error(std::format("Failed to parse .gro line: \"{}\"", line));
+		return value;
+	}
+
+	// Fixed width columns: resnr(5) resname(5) atomname(5) atomnr(5) pos(3x8) [vel(3x8)]
+	GroRecord ParseGroLine(std::string_view line) {
+		constexpr size_t minChars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
+		if (line.size() < minChars)
+			throw std::runtime_error(std::format("Too short .gro line: \"{}\"", line));
+
+		GroRecord record;
+		record.residue_number = ParseGroField<int>(line, 0, 5);
+		record.residueName = TrimSpaces(line.substr(5, 5));
+		record.atomName = TrimSpaces(line.substr(10, 5));
+		record.gro_id = ParseGroField<int>(line, 15, 5);
+
+		// Parse as double and then convert, same as the strtod we used to use, so the values are bit identical
+		record.position = Float3{ ParseGroField<double>(line, 20, 8), ParseGroField<double>(line, 28, 8), ParseGroField<double>(line, 36, 8) };
+		if (line.size() >= 68)	// [nm/ps]
+			record.velocity = Float3{ ParseGroField<double>(line, 44, 8), ParseGroField<double>(line, 52, 8), ParseGroField<double>(line, 60, 8) };
+
+		return record;
+	}
 }
 
 std::string composeGroLine(const GroRecord& record) {
@@ -89,70 +85,44 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 		readGroFileFromBinaryCache(path, *this);
 	}
 	else {
-		assert(path.extension() == ".gro");
-		if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
+		const std::string contents = ReadFileToString(path);
 
-		std::ifstream file;
-		file.open(path);
-		if (!file.is_open() || file.fail()) {
-			throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+		// Split into lines, dropping the trailing \r of CRLF files
+		std::vector<std::string_view> lines;
+		lines.reserve(contents.size() / 45 + 3);	// Atom lines without velocities are 44 chars + newline
+		for (std::string_view text = contents; !text.empty();) {
+			const size_t newline = text.find('\n');
+			std::string_view line = text.substr(0, newline);
+			text.remove_prefix(newline == std::string_view::npos ? text.size() : newline + 1);
+			if (!line.empty() && line.back() == '\r')
+				line.remove_suffix(1);
+			lines.push_back(line);
 		}
 
-		int skipCnt = 2;	// First 2 lines are title and atom count
+		// Line 1 is the title, line 2 the atom count, then 1 line per atom, and finally the box
+		if (lines.size() < 3)
+			throw std::runtime_error(std::format("File {} is too short to be a .gro file", path.string()));
+		title = lines[0];
 
-		const int min_chars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
-		int nAtoms = 0;
-		// Forward declaring for optimization reasons
-		std::string line{}, word{}, prevLine{};
-		while (getline(file, line)) {
+		size_t nAtoms = 0;
+		const std::string_view countLine = TrimSpaces(lines[1]);
+		if (std::from_chars(countLine.data(), countLine.data() + countLine.size(), nAtoms).ec != std::errc{})
+			throw std::runtime_error(std::format("Failed to read atom count in .gro file {}", path.string()));
+		if (lines.size() < nAtoms + 3)
+			throw std::runtime_error(std::format(".gro file {} specifies {} atoms, but only has {} lines", path.string(), nAtoms, lines.size()));
 
-			if (skipCnt > 0) {
-				if (skipCnt == 2) {
-					// 1st line is title
-					title = line;
-				}
-				if (skipCnt == 1) {
-					// 2nd line is atom count
-					nAtoms = std::stoi(line);
-					atoms.reserve(nAtoms);
-				}
+		atoms.resize(nAtoms);
+		ParallelUtils::ParallelForBlocked(nAtoms, [&](size_t i) { atoms[i] = ParseGroLine(lines[i + 2]); });
 
-				skipCnt--;
-				continue;
-			}
-
-
-			if (prevLine.empty()) {
-				prevLine = line;
-				continue;
-			}
-
-			if (line.empty()) {
-				assert(false);	// I guess this shouldn't happen?
-			}
-			else {
-				if (!(prevLine.length() >= min_chars))
-					int c = 0;
-				assert(prevLine.length() >= min_chars);
-				atoms.emplace_back(parseGroLine(prevLine));
-				//atoms.back().sourceLine = prevLine;
-			}
-			prevLine = line;
+		// The box line has 3 or 9 values, we only use the first 3
+		std::string_view boxLine = lines[nAtoms + 2];
+		for (int dim = 0; dim < 3; dim++) {
+			boxLine = TrimSpaces(boxLine);
+			const auto result = std::from_chars(boxLine.data(), boxLine.data() + boxLine.size(), box_size[dim]);
+			if (result.ec != std::errc{})
+				throw std::runtime_error(std::format("Failed to read box size in .gro file {}", path.string()));
+			boxLine.remove_prefix(result.ptr - boxLine.data());
 		}
-
-		if (!prevLine.empty()) {
-			int dim = 0;
-			std::stringstream ss(prevLine);
-			while (std::getline(ss, word, ' ')) {
-				if (!word.empty()) {
-					box_size[dim++] = std::stof(word);
-					if (dim == 3)
-						break;
-				}
-			}
-		}
-
-		assert(atoms.size() == nAtoms);
 
 		// Save a binary cached version of the file to we can read it faster next time
 		WriteFileToBinaryCache(*this);
@@ -161,6 +131,8 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 
 void GroFile::printToFile(const std::filesystem::path& path) const {
 	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
+	if (!path.parent_path().empty())
+		fs::create_directories(path.parent_path());
 
 	std::ofstream file(path);
 	if (!file.is_open()) {
@@ -235,7 +207,7 @@ PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 			atom.resSeq = std::stoi(line.substr(22, 4));
 			atom.iCode = line[26];
 
-			// Convert coordinates from Ångströms to nanometers
+			// Convert coordinates from Ã…ngstrÃ¶ms to nanometers
 			atom.position.x = std::stof(line.substr(30, 8)) * 0.1f;
 			atom.position.y = std::stof(line.substr(38, 8)) * 0.1f;
 			atom.position.z = std::stof(line.substr(46, 8)) * 0.1f;

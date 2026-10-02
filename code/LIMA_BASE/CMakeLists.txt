@@ -21,6 +21,7 @@ add_library(LIMA_BASE STATIC
     src/BoxGrid.cpp
     src/PlotUtils.cpp
     src/SimParams.cpp
+	 src/RenderDataPipe.cpp
     src/FilePreprocessor.cpp
  "include/DebugUtils.h" "include/CudaBuffer.h" "include/SmallString.h")
 

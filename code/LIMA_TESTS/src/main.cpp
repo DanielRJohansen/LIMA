@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		//ShowcaseMultisim();
+		
 		//ShowcaseSTMV();
 
 		//Lipids::_MakeLipid("cholesterol");
@@ -208,7 +208,8 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
 		//Benchmarks::STMV(env, envmode, 1000);
-
+		
+		//ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
 		RunAllUnitTests();

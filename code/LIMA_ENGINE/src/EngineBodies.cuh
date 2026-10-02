@@ -21,7 +21,7 @@ namespace BoxGrid {
 // Todo move this impl to ParticleClusters.cuh
 class PClusterTransfermodule {
 public:
-	static const int maxClustersPerBlock = 64;
+	static const int maxClustersPerBlock = 128;
 	static const int blockLen = 1;	
 	static const int maxOutgoingClusters = 8;
 

@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "TestUtils.h"
 #include "PhysicsUtils.cuh"
@@ -11,7 +11,7 @@ namespace ForceCorrectness {
 
 	// Construct only the lightweight job description here. Environment performs all
 	// file parsing, molecule construction, and GPU work on its bounded worker threads.
-	SimulationJob MakeJob(const fs::path& workDir, EnvMode envmode, bool analyze = false) {
+	SimulationJob MakeJob(const fs::path& workDir, EnvMode envmode, bool analyze) {
 		SimulationJob job;
 		job.workDir = workDir;
 		job.mode = envmode;
@@ -106,8 +106,6 @@ namespace ForceCorrectness {
 		co_return LimaUnittestResult{ error < 1e-2f,
 			std::format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency), envmode == Full };
 	}
-
-	struct ExpectedForceEnergy { Float3 force{}; float potential = 0.f; };
 
 	TestRoutine UreyBradleyForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "Anglebond";

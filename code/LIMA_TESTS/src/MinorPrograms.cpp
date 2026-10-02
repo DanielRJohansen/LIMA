@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "TestUtils.h"
 #include "MoleculeUtils.h"
@@ -7,7 +7,6 @@
 
 namespace TestMinorPrograms {
 	using namespace TestUtils;
-	namespace fs = std::filesystem;
 
 	LimaUnittestResult InsertMoleculesAndDoStaticbodyEM(EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "manyt4";

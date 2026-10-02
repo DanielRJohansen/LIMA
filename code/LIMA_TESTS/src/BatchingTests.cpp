@@ -1,7 +1,6 @@
-#pragma once
 
 #include "TestUtils.h"
-#include "EngineBatchTests.h"
+#include "Tests.h"
 
 #include <array>
 #include <latch>
@@ -9,7 +8,7 @@
 namespace BatchingTests {
 	using namespace TestUtils;
 
-	static SimulationJob MakeT4Job(EnvMode envmode, bool mustRunAlone) {
+	SimulationJob MakeT4Job(EnvMode envmode, bool mustRunAlone) {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
 		SimulationJob job;
 		job.workDir = workDir;
@@ -22,7 +21,7 @@ namespace BatchingTests {
 		return job;
 	}
 
-	static bool HasIdenticalCoordinates(const Simulation& lhs, const Simulation& rhs) {
+	bool HasIdenticalCoordinates(const Simulation& lhs, const Simulation& rhs) {
 		const auto& lhsPclusters = lhs.box->persistentClusters;
 		const auto& rhsPclusters = rhs.box->persistentClusters;
 		if (lhsPclusters.size() != rhsPclusters.size())
@@ -37,7 +36,7 @@ namespace BatchingTests {
 		return true;
 	}
 
-	static TestRoutine TestFourT4BatchMatchReference(Environment& environment, EnvMode envmode) {
+	TestRoutine TestFourT4BatchMatchReference(Environment& environment, EnvMode envmode) {
 		auto referenceHandle = environment.Submit(MakeT4Job(envmode, true));
 
 		std::array<SimulationHandle, 4> handles;
@@ -136,7 +135,7 @@ namespace BatchingTests {
 	//	LimaUnittestResult{ throughputImproved, throughputImproved ? result : result + "; expected at least 2x", envmode == Full };
 	//}
 
-	inline SimulationJob MakeSmallJob(int particles, int steps, float dt, bool electrostatics) {
+	SimulationJob MakeSmallJob(int particles, int steps, float dt, bool electrostatics) {
 		auto job = MakeT4Job(Headless, false);
 		job.configureSimulation = [=](Simulation& simulation) {
 			auto small = EngineBatchTests::MakeSimulation(particles, steps, dt, electrostatics);
@@ -146,7 +145,7 @@ namespace BatchingTests {
 		return job;
 	}
 
-	inline std::vector<SimulationHandle> SubmitTogether(Environment& environment, std::vector<SimulationJob> jobs) {
+	std::vector<SimulationHandle> SubmitTogether(Environment& environment, std::vector<SimulationJob> jobs) {
 		// Ensure all submissions are visible before preprocessing finishes, without
 		// relying on sleeps or the relative speed of the scheduler and test thread.
 		auto submitted = std::make_shared<std::latch>(1);
@@ -164,7 +163,7 @@ namespace BatchingTests {
 		return handles;
 	}
 
-	inline void RunSchedulerTests(Environment& environment) {
+	void RunSchedulerTests(Environment& environment) {
 		using EngineBatchTests::Require;
 		for (bool electrostatics : {false, true}) {
 			std::vector<SimulationJob> jobs;

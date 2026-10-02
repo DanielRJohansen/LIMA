@@ -1,4 +1,4 @@
-#include "Benchmarks.h"
+#include "Tests.h"
 static int ProfileT4(int batchSize, int steps) {
 	if (batchSize < 1 || steps < 1)
 		throw std::invalid_argument("Invalid T4 profiling arguments");

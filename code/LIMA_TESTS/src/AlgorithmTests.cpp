@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "TestUtils.h"
 #include <random>

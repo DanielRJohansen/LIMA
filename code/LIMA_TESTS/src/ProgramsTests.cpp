@@ -1,3 +1,4 @@
+#include "Tests.h"
 #include "MoleculeUtils.h"
 #include "Programs.h"
 #include "TestUtils.h"
@@ -6,6 +7,7 @@
 #include <set>
 
 namespace ProgramsTests {
+	using namespace TestUtils;
 	namespace {
 		std::set<int> ReadPositionRestraintAtoms(const GenericItpFile& file) {
 			std::set<int> result;

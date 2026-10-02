@@ -1,26 +1,11 @@
-#include "ForceCorrectness.h"
-#include "MDStability.h"
-#include "MembraneBuilder.h"
-#include "MinorPrograms.h"
-#include "ElectrostaticsTests.h"
-#include "Benchmarks.h"
-#include "FileTests.h"
-#include "ForcefieldTests.h"
-#include "SetupTests.h"
+#include "Tests.h"
 #include "Display.h"
-#include "ForceComparisons.h"
-#include "ProgramsTests.h"
 #include "Workflow.h"
-#include "AlgorithmTests.h"
-#include "BatchingTests.h"
-#include "EngineBatchTests.h"
-#include "DisplayTests.h"
 
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
 using namespace TestMDStability;
-using namespace StressTesting;
 using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;

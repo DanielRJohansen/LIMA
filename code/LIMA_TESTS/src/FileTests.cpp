@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "TestUtils.h"
 #include "MoleculeGraph.h"
@@ -6,7 +6,6 @@
 
 namespace FileTests {
 	using namespace TestUtils;
-	namespace fs = std::filesystem;
 
 	LimaUnittestResult TestFilesAreCachedAsBinaries(EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "filetests";

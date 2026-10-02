@@ -1,3 +1,4 @@
+#include "Tests.h"
 #include "Programs.h"
 #include "TestUtils.h"
 #include "TimeIt.h"
@@ -5,20 +6,12 @@
 namespace Benchmarks {
 
 	using namespace TestUtils;
-	namespace fs = std::filesystem;
-	constexpr int automatedTestRuns = 3;
-
-	template<typename Duration>
-	struct PerformanceBounds {
-		Duration min;
-		Duration max;
-	};
 
 	const fs::path TestsDir() {
 		return HeavyTestsDir();
 	}
 
-	static TestRoutine ToGmxLargeCif(Environment&, EnvMode envmode) {
+	TestRoutine ToGmxLargeCif(Environment&, EnvMode envmode) {
 		const fs::path input = TestsDir() / "fileconversions" / "3J3Q.cif";
 		if (!fs::is_regular_file(input))
 			co_return LimaUnittestResult{ false, "Missing ToGmx benchmark input: " + input.string(), envmode == Full };
@@ -36,7 +29,7 @@ namespace Benchmarks {
 	}
 
 	// Profiles loading a large system: gro/top parsing, then BoxImage + Box building inside the Environment
-	static TestRoutine Load3J3Q(Environment& environment, EnvMode envmode) {
+	TestRoutine Load3J3Q(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "3j3q";
 		if (!fs::is_regular_file(workDir / "conf.gro") || !fs::is_regular_file(workDir / "topol.top"))
 			co_return LimaUnittestResult{ false, "Missing 3j3q load benchmark input: " + workDir.string(), envmode == Full };
@@ -81,10 +74,9 @@ namespace Benchmarks {
 			envmode == Full };
 	}
 
-	static TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
+	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
-		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns)
-	{
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns) {
 		std::vector<SimulationHandle> handles;
 		handles.reserve(nRuns);
 		for (int run = 0; run < nRuns; run++) {
@@ -120,14 +112,14 @@ namespace Benchmarks {
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}
 
-	static TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns = 1) {
+	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
 			workDir / "sim_params.txt", { std::chrono::microseconds{ 7000 }, std::chrono::microseconds{ 9000 } },
 			nSteps, nRuns);
 	}
 
-	static TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps = 500, int nRuns = 1) {
+	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
 		const fs::path workDir = TestsDir() / "benchmarking/t4";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
 			workDir / "../sim_params.txt", { std::chrono::microseconds{ 180 }, std::chrono::microseconds{ 300 } },

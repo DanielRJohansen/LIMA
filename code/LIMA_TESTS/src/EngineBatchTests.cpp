@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "Engine.cuh"
 #include "RenderDataPipe.h"
@@ -7,11 +7,11 @@
 #include "Workflow.h"
 
 namespace EngineBatchTests {
-	inline void Require(bool value, const char* message) {
+	void Require(bool value, const char* message) {
 		if (!value) throw std::runtime_error(message);
 	}
 
-	inline std::unique_ptr<Simulation> MakeSimulation(int particles, int steps, float dt, bool electrostatics, bool em = false, int loggingInterval = 2) {
+	std::unique_ptr<Simulation> MakeSimulation(int particles, int steps, float dt, bool electrostatics, bool em, int loggingInterval) {
 		SimParams params;
 		params.n_steps = steps;
 		params.dt = dt;
@@ -60,13 +60,13 @@ namespace EngineBatchTests {
 		return sim;
 	}
 
-	inline void Run(Simulation& sim) {
+	void Run(Simulation& sim) {
 		Engine engine({&sim});
 		while (!engine.IsFinished()) engine.step();
 		engine.terminateSimulation();
 	}
 
-	inline void Compare(Simulation& a, Simulation& b) {
+	void Compare(Simulation& a, Simulation& b) {
 		Require(a.getStep() == b.getStep(), "Batch changed simulation step count");
 		for (size_t pc = 0; pc < a.box->persistentClusters.size(); ++pc) {
 			for (int lane = 0; lane < 4; ++lane) {
@@ -90,7 +90,7 @@ namespace EngineBatchTests {
 		Require(a.temperature_buffer == b.temperature_buffer, "Batch mixed temperature reductions");
 	}
 
-	inline void RunAll() {
+	void RunAll() {
 		{
 			auto simulation = MakeSimulation(5, 1, 0.00001f, false);
 			RenderDataPipe renderDataPipe;

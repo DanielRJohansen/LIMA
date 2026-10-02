@@ -1,3 +1,4 @@
+#include "Tests.h"
 #include "Programs.h"
 #include "TestUtils.h"
 
@@ -20,8 +21,7 @@ using namespace TestUtils;
 
 
 void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond::Parameters>& bonds, std::vector<AngleUreyBradleyBond::Parameters>& angles,
-    std::vector<DihedralBond::Parameters>& dihedrals, std::vector<ImproperDihedralBond::Parameters>& improperDihedrals, std::vector<std::array<int, 4>>& dihIds) 
-{
+    std::vector<DihedralBond::Parameters>& dihedrals, std::vector<ImproperDihedralBond::Parameters>& improperDihedrals, std::vector<std::array<int, 4>>& dihIds) {
     std::vector<std::variant<SingleBond::Parameters, AngleUreyBradleyBond::Parameters, DihedralBond::Parameters, ImproperDihedralBond::Parameters>> functypes;
 
     std::ifstream file(filePath);
@@ -114,8 +114,7 @@ void ParseForcefieldFromItp(
     std::vector<std::array<std::string, 2>>& atomnamesSinglebonds,
     std::vector<std::array<std::string, 3>>& atomnamesAnglebonds,
     std::vector<std::array<std::string, 4>>& atomnamesDihedralbonds,
-    std::vector<std::array<std::string, 4>>& atomnamesImproperDihedralbonds)
-{
+    std::vector<std::array<std::string, 4>>& atomnamesImproperDihedralbonds) {
     const GenericItpFile file{ filePath };
     
     int ignoredCount = 0;
@@ -185,8 +184,7 @@ void ParseForcefieldFromItp(
 }
 
 
-TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envmode)
-{
+TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envmode) {
 	Programs::GetForcefieldParams(GroFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/conf.gro" },
 		TopologyFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/topol.top" },
 		TestUtils::AutomatedTestsDir() / "Forcefieldtests");

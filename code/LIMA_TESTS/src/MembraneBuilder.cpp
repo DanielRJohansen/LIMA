@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include <filesystem>
 #include <numeric>
@@ -11,9 +11,8 @@
 
 namespace TestMembraneBuilder {
 	using namespace TestUtils;
-	namespace fs = std::filesystem;
 
-	static std::vector<Float3> ResidueCenters(const GroFile& grofile) {
+	std::vector<Float3> ResidueCenters(const GroFile& grofile) {
 		std::map<int, std::pair<Float3, int>> accumulators;
 		for (const auto& atom : grofile.atoms) {
 			auto& [sum, count] = accumulators[atom.residue_number];
@@ -28,7 +27,7 @@ namespace TestMembraneBuilder {
 		return centers;
 	}
 
-	static float NearestNeighborSpacingVariation(const std::vector<Float3>& directions) {
+	float NearestNeighborSpacingVariation(const std::vector<Float3>& directions) {
 		std::vector<float> nearestDistances;
 		nearestDistances.reserve(directions.size());
 		for (size_t i = 0; i < directions.size(); ++i) {
@@ -42,7 +41,7 @@ namespace TestMembraneBuilder {
 		return Statistics::StdDev(nearestDistances) / Statistics::Mean(nearestDistances);
 	}
 
-	static float MinimumNearestNeighborSpacing(const std::vector<Float3>& points) {
+	float MinimumNearestNeighborSpacing(const std::vector<Float3>& points) {
 		float minimumSpacing = FLT_MAX;
 		for (size_t i = 0; i < points.size(); ++i) {
 			for (size_t j = i + 1; j < points.size(); ++j)
@@ -51,7 +50,7 @@ namespace TestMembraneBuilder {
 		return minimumSpacing;
 	}
 
-	static TestRoutine TestSphericalMembraneBuilder(Environment&, EnvMode envmode) {
+	TestRoutine TestSphericalMembraneBuilder(Environment&, EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "BuildMembraneSphere";
 		Lipids::Selection lipids;
 		lipids.emplace_back(Lipids::Select{ "DMPC", workDir, 100. });
@@ -201,8 +200,7 @@ namespace TestMembraneBuilder {
 	}
 
 	// This test checks topology compatibility and physically bounded coordinate generation, NOT considering EM.
-	static TestRoutine TestBuildmembraneSmall(Environment& environment, EnvMode envmode, bool do_em)
-	{		
+	TestRoutine TestBuildmembraneSmall(Environment& environment, EnvMode envmode, bool do_em) {		
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSmall";
 		const fs::path mol_dir = workDir / "molecule";
 		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
@@ -271,7 +269,7 @@ namespace TestMembraneBuilder {
 		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
 	}
 
-	static TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
+	TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneCustom";
 		const fs::path mol_dir = workDir / "molecule";
 

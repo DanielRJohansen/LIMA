@@ -1,3 +1,4 @@
+#include "Tests.h"
 #include "TestUtils.h"
 
 using namespace TestUtils;

@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "TestUtils.h"
 #include "Environment.h"
@@ -12,7 +12,7 @@
 namespace TestMDStability {
 	using namespace TestUtils;
 
-	static SimulationJob MakeEnergyMinJob(const fs::path& workDir, EnvMode envmode) {
+	SimulationJob MakeEnergyMinJob(const fs::path& workDir, EnvMode envmode) {
 		SimulationJob emJob;
 		emJob.workDir = workDir;
 		emJob.simParams = SimParams::BasicEMSimParams();
@@ -20,9 +20,8 @@ namespace TestMDStability {
 		return emJob;
 	}
 
-	static TestRoutine LoadEnergyMinAndRunBasicSimulation(
-		Environment& environment, EnvMode envmode, std::string folderName, std::string testName)
-	{
+	TestRoutine LoadEnergyMinAndRunBasicSimulation(
+		Environment& environment, EnvMode envmode, std::string folderName, std::string testName) {
 		const fs::path workDir = AutomatedTestsDir() / folderName;
 		auto minimized = co_await environment.Submit(MakeEnergyMinJob(workDir, envmode));
 
@@ -41,7 +40,7 @@ namespace TestMDStability {
 		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 	}
 
-	static TestRoutine TestDeterministic(Environment& environment, EnvMode envmode) {
+	TestRoutine TestDeterministic(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
 		constexpr int nRuns = 2;
 		std::array<SimulationHandle, nRuns> emHandles;
@@ -74,7 +73,7 @@ namespace TestMDStability {
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
-	static bool doMoleculeTranslationTest(std::string foldername) {
+	bool doMoleculeTranslationTest(std::string foldername) {
 		//auto env = TestUtils::basicSetup(foldername, SimulationParams{100, 10000});
 
 		//const float vel = EngineUtils::tempToVelocity(300, 0.012f);	// [m/s] <=> [lm/ls]

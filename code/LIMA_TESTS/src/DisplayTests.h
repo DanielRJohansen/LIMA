@@ -3,6 +3,7 @@
 #include "../../LIMA_MD/src/DisplayInternal.h"
 #include "../../LIMA_MD/src/Shaders.h"
 #include "NewCartoonRenderer.h"
+#include "RenderDataPipe.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
 #include <stdexcept>

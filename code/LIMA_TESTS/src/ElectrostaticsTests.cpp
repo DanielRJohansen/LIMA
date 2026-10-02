@@ -1,4 +1,4 @@
-#pragma once
+#include "Tests.h"
 
 #include "TestUtils.h"
 #include "Environment.h"
@@ -16,7 +16,7 @@ namespace ElectrostaticsTests {
 	using namespace TestUtils;
 
 
-	static TestRoutine CoulombForceSanityCheck(Environment&, EnvMode envmode) {
+	TestRoutine CoulombForceSanityCheck(Environment&, EnvMode envmode) {
 		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
@@ -99,7 +99,7 @@ namespace ElectrostaticsTests {
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
-	static void MakeChargeParticlesSim(
+	void MakeChargeParticlesSim(
 		GroFile& grofile, TopologyFile& topfile, const fs::path& workDir,
 		const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
 		grofile.m_path = workDir / "conf.gro";
@@ -126,7 +126,7 @@ namespace ElectrostaticsTests {
 		topfile.printToFile();
 	}
 
-	static TestRoutine TestChargedParticlesVelocityInUniformElectricField(
+	TestRoutine TestChargedParticlesVelocityInUniformElectricField(
 		Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
 		AtomsSelection atoms{

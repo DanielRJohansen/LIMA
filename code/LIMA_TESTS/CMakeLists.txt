@@ -7,6 +7,33 @@ if(WIN32)
     )
 endif()
 
+# The tests, compiled once and shared by the test executables. Declared in Tests.h
+add_library(LIMA_TESTCASES STATIC
+    src/AlgorithmTests.cpp
+    src/BatchingTests.cpp
+    src/Benchmarks.cpp
+    src/ElectrostaticsTests.cpp
+    src/EngineBatchTests.cpp
+    src/FileTests.cpp
+    src/ForceComparisons.cpp
+    src/ForceCorrectness.cpp
+    src/ForcefieldTests.cpp
+    src/MDStability.cpp
+    src/MembraneBuilder.cpp
+    src/MinorPrograms.cpp
+    src/ProgramsTests.cpp
+    src/SetupTests.cpp
+)
+target_include_directories(LIMA_TESTCASES PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(LIMA_TESTCASES PUBLIC LIMA_BASE LIMA_MD)
+# Its own PCH, as TestUtils.h (included by every test) costs ~4 s per file to parse
+target_precompile_headers(LIMA_TESTCASES PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/code/LIMA_BASE/include/lima_pch.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/Tests.h>"
+)
+
 set(SOURCE_FILES
     #src/AlgorithmTests.cu
     src/main.cpp
@@ -26,8 +53,7 @@ target_include_directories(limatest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(limatest LIMA_BASE)
-target_link_libraries(limatest LIMA_MD)
+target_link_libraries(limatest LIMA_TESTCASES)
 
 add_executable(agenttesting
     src/agenttesting.cpp
@@ -37,19 +63,22 @@ add_executable(agenttesting
 target_include_directories(agenttesting PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
-target_link_libraries(agenttesting LIMA_BASE LIMA_MD)
+target_link_libraries(agenttesting LIMA_TESTCASES)
 
 # Release tests for the lima CLI programs. Runs lima.exe as a child process, so Windows only for now
 if (WIN32)
-    add_executable(limaclitest
-        src/CliTests.cpp
-        ${RESOURCE_FILES}
-    )
-    target_include_directories(limaclitest PRIVATE
+    # Compiled as an object library, so only linking waits for lima.exe (add_dependencies below), not compiling
+    add_library(limaclitest_objects OBJECT src/CliTests.cpp)
+    target_include_directories(limaclitest_objects PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/code/LIMA/include
     )
-    target_link_libraries(limaclitest LIMA_BASE LIMA_MD)
+    target_link_libraries(limaclitest_objects PUBLIC LIMA_BASE LIMA_MD)
+    add_executable(limaclitest
+        $<TARGET_OBJECTS:limaclitest_objects>
+        ${RESOURCE_FILES}
+    )
+    target_link_libraries(limaclitest limaclitest_objects)
     add_dependencies(limaclitest lima)
 endif()
 
@@ -71,7 +100,7 @@ add_executable(limaprofile
 target_include_directories(limaprofile PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
-target_link_libraries(limaprofile LIMA_BASE LIMA_MD)
+target_link_libraries(limaprofile LIMA_TESTCASES)
 #if (UNIX OR WIN32)
 #    target_compile_options(limaprofile PRIVATE -O3)
 #    install(TARGETS limaprofile DESTINATION /usr/bin)
@@ -79,6 +108,7 @@ target_link_libraries(limaprofile LIMA_BASE LIMA_MD)
 #    #target_compile_options(limaprofile PRIVATE /O2)
 #endif()
 
-lima_pch(limatest)
-lima_pch(agenttesting)
-lima_pch(limaprofile)
+# The test PCH (incl. Tests.h and TestUtils.h): main.cpp compiles in ~1 s instead of ~5 s
+target_precompile_headers(limatest REUSE_FROM LIMA_TESTCASES)
+target_precompile_headers(agenttesting REUSE_FROM LIMA_TESTCASES)
+target_precompile_headers(limaprofile REUSE_FROM LIMA_TESTCASES)

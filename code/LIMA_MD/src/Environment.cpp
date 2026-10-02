@@ -748,7 +748,7 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		}
 
 		time0 = std::chrono::steady_clock::now();
-		avgStepTimes.emplace_back(avgSteptime);
+		avgStepTimes.emplace_back(static_cast<float>(avgSteptime));
 
 
 
@@ -769,7 +769,7 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		if (simulation->simParams.em_variant) {
 		}
 		else {
-			newStatus.simulationPerformance = ns_per_day;
+			newStatus.simulationPerformance = static_cast<float>(ns_per_day);
 		}
 
 		simStatus = newStatus;

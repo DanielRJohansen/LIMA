@@ -211,7 +211,7 @@ namespace EM {
 	__global__ void UpdateKernel(const Config config, const SimState* const states, SuperCluster* const superClusters, const SuperClusterMeta* const scMeta,
 		PersistentCluster* const pclusters, const Float3* const preconditionedForce, ParticleState* const particles, int nSuperclusters, Float3 boxSize) {
 		constexpr int nScsPerBlock = 4;
-		const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? blockIdx.x * nScsPerBlock + threadIdx.y : -1;
+		const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? static_cast<int>(blockIdx.x * nScsPerBlock + threadIdx.y) : -1;
 
 		__shared__ Float3 p0s[nScsPerBlock];
 		if (threadIdx.x == 0) {

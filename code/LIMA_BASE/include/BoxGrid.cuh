@@ -69,7 +69,7 @@ namespace BoxGrid {
 		struct BlockRef {
 			/*int blockId = -1;
 			Float3 relShift{};*/
-			uint16_t blockId = 0xFFFFFFFF;
+			uint16_t blockId = 0xFFFF;
 			Float3Compressed relShift{};
 		};
 

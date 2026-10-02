@@ -231,7 +231,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
         ASSERT(std::abs(l.b0 - g.b0) < 0.001f && std::abs((l.kb - g.kb)/std::max(g.kb, 1.f)) < maxError, errMsg);
     }
     if (envmode == Full) {
-        printf("%d Singlebond parameters verified\n", bondparamsGromacs.size());
+        printf("%zu Singlebond parameters verified\n", bondparamsGromacs.size());
     }
 
     // Eh, we only have the compounds data in the gromacs files, so can only compare those..
@@ -252,7 +252,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
             , errMsg);
 	}
     if (envmode == Full) {
-		printf("%u Anglebond parameters verified\n", angleparamsGromacs.size());
+		printf("%zu Anglebond parameters verified\n", angleparamsGromacs.size());
 	}
 
 
@@ -272,7 +272,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
             , errMsg);
 	}
     if (envmode == Full) {
-        printf("%d Dihedralbond parameters verified\n", dihedralparamsGromacs.size());
+        printf("%zu Dihedralbond parameters verified\n", dihedralparamsGromacs.size());
     }
 
 
@@ -288,7 +288,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
         ASSERT(std::abs(l.psi_0 - g.psi_0) < 0.001f && std::abs((l.k_psi - g.k_psi) / std::max(g.k_psi, 1.f)) < maxError, errMsg);
 	}
     if (envmode == Full) {
-		printf("%u ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
+		printf("%zu ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
 	}
 
     co_return LimaUnittestResult{ true, "No Error", envmode == Full };

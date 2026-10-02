@@ -9,6 +9,7 @@
 #include <thrust/scan.h>
 #include "BoundaryCondition.cuh"
 #include <numeric>
+#include <limits>
 
 
 
@@ -19,7 +20,6 @@ public:
 	SuperclusterStagingControl() {}
 	__host__ SuperclusterStagingControl(int nBlocks) {
 		//const int nElements = _nBlocks + 1; 
-		const size_t byteSize = sizeof(SuperCluster) * nBlocks * SuperClustersControl::maxClustersPerBlock + sizeof(SuperClusterMeta) * nBlocks * SuperClustersControl::maxClustersPerBlock + sizeof(int) * (nBlocks + 1) * 2;
 		//printf("Bytesize %f MB\n", static_cast<float>(byteSize) / 1024.f / 1024.f);
 
 		cudaMalloc(&nClustersPerBlock, sizeof(int) * (nBlocks + 1)); // 1 extra element allows is to see the sum at the final prefixsum index
@@ -328,7 +328,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 
 	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
 		sortIds[i] = i;
-		meanPositionsOfPClusters[i] = Float3{ INFINITY,INFINITY, INFINITY };
+		meanPositionsOfPClusters[i] = Float3{ std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity() };
 		idsOfPclustersInBlock[i] = -1;
 	}
 

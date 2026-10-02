@@ -543,7 +543,7 @@ bool Display::initGLFW() {
     GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
     if (!primaryMonitor) {
         glfwTerminate();
-        return -1;
+        return false;
     }
 
     const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);

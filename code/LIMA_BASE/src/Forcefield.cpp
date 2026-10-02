@@ -68,7 +68,7 @@ int AtomtypeDatabase::GetActiveIndex(const std::string& query) {
 	if (activeAtomTypes->size() == ForceField_NB::MAX_TYPES)
 		throw std::runtime_error("Cant handle so many unique atomtypes");
 	activeAtomTypes->push_back(parameter);
-	fastLookup.insert({ query, activeAtomTypes->size() - 1 });
+	fastLookup.insert({ query, static_cast<int>(activeAtomTypes->size()) - 1 });
 	return activeAtomTypes->size() - 1;
 }
 

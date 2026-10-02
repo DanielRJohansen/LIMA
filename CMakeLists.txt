@@ -32,7 +32,8 @@ set(CUDA_SEPARABLE_COMPILATION ON)
 
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_89,code=sm_89")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo") # --ptxas-options=-v")
+# 20012: glm defaulted-ctor __host__/__device__ annotations (third-party); 20054: dynamic init of __shared__ variables (intended)
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo -diag-suppress=20012,20054") # --ptxas-options=-v")
 
 
 if (UNIX)

@@ -694,7 +694,7 @@ bool Engine::TestAlgorithms() {
 					std::sort(
 						keyIdPairs.begin() + i * nValuesPerBin,
 						keyIdPairs.begin() + (i + 1) * nValuesPerBin,
-						[](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+						[](const std::pair<float, int>& a, const std::pair<float, int>& b) {
 							return a.first < b.first;
 						}
 					);

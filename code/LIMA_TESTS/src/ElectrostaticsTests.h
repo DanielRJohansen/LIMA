@@ -539,7 +539,7 @@ namespace ElectrostaticsTests {
 		const float chargeExtern = 1.f;
 		const float charge = chargeExtern * elementaryChargeToKiloCoulombPerMole;
 		AtomsSelection atoms{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011f}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
 			};
 
 		const fs::path work_folder = HeavyTestsDir() / "ShortrangeElectrostaticsCompoundOnly/";

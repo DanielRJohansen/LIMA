@@ -13,12 +13,7 @@
 #include "LennardJonesInteractions.cuh"
 #include "ParticleClusters.cuh"
 
-#pragma warning(push)
-#pragma warning(disable:E0020)
-#pragma warning(push)
-#pragma warning(disable: 20054)
 
-#pragma diag_suppress 20054
 
 
 
@@ -395,7 +390,7 @@ const ForceEnergy* const nbForceenergy*/) {
 	const int nScsPerBlock = 4;
 
 	const int scIdLocal = threadIdx.y;
-	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? blockIdx.x * nScsPerBlock + threadIdx.y : -1;
+	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? static_cast<int>(blockIdx.x * nScsPerBlock + threadIdx.y) : -1;
 
 
 	//__shared__ Float3 positions[SuperCluster::nParticles * nScsPerBlock];
@@ -534,5 +529,3 @@ const ForceEnergy* const nbForceenergy*/) {
 }
 
 
-#pragma warning (pop)
-#pragma warning (pop)

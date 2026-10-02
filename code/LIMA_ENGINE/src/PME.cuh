@@ -497,7 +497,6 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGri
 
 #pragma unroll
 			for (int dx = 0; dx < 4; dx++) {
-				int X = ix - 1 + dx;
 				float wxyzCur = wyzCur * wx[dx];
 
 				float& phi = phisCenter[dx + 1];

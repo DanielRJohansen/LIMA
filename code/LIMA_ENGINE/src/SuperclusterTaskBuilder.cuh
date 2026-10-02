@@ -332,7 +332,6 @@ __global__ void ReserveInteractions(SuperClustersControl scControl, Int3 boxSize
 	const int warpId = threadIdx.x >> 5;
 	const int nWarps = blockDim.x >> 5;
 
-	const int scIndexInSelf = blockIdx.y;
 	const int scId = scControl.scIdsInBlocks[nodeId * SuperClustersControl::maxClustersPerBlock + blockIdx.y];
 
 	if (threadIdx.x == 0) {

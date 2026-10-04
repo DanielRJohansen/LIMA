@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 
 #include <filesystem>
 #include <numeric>
@@ -232,7 +233,7 @@ namespace TestMembraneBuilder {
 		//	a != newAtoms.end() || b != refAtoms.end()) {
 		//	a->composeString(oss); b->composeString(oss);
 		//	std::string str = oss.str();
-		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
+		//	printf(Lima::Format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
 		//}
 
 		LimaUnittestResult topTestResults = TestUtils::CompareTopologyFiles(newTop, refTop, envmode);
@@ -266,7 +267,7 @@ namespace TestMembraneBuilder {
 		emResult.WriteCoordinatesTo(gro);
 		float finalMaxForce = emResult.simulation->maxForceBuffer.back().second;
 
-		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, std::format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
+		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, Lima::Format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
 	}
 
 	TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
@@ -306,7 +307,7 @@ namespace TestMembraneBuilder {
 		//	a != newAtoms.end() || b != refAtoms.end()) {
 		//	a->composeString(oss); b->composeString(oss);
 		//	std::string str = oss.str();
-		//	printf(std::format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
+		//	printf(Lima::Format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
 		//}
 		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 

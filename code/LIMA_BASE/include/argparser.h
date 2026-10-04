@@ -1,4 +1,5 @@
 #pragma once
+#include "Format.h"
 
 #include <filesystem>
 #include <format>
@@ -52,42 +53,42 @@ public:
     void AddOption(const std::vector<std::string>& aliases, bool required, int& target) {
         AddOption(aliases, required, [&target, name = aliases[0]](const auto& args) {
             try { target = std::stoi(args[0]); }
-            catch (...) { throw CliError(std::format("option '{}' expects an integer; got '{}'", name, args[0])); }
+            catch (...) { throw CliError(Lima::Format("option '{}' expects an integer; got '{}'", name, args[0])); }
         }, 1, 1);
     }
 
     void AddOption(const std::vector<std::string>& aliases, bool required, float& target) {
         AddOption(aliases, required, [&target, name = aliases[0]](const auto& args) {
             try { target = std::stof(args[0]); }
-            catch (...) { throw CliError(std::format("option '{}' expects a number; got '{}'", name, args[0])); }
+            catch (...) { throw CliError(Lima::Format("option '{}' expects a number; got '{}'", name, args[0])); }
         }, 1, 1);
     }
 
     void AddOption(const std::vector<std::string>& aliases, bool required, std::optional<float>& target) {
         AddOption(aliases, required, [&target, name = aliases[0]](const auto& args) {
             try { target = std::stof(args[0]); }
-            catch (...) { throw CliError(std::format("option '{}' expects a number; got '{}'", name, args[0])); }
+            catch (...) { throw CliError(Lima::Format("option '{}' expects a number; got '{}'", name, args[0])); }
         }, 1, 1);
     }
 
     void AddOption(const std::vector<std::string>& aliases, bool required, Float3& target, bool allowInitFrom1 = false) {
         AddOption(aliases, required, [&target, name = aliases[0], allowInitFrom1](const auto& args) {
             if (args.size() != 3 && !(allowInitFrom1 && args.size() == 1)) {
-                throw CliError(std::format("option '{}' expects {} number(s); got {}",
+                throw CliError(Lima::Format("option '{}' expects {} number(s); got {}",
                     name, allowInitFrom1 ? "one or three" : "three", args.size()));
             }
             try {
                 if (args.size() == 3) target = Float3{ std::stof(args[0]), std::stof(args[1]), std::stof(args[2]) };
                 else target = Float3{ std::stof(args[0]) };
             }
-            catch (...) { throw CliError(std::format("option '{}' contains an invalid number", name)); }
+            catch (...) { throw CliError(Lima::Format("option '{}' contains an invalid number", name)); }
         }, allowInitFrom1 ? 1 : 3, 3);
     }
 
     void AddOption(const std::vector<std::string>& aliases, bool required, std::vector<int>& target) {
         AddOption(aliases, required, [&target, name = aliases[0]](const auto& args) {
             try { for (const auto& arg : args) target.push_back(std::stoi(arg)); }
-            catch (...) { throw CliError(std::format("option '{}' contains an invalid integer", name)); }
+            catch (...) { throw CliError(Lima::Format("option '{}' contains an invalid integer", name)); }
         });
     }
 
@@ -103,7 +104,7 @@ public:
         for (std::size_t i = 2; i < inputArgs.size(); ++i) {
             std::string key = inputArgs[i];
             if (key == "--") { optionsEnded = true; continue; }
-            if (optionsEnded) throw CliError(std::format("unexpected positional argument '{}'", key));
+            if (optionsEnded) throw CliError(Lima::Format("unexpected positional argument '{}'", key));
 
             std::optional<std::string> attachedValue;
             if (const auto equals = key.find('='); equals != std::string::npos) {
@@ -112,7 +113,7 @@ public:
             }
 
             const auto alias = aliasMap.find(key);
-            if (alias == aliasMap.end()) throw CliError(std::format("unrecognized option '{}'", key));
+            if (alias == aliasMap.end()) throw CliError(Lima::Format("unrecognized option '{}'", key));
             const std::string& name = alias->second;
             if (name == "--help") {
                 if (attachedValue) throw CliError("option '--help' does not take a value");
@@ -130,17 +131,17 @@ public:
                     ++i;
                 }
                 if (args.size() < option->second.minValues)
-                    throw CliError(std::format("option '{}' expects a value", name));
+                    throw CliError(Lima::Format("option '{}' expects a value", name));
                 option->second.callback(args);
             }
             else {
-                if (attachedValue) throw CliError(std::format("flag '{}' does not take a value", name));
+                if (attachedValue) throw CliError(Lima::Format("flag '{}' does not take a value", name));
                 flags.at(name)();
             }
         }
 
         for (const auto& [name, option] : options)
-            if (option.required && !seen[name]) throw CliError(std::format("missing required option '{}'", name));
+            if (option.required && !seen[name]) throw CliError(Lima::Format("missing required option '{}'", name));
     }
 
     void Parse(int argc, char** argv) { Parse(std::vector<std::string>(argv, argv + argc)); }

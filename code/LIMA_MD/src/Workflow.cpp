@@ -1,4 +1,5 @@
 #include "Workflow.h"
+#include "Format.h"
 
 #include "PhysicsUtils.cuh"
 
@@ -61,7 +62,7 @@ std::vector<Programs::WorkflowInput> Programs::MakeMembraneInputs(
 	for (const Lipids::Selection& composition : compositions) {
 		const std::string compositionName = Lipids::NameSelection(composition);
 		for (const int seed : seeds) {
-			const std::string name = compositionName + std::format("_seed{}", seed);
+			const std::string name = compositionName + Lima::Format("_seed{}", seed);
 			inputs.push_back({
 				.name = name,
 				.tags = { { "composition", compositionName }, { "seed", std::to_string(seed) } },

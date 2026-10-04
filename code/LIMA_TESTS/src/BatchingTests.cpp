@@ -1,5 +1,6 @@
 
 #include "TestUtils.h"
+#include "Format.h"
 #include "Tests.h"
 
 #include <array>
@@ -64,7 +65,7 @@ namespace BatchingTests {
 				|| !HasIdenticalCoordinates(*reference.simulation, *result.simulation)) {
 				co_return LimaUnittestResult{
 					false,
-					std::format("Batched T4 run {} did not execute as the expected batch", index),
+					Lima::Format("Batched T4 run {} did not execute as the expected batch", index),
 					envmode == Full
 				};
 			}
@@ -79,13 +80,13 @@ namespace BatchingTests {
 		const double batchNsPerDay = batchSimulatedNs / batchWallTime * 86400.;
 		const double throughputRatio = batchNsPerDay / soloNsPerDay;
 		const bool throughputImproved = std::isfinite(throughputRatio) && throughputRatio >= desiredRatio;
-		const std::string result = std::format(
+		const std::string result = Lima::Format(
 			"Batch perf.: {:.2f}x ({:.2f} vs {:.2f} [ns/day])",
 			throughputRatio, batchNsPerDay, soloNsPerDay);
 
 		co_return LimaUnittestResult{
 			throughputImproved,
-			throughputImproved ? result : result + std::format("; expected at least {:.2f}x", desiredRatio),
+			throughputImproved ? result : result + Lima::Format("; expected at least {:.2f}x", desiredRatio),
 			envmode == Full
 		};
 	}
@@ -110,7 +111,7 @@ namespace BatchingTests {
 	//		if (!result.simulation || result.execution.batchSize != 4
 	//			|| (batchId && result.execution.batchId != *batchId)
 	//			|| !HasIdenticalCoordinates(*reference.simulation, *result.simulation)) {
-	//			LimaUnittestResult{ false, std::format("Batched T4 run {} did not execute as the expected batch", index), envmode == Full };
+	//			LimaUnittestResult{ false, Lima::Format("Batched T4 run {} did not execute as the expected batch", index), envmode == Full };
 	//		}
 	//		batchId = result.execution.batchId;
 	//		batchSimulatedNs += result.simulation->getStep() * result.simulation->simParams.dt;
@@ -129,7 +130,7 @@ namespace BatchingTests {
 	//	const double batchNsPerDay = batchSimulatedNs / batchWallTime * 86400.;
 	//	const double throughputRatio = batchNsPerDay / soloNsPerDay;
 	//	const bool throughputImproved = std::isfinite(throughputRatio) && throughputRatio >= 2.;
-	//	const std::string result = std::format(
+	//	const std::string result = Lima::Format(
 	//		"4 T4 batch matched ref.; throughput {:.2f}x ({:.2f} vs {:.2f} [ns/day])",
 	//		throughputRatio, batchNsPerDay, soloNsPerDay);
 	//	LimaUnittestResult{ throughputImproved, throughputImproved ? result : result + "; expected at least 2x", envmode == Full };

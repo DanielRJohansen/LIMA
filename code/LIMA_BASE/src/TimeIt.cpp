@@ -1,4 +1,5 @@
 #include "TimeIt.h"
+#include "Format.h"
 
 #include <iostream>
 #include <chrono>
@@ -62,10 +63,10 @@ std::string TimeIt::ElapsedPretty() const {
 	const auto ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t).count();
 
 	if (ms < 1000.0)
-		return std::format("{:.2f} [ms]", ms);
+		return Lima::Format("{:.2f} [ms]", ms);
 
 	const double s = ms / 1000.0;
-	return std::format("{:.2f} [s]", s);
+	return Lima::Format("{:.2f} [s]", s);
 }
 
 
@@ -76,7 +77,7 @@ void TimeIt::PrintTaskStats(const std::string& taskName, const TaskRecord& recor
 	const double scale = useMs ? 1e-3 : 1.0;
 	const char* unit = useMs ? "ms" : "us";
 
-	std::cout << std::format("Task \"{}\" - Calls: {}, Total: {:.3f} {}, Average: {:.3f} {}\n",
+	std::cout << Lima::Format("Task \"{}\" - Calls: {}, Total: {:.3f} {}, Average: {:.3f} {}\n",
 		taskName, record.count, totalUs * scale, unit, totalUs * scale / record.count, unit);
 }
 

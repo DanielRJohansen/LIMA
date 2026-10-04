@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 
 #include "Engine.cuh"
 #include "RenderDataPipe.h"
@@ -83,7 +84,7 @@ namespace EngineBatchTests {
 			const auto& actual = a.potE_buffer->GetBuffer();
 			const auto& expected = b.potE_buffer->GetBuffer();
 			for (size_t i = 0; i < std::min(actual.size(), expected.size()); ++i)
-				if (actual[i] != expected[i]) throw std::runtime_error(std::format("Batch changed logged energy at {}: {} vs {}", i, actual[i], expected[i]));
+				if (actual[i] != expected[i]) throw std::runtime_error(Lima::Format("Batch changed logged energy at {}: {} vs {}", i, actual[i], expected[i]));
 			throw std::runtime_error("Batch changed logged energy buffer length");
 		}
 		Require(a.forceBuffer->GetBuffer() == b.forceBuffer->GetBuffer(), "Batch changed logged forces");
@@ -124,13 +125,13 @@ namespace EngineBatchTests {
 						for (int lane = 0; lane < 4; ++lane)
 							if (first->box->pclusterInterimStates[pc].vels_prev[lane] != stepwiseFirst->box->pclusterInterimStates[pc].vels_prev[lane]
 								|| first->box->pclusterInterimStates[pc].forces_prev[lane] != stepwiseFirst->box->pclusterInterimStates[pc].forces_prev[lane])
-								throw std::runtime_error(std::format("First survivor state diverged at step {}, pc {}, lane {}", step, pc, lane));
+								throw std::runtime_error(Lima::Format("First survivor state diverged at step {}, pc {}, lane {}", step, pc, lane));
 					const auto state = GenericCopyToHost(engine.OffloadPclusterState(0).Get(), first->box->persistentClusters.size());
 					const auto expected = GenericCopyToHost(stepwiseEngine.OffloadPclusterState(0).Get(), first->box->persistentClusters.size());
 					for (size_t pc = 0; pc < state.size(); ++pc)
 						for (int lane = 0; lane < 4; ++lane)
 							if (state[pc].pqd[lane].Valid() && state[pc].pqd[lane].position != expected[pc].pqd[lane].position)
-								throw std::runtime_error(std::format("First survivor diverged at step {}, pc {}, lane {}", step, pc, lane));
+								throw std::runtime_error(Lima::Format("First survivor diverged at step {}, pc {}, lane {}", step, pc, lane));
 				}
 			}
 			engine.terminateSimulation();
@@ -154,14 +155,14 @@ namespace EngineBatchTests {
 					engine.step();
 					if (engine.GetRunStatus(0).simulation_finished) {
 						try { Compare(*a, *referenceA); }
-						catch (const std::exception& error) { throw std::runtime_error(std::format("Batch electrostatics {} EM {} step {}: {}", electrostatics, em, b->getStep(), error.what())); }
+						catch (const std::exception& error) { throw std::runtime_error(Lima::Format("Batch electrostatics {} EM {} step {}: {}", electrostatics, em, b->getStep(), error.what())); }
 					}
 				}
 				engine.terminateSimulation();
 				engine.terminateSimulation(); // Finalization must be idempotent.
 				engine.step(); // A completed batch must not advance.
 				try { Compare(*a, *referenceA); Compare(*b, *referenceB); }
-				catch (const std::exception& error) { throw std::runtime_error(std::format("Batch electrostatics {} EM {} final: {}", electrostatics, em, error.what())); }
+				catch (const std::exception& error) { throw std::runtime_error(Lima::Format("Batch electrostatics {} EM {} final: {}", electrostatics, em, error.what())); }
 				Require(a->getStep() == 5 && b->getStep() == 13, "Batch ran past a step limit");
 				const auto stopped = GenericCopyToHost(engine.OffloadPclusterState(0).Get(), a->box->persistentClusters.size());
 				for (size_t pc = 0; pc < stopped.size(); ++pc)

@@ -1,4 +1,5 @@
 #include <chrono>
+#include "Format.h"
 #include <cmath>
 #include <filesystem>
 #include <string>
@@ -92,7 +93,7 @@ void SimulationResult::WriteCoordinatesTo(GroFile& grofile, std::optional<int64_
 		}
 	}
 	if (AllAtom && particlesUpdated != grofile.atoms.size())
-		throw std::runtime_error(std::format(
+		throw std::runtime_error(Lima::Format(
 			"Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 }
 

@@ -1,4 +1,5 @@
 #include "Utilities.h"
+#include "Format.h"
 #include <filesystem>
 #include <iostream>
 #include "Printer.h"
@@ -158,7 +159,7 @@ std::string StringUtils::FormatTime(
         }
     }
 
-    return std::format("{} [{}]", formatted, selectedUnit->suffix);
+    return Lima::Format("{} [{}]", formatted, selectedUnit->suffix);
 }
 
 std::vector<std::string> StringUtils::SplitWords(std::string_view line) {

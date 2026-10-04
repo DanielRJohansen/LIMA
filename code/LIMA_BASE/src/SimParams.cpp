@@ -1,4 +1,5 @@
 #include "SimParams.h"
+#include "Format.h"
 
 #include "Filehandling.h"
 
@@ -47,7 +48,7 @@ T ParseNumber(const std::string_view key, const std::string_view input) {
     const char* end = begin + input.size();
     const auto result = std::from_chars(begin, end, value);
     if (result.ec != std::errc{} || result.ptr != end)
-        throw std::runtime_error(std::format("Invalid value for '{}': '{}'", key, input));
+        throw std::runtime_error(Lima::Format("Invalid value for '{}': '{}'", key, input));
     return value;
 }
 
@@ -56,7 +57,7 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
     if constexpr (std::same_as<T, bool>) {
         if (input == "true") value = true;
         else if (input == "false") value = false;
-        else throw std::runtime_error(std::format("Invalid boolean for '{}': '{}'", key, input));
+        else throw std::runtime_error(Lima::Format("Invalid boolean for '{}': '{}'", key, input));
     }
     else if constexpr (std::integral<T> || std::floating_point<T>) {
         value = ParseNumber<T>(key, input);
@@ -64,7 +65,7 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
     else if constexpr (std::same_as<T, BoundaryConditionSelect>) {
         if (input == "pbc") value = PBC;
         else if (input == "nobc") value = NoBC;
-        else throw std::runtime_error(std::format("Invalid boundary condition: '{}'", input));
+        else throw std::runtime_error(Lima::Format("Invalid boundary condition: '{}'", input));
     }
     else if constexpr (std::same_as<T, ColoringMethod>) {
         static const std::unordered_map<std::string_view, ColoringMethod> values{
@@ -76,7 +77,7 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
             { "newcartoon", ColoringMethod::NewCartoon }
         };
         const auto found = values.find(input);
-        if (found == values.end()) throw std::runtime_error(std::format("Invalid coloring method: '{}'", input));
+        if (found == values.end()) throw std::runtime_error(Lima::Format("Invalid coloring method: '{}'", input));
         value = found->second;
     }
     else if constexpr (std::same_as<T, std::set<SupernaturalForcesSelect>>) {
@@ -88,7 +89,7 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
             else if (item == "horizontalchargefield") value.insert(HorizontalChargeField);
             else if (item == "boxedgepotential") value.insert(BoxEdgePotential);
             else if (item == "elasticposition") value.insert(ElasticPosition);
-            else throw std::runtime_error(std::format("Invalid supernatural force: '{}'", item));
+            else throw std::runtime_error(Lima::Format("Invalid supernatural force: '{}'", item));
         }
     }
 }
@@ -140,7 +141,7 @@ std::string_view SectionName(const SimParamSection section) {
 
 template<typename T>
 std::string FormatValue(const T value) {
-    return std::format("{}", value);
+    return Lima::Format("{}", value);
 }
 
 template<typename Function>
@@ -188,7 +189,7 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         if (const auto found = mdp.find(std::string{ key }); found != mdp.end()) {
             const int interval = ParseNumber<int>(key, found->second);
             if (outputInterval && *outputInterval != interval)
-                throw std::runtime_error(std::format("Output interval '{}' differs from earlier intervals", key));
+                throw std::runtime_error(Lima::Format("Output interval '{}' differs from earlier intervals", key));
             outputInterval = interval;
         }
     }
@@ -221,7 +222,7 @@ SimParams::SimParams(const fs::path& path) {
 
     for (const auto& [key, value] : dictionary)
         if (!knownKeys.contains(key))
-            throw std::runtime_error(std::format("Unknown simulation parameter '{}={}'", key, value));
+            throw std::runtime_error(Lima::Format("Unknown simulation parameter '{}={}'", key, value));
 }
 
 void SimParams::DumpToFile(const fs::path& filename) const {

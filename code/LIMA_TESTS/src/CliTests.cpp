@@ -13,6 +13,7 @@
 //   COMMAND...        Only run the tests for these commands, eg. 'limaclitest render mdrun'
 
 #include "TestUtils.h"
+#include "Format.h"
 #include "CliDefinitions.h"
 #include "MDFiles.h"
 #include "SimulationBuilder.h"
@@ -118,7 +119,7 @@ public:
 		if (stdoutHandle) CloseHandle(stdoutHandle);
 		if (!created) {
 			CloseHandle(readPipe);
-			throw TestFailure{ std::format("Failed to start {} (error {})", config.lima.string(), error) };
+			throw TestFailure{ Lima::Format("Failed to start {} (error {})", config.lima.string(), error) };
 		}
 		process = pi.hProcess;
 		pid = pi.dwProcessId;
@@ -255,7 +256,7 @@ std::string Tail(const std::string& text, size_t maxChars = 600) {
 
 // Crashes show up as NTSTATUS codes, which are only recognizable in hex
 std::string DescribeExitCode(int code) {
-	return code < 0 ? std::format("{} (0x{:08X})", code, static_cast<uint32_t>(code)) : std::to_string(code);
+	return code < 0 ? Lima::Format("{} (0x{:08X})", code, static_cast<uint32_t>(code)) : std::to_string(code);
 }
 
 ProcessResult Run(const fs::path& workDir, const std::vector<std::string>& args, RunOptions options = {}) {
@@ -281,15 +282,15 @@ ProcessResult Run(const fs::path& workDir, const std::vector<std::string>& args,
 }
 
 void RequireExitCode(const ProcessResult& result, int expected) {
-	ASSERT(result.exitCode.has_value(), std::format("'{}' timed out and was killed", result.commandline));
-	ASSERT(*result.exitCode == expected, std::format("'{}' exited with {}, expected {}. Output:\n{}",
+	ASSERT(result.exitCode.has_value(), Lima::Format("'{}' timed out and was killed", result.commandline));
+	ASSERT(*result.exitCode == expected, Lima::Format("'{}' exited with {}, expected {}. Output:\n{}",
 		result.commandline, DescribeExitCode(*result.exitCode), expected, Tail(result.output)));
 }
 
 void RequireSuccess(const ProcessResult& result) { RequireExitCode(result, 0); }
 
 void RequireWindowSeen(const ProcessResult& result) {
-	ASSERT(result.windowSeen, std::format("'{}' was asked to display, but no window appeared", result.commandline));
+	ASSERT(result.windowSeen, Lima::Format("'{}' was asked to display, but no window appeared", result.commandline));
 }
 
 // ------------------------------------------------ Rendering ------------------------------------------------ //
@@ -359,7 +360,7 @@ RenderSession RunRenderAndClose(const fs::path& workDir, const std::vector<std::
 	HWND window = nullptr;
 	while (!(window = child.FindOwnWindow())) {
 		if (auto code = child.WaitFor(100ms)) {
-			session.error = std::format("render exited with {} before a window appeared. Output:\n{}", DescribeExitCode(*code), Tail(child.Output()));
+			session.error = Lima::Format("render exited with {} before a window appeared. Output:\n{}", DescribeExitCode(*code), Tail(child.Output()));
 			return session;
 		}
 		if (child.Elapsed() > 60s) {
@@ -372,7 +373,7 @@ RenderSession RunRenderAndClose(const fs::path& workDir, const std::vector<std::
 	const auto dwellEnd = std::chrono::steady_clock::now() + dwell;
 	while (std::chrono::steady_clock::now() < dwellEnd) {
 		if (auto code = child.WaitFor(250ms)) {
-			session.error = std::format("render exited with {} while its window should have stayed open. Output:\n{}", DescribeExitCode(*code), Tail(child.Output()));
+			session.error = Lima::Format("render exited with {} while its window should have stayed open. Output:\n{}", DescribeExitCode(*code), Tail(child.Output()));
 			return session;
 		}
 		DWORD_PTR ignored = 0;
@@ -390,7 +391,7 @@ RenderSession RunRenderAndClose(const fs::path& workDir, const std::vector<std::
 	if (!code)
 		session.error = "render did not exit within 15s of its window being closed";
 	else if (*code != 0)
-		session.error = std::format("render exited with {} after its window was closed. Output:\n{}", DescribeExitCode(*code), Tail(child.Output()));
+		session.error = Lima::Format("render exited with {} after its window was closed. Output:\n{}", DescribeExitCode(*code), Tail(child.Output()));
 	return session;
 }
 
@@ -463,51 +464,51 @@ std::string Trim(const std::string& s) {
 
 // Standalone reader for the standard GROMACS .gro format, so verification does not depend on LIMA's own parser
 Gro ReadGro(const fs::path& path) {
-	ASSERT(fs::exists(path), std::format("Expected output {} does not exist", path.string()));
+	ASSERT(fs::exists(path), Lima::Format("Expected output {} does not exist", path.string()));
 	std::ifstream file(path);
 	Gro gro;
 	std::string line;
 	std::getline(file, gro.title);
-	ASSERT(std::getline(file, line), std::format("{} has no atom count line", path.string()));
+	ASSERT(std::getline(file, line), Lima::Format("{} has no atom count line", path.string()));
 	size_t nAtoms = 0;
 	try { nAtoms = std::stoul(Trim(line)); }
-	catch (...) { throw TestFailure{ std::format("{} has an invalid atom count line '{}'", path.string(), line) }; }
+	catch (...) { throw TestFailure{ Lima::Format("{} has an invalid atom count line '{}'", path.string(), line) }; }
 
 	gro.atoms.reserve(nAtoms);
 	for (size_t i = 0; i < nAtoms; i++) {
-		ASSERT(std::getline(file, line), std::format("{} declares {} atoms but has only {}", path.string(), nAtoms, i));
-		ASSERT(line.size() > 20, std::format("{} line {} is too short: '{}'", path.string(), i + 3, line));
+		ASSERT(std::getline(file, line), Lima::Format("{} declares {} atoms but has only {}", path.string(), nAtoms, i));
+		ASSERT(line.size() > 20, Lima::Format("{} line {} is too short: '{}'", path.string(), i + 3, line));
 		GroAtom atom;
 		std::istringstream positions(line.substr(20));
 		ASSERT(positions >> atom.position.x >> atom.position.y >> atom.position.z,
-			std::format("{} line {} has no valid position: '{}'", path.string(), i + 3, line));
+			Lima::Format("{} line {} has no valid position: '{}'", path.string(), i + 3, line));
 		try { atom.resnr = std::stoi(line.substr(0, 5)); }
-		catch (...) { throw TestFailure{ std::format("{} line {} has an invalid residue number", path.string(), i + 3) }; }
+		catch (...) { throw TestFailure{ Lima::Format("{} line {} has an invalid residue number", path.string(), i + 3) }; }
 		atom.resname = Trim(line.substr(5, 5));
 		atom.name = Trim(line.substr(10, 5));
 		gro.atoms.push_back(std::move(atom));
 	}
-	ASSERT(std::getline(file, line), std::format("{} has no box line", path.string()));
+	ASSERT(std::getline(file, line), Lima::Format("{} has no box line", path.string()));
 	std::istringstream box(line);
-	ASSERT(box >> gro.box.x >> gro.box.y >> gro.box.z, std::format("{} has an invalid box line '{}'", path.string(), line));
+	ASSERT(box >> gro.box.x >> gro.box.y >> gro.box.z, Lima::Format("{} has an invalid box line '{}'", path.string(), line));
 	return gro;
 }
 
 void RequireFinite(const Gro& gro, const std::string& name) {
 	for (size_t i = 0; i < gro.atoms.size(); i++)
-		ASSERT(gro.atoms[i].position.Finite(), std::format("{}: atom {} has a non-finite position", name, i));
+		ASSERT(gro.atoms[i].position.Finite(), Lima::Format("{}: atom {} has a non-finite position", name, i));
 }
 
 void RequireBox(const Gro& gro, double size, const std::string& name) {
 	ASSERT(std::abs(gro.box.x - size) < 1e-3 && std::abs(gro.box.y - size) < 1e-3 && std::abs(gro.box.z - size) < 1e-3,
-		std::format("{}: expected a {} nm cubic box, got {} {} {}", name, size, gro.box.x, gro.box.y, gro.box.z));
+		Lima::Format("{}: expected a {} nm cubic box, got {} {} {}", name, size, gro.box.x, gro.box.y, gro.box.z));
 }
 
 void RequireSameAtoms(const Gro& a, const Gro& b, const std::string& name) {
-	ASSERT(a.atoms.size() == b.atoms.size(), std::format("{}: expected {} atoms, got {}", name, a.atoms.size(), b.atoms.size()));
+	ASSERT(a.atoms.size() == b.atoms.size(), Lima::Format("{}: expected {} atoms, got {}", name, a.atoms.size(), b.atoms.size()));
 	for (size_t i = 0; i < a.atoms.size(); i++)
 		ASSERT(a.atoms[i].name == b.atoms[i].name && a.atoms[i].resname == b.atoms[i].resname,
-			std::format("{}: atom {} changed from {}/{} to {}/{}", name, i, a.atoms[i].resname, a.atoms[i].name, b.atoms[i].resname, b.atoms[i].name));
+			Lima::Format("{}: atom {} changed from {}/{} to {}/{}", name, i, a.atoms[i].resname, a.atoms[i].name, b.atoms[i].resname, b.atoms[i].name));
 }
 
 double MaxDisplacement(const Gro& a, const Gro& b) {
@@ -527,12 +528,12 @@ std::map<std::string, int> MoleculeCounts(const fs::path& top) {
 
 // The number of atoms the topology describes. Must always equal the atom count of the matching .gro file
 size_t TopologyAtomCount(const fs::path& top) {
-	ASSERT(fs::exists(top), std::format("Expected output {} does not exist", top.string()));
+	ASSERT(fs::exists(top), Lima::Format("Expected output {} does not exist", top.string()));
 	TopologyFile topology{ top };
-	ASSERT(topology.HasSystem(), std::format("{} has no [ system ]", top.string()));
+	ASSERT(topology.HasSystem(), Lima::Format("{} has no [ system ]", top.string()));
 	size_t count = 0;
 	for (const auto& entry : topology.GetSystem().molecules) {
-		ASSERT(entry.moleculetype != nullptr, std::format("{}: molecule {} has no definition", top.string(), entry.name));
+		ASSERT(entry.moleculetype != nullptr, Lima::Format("{}: molecule {} has no definition", top.string(), entry.name));
 		count += entry.moleculetype->atoms.size() * entry.count;
 	}
 	return count;
@@ -540,7 +541,7 @@ size_t TopologyAtomCount(const fs::path& top) {
 
 void RequireTopologyMatches(const fs::path& top, const Gro& gro) {
 	const size_t topologyAtoms = TopologyAtomCount(top);
-	ASSERT(topologyAtoms == gro.atoms.size(), std::format("{} describes {} atoms, but the coordinates contain {}",
+	ASSERT(topologyAtoms == gro.atoms.size(), Lima::Format("{} describes {} atoms, but the coordinates contain {}",
 		top.filename().string(), topologyAtoms, gro.atoms.size()));
 }
 
@@ -552,13 +553,13 @@ struct Trr {
 
 // Reads a GROMACS .trr trajectory with the standard xdrfile library
 Trr ReadTrr(const fs::path& path) {
-	ASSERT(fs::exists(path), std::format("Expected output {} does not exist", path.string()));
+	ASSERT(fs::exists(path), Lima::Format("Expected output {} does not exist", path.string()));
 	std::string pathString = path.string();
 	Trr trr;
-	ASSERT(read_trr_natoms(pathString.data(), &trr.nAtoms) == exdrOK && trr.nAtoms > 0, std::format("{} is not a readable .trr file", path.filename().string()));
+	ASSERT(read_trr_natoms(pathString.data(), &trr.nAtoms) == exdrOK && trr.nAtoms > 0, Lima::Format("{} is not a readable .trr file", path.filename().string()));
 
 	XDRFILE* file = xdrfile_open(pathString.c_str(), "r");
-	ASSERT(file != nullptr, std::format("Could not open {}", path.string()));
+	ASSERT(file != nullptr, Lima::Format("Could not open {}", path.string()));
 	std::vector<float> x(3 * static_cast<size_t>(trr.nAtoms));
 	matrix box;
 	int step = 0;
@@ -595,7 +596,7 @@ TestRoutine TestDispatcher(fs::path workDir) {
 	auto general = Run(workDir, {}, quiet);
 	RequireSuccess(general);
 	for (const auto& command : Cli::Commands)
-		ASSERT(general.output.find(command.name) != std::string::npos, std::format("'lima' does not list the command '{}'", command.name));
+		ASSERT(general.output.find(command.name) != std::string::npos, Lima::Format("'lima' does not list the command '{}'", command.name));
 
 	auto version = Run(workDir, { "--version" }, quiet);
 	RequireSuccess(version);
@@ -605,8 +606,8 @@ TestRoutine TestDispatcher(fs::path workDir) {
 		for (const auto& args : { std::vector<std::string>{ "help", std::string(command.name) }, std::vector<std::string>{ std::string(command.name), "--help" } }) {
 			auto help = Run(workDir, args, quiet);
 			RequireSuccess(help);
-			ASSERT(!Trim(help.output).empty(), std::format("'{}' printed nothing", help.commandline));
-			ASSERT(!help.windowSeen, std::format("'{}' opened a window", help.commandline));
+			ASSERT(!Trim(help.output).empty(), Lima::Format("'{}' printed nothing", help.commandline));
+			ASSERT(!help.windowSeen, Lima::Format("'{}' opened a window", help.commandline));
 		}
 	}
 
@@ -615,7 +616,7 @@ TestRoutine TestDispatcher(fs::path workDir) {
 	RequireExitCode(Run(workDir, { "makebox", "--box-size", "5", "--notanoption" }, quiet), 2);
 	ASSERT(fs::is_empty(workDir), "A command that was rejected for invalid arguments still created files");
 
-	co_return LimaUnittestResult{ true, std::format("{} commands respond to help, bad input exits 2", Cli::Commands.size()), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} commands respond to help, bad input exits 2", Cli::Commands.size()), false };
 }
 
 TestRoutine TestMakeSimParams(fs::path workDir) {
@@ -631,12 +632,12 @@ TestRoutine TestMakeSimParams(fs::path workDir) {
 		line = Trim(line.substr(0, line.find('#')));
 		if (line.empty() || line.starts_with("//")) continue;
 		const auto equals = line.find('=');
-		ASSERT(equals != std::string::npos, std::format("sim_params.txt has a line that is not 'key = value': '{}'", line));
+		ASSERT(equals != std::string::npos, Lima::Format("sim_params.txt has a line that is not 'key = value': '{}'", line));
 		keys.insert(Trim(line.substr(0, equals)));
 	}
 	ASSERT(keys.contains("n_steps") && keys.contains("dt"), "sim_params.txt does not define n_steps and dt");
 
-	co_return LimaUnittestResult{ true, std::format("{} parameters", keys.size()), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} parameters", keys.size()), false };
 }
 
 TestRoutine TestMakeBox(fs::path workDir) {
@@ -644,7 +645,7 @@ TestRoutine TestMakeBox(fs::path workDir) {
 	RequireSuccess(Run(workDir, { "makebox", "--box-size", "7", "--name", "box" }));
 
 	const Gro gro = ReadGro(workDir / "box.gro");
-	ASSERT(gro.atoms.empty(), std::format("box.gro should be empty, but has {} atoms", gro.atoms.size()));
+	ASSERT(gro.atoms.empty(), Lima::Format("box.gro should be empty, but has {} atoms", gro.atoms.size()));
 	RequireBox(gro, 7, "box.gro");
 	ASSERT(fs::exists(workDir / "box.top"), "box.top was not created");
 
@@ -667,7 +668,7 @@ TestRoutine TestEditConf(fs::path workDir) {
 
 	const Vec3 center = out.Center(0, out.atoms.size());
 	// Loose, since 'center' may mean the mean position or the bounding box center, and rotating shifts the latter
-	ASSERT((center - Vec3{ 1.5, 1.5, 1.5 }).Len() < 0.1, std::format("Center is ({:.3f} {:.3f} {:.3f}), expected (1.5 1.5 1.5)", center.x, center.y, center.z));
+	ASSERT((center - Vec3{ 1.5, 1.5, 1.5 }).Len() < 0.1, Lima::Format("Center is ({:.3f} {:.3f} {:.3f}), expected (1.5 1.5 1.5)", center.x, center.y, center.z));
 
 	// A rigid transformation preserves every intramolecular distance
 	double maxDistanceError = 0;
@@ -675,7 +676,7 @@ TestRoutine TestEditConf(fs::path workDir) {
 		for (size_t j = i + 1; j < in.atoms.size(); j++)
 			maxDistanceError = std::max(maxDistanceError, std::abs(
 				(in.atoms[i].position - in.atoms[j].position).Len() - (out.atoms[i].position - out.atoms[j].position).Len()));
-	ASSERT(maxDistanceError < 0.005, std::format("The molecule was deformed: an interatomic distance changed by {:.4f} nm", maxDistanceError));
+	ASSERT(maxDistanceError < 0.005, Lima::Format("The molecule was deformed: an interatomic distance changed by {:.4f} nm", maxDistanceError));
 
 	// Compare after moving both to the same center, so only the rotation remains
 	const Vec3 inCenter = in.Center(0, in.atoms.size());
@@ -685,7 +686,7 @@ TestRoutine TestEditConf(fs::path workDir) {
 	ASSERT(maxRotationDisplacement > 0.05, "The molecule was not rotated");
 
 	Preview(workDir, "out.gro", "met.top");
-	co_return LimaUnittestResult{ true, std::format("Rigid, centered, rotated (distance error {:.4f} nm)", maxDistanceError), false };
+	co_return LimaUnittestResult{ true, Lima::Format("Rigid, centered, rotated (distance error {:.4f} nm)", maxDistanceError), false };
 }
 
 TestRoutine TestToGmx(fs::path workDir) {
@@ -708,9 +709,9 @@ TestRoutine TestToGmx(fs::path workDir) {
 
 	const Gro gro = ReadGro(workDir / "lzm.gro");
 	RequireFinite(gro, "lzm.gro");
-	ASSERT(gro.ResidueCount() == pdbResidues.size(), std::format("lzm.gro has {} residues, the input has {}", gro.ResidueCount(), pdbResidues.size()));
+	ASSERT(gro.ResidueCount() == pdbResidues.size(), Lima::Format("lzm.gro has {} residues, the input has {}", gro.ResidueCount(), pdbResidues.size()));
 	ASSERT(gro.atoms.size() > pdbAtoms.size() && gro.atoms.size() < 3 * pdbAtoms.size(),
-		std::format("lzm.gro has {} atoms; with hydrogens added, expected between {} and {}", gro.atoms.size(), pdbAtoms.size(), 3 * pdbAtoms.size()));
+		Lima::Format("lzm.gro has {} atoms; with hydrogens added, expected between {} and {}", gro.atoms.size(), pdbAtoms.size(), 3 * pdbAtoms.size()));
 	RequireTopologyMatches(workDir / "lzm.top", gro);
 
 	bool hasRestraints = false;
@@ -719,7 +720,7 @@ TestRoutine TestToGmx(fs::path workDir) {
 	ASSERT(hasRestraints, "No position restraint file was written");
 
 	Preview(workDir, "lzm.gro", "lzm.top");
-	co_return LimaUnittestResult{ true, std::format("{} residues, {} atoms", gro.ResidueCount(), gro.atoms.size()), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} residues, {} atoms", gro.ResidueCount(), gro.atoms.size()), false };
 }
 
 TestRoutine TestSolvate(fs::path workDir) {
@@ -739,11 +740,11 @@ TestRoutine TestSolvate(fs::path workDir) {
 
 	for (size_t i = 0; i < in.atoms.size(); i++)
 		ASSERT(out.atoms[i].name == in.atoms[i].name && (out.atoms[i].position - in.atoms[i].position).Len() < 0.002,
-			std::format("Solute atom {} was changed by solvate", i));
+			Lima::Format("Solute atom {} was changed by solvate", i));
 	for (size_t i = in.atoms.size(); i < out.atoms.size(); i++) {
 		const Vec3 p = out.atoms[i].position;
 		ASSERT(p.x > -0.2 && p.y > -0.2 && p.z > -0.2 && p.x < out.box.x + 0.2 && p.y < out.box.y + 0.2 && p.z < out.box.z + 0.2,
-			std::format("Water atom {} is outside the box", i));
+			Lima::Format("Water atom {} is outside the box", i));
 	}
 
 	int solventMolecules = 0;
@@ -753,11 +754,11 @@ TestRoutine TestSolvate(fs::path workDir) {
 
 	const double expected = SimulationBuilder::defaultSolventsPerNm3 * out.box.x * out.box.y * out.box.z;
 	ASSERT(solventMolecules > 0.5 * expected && solventMolecules < 1.2 * expected,
-		std::format("Added {} waters, expected about {:.0f} at the default density of {}/nm^3",
+		Lima::Format("Added {} waters, expected about {:.0f} at the default density of {}/nm^3",
 			solventMolecules, expected, SimulationBuilder::defaultSolventsPerNm3));
 
 	Preview(workDir, "met_box4_solvated.gro", "met_box4_solvated.top");
-	co_return LimaUnittestResult{ true, std::format("{} waters added", solventMolecules), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} waters added", solventMolecules), false };
 }
 
 TestRoutine TestInsertMolecule(fs::path workDir) {
@@ -769,12 +770,12 @@ TestRoutine TestInsertMolecule(fs::path workDir) {
 		"--conf-target", "box5.gro", "--top-target", "box5.top", "--position", "2", "2", "2" }));
 
 	const Gro out = ReadGro(workDir / "box5.gro");
-	ASSERT(out.atoms.size() == moleculeAtoms, std::format("The target box has {} atoms after inserting one {}-atom molecule", out.atoms.size(), moleculeAtoms));
+	ASSERT(out.atoms.size() == moleculeAtoms, Lima::Format("The target box has {} atoms after inserting one {}-atom molecule", out.atoms.size(), moleculeAtoms));
 	RequireFinite(out, "box5.gro");
 	RequireBox(out, 5, "box5.gro");
 	RequireTopologyMatches(workDir / "box5.top", out);
 	const Vec3 center = out.Center(0, out.atoms.size());
-	ASSERT((center - Vec3{ 2, 2, 2 }).Len() < 0.1, std::format("The molecule was inserted at ({:.2f} {:.2f} {:.2f}), expected (2 2 2)", center.x, center.y, center.z));
+	ASSERT((center - Vec3{ 2, 2, 2 }).Len() < 0.1, Lima::Format("The molecule was inserted at ({:.2f} {:.2f} {:.2f}), expected (2 2 2)", center.x, center.y, center.z));
 
 	Preview(workDir, "box5.gro", "box5.top");
 	co_return LimaUnittestResult{ true, "Inserted at the requested position", false };
@@ -795,7 +796,7 @@ TestRoutine TestInsertMolecules(fs::path workDir) {
 
 	const Gro out = ReadGro(workDir / "met_box6.gro");
 	const size_t expectedAtoms = targetAtoms + nInsertions * moleculeAtoms;
-	ASSERT(out.atoms.size() == expectedAtoms, std::format("Expected {} atoms after inserting {} molecules, got {}", expectedAtoms, nInsertions, out.atoms.size()));
+	ASSERT(out.atoms.size() == expectedAtoms, Lima::Format("Expected {} atoms after inserting {} molecules, got {}", expectedAtoms, nInsertions, out.atoms.size()));
 	RequireFinite(out, "met_box6.gro");
 	RequireBox(out, 6, "met_box6.gro");
 	RequireTopologyMatches(workDir / "met_box6.top", out);
@@ -805,9 +806,9 @@ TestRoutine TestInsertMolecules(fs::path workDir) {
 	for (size_t i = 0; i < out.atoms.size(); i++)
 		for (size_t j = (i / moleculeAtoms + 1) * moleculeAtoms; j < out.atoms.size(); j++)
 			minDistance = std::min(minDistance, PbcDistance(out.atoms[i].position, out.atoms[j].position, out.box));
-	ASSERT(minDistance > 0.08, std::format("Two molecules overlap: atoms only {:.3f} nm apart", minDistance));
+	ASSERT(minDistance > 0.08, Lima::Format("Two molecules overlap: atoms only {:.3f} nm apart", minDistance));
 
-	co_return LimaUnittestResult{ true, std::format("{} molecules, closest contact {:.2f} nm", nInsertions, minDistance), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} molecules, closest contact {:.2f} nm", nInsertions, minDistance), false };
 }
 
 TestRoutine TestEnergyMinimization(fs::path workDir) {
@@ -829,9 +830,9 @@ TestRoutine TestEnergyMinimization(fs::path workDir) {
 
 	const double before = PbcDistance(in.atoms[clashA].position, in.atoms[clashB].position, in.box);
 	const double after = PbcDistance(out.atoms[clashA].position, out.atoms[clashB].position, out.box);
-	ASSERT(after > 0.2, std::format("The overlapping waters were not separated: {:.3f} nm -> {:.3f} nm", before, after));
+	ASSERT(after > 0.2, Lima::Format("The overlapping waters were not separated: {:.3f} nm -> {:.3f} nm", before, after));
 
-	co_return LimaUnittestResult{ true, std::format("Clash resolved: {:.2f} nm -> {:.2f} nm", before, after), false };
+	co_return LimaUnittestResult{ true, Lima::Format("Clash resolved: {:.2f} nm -> {:.2f} nm", before, after), false };
 }
 
 TestRoutine TestMdrun(fs::path workDir) {
@@ -850,7 +851,7 @@ TestRoutine TestMdrun(fs::path workDir) {
 	for (size_t i = 0; i < out.atoms.size(); i++) {
 		const Vec3 p = out.atoms[i].position;
 		ASSERT(p.x > -1 && p.y > -1 && p.z > -1 && p.x < out.box.x + 1 && p.y < out.box.y + 1 && p.z < out.box.z + 1,
-			std::format("Atom {} ended far outside the box", i));
+			Lima::Format("Atom {} ended far outside the box", i));
 	}
 	const double moved = MaxDisplacement(in, out);
 	ASSERT(moved > 0.01, "No atom moved during the simulation");
@@ -858,20 +859,20 @@ TestRoutine TestMdrun(fs::path workDir) {
 	// md_params.txt runs 20000 steps and logs every 200th
 	constexpr int maxFrames = 20000 / 200 + 1;
 	const Trr trr = ReadTrr(workDir / "traj.trr");
-	ASSERT(trr.nAtoms == static_cast<int>(in.atoms.size()), std::format("The trajectory has {} atoms, the system has {}", trr.nAtoms, in.atoms.size()));
+	ASSERT(trr.nAtoms == static_cast<int>(in.atoms.size()), Lima::Format("The trajectory has {} atoms, the system has {}", trr.nAtoms, in.atoms.size()));
 	ASSERT(trr.nFrames >= 2 && trr.nFrames <= maxFrames,
-		std::format("The trajectory has {} frames, expected at most {} with the requested logging interval", trr.nFrames, maxFrames));
+		Lima::Format("The trajectory has {} frames, expected at most {} with the requested logging interval", trr.nFrames, maxFrames));
 	// The last logged frame is at most one logging interval (0.4 ps) before the final coordinates
 	double meanDistanceToFinal = 0;
 	for (size_t i = 0; i < out.atoms.size(); i++) {
-		ASSERT(trr.lastFrame[i].Finite(), std::format("Atom {} has a non-finite position in the trajectory", i));
+		ASSERT(trr.lastFrame[i].Finite(), Lima::Format("Atom {} has a non-finite position in the trajectory", i));
 		meanDistanceToFinal += PbcDistance(trr.lastFrame[i], out.atoms[i].position, out.box) / out.atoms.size();
 	}
-	ASSERT(meanDistanceToFinal < 0.2, std::format("The last trajectory frame does not resemble the final coordinates (mean distance {:.2f} nm)", meanDistanceToFinal));
+	ASSERT(meanDistanceToFinal < 0.2, Lima::Format("The last trajectory frame does not resemble the final coordinates (mean distance {:.2f} nm)", meanDistanceToFinal));
 	const auto trajectoryBytes = fs::file_size(workDir / "traj.trr");
 	ASSERT(fs::exists(workDir / "trajectory.uff") && fs::file_size(workDir / "trajectory.uff") > 0, "--uff did not write trajectory.uff");
 
-	co_return LimaUnittestResult{ true, std::format("{} atoms, trajectory {:.1f} MB", out.atoms.size(), trajectoryBytes / 1e6), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} atoms, trajectory {:.1f} MB", out.atoms.size(), trajectoryBytes / 1e6), false };
 }
 
 TestRoutine TestBuildMembrane(fs::path workDir) {
@@ -894,15 +895,15 @@ TestRoutine TestBuildMembrane(fs::path workDir) {
 	}
 	ASSERT(total > 0, "The membrane contains no lipids");
 	const double popcFraction = static_cast<double>(popc) / total;
-	ASSERT(popcFraction > 0.6 && popcFraction < 0.8, std::format("{:.0f}% of the lipids are POPC, expected 70%", popcFraction * 100));
+	ASSERT(popcFraction > 0.6 && popcFraction < 0.8, Lima::Format("{:.0f}% of the lipids are POPC, expected 70%", popcFraction * 100));
 
 	const double areaPerLipid = boxSize * boxSize / (total / 2.0);
-	ASSERT(areaPerLipid > 0.3 && areaPerLipid < 1.5, std::format("{} lipids give {:.2f} nm^2 per lipid, which is not a plausible bilayer", total, areaPerLipid));
+	ASSERT(areaPerLipid > 0.3 && areaPerLipid < 1.5, Lima::Format("{} lipids give {:.2f} nm^2 per lipid, which is not a plausible bilayer", total, areaPerLipid));
 
 	const double meanZ = gro.Center(0, gro.atoms.size()).z;
-	ASSERT(std::abs(meanZ - boxSize / 2) < 0.3, std::format("The membrane is centered at z={:.2f}, expected the default of {}", meanZ, boxSize / 2));
+	ASSERT(std::abs(meanZ - boxSize / 2) < 0.3, Lima::Format("The membrane is centered at z={:.2f}, expected the default of {}", meanZ, boxSize / 2));
 
-	co_return LimaUnittestResult{ true, std::format("{} lipids, {:.0f}% POPC, {:.2f} nm^2/lipid", total, popcFraction * 100, areaPerLipid), false };
+	co_return LimaUnittestResult{ true, Lima::Format("{} lipids, {:.0f}% POPC, {:.2f} nm^2/lipid", total, popcFraction * 100, areaPerLipid), false };
 }
 
 TestRoutine TestRender(fs::path workDir) {
@@ -914,9 +915,9 @@ TestRoutine TestRender(fs::path workDir) {
 		config.renderDwell, screenshot);
 	ASSERT(session.error.empty(), session.error);
 	// Only proves something was drawn, not what; render.bmp is kept for a human to look at
-	ASSERT(session.distinctColors > 16, std::format("The render window looks blank ({} distinct colors), see {}", session.distinctColors, screenshot.string()));
+	ASSERT(session.distinctColors > 16, Lima::Format("The render window looks blank ({} distinct colors), see {}", session.distinctColors, screenshot.string()));
 
-	co_return LimaUnittestResult{ true, std::format("Window after {:.1f}s, closed cleanly, screenshot {}",
+	co_return LimaUnittestResult{ true, Lima::Format("Window after {:.1f}s, closed cleanly, screenshot {}",
 		session.timeToWindow.count(), screenshot.filename().string()), false };
 }
 
@@ -991,7 +992,7 @@ void PrepareRunDir() {
 			if (error) std::cout << "Could not delete old run " << entry.path().string() << ": " << error.message() << "\n";
 		}
 	const auto now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
-	config.runDir = runsDir / std::format("{:%Y%m%d-%H%M%S}", std::chrono::zoned_time{ std::chrono::current_zone(), now });
+	config.runDir = runsDir / Lima::Format("{:%Y%m%d-%H%M%S}", std::chrono::zoned_time{ std::chrono::current_zone(), now });
 	fs::create_directories(config.runDir);
 }
 

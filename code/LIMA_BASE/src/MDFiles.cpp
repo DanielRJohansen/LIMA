@@ -1,4 +1,5 @@
 #include "MDFiles.h"
+#include "Format.h"
 #include "Filehandling.h"
 #include "MDFilesSerialization.h"
 #include "ParallelFor.h"
@@ -25,7 +26,7 @@ namespace {
 		T value{};
 		const auto result = std::from_chars(field.data(), field.data() + field.size(), value);
 		if (field.empty() || result.ec != std::errc{})
-			throw std::runtime_error(std::format("Failed to parse .gro line: \"{}\"", line));
+			throw std::runtime_error(Lima::Format("Failed to parse .gro line: \"{}\"", line));
 		return value;
 	}
 
@@ -33,7 +34,7 @@ namespace {
 	GroRecord ParseGroLine(std::string_view line) {
 		constexpr size_t minChars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
 		if (line.size() < minChars)
-			throw std::runtime_error(std::format("Too short .gro line: \"{}\"", line));
+			throw std::runtime_error(Lima::Format("Too short .gro line: \"{}\"", line));
 
 		GroRecord record;
 		record.residue_number = ParseGroField<int>(line, 0, 5);
@@ -77,7 +78,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 	if (!(path.extension().string() == std::string{ ".gro" }))
 		throw std::runtime_error("Expected .gro extension");
 	if (!fs::exists(path))
-		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+		throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string()));
 
 	lastModificationTimestamp = TimeSinceEpoch(fs::last_write_time(path));
 
@@ -101,15 +102,15 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 
 		// Line 1 is the title, line 2 the atom count, then 1 line per atom, and finally the box
 		if (lines.size() < 3)
-			throw std::runtime_error(std::format("File {} is too short to be a .gro file", path.string()));
+			throw std::runtime_error(Lima::Format("File {} is too short to be a .gro file", path.string()));
 		title = lines[0];
 
 		size_t nAtoms = 0;
 		const std::string_view countLine = TrimSpaces(lines[1]);
 		if (std::from_chars(countLine.data(), countLine.data() + countLine.size(), nAtoms).ec != std::errc{})
-			throw std::runtime_error(std::format("Failed to read atom count in .gro file {}", path.string()));
+			throw std::runtime_error(Lima::Format("Failed to read atom count in .gro file {}", path.string()));
 		if (lines.size() < nAtoms + 3)
-			throw std::runtime_error(std::format(".gro file {} specifies {} atoms, but only has {} lines", path.string(), nAtoms, lines.size()));
+			throw std::runtime_error(Lima::Format(".gro file {} specifies {} atoms, but only has {} lines", path.string(), nAtoms, lines.size()));
 
 		atoms.resize(nAtoms);
 		ParallelUtils::ParallelForBlocked(nAtoms, [&](size_t i) { atoms[i] = ParseGroLine(lines[i + 2]); });
@@ -120,7 +121,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 			boxLine = TrimSpaces(boxLine);
 			const auto result = std::from_chars(boxLine.data(), boxLine.data() + boxLine.size(), box_size[dim]);
 			if (result.ec != std::errc{})
-				throw std::runtime_error(std::format("Failed to read box size in .gro file {}", path.string()));
+				throw std::runtime_error(Lima::Format("Failed to read box size in .gro file {}", path.string()));
 			boxLine.remove_prefix(result.ptr - boxLine.data());
 		}
 
@@ -130,13 +131,13 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 }
 
 void GroFile::printToFile(const std::filesystem::path& path) const {
-	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
+	if (path.extension().string() != ".gro") { throw std::runtime_error(Lima::Format("Got {} extension, expected .gro", path.extension().string())); }
 	if (!path.parent_path().empty())
 		fs::create_directories(path.parent_path());
 
 	std::ofstream file(path);
 	if (!file.is_open()) {
-		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+		throw std::runtime_error(Lima::Format("Failed to open file {}", path.string()));
 	}
 
 	// Print the title and number of atoms
@@ -179,14 +180,14 @@ PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 	if (!(path.extension().string() == std::string{ ".pdb" }))
 		throw std::runtime_error("Expected .pdb extension");
 	if (!fs::exists(path))
-		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+		throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string()));
 
 
 
 	std::ifstream file;
 	file.open(path);
 	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+		throw std::runtime_error(Lima::Format("Failed to open file {}\n", path.string()).c_str());
 	}
 
 	std::string line{};

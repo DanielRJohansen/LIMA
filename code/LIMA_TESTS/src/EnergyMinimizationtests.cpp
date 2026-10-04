@@ -1,4 +1,5 @@
 #include "EnergyMinimizationtests.h"
+#include "Format.h"
 
 #include "Environment.h"
 #include "MDFiles.h"
@@ -66,7 +67,7 @@ namespace EnergyMinimizationTests {
 			std::ofstream output{ path, std::ios::trunc };
 			output << "step,max_force,dt\n";
 			for (const auto& entry : simulation.emLog)
-				output << std::format("{},{},{}\n", entry.step, entry.maxForce, entry.dt);
+				output << Lima::Format("{},{},{}\n", entry.step, entry.maxForce, entry.dt);
 		}
 
 		std::vector<TestCase> FindTestCases(const fs::path& testRoot) {
@@ -173,7 +174,7 @@ namespace EnergyMinimizationTests {
 		}
 
 		std::string ForceString(float force) {
-			return std::isfinite(force) ? std::format("{:.2f}", force) : "—";
+			return std::isfinite(force) ? Lima::Format("{:.2f}", force) : "—";
 		}
 
 		void WriteResultsHtml(const fs::path& path, const std::vector<Result>& results) {
@@ -198,7 +199,7 @@ th { background: #f1f3f4; white-space: nowrap; } tr.ok { border-left: 5px solid 
 				const bool timedOut = result.error == "time limit reached";
 				const std::string rowClass = converged ? "ok" : timedOut ? "timeout" : "failure";
 				const std::string status = converged ? "Converged" : timedOut ? "Timed out" : "Failed";
-				output << std::format("<tr class=\"{}\"><td>{}</td><td class=\"status\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.3f} s</td><td>{}</td><td>{}</td></tr>\n",
+				output << Lima::Format("<tr class=\"{}\"><td>{}</td><td class=\"status\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.3f} s</td><td>{}</td><td>{}</td></tr>\n",
 					rowClass, EscapeHtml(result.name), status, StepString(result.roughStep), StepString(result.fineStep),
 					result.finalStep, ForceString(result.initialForce), ForceString(result.minimumForce), ForceString(result.finalForce),
 					result.engineSeconds, result.forceIncreaseCount, EscapeHtml(result.error));
@@ -222,7 +223,7 @@ th { background: #f1f3f4; white-space: nowrap; } tr.ok { border-left: 5px solid 
 			Result result;
 			try {
 				result = RunTestCase(testCase);
-				std::cout << std::format("  rough: {}, fine: {}, minimum force: {:.2f}, engine: {:.3f} s\n",
+				std::cout << Lima::Format("  rough: {}, fine: {}, minimum force: {:.2f}, engine: {:.3f} s\n",
 					StepString(result.roughStep), StepString(result.fineStep), result.minimumForce, result.engineSeconds);
 			}
 			catch (const std::exception& exception) {

@@ -1,4 +1,5 @@
 #include <GL/glew.h>
+#include "Format.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -436,7 +437,7 @@ void Display::Mainloop() {
 					std::get<std::unique_ptr<AtomRenderTask>>(context.currentRenderTask)->simStatus = std::move(status);
 			}
 			tabs.push_back(SimulationTab{ simulationId,
-				context.label.empty() ? std::format("Simulation {}", simulationId + 1) : context.label,
+				context.label.empty() ? Lima::Format("Simulation {}", simulationId + 1) : context.label,
 				simulationId == *activeSimulationId, context.completed });
 		}
 

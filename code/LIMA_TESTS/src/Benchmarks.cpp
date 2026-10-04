@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 #include "Programs.h"
 #include "TestUtils.h"
 #include "TimeIt.h"
@@ -23,7 +24,7 @@ namespace Benchmarks {
 		if (conversion.grofile.atoms.empty())
 			co_return LimaUnittestResult{ false, "ToGmx benchmark produced no atoms", envmode == Full };
 		co_return LimaUnittestResult{ elapsed < allowedTime,
-			std::format("3J3Q.cif elapsed: {:.3f} allowed: {:.3f}",
+			Lima::Format("3J3Q.cif elapsed: {:.3f} allowed: {:.3f}",
 				std::chrono::duration<double>(elapsed).count(), std::chrono::duration<double>(allowedTime).count()),
 			envmode == Full };
 	}
@@ -56,7 +57,7 @@ namespace Benchmarks {
 		const size_t nTopAtoms = std::ranges::distance(top.GetAllElements<TopologyFile::AtomsEntry>());
 
 		if (nTopAtoms != job.grofile->atoms.size())
-			co_return LimaUnittestResult{ false, std::format("3j3q atom count mismatch between gro({}) and top({})", job.grofile->atoms.size(), nTopAtoms), envmode == Full};
+			co_return LimaUnittestResult{ false, Lima::Format("3j3q atom count mismatch between gro({}) and top({})", job.grofile->atoms.size(), nTopAtoms), envmode == Full};
 
 		auto completed = co_await environment.Submit(std::move(job));		
 		if (!completed.simulation)
@@ -69,7 +70,7 @@ namespace Benchmarks {
 		auto success = (groTime + topTime) < allowedFileTime && buildtime < allowedBuildTime;
 
 		co_return LimaUnittestResult{ success,
-			std::format("files: ({:.2f}+{:.2f})/{:.2f}   build: {:.2f}/{:.2f} [s]",
+			Lima::Format("files: ({:.2f}+{:.2f})/{:.2f}   build: {:.2f}/{:.2f} [s]",
 				groTime.count(), topTime.count(), allowedFileTime.count(), buildtime.count(), allowedBuildTime.count()),
 			envmode == Full };
 	}
@@ -107,7 +108,7 @@ namespace Benchmarks {
 		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
 		const bool withinBounds = *fastest >= allowedTimePerStep.min && *slowest <= allowedTimePerStep.max;
 		co_return LimaUnittestResult{ withinBounds,
-			std::format("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step]",
+			Lima::Format("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step]",
 				fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}

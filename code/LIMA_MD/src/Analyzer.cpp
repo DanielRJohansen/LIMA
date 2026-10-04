@@ -1,4 +1,5 @@
 #include "Analyzer.h"
+#include "Format.h"
 
 #include "Environment.h"
 #include "PhysicsUtils.cuh"
@@ -34,7 +35,7 @@ namespace {
 		CloseHandle(processInfo.hThread);
 		CloseHandle(processInfo.hProcess);
 #else
-		std::string command = std::format("python \"{}\" --comparison \"{}\"{} >/dev/null 2>&1 &",
+		std::string command = Lima::Format("python \"{}\" --comparison \"{}\"{} >/dev/null 2>&1 &",
 			script.string(), input.string(), show ? " --show" : "");
 		if (std::system(command.c_str()) != 0)
 			throw std::runtime_error("Failed to launch density-profile comparison");
@@ -170,14 +171,14 @@ void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesy
 		std::filesystem::create_directories(outputPath.parent_path());
 	std::ofstream file(outputPath);
 	if (!file.is_open())
-		throw std::runtime_error(std::format("Failed to write density profile {}", outputPath.string()));
+		throw std::runtime_error(Lima::Format("Failed to write density profile {}", outputPath.string()));
 	file << "z_nm,water_fraction,head_fraction,tail_fraction\n";
 	for (int bin = 0; bin < nBins; ++bin)
 		file << (bin + .5f) * binWidth << ',' << densities[0][bin] << ',' << densities[1][bin] << ',' << densities[2][bin] << '\n';
 	file.close();
 
 	const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "DensityProfile.py";
-	std::string command = std::format("python \"{}\" \"{}\"", script.string(), outputPath.string());
+	std::string command = Lima::Format("python \"{}\" \"{}\"", script.string(), outputPath.string());
 	if (show) command += " --show";
 	if (std::system(command.c_str()) != 0)
 		throw std::runtime_error("Matplotlib failed to render density profile");
@@ -190,7 +191,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 		std::filesystem::create_directories(outputPath.parent_path());
 	std::ofstream output(outputPath);
 	if (!output.is_open())
-		throw std::runtime_error(std::format("Failed to write density profile comparison {}", outputPath.string()));
+		throw std::runtime_error(Lima::Format("Failed to write density profile comparison {}", outputPath.string()));
 	output << "composition,temperature,z_nm,water_fraction,head_fraction,tail_fraction\n";
 
 	for (const auto& group : groups) {
@@ -200,7 +201,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 		for (const auto& profilePath : group.profiles) {
 			std::ifstream input(profilePath);
 			if (!input.is_open())
-				throw std::runtime_error(std::format("Failed to read density profile {}", profilePath.string()));
+				throw std::runtime_error(Lima::Format("Failed to read density profile {}", profilePath.string()));
 			std::string line;
 			std::getline(input, line);
 			for (size_t bin = 0; std::getline(input, line); ++bin) {
@@ -208,7 +209,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 				std::istringstream row(line);
 				char comma;
 				if (!(row >> values[0] >> comma >> values[1] >> comma >> values[2] >> comma >> values[3]))
-					throw std::runtime_error(std::format("Invalid density profile row in {}", profilePath.string()));
+					throw std::runtime_error(Lima::Format("Invalid density profile row in {}", profilePath.string()));
 				if (averages.size() <= bin) averages.emplace_back();
 				for (size_t column = 0; column < values.size(); ++column)
 					averages[bin][column] += values[column];

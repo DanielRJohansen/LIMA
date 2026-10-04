@@ -23,6 +23,7 @@ add_library(LIMA_BASE STATIC
     src/SimParams.cpp
 	 src/RenderDataPipe.cpp
     src/FilePreprocessor.cpp
+    src/Format.cpp
  "include/DebugUtils.h" "include/CudaBuffer.h" "include/SmallString.h")
 
 target_include_directories(LIMA_BASE PRIVATE 

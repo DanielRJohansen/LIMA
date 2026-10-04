@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 
 #include "TestUtils.h"
 #include "Environment.h"
@@ -21,7 +22,7 @@ namespace ElectrostaticsTests {
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
 		if (std::abs(calcedForce - expectedForce) / expectedForce >= 0.0001f)
-			co_return LimaUnittestResult{ false, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
+			co_return LimaUnittestResult{ false, Lima::Format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
 		// TODO: add potE to this also
 		co_return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
@@ -94,7 +95,7 @@ namespace ElectrostaticsTests {
 
 		const float actualVC = result.analysis->variance_coefficient;
 		const float maxVC = 1e-3;
-		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
+		ASSERT(actualVC < maxVC, Lima::Format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}
@@ -201,11 +202,11 @@ namespace ElectrostaticsTests {
 		const auto [slope, intercept] = Statistics::linearFit(x, y);
 
 		if (slope >= 0.f) {
-			std::string errorMsg = std::format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
+			std::string errorMsg = Lima::Format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
 			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 		if (std::abs(intercept) > 50.f) {
-			std::string errorMsg = std::format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
+			std::string errorMsg = Lima::Format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
 			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
@@ -214,11 +215,11 @@ namespace ElectrostaticsTests {
 			co_return LimaUnittestResult{ false, "R2 value is nan", envmode == Full };
 		if (r2 < 0.5f) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
-			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
+			std::string errorMsg = Lima::Format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
 			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
-		co_return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
+		co_return LimaUnittestResult{ true, Lima::Format("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
 	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -288,8 +289,8 @@ namespace ElectrostaticsTests {
 	//		const float forceError = std::abs((compoundInterimSelf.forces_prev[0] - forceSum).len()) / forceSum.len();
 	//		maxForceError = std::max(maxForceError, forceError);
 
-	//		//ASSERT(potEError < 1e-4, std::format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));
-	//		//ASSERT(forceError < 1e-4, std::format("Actual Force {:.7e} Expected force {:.7e} Error {:.7e}", compoundSelf.forces_interim[0].len(), forceSum.len(), forceError));
+	//		//ASSERT(potEError < 1e-4, Lima::Format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));
+	//		//ASSERT(forceError < 1e-4, Lima::Format("Actual Force {:.7e} Expected force {:.7e} Error {:.7e}", compoundSelf.forces_interim[0].len(), forceSum.len(), forceError));
 	//	}
 
 	//	// Now do the normal VC check
@@ -297,11 +298,11 @@ namespace ElectrostaticsTests {
 	//	auto analytics = SimAnalysis::analyzeEnergy(sim.get());
 
 
-	//	ASSERT(analytics.variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
+	//	ASSERT(analytics.variance_coefficient < targetVarCoeff, Lima::Format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
 
 	//	return LimaUnittestResult{ 
 	//		true, 
-	//		std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
+	//		Lima::Format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
 	//		envmode == Full };
 	//}
 
@@ -389,15 +390,15 @@ namespace ElectrostaticsTests {
 			}
 
 			if (forceError >= 0.07f)
-				co_return LimaUnittestResult{ false, std::format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError), envmode == Full };
+				co_return LimaUnittestResult{ false, Lima::Format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError), envmode == Full };
 			// Potential is hopeless to match realspace and kspace
 			if (potEError >= 3.f)
-				co_return LimaUnittestResult{ false, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError), envmode == Full };
+				co_return LimaUnittestResult{ false, Lima::Format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError), envmode == Full };
 
 			const Float3 actualForceP1 = sim->forceBuffer->GetDatapoint(1, 0, 0);
 			if ((actualForce + actualForceP1).len() / actualForce.len() >= 0.001f)
 				co_return LimaUnittestResult{ false,
-					std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
+					Lima::Format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
 						actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z), envmode == Full };
 		}
 
@@ -615,14 +616,14 @@ namespace ElectrostaticsTests {
 
 		/*const float maxPotError = *std::max_element(potErrors.begin(), potErrors.end());
 		const float meanPotError = Statistics::Mean(potErrors);
-		ASSERT(meanPotError < 5e-2, std::format("Mean PotE Error {:.3e}", meanPotError));
-		ASSERT(maxPotError < 1, std::format("Max PotE Error {:.3e}", maxPotError));*/
+		ASSERT(meanPotError < 5e-2, Lima::Format("Mean PotE Error {:.3e}", meanPotError));
+		ASSERT(maxPotError < 1, Lima::Format("Max PotE Error {:.3e}", maxPotError));*/
 		
 		const float maxForceError = *std::max_element(forceErrors.begin(), forceErrors.end());
 		const float meanForceError = Statistics::Mean(forceErrors);
 		if (meanForceError >= 0.18f)
-			co_return LimaUnittestResult{ false, std::format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
-		//ASSERT(maxForceError < 0.8f, std::format("Max Force Error {:.3e}", maxForceError));
+			co_return LimaUnittestResult{ false, Lima::Format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
+		//ASSERT(maxForceError < 0.8f, Lima::Format("Max Force Error {:.3e}", maxForceError));
 
 		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}

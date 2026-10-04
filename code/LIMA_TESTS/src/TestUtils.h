@@ -1,4 +1,5 @@
 #pragma once
+#include "Format.h"
 
 #include "Environment.h"
 #include "Printer.h"
@@ -301,18 +302,18 @@ namespace TestUtils {
 
 		for (auto& vc : VCs) {
 			if (evaluateVC(vc)) {
-				return { false, std::format("Var. Coeff. of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
+				return { false, Lima::Format("Var. Coeff. of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
 			}
 		}
 
 		for (auto& gradient : energy_gradients) {
 			if (isnan(gradient) || abs(gradient) > max_energygradient_abs) {
-				return { false, std::format("Energygradient of {:.3e} superceeded the max of {:.3e}", gradient, max_energygradient_abs) };
+				return { false, Lima::Format("Energygradient of {:.3e} superceeded the max of {:.3e}", gradient, max_energygradient_abs) };
 			}
 		}
 
 		float highest_vc = *std::max_element(VCs.begin(), VCs.end());
-		return { true, std::format("VC {:.3e} / {:.3e}", highest_vc, target_vc)};
+		return { true, Lima::Format("VC {:.3e} / {:.3e}", highest_vc, target_vc)};
 	}
 
 	static void setConsoleTextColorRed() { std::cout << "\033[31m"; }
@@ -644,7 +645,7 @@ namespace TestUtils {
 			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
 		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
 			co_return LimaUnittestResult{ false,
-				std::format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
+				Lima::Format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
 				envmode == Full };
 		}
 		if (!completed.analysis)
@@ -668,12 +669,12 @@ namespace TestUtils {
 
 		// Check if both files are open
 		if (!file1.is_open() || !file2.is_open()) {
-			return std::format("Failed to open either or both files \n\t\t{} \n\t\t{}", path1.string(), path2.string());
+			return Lima::Format("Failed to open either or both files \n\t\t{} \n\t\t{}", path1.string(), path2.string());
 		}
 
 		// Validate the files. If they are not even 50 bytes long, something is surely wrong
 		if (file1.tellg() < 50 || file2.tellg() < 50) {
-			return std::format("Expected files to be atleast 50 bytes long \n\t\t{} \n\t\t{}", path1.string(), path2.string());
+			return Lima::Format("Expected files to be atleast 50 bytes long \n\t\t{} \n\t\t{}", path1.string(), path2.string());
 		}
 		//// Compare file sizes
 		//file1.seekg(0, std::ifstream::end);
@@ -689,7 +690,7 @@ namespace TestUtils {
 
 		// Compare the contents
 		if (!std::equal(std::istreambuf_iterator<char>(file1.rdbuf()), std::istreambuf_iterator<char>(), std::istreambuf_iterator<char>(file2.rdbuf()))) {
-			return std::format("Files did not match bit for bit \n\t\t{} \n\t\t{}", path1.string(), path2.string());
+			return Lima::Format("Files did not match bit for bit \n\t\t{} \n\t\t{}", path1.string(), path2.string());
 		};
 		return "";
 	}
@@ -727,7 +728,7 @@ namespace TestUtils {
 		if (!allSame) {
 			std::string errorMsg = "Test produced different results in different runs:\n";
 			for (size_t i = 0; i < results.size(); i++) {
-				errorMsg += std::format("Run {}: {}\n", i + 1, results[i]);
+				errorMsg += Lima::Format("Run {}: {}\n", i + 1, results[i]);
 			}
 			return LimaUnittestResult{ false, errorMsg, envmode != Headless };
 		}
@@ -802,7 +803,7 @@ namespace TestUtils {
 			const double dz = newAtom.position.z - refAtom.position.z;
 			squaredCoordinateError += dx * dx + dy * dy + dz * dz;
 			if (errX || errY || errZ) {
-				std::string errorMsg = std::format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
+				std::string errorMsg = Lima::Format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
 					newAtom.gro_id,
 					newAtom.position.x, newAtom.position.y, newAtom.position.z,
 					refAtom.position.x, refAtom.position.y, refAtom.position.z);
@@ -813,7 +814,7 @@ namespace TestUtils {
 		if (maxCoordinateRmsd) {
 			const double rmsd = std::sqrt(squaredCoordinateError / static_cast<double>(newGro.atoms.size()));
 			ASSERT(rmsd <= *maxCoordinateRmsd,
-				std::format("Coordinate RMSD {:.6f} exceeds allowed {:.6f}", rmsd, *maxCoordinateRmsd));
+				Lima::Format("Coordinate RMSD {:.6f} exceeds allowed {:.6f}", rmsd, *maxCoordinateRmsd));
 		}
 		return LimaUnittestResult{ true, "Success", false };
 	}

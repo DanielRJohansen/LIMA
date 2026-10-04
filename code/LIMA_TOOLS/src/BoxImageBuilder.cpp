@@ -1,4 +1,5 @@
 #include "BoxImageBuilder.h"
+#include "Format.h"
 #include "Forcefield.h"
 #include "MoleculeGraph.h"
 #include "TimeIt.h"
@@ -153,7 +154,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 #if ENABLE_SOLVENTS == 1	// Otherwise solvents are skipped above, and the counts legitimately differ
 	// Every particle below indexes the coordinates, so a mismatch would read past their end
 	if (nParticles != static_cast<int>(grofile.atoms.size()))
-		throw std::runtime_error(std::format("The topology describes {} atoms, but the coordinates contain {}",
+		throw std::runtime_error(Lima::Format("The topology describes {} atoms, but the coordinates contain {}",
 			nParticles, grofile.atoms.size()));
 #endif
 
@@ -214,11 +215,11 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 		const float bondRelaxedDist = bond.params.b0;
 
 		if (hyper_dist > bondRelaxedDist * allowedScalar) {
-			/*throw std::runtime_error(std::format("Loading singlebond with illegally large dist ({}). b0: {}. AtomIndices: {} {}",
+			/*throw std::runtime_error(Lima::Format("Loading singlebond with illegally large dist ({}). b0: {}. AtomIndices: {} {}",
 				hyper_dist, bond.params.b0, bond.global_atom_indexes[0], bond.global_atom_indexes[1]));*/
 		}
 		if (hyper_dist < bondRelaxedDist * 0.001) {
-			/*throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}. AtomIndices: {} {}",
+			/*throw std::runtime_error(Lima::Format("Loading singlebond with illegally small dist ({}). b0: {}. AtomIndices: {} {}",
 				hyper_dist, bond.params.b0, bond.global_atom_indexes[0], bond.global_atom_indexes[1]));*/
 		}
 	}
@@ -228,7 +229,7 @@ void SuperTopology::VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryCondit
 		const Float3 pos2 = particles[bond.global_atom_indexes[1]].position;
 		const float hyper_dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(pos1, pos2, boxlen_nm, bc_select);
 		if (hyper_dist < 0.001)
-			throw std::runtime_error(std::format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0));
+			throw std::runtime_error(Lima::Format("Loading singlebond with illegally small dist ({}). b0: {}", hyper_dist, bond.params.ub0));
 	}
 }
 
@@ -306,7 +307,7 @@ namespace {
 			const int n = static_cast<int>(molecule.atoms.size());
 			for (int i = 0; i < n; i++)
 				if (molecule.atoms[i].id != i)
-					throw std::runtime_error(std::format("Moleculetype {}: atom at index {} has id {}", molecule.name, i, molecule.atoms[i].id));
+					throw std::runtime_error(Lima::Format("Moleculetype {}: atom at index {} has id {}", molecule.name, i, molecule.atoms[i].id));
 
 			neighbors.resize(n);
 			nNeighbors.resize(n, 0);

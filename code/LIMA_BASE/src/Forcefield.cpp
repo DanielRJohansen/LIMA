@@ -1,4 +1,5 @@
 #include <vector>
+#include "Format.h"
 
 #include "Forcefield.h"
 #include "MDFiles.h"
@@ -54,7 +55,7 @@ int AtomtypeDatabase::GetActiveIndex(const std::string& query) {
 	if (fastLookup.count(query) != 0)
 		return fastLookup.find(query)->second;
 	if (!atomTypes.contains(query))
-		throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
+		throw std::runtime_error(Lima::Format("Failed to find atomtype [{}]", query));
 
 	const AtomType& parameter = atomTypes.at({ query });
 	// First check of the parameter is already in the active list (since it might be 
@@ -267,7 +268,7 @@ NBParams LIMAForcefield::GetLjParameters(const std::string& query) const {
 	auto params = ljParameters->GetAtomType(query);
 
 	if (!params.has_value())
-		throw std::runtime_error(std::format("Failed to find atomtype [{}]", query));
+		throw std::runtime_error(Lima::Format("Failed to find atomtype [{}]", query));
 
 	NBParams nbparams{};
 	nbparams.sigmaHalf = params->parameters.sigmaHalf;

@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 
 #include "TestUtils.h"
 #include "PhysicsUtils.cuh"
@@ -71,10 +72,10 @@ namespace ForceCorrectness {
 			+ simulation.potE_buffer->GetDatapoint(0, 1, 0);
 		const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
 		if (forceError >= 0.0001f)
-			co_return LimaUnittestResult{ false, std::format("Force error {:.2e}", forceError), envmode == Full };
+			co_return LimaUnittestResult{ false, Lima::Format("Force error {:.2e}", forceError), envmode == Full };
 		const float potentialError = std::abs(actualPotential - expectedPotential) / expectedPotential;
 		co_return LimaUnittestResult{ potentialError < 0.0001f,
-			std::format("Potential error {:.2e}", potentialError), envmode == Full };
+			Lima::Format("Potential error {:.2e}", potentialError), envmode == Full };
 	}
 
 	TestRoutine SinglebondOscillationTest(Environment& environment, EnvMode envmode) {
@@ -104,7 +105,7 @@ namespace ForceCorrectness {
 		const float actualFrequency = static_cast<float>(SimAnalysis::CountOscillations(lengths)) / elapsed; // [1/fs]
 		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
 		co_return LimaUnittestResult{ error < 1e-2f,
-			std::format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency), envmode == Full };
+			Lima::Format("freq: {:.2e} / {:.2e} [1/fs]", actualFrequency, expectedFrequency), envmode == Full };
 	}
 
 	TestRoutine UreyBradleyForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
@@ -151,7 +152,7 @@ namespace ForceCorrectness {
 		const float forceError = (actualForce - expected->force).len() / expected->force.len();
 		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
 		co_return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
-			std::format("Force error {:.2e}, pot. error {:.2e}", forceError, potentialError), envmode == Full };
+			Lima::Format("Force error {:.2e}, pot. error {:.2e}", forceError, potentialError), envmode == Full };
 	}
 
 	TestRoutine PairbondForceAndPotentialSanityCheck(Environment& environment, EnvMode envmode) {
@@ -187,7 +188,7 @@ namespace ForceCorrectness {
 		const float forceError = (actualForce - expected->force).len() / expected->force.len();
 		const float potentialError = std::abs(actualPotential - expected->potential) / expected->potential;
 		co_return LimaUnittestResult{ forceError < 0.0001f && potentialError < 0.0001f,
-			std::format("Force error {:.2e}, pot. error {:.2e}", forceError, potentialError), envmode == Full };
+			Lima::Format("Force error {:.2e}, pot. error {:.2e}", forceError, potentialError), envmode == Full };
 	}
 
 
@@ -288,6 +289,6 @@ namespace VerletintegrationTesting {
 		const float expectedEnergy = PhysicsUtils::calcKineticEnergy(expectedVelocity, mass); // [J/mol]
 		const float actualEnergy = completed.analysis->kin_energy.back();
 		co_return LimaUnittestResult{ std::abs(actualEnergy - expectedEnergy) / expectedEnergy < .01f,
-			std::format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedEnergy, actualEnergy), envmode == Full };
+			Lima::Format("Expected KE: {:.2e} Actual KE: {:.2e}", expectedEnergy, actualEnergy), envmode == Full };
 	}
 }

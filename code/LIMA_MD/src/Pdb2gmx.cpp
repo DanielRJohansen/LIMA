@@ -1,4 +1,5 @@
 #include "Programs.h"
+#include "Format.h"
 
 #include "Filehandling.h"
 #include "TimeIt.h"
@@ -103,7 +104,7 @@ std::string lowercase(std::string value) {
 
 PdbInput readPdb(const fs::path& path) {
     std::ifstream input(path);
-    if (!input) throw std::runtime_error(std::format("Failed to open PDB file {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open PDB file {}", path.string()));
 
     PdbInput result;
     for (std::string line; std::getline(input, line);) {
@@ -148,7 +149,7 @@ PdbInput readPdb(const fs::path& path) {
         result.residues.back().atoms.try_emplace(atom.name, std::move(atom));
     }
 
-    if (result.residues.empty()) throw std::runtime_error(std::format("No ATOM records were found in {}", path.string()));
+    if (result.residues.empty()) throw std::runtime_error(Lima::Format("No ATOM records were found in {}", path.string()));
     if (result.title.empty()) result.title = path.stem().string();
     return result;
 }
@@ -160,12 +161,12 @@ struct CifToken {
 
 std::string readWholeTextFile(const fs::path& path) {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
-    if (!input) throw std::runtime_error(std::format("Failed to open CIF file {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open CIF file {}", path.string()));
     const auto size = input.tellg();
     std::string contents(static_cast<std::size_t>(size), '\0');
     input.seekg(0);
     input.read(contents.data(), size);
-    if (!input) throw std::runtime_error(std::format("Failed to read CIF file {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to read CIF file {}", path.string()));
     return contents;
 }
 
@@ -269,7 +270,7 @@ CifDocument readCifDocument(const fs::path& path) {
             const std::string key = lowercase(std::string(token->value));
             const auto value = nextToken();
             if (!value || isCifControlToken(*value)) {
-                throw std::runtime_error(std::format("CIF item {} has no value", key));
+                throw std::runtime_error(Lima::Format("CIF item {} has no value", key));
             }
             document.values[key] = std::string(value->value);
         }
@@ -295,7 +296,7 @@ PdbInput readCif(const fs::path& path) {
     const auto numericValue = [&document](std::string_view key) {
         const auto found = document.values.find(std::string(key));
         if (found == document.values.end() || cifValueMissing(found->second)) {
-            throw std::runtime_error(std::format("Required CIF value {} is missing", key));
+            throw std::runtime_error(Lima::Format("Required CIF value {} is missing", key));
         }
         return std::stod(found->second);
     };
@@ -319,7 +320,7 @@ PdbInput readCif(const fs::path& path) {
             });
             if (found != atomLoop->columns.end()) return static_cast<std::size_t>(std::distance(atomLoop->columns.begin(), found));
         }
-        throw std::runtime_error(std::format("Required CIF atom_site column {} is missing", *alternatives.begin()));
+        throw std::runtime_error(Lima::Format("Required CIF atom_site column {} is missing", *alternatives.begin()));
     };
     const auto optionalColumn = [&atomLoop](std::string_view name) -> std::optional<std::size_t> {
         const auto found = std::ranges::find_if(atomLoop->columns, [name](const std::string_view column) {
@@ -350,7 +351,7 @@ PdbInput readCif(const fs::path& path) {
                                    std::optional<std::size_t> fallback, std::string_view description) -> std::string_view {
         if (preferred && !cifValueMissing(row[*preferred])) return row[*preferred];
         if (fallback && !cifValueMissing(row[*fallback])) return row[*fallback];
-        throw std::runtime_error(std::format("CIF atom_site row has no {}", description));
+        throw std::runtime_error(Lima::Format("CIF atom_site row has no {}", description));
     };
 
     const std::size_t columnCount = atomLoop->columns.size();
@@ -384,7 +385,7 @@ PdbInput readCif(const fs::path& path) {
         }
         result.residues.back().atoms.try_emplace(atom.name, std::move(atom));
     }
-    if (result.residues.empty()) throw std::runtime_error(std::format("No ATOM records were found in {}", path.string()));
+    if (result.residues.empty()) throw std::runtime_error(Lima::Format("No ATOM records were found in {}", path.string()));
     if (result.title.empty()) result.title = path.stem().string();
     return result;
 }
@@ -408,7 +409,7 @@ struct ResidueTemplate {
 
 std::unordered_map<std::string, double> readAtomMasses(const fs::path& path) {
     std::ifstream input(path);
-    if (!input) throw std::runtime_error(std::format("Failed to open atom type database {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open atom type database {}", path.string()));
     std::unordered_map<std::string, double> masses;
     for (std::string line; std::getline(input, line);) {
         const auto fields = words(withoutComment(std::move(line)));
@@ -423,7 +424,7 @@ std::unordered_map<std::string, double> readAtomMasses(const fs::path& path) {
 std::unordered_map<std::string, ResidueTemplate> readResidueTemplates(
     const fs::path& path, const std::unordered_map<std::string, double>& masses) {
     std::ifstream input(path);
-    if (!input) throw std::runtime_error(std::format("Failed to open residue database {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open residue database {}", path.string()));
 
     std::unordered_map<std::string, ResidueTemplate> result;
     std::string residue;
@@ -454,7 +455,7 @@ std::unordered_map<std::string, ResidueTemplate> readResidueTemplates(
         auto& target = result.at(residue);
         if (subsection == "atoms" && fields.size() >= 4) {
             const auto mass = masses.find(fields[1]);
-            if (mass == masses.end()) throw std::runtime_error(std::format("No mass for CHARMM27 atom type {}", fields[1]));
+            if (mass == masses.end()) throw std::runtime_error(Lima::Format("No mass for CHARMM27 atom type {}", fields[1]));
             target.atoms.push_back({ fields[0], fields[1], std::stod(fields[2]), std::stoi(fields[3]), mass->second });
         }
         else if (subsection == "bonds" && fields.size() >= 2) target.bonds.push_back({ fields[0], fields[1] });
@@ -473,7 +474,7 @@ struct HydrogenInstruction {
 
 std::unordered_map<std::string, std::vector<HydrogenInstruction>> readHydrogenDatabase(const fs::path& path) {
     std::ifstream input(path);
-    if (!input) throw std::runtime_error(std::format("Failed to open hydrogen database {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open hydrogen database {}", path.string()));
     std::vector<std::string> lines;
     for (std::string line; std::getline(input, line);) {
         line = withoutComment(std::move(line));
@@ -488,7 +489,7 @@ std::unordered_map<std::string, std::vector<HydrogenInstruction>> readHydrogenDa
         auto& instructions = result[header[0]];
         for (int row = 0; row < count && i < lines.size(); ++row, ++i) {
             const auto fields = words(lines[i]);
-            if (fields.size() < 4) throw std::runtime_error(std::format("Malformed hydrogen database line: {}", lines[i]));
+            if (fields.size() < 4) throw std::runtime_error(Lima::Format("Malformed hydrogen database line: {}", lines[i]));
             HydrogenInstruction instruction;
             instruction.count = std::stoi(fields[0]);
             instruction.type = std::stoi(fields[1]);
@@ -528,7 +529,7 @@ struct BondedTypeDefaults {
 
 BondedTypeDefaults readBondedTypeDefaults(const fs::path& path) {
     std::ifstream input(path);
-    if (!input) throw std::runtime_error(std::format("Failed to open residue database {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open residue database {}", path.string()));
     bool inBondedTypes = false;
     for (std::string line; std::getline(input, line);) {
         line = withoutComment(std::move(line));
@@ -544,7 +545,7 @@ BondedTypeDefaults readBondedTypeDefaults(const fs::path& path) {
                 std::stoi(fields[4]), std::stoi(fields[5]), std::stoi(fields[6]), std::stoi(fields[7]) };
         }
     }
-    throw std::runtime_error(std::format("No [ bondedtypes ] defaults in {}", path.string()));
+    throw std::runtime_error(Lima::Format("No [ bondedtypes ] defaults in {}", path.string()));
 }
 
 struct TerminalAddition {
@@ -566,7 +567,7 @@ struct TerminalPatch {
 
 std::unordered_map<std::string, TerminalPatch> readTerminalPatches(const fs::path& path) {
     std::ifstream input(path);
-    if (!input) throw std::runtime_error(std::format("Failed to open terminal database {}", path.string()));
+    if (!input) throw std::runtime_error(Lima::Format("Failed to open terminal database {}", path.string()));
 
     std::unordered_map<std::string, TerminalPatch> result;
     std::string patchName;
@@ -603,7 +604,7 @@ std::unordered_map<std::string, TerminalPatch> readTerminalPatches(const fs::pat
         }
         else if (subsection == "add") {
             if (!pendingAddition) {
-                if (fields.size() < 4) throw std::runtime_error(std::format("Malformed terminal add instruction: {}", line));
+                if (fields.size() < 4) throw std::runtime_error(Lima::Format("Malformed terminal add instruction: {}", line));
                 HydrogenInstruction instruction;
                 instruction.count = std::stoi(fields[0]);
                 instruction.type = std::stoi(fields[1]);
@@ -612,7 +613,7 @@ std::unordered_map<std::string, TerminalPatch> readTerminalPatches(const fs::pat
                 pendingAddition = std::move(instruction);
             }
             else {
-                if (fields.size() < 4) throw std::runtime_error(std::format("Malformed terminal atom definition: {}", line));
+                if (fields.size() < 4) throw std::runtime_error(Lima::Format("Malformed terminal atom definition: {}", line));
                 patch.additions.push_back({ *pendingAddition, fields[0], std::stod(fields[2]), std::stoi(fields[3]),
                     std::stod(fields[1]) });
                 pendingAddition.reset();
@@ -688,7 +689,7 @@ std::vector<glm::vec3> calculateAddedPositions(int type, const std::vector<glm::
         }
         return output;
     }
-    throw std::runtime_error(std::format("Unsupported CHARMM hydrogen construction type {}", type));
+    throw std::runtime_error(Lima::Format("Unsupported CHARMM hydrogen construction type {}", type));
 }
 
 struct OutputAtom {
@@ -787,7 +788,7 @@ void assignAddedCoordinates(
             auto& residue = residues[residueIndex];
             const auto databaseEntry = hydrogenDatabase.find(residue.rtpName);
             if (databaseEntry == hydrogenDatabase.end()) {
-                throw std::runtime_error(std::format("No hydrogen database entry for residue {}", residue.rtpName));
+                throw std::runtime_error(Lima::Format("No hydrogen database entry for residue {}", residue.rtpName));
             }
             const auto processInstruction = [&](const HydrogenInstruction& instruction) {
                 const auto names = generatedNames(instruction);
@@ -828,7 +829,7 @@ void assignAddedCoordinates(
     for (const auto& residue : residues) {
         for (const auto& atom : residue.atoms) {
             if (!atom.position) {
-                throw std::runtime_error(std::format(
+                throw std::runtime_error(Lima::Format(
                     "Atom {} is missing in residue {} {} and could not be constructed",
                     atom.name, residue.sourceName, atom.residue));
             }
@@ -851,7 +852,7 @@ std::vector<OutputResidue> makeAtoms(
         const std::string& rtpName = rtpNameFor(source.name);
         const auto templateEntry = templates.find(rtpName);
         if (templateEntry == templates.end()) {
-            throw std::runtime_error(std::format("Residue {} has no CHARMM27 amino-acid template", source.name));
+            throw std::runtime_error(Lima::Format("Residue {} has no CHARMM27 amino-acid template", source.name));
         }
         std::vector<TemplateAtom> patchedDefinitions;
         const std::vector<TemplateAtom>* definitions = &templateEntry->second.atoms;
@@ -890,7 +891,7 @@ std::vector<OutputResidue> makeAtoms(
                 atom.position = found->second.position;
             }
             else if (!atom.name.starts_with('H') && atom.name != "OT2") {
-                throw std::runtime_error(std::format(
+                throw std::runtime_error(Lima::Format(
                     "Heavy atom {} is missing in residue {} {}", atom.name, source.name, source.number));
             }
             output.localIndex.emplace(atom.name, static_cast<int>(output.atoms.size()));
@@ -1095,7 +1096,7 @@ std::vector<std::span<const PdbResidue>> splitInputByChain(const PdbInput& input
         if (i == input.residues.size() || input.residues[i].chain != input.residues[chainBegin].chain) {
             const auto& chain = input.residues[chainBegin].chain;
             if (completedChains.contains(chain)) {
-                throw std::runtime_error(std::format(
+                throw std::runtime_error(Lima::Format(
                     "Chain {} occurs in multiple non-contiguous blocks", chain.empty() ? "<blank>" : chain));
             }
             completedChains.insert(chain);
@@ -1151,7 +1152,7 @@ GenericItpFile makePositionRestraints(const std::vector<OutputResidue>& residues
     int atomId = 1;
     for (const auto& residue : residues) {
         for (const auto& atom : residue.atoms) {
-            if (!atom.name.starts_with('H')) entries.push_back(std::format("{} 1 1000 1000 1000", atomId));
+            if (!atom.name.starts_with('H')) entries.push_back(Lima::Format("{} 1 1000 1000 1000", atomId));
             ++atomId;
         }
     }
@@ -1278,16 +1279,16 @@ Programs::WaterModel Programs::ParseWaterModel(std::string_view name) {
     if (normalized == "tip5p") return WaterModel::Tip5p;
     if (normalized == "spc") return WaterModel::Spc;
     if (normalized == "spce") return WaterModel::Spce;
-    throw std::runtime_error(std::format("Unsupported CHARMM27 water model: {}", name));
+    throw std::runtime_error(Lima::Format("Unsupported CHARMM27 water model: {}", name));
 }
 
 Programs::GmxConversionResult Programs::ToGmx(const fs::path& structureFile, WaterModel waterModel) {
     if (!fs::is_regular_file(structureFile)) {
-        throw std::runtime_error(std::format("Structure input file does not exist: {}", structureFile.string()));
+        throw std::runtime_error(Lima::Format("Structure input file does not exist: {}", structureFile.string()));
     }
 
     const std::string extension = lowercase(structureFile.extension().string());
     if (extension == ".pdb") return convertStructureToGmx(readPdb(structureFile), waterModel);
     if (extension == ".cif") return convertStructureToGmx(readCif(structureFile), waterModel);
-    throw std::runtime_error(std::format("ToGmx expects a .pdb or .cif input file, got {}", structureFile.string()));
+    throw std::runtime_error(Lima::Format("ToGmx expects a .pdb or .cif input file, got {}", structureFile.string()));
 }

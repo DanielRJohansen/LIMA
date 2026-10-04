@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 #include "Display.h"
 #include "DisplayTests.h"
 #include "EnergyMinimizationtests.h"
@@ -97,7 +98,7 @@ namespace {
 		PlaceInPaddedBox(conversion.grofile, 1.f);
 		size_t moleculeIndex = 0;
 		for (auto& [_, molecule] : conversion.topology.moleculetypes)
-			molecule->includePath = std::format("molecule_{:04}.itp", moleculeIndex++);
+			molecule->includePath = Lima::Format("molecule_{:04}.itp", moleculeIndex++);
 		WriteTestSystem(testRoot / "3j3q_solvated", std::move(conversion.grofile),
 			std::move(conversion.topology), true, 1);
 		std::cout << "Prepared non-minimized systems in " << testRoot << '\n';

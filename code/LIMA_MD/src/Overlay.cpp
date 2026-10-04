@@ -1,4 +1,5 @@
 #include <GL/glew.h>
+#include "Format.h"
 #include <stb/stb_image.h>
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -129,7 +130,7 @@ namespace
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.f * scale);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1.f, 1.f));
         ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 8.f * scale);
-        const auto windowName = std::format("{}##{}", name, cardLayout.simulationId);
+        const auto windowName = Lima::Format("{}##{}", name, cardLayout.simulationId);
         BeginPanel(windowName.c_str(), ImVec2(x, top), ImVec2(width, 0.f), ImGuiWindowFlags_AlwaysAutoResize);
         for (size_t i = 0; i < sections.size(); ++i) {
             const auto& section = sections[i];
@@ -250,13 +251,13 @@ namespace
             auto& simulation = sections.emplace_back();
             simulation.title = "Simulation";
             if (status.step)
-                simulation.lines.push_back({ "Step", std::format("{}", *status.step) });
+                simulation.lines.push_back({ "Step", Lima::Format("{}", *status.step) });
             if (status.progress)
                 simulation.lines.push_back({ {}, {}, {}, std::clamp(*status.progress, 0.f, 1.f) });
             if (status.temperature)
-                simulation.lines.push_back({ "Temperature", std::format("{:.2f}", *status.temperature), "K" });
+                simulation.lines.push_back({ "Temperature", Lima::Format("{:.2f}", *status.temperature), "K" });
             if (status.maxForce)
-                simulation.lines.push_back({ "Max force", std::format("{:.2e}", *status.maxForce), "kJ/mol/nm" });
+                simulation.lines.push_back({ "Max force", Lima::Format("{:.2e}", *status.maxForce), "kJ/mol/nm" });
             if (status.expectedTimeToFinish)
                 simulation.lines.push_back({ "Remaining", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2) });
         }
@@ -264,9 +265,9 @@ namespace
             auto& performance = sections.emplace_back();
             performance.title = "Performance";
             if (status.avgStepTime)
-                performance.lines.push_back({ "Step time", std::format("{:.3f}", *status.avgStepTime), "ms" });
+                performance.lines.push_back({ "Step time", Lima::Format("{:.3f}", *status.avgStepTime), "ms" });
             if (status.simulationPerformance)
-                performance.lines.push_back({ "Throughput", std::format("{:.2f}", *status.simulationPerformance), "ns/day" });
+                performance.lines.push_back({ "Throughput", Lima::Format("{:.2f}", *status.simulationPerformance), "ns/day" });
         }
         DrawCard("##Telemetry", CardSide::Left, sections);
     }
@@ -276,12 +277,12 @@ namespace
         if (!molecule)
             return;
 		const std::string name = molecule->number > 0
-			? std::format("{} (#{})", molecule->name, molecule->number)
+			? Lima::Format("{} (#{})", molecule->name, molecule->number)
 			: molecule->name;
 		CardSection section{ "Molecule info", { { "Name", name } } };
 		if (molecule->number == 0)
-			section.lines.push_back({ "Molecules selected", std::format("{}", molecule->typeCount) });
-		section.lines.push_back({ "Atoms", std::format("{}", molecule->atomIds.size()) });
+			section.lines.push_back({ "Molecules selected", Lima::Format("{}", molecule->typeCount) });
+		section.lines.push_back({ "Atoms", Lima::Format("{}", molecule->atomIds.size()) });
         DrawCard("##MoleculeInfo", CardSide::Right, {
 			std::move(section)
         });
@@ -323,7 +324,7 @@ namespace
                 }
                 ImGui::EndMenu();
             }
-            const auto fpsText = std::format("{} fps", fps);
+            const auto fpsText = Lima::Format("{} fps", fps);
             const float fpsX = ImGui::GetWindowWidth() - ImGui::CalcTextSize(fpsText.c_str()).x - 14.f;
             if (fpsX > ImGui::GetCursorPosX() + 20.f) {
                 ImGui::SetCursorPosX(fpsX);
@@ -523,8 +524,8 @@ void Overlay::DrawTile(SimulationId simulationId, const RenderContext& context,
         static_cast<float>(viewport.size.x), tiled, simulationId, scale };
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
     if (tiled) {
-        const auto label = context.label.empty() ? std::format("Simulation {}", simulationId + 1) : context.label;
-        const auto name = std::format("##TileTitle{}", simulationId);
+        const auto label = context.label.empty() ? Lima::Format("Simulation {}", simulationId + 1) : context.label;
+        const auto name = Lima::Format("##TileTitle{}", simulationId);
         const float titleHeight = ImGui::GetTextLineHeight() + 6.f * scale;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.f * scale, 3.f * scale));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1.f, 1.f));

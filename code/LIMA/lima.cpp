@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "Format.h"
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -136,7 +137,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
                 lipidPercentage = std::stod(args[i+1]);
             }
             catch (...) {
-				throw CliError(std::format("invalid percentage '{}' for lipid '{}'", args[i + 1], args[i]));
+				throw CliError(Lima::Format("invalid percentage '{}' for lipid '{}'", args[i + 1], args[i]));
             }
 			lipids.emplace_back(lipidname, lipidPercentage);
 		}
@@ -205,7 +206,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
             return a.second < b.second;
         }
     );
-    std::cout << std::format("buildmembrane finished with a min max-force of {:.3f}\n", force);
+    std::cout << Lima::Format("buildmembrane finished with a min max-force of {:.3f}\n", force);
 
 	return 0;
 }
@@ -247,7 +248,7 @@ int Cli::RunRender(int argc, char** argv) {
 		conversion.emplace(Programs::ToGmx(conf, Programs::ParseWaterModel(water)));
 	}
 	else if (extension != ".gro") {
-		throw std::runtime_error(std::format(
+		throw std::runtime_error(Lima::Format(
 			"lima render expects a .gro, .pdb, or .cif input file, got {}", conf.string()));
 	}
 
@@ -377,9 +378,9 @@ int Cli::RunSolvate(int argc, char** argv) {
     parser.Parse(argc, argv);
 
     if (!fs::exists(confPath))
-        throw CliError(std::format("input coordinates not found: {}", confPath.string()));
+        throw CliError(Lima::Format("input coordinates not found: {}", confPath.string()));
     if (!fs::exists(topologyPath))
-        throw CliError(std::format("input topology not found: {}", topologyPath.string()));
+        throw CliError(Lima::Format("input topology not found: {}", topologyPath.string()));
     if (density <= 0)
         throw CliError("option '--density' must be positive");
 
@@ -467,10 +468,10 @@ int Cli::RunInsertMolecules(int argc, char** argv) {
     parser.AddFlag({ "--display", "-d", "-display" }, [&display]() {display = true; });
     parser.Parse(argc, argv);
 
-    if (!fs::exists(confSrcPath)) throw std::runtime_error(std::format("source coordinates not found: {}", confSrcPath.string()));
-    if (!fs::exists(topSrcPath)) throw std::runtime_error(std::format("source topology not found: {}", topSrcPath.string()));
-    if (!fs::exists(confTgtPath)) throw std::runtime_error(std::format("target coordinates not found: {}", confTgtPath.string()));
-	if (!fs::exists(topTgtPath)) throw std::runtime_error(std::format("target topology not found: {}", topTgtPath.string()));
+    if (!fs::exists(confSrcPath)) throw std::runtime_error(Lima::Format("source coordinates not found: {}", confSrcPath.string()));
+    if (!fs::exists(topSrcPath)) throw std::runtime_error(Lima::Format("source topology not found: {}", topSrcPath.string()));
+    if (!fs::exists(confTgtPath)) throw std::runtime_error(Lima::Format("target coordinates not found: {}", confTgtPath.string()));
+	if (!fs::exists(topTgtPath)) throw std::runtime_error(Lima::Format("target topology not found: {}", topTgtPath.string()));
 
 	confTgtPath = fs::absolute(confTgtPath);
 	topTgtPath = fs::absolute(topTgtPath);
@@ -705,7 +706,7 @@ void PrintGeneralHelp() {
                  "LIMA is a suite of molecular-dynamics and membrane-simulation tools.\n\n"
                  "Commands:\n";
     for (const auto& command : Cli::Commands)
-        std::cout << std::format("  {:<20} {}\n", command.name, command.summary);
+        std::cout << Lima::Format("  {:<20} {}\n", command.name, command.summary);
     std::cout << "\nRun 'lima help COMMAND' or 'lima COMMAND --help' for command help.\n";
 }
 
@@ -731,7 +732,7 @@ int Dispatch(int argc, char** argv) {
         }
         if (argc != 3) throw CliError("usage: lima help COMMAND");
         const auto* command = FindCommand(argv[2]);
-        if (!command) throw CliError(std::format("unrecognized command '{}'", argv[2]));
+        if (!command) throw CliError(Lima::Format("unrecognized command '{}'", argv[2]));
         std::cout << command->helpText;
         return 0;
     }
@@ -742,7 +743,7 @@ int Dispatch(int argc, char** argv) {
     }
 
     const auto* command = FindCommand(argument);
-    if (!command) throw CliError(std::format("unrecognized command '{}'", argument));
+    if (!command) throw CliError(Lima::Format("unrecognized command '{}'", argument));
     return HandlerOf(*command)(argc, argv);
 }
 

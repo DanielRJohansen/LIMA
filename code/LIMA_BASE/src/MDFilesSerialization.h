@@ -1,6 +1,7 @@
 //#include "pch.h"
 
 #include "MDFiles.h"
+#include "Format.h"
 #include "Filehandling.h"
 
 #include <cereal/types/vector.hpp>
@@ -159,7 +160,7 @@ inline void readGroFileFromBinaryCache(const fs::path& path, GroFile& file) {
 	uint64_t titleLength = 0;
 	ReadRaw(is, titleLength);
 	if (!is || titleLength > fs::file_size(binaryPath))
-		throw std::runtime_error(std::format("Corrupt cache file {}", binaryPath.string()));
+		throw std::runtime_error(Lima::Format("Corrupt cache file {}", binaryPath.string()));
 	file.title.resize(titleLength);
 	is.read(file.title.data(), titleLength);
 	ReadRaw(is, file.box_size);
@@ -167,12 +168,12 @@ inline void readGroFileFromBinaryCache(const fs::path& path, GroFile& file) {
 	uint64_t nAtoms = 0;
 	ReadRaw(is, nAtoms);
 	if (!is || fs::file_size(binaryPath) != static_cast<uint64_t>(is.tellg()) + nAtoms * sizeof(GroRecord))
-		throw std::runtime_error(std::format("Corrupt cache file {}", binaryPath.string()));
+		throw std::runtime_error(Lima::Format("Corrupt cache file {}", binaryPath.string()));
 
 	file.atoms.resize(nAtoms);
 	is.read(reinterpret_cast<char*>(file.atoms.data()), nAtoms * sizeof(GroRecord));
 	if (!is)
-		throw std::runtime_error(std::format("Failed to read cache file {}", binaryPath.string()));
+		throw std::runtime_error(Lima::Format("Failed to read cache file {}", binaryPath.string()));
 
 	file.readFromCache = true;
 }
@@ -185,7 +186,7 @@ inline void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> 
 		throw std::runtime_error("Tried to cache a Gro file with no path");
 	const fs::path binaryPath = path.string() + ".bin";
 	static std::atomic<uint64_t> nextTemporaryId = 0;
-	const fs::path temporaryPath = std::format("{}.{}.{}.{}.tmp", binaryPath.string(),
+	const fs::path temporaryPath = Lima::Format("{}.{}.{}.{}.tmp", binaryPath.string(),
 		std::hash<std::thread::id>{}(std::this_thread::get_id()),
 		std::chrono::steady_clock::now().time_since_epoch().count(), nextTemporaryId++);
 	bool written = false;
@@ -282,7 +283,7 @@ static bool UseCachedBinaryFile(const fs::path& path) {
 	std::ifstream file;
 	file.open(binaryPath);
 	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+		throw std::runtime_error(Lima::Format("Failed to open file {}\n", path.string()).c_str());
 	}
 
 	// Read the version number as a 64-bit unsigned integer

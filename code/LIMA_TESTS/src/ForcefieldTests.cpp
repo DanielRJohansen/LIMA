@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 #include "Programs.h"
 #include "TestUtils.h"
 
@@ -223,7 +224,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
         const auto g = bondparamsGromacs[i];
         const auto l = bondparamsLima[i];
 
-        const std::string errMsg = std::format("Singlebond mismatch at index {}\n\t {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}", 
+        const std::string errMsg = Lima::Format("Singlebond mismatch at index {}\n\t {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}", 
             i, atomnamesSinglebonds[i][0], atomnamesSinglebonds[i][1], g.b0, g.kb, l.b0, l.kb);
 
         ASSERT(std::abs(l.b0 - g.b0) < 0.001f && std::abs((l.kb - g.kb)/std::max(g.kb, 1.f)) < maxError, errMsg);
@@ -239,7 +240,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
 		const auto g = angleparamsGromacs[i];
 		const auto l = angleparamsLima[i];
 
-		const std::string errMsg = std::format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e} {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e} {:.4e} {:.4e}",
+		const std::string errMsg = Lima::Format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e} {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e} {:.4e} {:.4e}",
 			i, atomnamesAnglebonds[i][0], atomnamesAnglebonds[i][1], atomnamesAnglebonds[i][2], g.theta0, g.kTheta, g.ub0, g.kUB, l.theta0, l.kTheta, l.ub0, l.kUB);
 
 		ASSERT(
@@ -260,7 +261,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
 		const auto g = dihedralparamsGromacs[i];
 		const auto l = dihedralparamsLima[i];
 
-		const std::string errMsg = std::format("Dihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e} {}\n\tLIMA params: {:.4e} {:.4e} {}",
+		const std::string errMsg = Lima::Format("Dihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e} {}\n\tLIMA params: {:.4e} {:.4e} {}",
 			i, atomnamesDihedralbonds[i][0], atomnamesDihedralbonds[i][1], atomnamesDihedralbonds[i][2], atomnamesDihedralbonds[i][3], 
             (float)g.phi_0, (float)g.k_phi, (float)g.n, (float)l.phi_0, (float)l.k_phi, (float)l.n);
 
@@ -280,7 +281,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
         const auto g = improperDihedralparamsGromacs[i];
         const auto l = improperDihedralparamsLima[i];
 
-        const std::string errMsg = std::format("ImproperDihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
+        const std::string errMsg = Lima::Format("ImproperDihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
 			i, atomnamesImproperDihedralbonds[i][0], atomnamesImproperDihedralbonds[i][1], atomnamesImproperDihedralbonds[i][2], atomnamesImproperDihedralbonds[i][3], g.psi_0, g.k_psi, l.psi_0, l.k_psi);
 
         ASSERT(std::abs(l.psi_0 - g.psi_0) < 0.001f && std::abs((l.k_psi - g.k_psi) / std::max(g.k_psi, 1.f)) < maxError, errMsg);

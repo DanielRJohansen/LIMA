@@ -1,4 +1,5 @@
 #include "SimulationBuilder.h"
+#include "Format.h"
 
 #include "BoundaryConditionPublic.h"
 #include "EngineCore.h"
@@ -122,13 +123,13 @@ void validateLipidselection(const Lipids::Selection& lipidselection) {
 		total_percentage += lipid.percentage;
 	}
 	if (std::abs(total_percentage - 100) > 0.00001f) {
-		throw std::runtime_error(std::format("Invalid lipid selection, did not add up to 100% {:.2f}", total_percentage));
+		throw std::runtime_error(Lima::Format("Invalid lipid selection, did not add up to 100% {:.2f}", total_percentage));
 	}
 
 	for (const auto& lipid : lipidselection) {
 		//if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
 		if (lipid.grofile->atoms.size() != lipid.topfile->GetMoleculeType().atoms.size()) {
-			throw std::runtime_error(std::format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
+			throw std::runtime_error(Lima::Format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
 				lipid.grofile->m_path.string(), lipid.topfile->path.string())
 			);
 		}
@@ -336,7 +337,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 		std::max(1, static_cast<int>(std::round(grofile.box_size.z * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))) };
 	const Float3 latticeSpacing{ grofile.box_size.x / latticeDim.x, grofile.box_size.y / latticeDim.y, grofile.box_size.z / latticeDim.z };
 	if (std::min({ latticeSpacing.x, latticeSpacing.y, latticeSpacing.z }) < distanceThreshold)
-		throw std::invalid_argument(std::format("Solvent density {}/nm^3 is too high, the maximum is {}",
+		throw std::invalid_argument(Lima::Format("Solvent density {}/nm^3 is too high, the maximum is {}",
 			desiredSolventsPerNm3, static_cast<int>(1.f / (distanceThreshold * distanceThreshold * distanceThreshold))));
 
 	for (int x = 0; x < latticeDim.x; x++) {
@@ -996,10 +997,10 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, const Float3& center, const Float3& radii,
 	const std::string& shapeName, int randomSeed) {
 	if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z))
-		throw std::invalid_argument(std::format("Membrane {} center must contain finite coordinates.", shapeName));
+		throw std::invalid_argument(Lima::Format("Membrane {} center must contain finite coordinates.", shapeName));
 	if (!std::isfinite(radii.x) || !std::isfinite(radii.y) || !std::isfinite(radii.z)
 		|| radii.x <= 0.f || radii.y <= 0.f || radii.z <= 0.f) {
-		throw std::invalid_argument(std::format(
+		throw std::invalid_argument(Lima::Format(
 			"Membrane {} radii must be positive, finite numbers.", shapeName));
 	}
 
@@ -1008,7 +1009,7 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 	const float longestAxis = std::max({ radii.x, radii.y, radii.z });
 	const float minimumCurvatureRadius = shortestAxis * shortestAxis / longestAxis;
 	if (minimumCurvatureRadius < minimumRadius) {
-		throw std::invalid_argument(std::format(
+		throw std::invalid_argument(Lima::Format(
 			"Membrane {} is too tightly curved for the selected lipids; minimum local curvature radius "
 			"is {:.3f} nm, but {:.3f} nm is required.",
 			shapeName, minimumCurvatureRadius, minimumRadius));

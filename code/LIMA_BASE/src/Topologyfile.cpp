@@ -1,4 +1,5 @@
 #include "MDFiles.h" 
+#include "Format.h"
 #include "Filehandling.h"
 
 #
@@ -71,7 +72,7 @@ public:
 		if (directive == "exclusions") return notimplemented;
 		if (directive == "nonbond_params") return notimplemented; // TODO implement this: https://manual.gromacs.org/current/reference-manual/topologies/parameter-files.html
 
-		throw std::runtime_error(std::format("Got unexpected topology directive: {}", directive));
+		throw std::runtime_error(Lima::Format("Got unexpected topology directive: {}", directive));
 	}
 };
 
@@ -207,7 +208,7 @@ namespace {
 
 		int groId = -1;
 		if (!ParseValue<int>(sv, groId) || groId < 0)
-			throw std::runtime_error(std::format("Failed to read atom id in line: {}", sv));
+			throw std::runtime_error(Lima::Format("Failed to read atom id in line: {}", sv));
 		ParseValue(sv, atom.type);
 		ParseValue<int>(sv, atom.resnr);
 		ParseValue(sv, atom.residue);
@@ -514,7 +515,7 @@ private:
 			const size_t open = rest.find_first_of("\"<");
 			const size_t close = open == std::string_view::npos ? open : rest.find_first_of("\">", open + 1);
 			if (close == std::string_view::npos || close == open + 1)
-				throw std::runtime_error(std::format("Include is not formatted as expected: {}", line));
+				throw std::runtime_error(Lima::Format("Include is not formatted as expected: {}", line));
 			directive.argument = rest.substr(open + 1, close - open - 1);
 
 			const std::string& filename = directive.argument;
@@ -566,7 +567,7 @@ private:
 	// Returns the index of the new instance
 	int Resolve(int fileIndex, std::optional<fs::path> includeName, int depth) {
 		if (depth > 64)
-			throw std::runtime_error(std::format("Include depth exceeded 64 in file {}, is there a recursive #include?", files[fileIndex]->path.string()));
+			throw std::runtime_error(Lima::Format("Include depth exceeded 64 in file {}, is there a recursive #include?", files[fileIndex]->path.string()));
 
 		const int instanceIndex = static_cast<int>(instances.size());
 		instances.emplace_back(Instance{ fileIndex, includeName, {} });
@@ -580,7 +581,7 @@ private:
 		size_t cursor = 0;	// Start of the text since the previous directive
 
 		auto Error = [&](std::string_view message) {
-			return std::runtime_error(std::format("{} in file {}", message, file.path.string()));
+			return std::runtime_error(Lima::Format("{} in file {}", message, file.path.string()));
 			};
 
 		using Kind = Directive::Kind;
@@ -632,7 +633,7 @@ private:
 				if (!active || directive.ignoredInclude)
 					break;
 				if (directive.includeFile == -1)
-					throw std::runtime_error(std::format("Could not find file \"{}\" in directory \"{}\"", directive.argument, file.path.parent_path().string()));
+					throw std::runtime_error(Lima::Format("Could not find file \"{}\" in directory \"{}\"", directive.argument, file.path.parent_path().string()));
 				pieces.emplace_back(Piece{ 0, 0, Resolve(directive.includeFile, directive.argument, depth + 1) });
 				break;
 			case Kind::Other:
@@ -772,14 +773,14 @@ private:
 				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());
 			const auto moleculetype = topology.moleculetypes.find(molname);
 			if (moleculetype == topology.moleculetypes.end())
-				throw std::runtime_error(std::format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
+				throw std::runtime_error(Lima::Format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
 			if (count > 0)
 				topology.m_system.molecules.emplace_back(TopologyFile::MoleculeEntry{ molname, moleculetype->second, count });
 			break;
 		}
 		default:	// Forcefield sections
 			if (!topology.forcefieldInclude)
-				throw std::runtime_error(std::format("Forcefield section encountered before [ defaults ] in file: {}", path.string()));
+				throw std::runtime_error(Lima::Format("Forcefield section encountered before [ defaults ] in file: {}", path.string()));
 			topology.forcefieldInclude->AddEntry(state.section, std::string{ line });
 			break;
 		}
@@ -833,7 +834,7 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path)
 	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
 		throw std::runtime_error("Expected .top or .itp extension");
 	if (!fs::exists(path))
-		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+		throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string()));
 
 	TopologyParser{ *this }.Parse(path);
 }
@@ -841,13 +842,13 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path)
 
 
 GenericItpFile::GenericItpFile(const fs::path& path) {
-	if (!(path.extension().string() == ".itp" || path.extension().string() == ".top")) { throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string())); }
-	if (!fs::exists(path)) { throw std::runtime_error(std::format("File \"{}\" was not found", path.string())); }
+	if (!(path.extension().string() == ".itp" || path.extension().string() == ".top")) { throw std::runtime_error(Lima::Format("Expected .itp extension with file {}", path.string())); }
+	if (!fs::exists(path)) { throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string())); }
 
 	std::ifstream file;
 	file.open(path);
 	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
+		throw std::runtime_error(Lima::Format("Failed to open file {}\n", path.string()));
 	}
 
 	TopologySection current_section{ TopologySection::title };
@@ -904,10 +905,10 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 void GenericItpFile::printToFile(const fs::path& path) const {
 	if (path.extension() != ".itp") {
-		throw std::runtime_error(std::format("Expected .itp extension with file {}", path.string()));
+		throw std::runtime_error(Lima::Format("Expected .itp extension with file {}", path.string()));
 	}
 	std::ofstream file(path);
-	if (!file) throw std::runtime_error(std::format("Failed to create {}", path.string()));
+	if (!file) throw std::runtime_error(Lima::Format("Failed to create {}", path.string()));
 
 	for (const auto& include : GetSection(includes)) file << "#include \"" << include << "\"\n";
 	constexpr std::array sectionNames{
@@ -939,13 +940,13 @@ void TopologyFile::ForcefieldInclude::AddEntry(TopologySection section, const st
 
 void TopologyFile::ForcefieldInclude::SaveToDir(const fs::path& directory) const {
 	if (!fs::is_directory(directory)) {
-		throw std::runtime_error(std::format("Directory \"{}\" does not exist", directory.string()));
+		throw std::runtime_error(Lima::Format("Directory \"{}\" does not exist", directory.string()));
 	}
 	if (filename.extension() != ".itp")
 		throw std::runtime_error("Forcefield include name must have .itp extension");	
 	std::ofstream file(directory / "forcefield.itp");
 	if (!file.is_open()) {
-		throw std::runtime_error(std::format("Failed to open file {}", (directory / "forcefield.itp").string()));
+		throw std::runtime_error(Lima::Format("Failed to open file {}", (directory / "forcefield.itp").string()));
 	}
 
 	file << "[ defaults ]\n";
@@ -991,7 +992,7 @@ void TopologyFile::AppendMolecule(const std::string& moleculename) {
 		throw std::runtime_error("System is not initialized");
 	}
 	if (!moleculetypes.contains(moleculename)) {
-		throw std::runtime_error(std::format("Moleculetype {} not found in topology", moleculename));
+		throw std::runtime_error(Lima::Format("Moleculetype {} not found in topology", moleculename));
 	}
 
 	if (!m_system.molecules.empty() && m_system.molecules.back().name == moleculename)
@@ -1031,13 +1032,13 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 
 void TopologyFile::printToFile(const std::filesystem::path& path) const {
 	const auto ext = path.extension().string();
-	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(std::format("Got {} extension, expected [.top/.itp]", ext)); }
+	if (ext != ".top" && ext != ".itp") { throw std::runtime_error(Lima::Format("Got {} extension, expected [.top/.itp]", ext)); }
 	if (!path.parent_path().empty())
 		fs::create_directories(path.parent_path());
 	{
 		std::ofstream file(path);
 		if (!file.is_open()) {
-			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+			throw std::runtime_error(Lima::Format("Failed to open file {}", path.string()));
 		}
 		
 		file << "; " << title << "\n\n";
@@ -1142,7 +1143,7 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 	{
 		std::ofstream file(path);
 		if (!file.is_open()) {
-			throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+			throw std::runtime_error(Lima::Format("Failed to open file {}", path.string()));
 		}
 
 		file << "; " << name << "\n\n";

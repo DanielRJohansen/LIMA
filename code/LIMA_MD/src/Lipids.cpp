@@ -1,4 +1,5 @@
 #include "Lipids.h"
+#include "Format.h"
 #include "Simulation.cuh"
 #include "Statistics.h"
 #include "MoleculeUtils.h"
@@ -18,7 +19,7 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 	const fs::path defaultLipidsDir = FileUtils::GetLimaDir() / ("resources/Slipids");
 
 	if (!userSupplied && !fs::exists(defaultLipidsDir / (lipidname + ".itp"))) {
-		throw std::runtime_error(std::format("Failed to find lipid: {}, looked here: \n\t{}\nAnd here:\n\t{}",
+		throw std::runtime_error(Lima::Format("Failed to find lipid: {}, looked here: \n\t{}\nAnd here:\n\t{}",
 			lipidname, workDir.string(), defaultLipidsDir.string()));
 	}
 
@@ -33,7 +34,7 @@ Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, do
 std::string Lipids::NameSelection(const Selection& selection) {
 	std::ostringstream oss;
 	for (const auto& sel : selection) {
-		oss << sel.lipidname << "(" << std::format("{:.1f}", sel.percentage) << "%)_";
+		oss << sel.lipidname << "(" << Lima::Format("{:.1f}", sel.percentage) << "%)_";
 	}
 	return oss.str();
 }

@@ -86,6 +86,16 @@ function(lima_pch target)
 	endif()
 endfunction()
 
+# Unity build: a target's C++ sources are compiled in batches, which saves parsing the same headers and compiling the
+# same template instantiations once per file. The CUDA targets are excluded, their sources must stay separate.
+# A batch should not take much longer than Engine.cu, the longest step of the build
+option(LIMA_UNITY "Compile the C++ sources of a target in batches" ON)
+function(lima_unity target batchSize)
+	if (LIMA_UNITY)
+		set_target_properties(${target} PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${batchSize})
+	endif()
+endfunction()
+
 # Ninja starts jobs in the order targets are defined, so the CUDA libraries go first: they are the slowest
 # compiles by far (~70 s each), and every other target can be built alongside them
 add_subdirectory(code/LIMA_ENGINE)
@@ -96,6 +106,12 @@ add_subdirectory(code/LIMA_TOOLS)
 add_subdirectory(code/LIMA_MD)
 add_subdirectory(code/LIMA_TESTS)
 add_subdirectory(code/LIMA)
+
+lima_unity(LIMA_BASE 8)
+lima_unity(LIMA_TOOLS 8)
+lima_unity(LIMA_MD 5)
+lima_unity(LIMA_TESTCASES 5)
+lima_unity(agenttesting 8)
 
 if (UNIX)
 	# Copy the resources to the appropriate directory

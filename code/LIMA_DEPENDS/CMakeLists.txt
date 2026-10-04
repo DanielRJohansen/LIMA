@@ -81,3 +81,22 @@ target_link_libraries(LIMA_DEPENDS PUBLIC
 target_compile_definitions(LIMA_DEPENDS PUBLIC GLEW_STATIC GLEW_NO_GLU)
 
 set_target_properties(LIMA_DEPENDS PROPERTIES LINKER_LANGUAGE CXX)
+# Unity build in hand-picked groups (see LIMA_UNITY): qhull's many small sources share headers and are cheap to merge,
+# split in two groups to compile in parallel. imgui's sources are each large, so they stay separate, as do glew.c and
+# xdrfile (whose sources redefine each other's types)
+if (LIMA_UNITY)
+    set_target_properties(LIMA_DEPENDS PROPERTIES UNITY_BUILD ON UNITY_BUILD_MODE GROUP)
+    get_target_property(dependsSources LIMA_DEPENDS SOURCES)
+    foreach(source ${dependsSources})
+        if (source MATCHES "libqhull_r/(qset|poly|poly2|merge|geom2)_r")
+            set_source_files_properties(${source} PROPERTIES UNITY_GROUP qhull_r_a)
+        elseif (source MATCHES "libqhull_r/")
+            set_source_files_properties(${source} PROPERTIES UNITY_GROUP qhull_r_b)
+        elseif (source MATCHES "libqhullcpp/")
+            set_source_files_properties(${source} PROPERTIES UNITY_GROUP qhullcpp)
+        endif()
+    endforeach()
+endif()
+
+# LIMA does not use the imgui demo window, this compiles it to empty stubs
+set_source_files_properties(imgui/imgui_demo.cpp PROPERTIES COMPILE_DEFINITIONS IMGUI_DISABLE_DEMO_WINDOWS)

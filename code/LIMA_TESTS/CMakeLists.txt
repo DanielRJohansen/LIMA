@@ -28,11 +28,9 @@ target_include_directories(LIMA_TESTCASES PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_link_libraries(LIMA_TESTCASES PUBLIC LIMA_BASE LIMA_MD)
-# Its own PCH, as TestUtils.h (included by every test) costs ~4 s per file to parse
-target_precompile_headers(LIMA_TESTCASES PRIVATE
-    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/code/LIMA_BASE/include/lima_pch.h>"
-    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/Tests.h>"
-)
+# The test sources are compiled as a few unity batches (see lima_unity), so TestUtils.h is parsed a few times only, and
+# a test-specific PCH would cost more to build than it saves
+lima_pch(LIMA_TESTCASES)
 
 set(SOURCE_FILES
     #src/AlgorithmTests.cu
@@ -108,7 +106,6 @@ target_link_libraries(limaprofile LIMA_TESTCASES)
 #    #target_compile_options(limaprofile PRIVATE /O2)
 #endif()
 
-# The test PCH (incl. Tests.h and TestUtils.h): main.cpp compiles in ~1 s instead of ~5 s
-target_precompile_headers(limatest REUSE_FROM LIMA_TESTCASES)
-target_precompile_headers(agenttesting REUSE_FROM LIMA_TESTCASES)
-target_precompile_headers(limaprofile REUSE_FROM LIMA_TESTCASES)
+lima_pch(limatest)
+lima_pch(agenttesting)
+lima_pch(limaprofile)

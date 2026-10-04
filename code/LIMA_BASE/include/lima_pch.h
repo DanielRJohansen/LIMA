@@ -28,3 +28,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+// Third party
+#include <cuda_runtime.h>
+#include <glm.hpp>
+
+// LIMA headers included by most files. Changing one of these recompiles every C++ file, which is close to what
+// changing them did anyway
+#include "LimaTypes.cuh"
+#include "Bodies.cuh"
+#include "Simulation.cuh"
+#include "Filehandling.h"
+#include "MDFiles.h"
+#include "Utilities.h"
+#include "TimeIt.h"

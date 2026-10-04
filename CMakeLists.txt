@@ -107,6 +107,11 @@ add_subdirectory(code/LIMA_MD)
 add_subdirectory(code/LIMA_TESTS)
 add_subdirectory(code/LIMA)
 
+# These include <windows.h> on Windows, whose macros would leak into the sources batched after them
+if (WIN32)
+	set_source_files_properties(code/LIMA_BASE/src/Filehandling.cpp DIRECTORY code/LIMA_BASE PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+	set_source_files_properties(code/LIMA_MD/src/Analyzer.cpp code/LIMA_MD/src/Display.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
 lima_unity(LIMA_BASE 8)
 lima_unity(LIMA_TOOLS 8)
 lima_unity(LIMA_MD 5)

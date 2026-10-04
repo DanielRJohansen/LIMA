@@ -96,8 +96,8 @@ function(lima_unity target batchSize)
 	endif()
 endfunction()
 
-# Ninja starts jobs in the order targets are defined, so the CUDA libraries go first: they are the slowest
-# compiles by far (~70 s each), and every other target can be built alongside them
+# Ninja starts jobs in the order targets are defined, so the CUDA libraries go first: Engine.cu is the slowest
+# compile, and every other target can be built alongside it
 add_subdirectory(code/LIMA_ENGINE)
 add_subdirectory(code/LIMA_CONVEXHULLENGINE)
 add_subdirectory(code/LIMA_DEPENDS)
@@ -110,8 +110,10 @@ add_subdirectory(code/LIMA)
 # These include <windows.h> on Windows, whose macros would leak into the sources batched after them
 if (WIN32)
 	set_source_files_properties(code/LIMA_BASE/src/Filehandling.cpp DIRECTORY code/LIMA_BASE PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
-	set_source_files_properties(code/LIMA_MD/src/Analyzer.cpp code/LIMA_MD/src/Display.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+	set_source_files_properties(code/LIMA_MD/src/Analyzer.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 endif()
+# The longest C++ sources compile on their own, so no batch gets much longer than them
+set_source_files_properties(code/LIMA_MD/src/Pdb2gmx.cpp code/LIMA_MD/src/Display.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 lima_unity(LIMA_BASE 8)
 lima_unity(LIMA_TOOLS 8)
 lima_unity(LIMA_MD 5)

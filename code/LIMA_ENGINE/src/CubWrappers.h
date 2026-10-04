@@ -1,13 +1,14 @@
 #pragma once
 
-// Thin wrappers around the thrust algorithms the engine uses. Thrust's headers take ~16 s to compile, so they are
-// kept out of Engine.cu (the slowest file in the build) and only ThrustWrappers.cu includes them.
-// The calls are the same as before, so the generated code is unchanged.
+// The device-wide algorithms the engine uses, in their own translation unit to keep CUB's headers out of Engine.cu.
+// Calls CUB directly rather than through thrust, which dispatches to the same CUB algorithms but takes twice as
+// long to compile.
+// Like the thrust calls they replace, each call synchronizes its stream and throws on CUDA errors.
 
 #include <cuda_runtime.h>
 #include <cstddef>
 
-namespace ThrustWrappers {
+namespace CubWrappers {
 	void ExclusiveScan(const int* first, const int* last, int* result, cudaStream_t stream);
 	void FillN(int* first, size_t count, int value, cudaStream_t stream);
 	// Sums in double precision

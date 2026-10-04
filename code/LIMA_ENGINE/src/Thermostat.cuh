@@ -4,7 +4,7 @@
 #include "PhysicsUtilsDevice.cuh"
 #include "BatchLayout.cuh"
 
-#include "ThrustWrappers.h"
+#include "CubWrappers.h"
 
 #include <cuda_runtime.h>
 
@@ -57,7 +57,7 @@ public:
 	// Keep each simulation's reduction order and degrees of freedom independent.
 	std::pair<float, float> Temperature(const BoxParams& boxparams, const SimParams& simparams, BatchRange pclusters, cudaStream_t stream) {
 		const float* begin = intermediate + pclusters.offset * PersistentCluster::maxParticles;
-		const double totalKineticEnergy = ThrustWrappers::Sum(begin, begin + pclusters.count * PersistentCluster::maxParticles, stream);
+		const double totalKineticEnergy = CubWrappers::Sum(begin, begin + pclusters.count * PersistentCluster::maxParticles, stream);
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
 		return {temperature, _Thermostat::ComputeThermostatScalar(temperature, simparams)};
 	}

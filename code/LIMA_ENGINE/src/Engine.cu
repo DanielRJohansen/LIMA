@@ -407,7 +407,7 @@ CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer(size_t simulationId) {
 	batch->forcesMagnitudeCopyBuffer.Expand(count);
 	if (sim.finalized) cudaMemcpy(batch->forcesMagnitudeCopyBuffer.Get(), sim.finalForcesMagnitudeSquared.data(), sizeof(float) * count, cudaMemcpyHostToDevice);
 	else cudaMemcpy(batch->forcesMagnitudeCopyBuffer.Get(), batch->forcesMagnitudeSquareDevice.Get() + range.offset, sizeof(float) * count, cudaMemcpyDeviceToDevice);
-	ThrustWrappers::SqrtInPlace(batch->forcesMagnitudeCopyBuffer.Get(), count);
+	CubWrappers::SqrtInPlace(batch->forcesMagnitudeCopyBuffer.Get(), count);
 	return batch->forcesMagnitudeCopyBuffer;
 }
 

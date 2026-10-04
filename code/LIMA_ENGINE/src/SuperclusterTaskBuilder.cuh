@@ -66,7 +66,7 @@ public:
 		cudaMemsetAsync(contents.interactionsOwned, 0xFF,
 			sizeof(InteractionToken) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound, stream);
 		//cudaMemset(contents.scIdsQueryNonowned, 0xFF, sizeof(int) * TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound);
-		ThrustWrappers::FillN(contents.scIdsQueryNonowned,
+		CubWrappers::FillN(contents.scIdsQueryNonowned,
 			TaskBuilderControlContents::maxTasksPerSc * nSuperclustersUpperbound, INT_MAX, stream);
 	}
 
@@ -589,14 +589,14 @@ bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {
 	cudaMemsetAsync(batch->taskbuilderControl->contents.nResults + batch->nSuperclusters, 0, sizeof(int), stream);
 	cudaMemsetAsync(batch->taskbuilderControl->contents.nInteractionsOwned + batch->nSuperclusters, 0, sizeof(int), stream);
 
-	ThrustWrappers::ExclusiveScan(
+	CubWrappers::ExclusiveScan(
 		batch->taskbuilderControl->contents.nResults,
 		batch->taskbuilderControl->contents.nResults + batch->nSuperclusters + 1,
 		batch->taskbuilderControl->contents.nResultsPrefixsum,
 		stream
 	);
 
-	ThrustWrappers::ExclusiveScan(
+	CubWrappers::ExclusiveScan(
 		batch->taskbuilderControl->contents.nInteractionsOwned,
 		batch->taskbuilderControl->contents.nInteractionsOwned + batch->nSuperclusters + 1,
 		batch->taskbuilderControl->contents.nQueryBuffersPrefixsum,

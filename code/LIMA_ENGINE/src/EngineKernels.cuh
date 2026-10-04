@@ -7,10 +7,10 @@
 
 #include "BoundaryCondition.cuh"
 #include "DeviceAlgorithms.cuh"
+#include "Utilities.h"
 
 //#include <cuda/pipeline>
 #include "LennardJonesInteractions.cuh"
-#include "ParticleClusters.cuh"
 
 
 

@@ -754,8 +754,8 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		const double completionFraction = (double)step / (double)simulation->simParams.n_steps;
-		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = step > 0 && simulation->simParams.n_steps > 0 && simulationTimer.has_value()
-			? std::optional<std::chrono::duration<double>> {simulationTimer->Elapsed()* (1. / completionFraction * (1.-completionFraction))}
+		const std::optional<double> expectedTimeToFinish = step > 0 && simulation->simParams.n_steps > 0 && simulationTimer.has_value()
+			? std::optional<double>{ simulationTimer->Elapsed().count() * (1. / completionFraction * (1.-completionFraction)) }
 			: std::nullopt;
 
 		SimStatus newStatus{};

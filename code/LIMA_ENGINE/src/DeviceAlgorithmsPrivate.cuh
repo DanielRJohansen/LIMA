@@ -3,9 +3,11 @@
 #include "DeviceAlgorithms.cuh"
 #include "PhysicsUtils.cuh"
 
+#include <algorithm>
+
 namespace LAL {
 	//static_assert(USE_PRECOMPUTED_BSPLINES == false, "Precomputed B-spline LUT is disabled. Please set USE_PRECOMPUTED_BSPLINES to false.");
-	__device__ void CalcBspline(float f, float* w) {
+	__device__ inline void CalcBspline(float f, float* w) {
 		/*
 		// Disabled precomputed B-spline LUT. Keep this implementation for potential future use.
 		if constexpr (USE_PRECOMPUTED_BSPLINES) {

@@ -1,52 +1,20 @@
-#pragma once
+// The particle clustering kernels and Engine::RunClustering. A translation unit of its own, compiled in parallel with Engine.cu
+
+#include "SuperclusterStagingControl.cuh"
 
 #include "EngineBodies.cuh"
 #include "Engine.cuh"
 #include "SimulationData.h"
-#include "DebugUtils.h"
 #include "CubWrappers.h"
 #include "BoundaryCondition.cuh"
+#include "DeviceAlgorithms.cuh"
+#include "Utilities.h"
+#include "LimaPositionSystem.cuh"
+
+#include <cooperative_groups.h>
+#include <cooperative_groups/memcpy_async.h>
 #include <numeric>
 #include <limits>
-
-
-
-
-
-class SuperclusterStagingControl {
-public:
-	SuperclusterStagingControl() {}
-	__host__ SuperclusterStagingControl(int nBlocks) {
-		//const int nElements = _nBlocks + 1; 
-		//printf("Bytesize %f MB\n", static_cast<float>(byteSize) / 1024.f / 1024.f);
-
-		cudaMalloc(&nClustersPerBlock, sizeof(int) * (nBlocks + 1)); // 1 extra element allows is to see the sum at the final prefixsum index
-		cudaMalloc(&nClustersPrefixSum, sizeof(int) * (nBlocks + 1));
-		cudaMalloc(&scData, sizeof(SuperCluster) * nBlocks * SuperClustersControl::maxClustersPerBlock);
-		cudaMalloc(&scMeta, sizeof(SuperClusterMeta) * nBlocks * SuperClustersControl::maxClustersPerBlock);
-
-		cudaMemset(nClustersPerBlock, 0, sizeof(int) * (nBlocks + 1));
-		cudaMemset(nClustersPrefixSum, 0, sizeof(int) * (nBlocks + 1));
-	}
-
-	__host__ void Free() {
-		if (nClustersPerBlock == nullptr)
-			return;
-
-		cudaFree(nClustersPerBlock);
-		cudaFree(nClustersPrefixSum);
-		cudaFree(scData);
-		cudaFree(scMeta);
-	}
-
-	int* nClustersPerBlock = nullptr;
-	int* nClustersPrefixSum = nullptr;
-	SuperCluster* scData = nullptr;
-	SuperClusterMeta* scMeta = nullptr;
-};
-
-
-
 
 // blockDim = (32, 1, 1)
 __global__ void ApplyBoundaryCondition(PersistentCluster* const pClusters, int nPclusters, Float3 boxSize, Float3 boxSizeInv) {
@@ -226,8 +194,6 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	}
 	__syncthreads();
 
-
-
 	// Now all threads loop over the direction, and if they have a particle, they push it directy to the incoming queue in global memory
 	const NodeIndex blockOrigo = BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize);
 	for (int directionIndex = 0; directionIndex < 6; directionIndex++) {
@@ -367,10 +333,6 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		idsOfPclustersSorted[i] = idsOfPclustersInBlock[i];
 	}
 	__syncthreads();
-
-
-
-
 
 	const int bucketsPerDim = 4;
 	// Sort along z 

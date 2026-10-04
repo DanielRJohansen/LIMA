@@ -3,7 +3,9 @@
 #include "LimaTypes.cuh"
 
 #include <filesystem>
+#ifndef __CUDACC__
 #include <format>
+#endif
 #include <optional>
 #include <set>
 #include <string_view>
@@ -59,6 +61,8 @@ struct SimParam {
     std::optional<std::string_view> comment;
 };
 
+// Not for CUDA files, which have no use for it: <format> takes seconds to compile, three times over in nvcc
+#ifndef __CUDACC__
 template<typename T, typename CharT>
 struct std::formatter<SimParam<T>, CharT> : std::formatter<T, CharT> {
     template<typename FormatContext>
@@ -66,6 +70,7 @@ struct std::formatter<SimParam<T>, CharT> : std::formatter<T, CharT> {
         return std::formatter<T, CharT>::format(param.value, context);
     }
 };
+#endif
 
 struct SimParams {
     SimParams() = default;

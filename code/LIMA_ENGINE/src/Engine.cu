@@ -11,10 +11,9 @@
 #include "Thermostat.cuh"
 #include "Statistics.h"
 #include "Utilities.h"
-#include "DebugUtils.h"
 #include "EngineHostside.h"
-#include "ParticleClusters.cuh"
-#include "SuperclusterTaskBuilder.cuh"
+#include "SuperclusterStagingControl.cuh"
+#include "TaskBuilderControl.cuh"
 #include "BatchData.cuh"
 #include "RenderDataPipe.h"
 

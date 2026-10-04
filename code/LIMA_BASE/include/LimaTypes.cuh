@@ -3,7 +3,8 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <math.h>
-#include <iostream>
+#include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <limits>
 #include <vector>
@@ -11,8 +12,6 @@
 #include <optional>
 #include "Constants.h"
 #include <array>
-#include <ranges>
-//#include <generator>
 
 // TODO: EASY: LARGE: Its a huge waste that the boxsize is a Int3, when it really should be a packed into a single 32 bit DWORD..
 // 1024 nm boxsize is a reasonable limitation. However we cant use the same type for PME grid obviously
@@ -342,7 +341,9 @@ struct BoundingBox {
 
 	constexpr BoundingBox(const std::vector<Float3>& points);
 	//BoundingBox(std::generator<Float3> generator); 
-	BoundingBox(std::ranges::input_range auto&& range) {
+	// Any range of Float3. Constrained without <ranges>, which is slow to compile
+	template <typename Range> requires requires(Range& range) { range.begin(); range.end(); }
+	BoundingBox(Range&& range) {
 		min = Float3{ std::numeric_limits<float>::max() };
 		max = Float3{ std::numeric_limits<float>::min() };
 		for (const Float3& p : range) {

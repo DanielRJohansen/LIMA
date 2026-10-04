@@ -113,7 +113,7 @@ namespace {
 			task->simStatus.step = 24000 + i * 1000;
 			task->simStatus.temperature = 300.12f + i;
 			task->simStatus.maxForce = 1.23e3f;
-			task->simStatus.expectedTimeToFinish = std::chrono::duration<double>{ 154. };
+			task->simStatus.expectedTimeToFinish = 154.;
 			task->simStatus.avgStepTime = .842f;
 			task->simStatus.simulationPerformance = 205.23f;
 			display.Submit(i, std::move(task), false, nullptr, "Preview " + std::to_string(i + 1));

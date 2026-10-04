@@ -7,6 +7,7 @@
 #include "LimaTypes.cuh"
 #include "Filehandling.h"
 
+#include <chrono>
 #include <iostream>
 #include <string>
 #include <algorithm>
@@ -524,7 +525,7 @@ namespace TestUtils {
 			std::cout << "Test " << name << " ";
 			int length = 6 + static_cast<int>(name.length());
 			while (length++ < 61) std::cout << ' ';
-			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed, 1, 2) + ")");
+			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed.count(), 1, 2) + ")");
 			std::cout << std::flush;
 		}
 

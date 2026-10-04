@@ -52,10 +52,10 @@ namespace EngineBatchTests {
 		box.bondgroups.singlebonds.emplace_back(std::array<uint8_t, 2>{0, 1}, SingleBond::Parameters{0.28f, 100.f});
 		box.persistentClustersMetadata[0].bondgroupReferences[0].Add({0, 0});
 		box.persistentClustersMetadata[1].bondgroupReferences[0].Add({0, 1});
-		box.particlesBondedToParticle[0] = ParticlesBondedToParticle::Create({4});
-		box.particlesBondedToParticle[4] = ParticlesBondedToParticle::Create({0});
-		box.pclustersBondedToPcluster[0] = PclustersBondedToPcluster::Create({1});
-		box.pclustersBondedToPcluster[1] = PclustersBondedToPcluster::Create({0});
+		box.particlesBondedToParticle[0] = ParticlesBondedToParticle::Create(std::set<int>{4});
+		box.particlesBondedToParticle[4] = ParticlesBondedToParticle::Create(std::set<int>{0});
+		box.pclustersBondedToPcluster[0] = PclustersBondedToPcluster::Create(std::set<int>{1});
+		box.pclustersBondedToPcluster[1] = PclustersBondedToPcluster::Create(std::set<int>{0});
 		sim->PrepareDataBuffers();
 		return sim;
 	}

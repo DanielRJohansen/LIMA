@@ -77,7 +77,7 @@ namespace ProgramsTests {
 			"Position-restraint atom sets differ");
 
 		const auto spceConversion = Programs::ToGmx(directory / "6lzm.pdb", Programs::WaterModel::Spce);
-		TEST_ASSERT(std::ranges::contains(spceConversion.topology.otherIncludes, fs::path{ "charmm27.ff/spce.itp" }),
+		TEST_ASSERT(std::ranges::contains(spceConversion.topology.otherIncludes, std::string{ "charmm27.ff/spce.itp" }),
 			"Selected SPC/E water topology was not included");
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}

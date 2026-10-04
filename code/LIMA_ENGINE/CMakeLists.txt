@@ -10,6 +10,7 @@ add_library(LIMA_ENGINE STATIC
     src/SuperclusterTaskBuilder.cu
     src/CubWrappers.cu
     src/SimulationData.cpp
+    src/EngineBatch.cpp
     src/EnergyMinimizationHost.cpp
   "src/ParticleClusteringCPU.cpp"
 )

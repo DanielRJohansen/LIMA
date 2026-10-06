@@ -305,8 +305,8 @@ void Engine::PublishRenderData(size_t simulationIndex) {
 
 bool Engine::hostMaster() {
 	bool retired = false;
-	const bool measureTemperature = DatabuffersDeviceController::IsBufferFull(batch->step, batch->params.data_logging_interval)
-		&& batch->step % batch->params.steps_per_temperature_measurement == 0;
+	// Temperature cadence is independent of logging, otherwise the logging interval changes the thermostat's dynamics
+	const bool measureTemperature = batch->step % batch->params.steps_per_temperature_measurement == 0;
 	if (measureTemperature)
 		batch->thermostat->ComputeKineticEnergy(batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
 			batch->nPclusters, cudaStreams[0]);
@@ -314,17 +314,15 @@ bool Engine::hostMaster() {
 		if (!sim.device.active) continue;
 		const auto step = sim.step;
 		const auto& params = sim.simulation->simParams;
-		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval)) {
+		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval))
 			OffloadLoggingData(sim);
-			// Preserve the existing measurement cadence during the storage migration.
-			if (measureTemperature) {
-				auto [temperature, scalar] = batch->thermostat->Temperature(
-					sim.simulation->box->boxparams, params, sim.device.pclusters, cudaStreams[0]);
-				sim.simulation->temperature_buffer.push_back(temperature);
-				sim.runstatus.current_temperature = temperature;
-				if (params.apply_thermostat) {
-					sim.device.thermostatScalar = scalar;
-				}
+		if (measureTemperature) {
+			auto [temperature, scalar] = batch->thermostat->Temperature(
+				sim.simulation->box->boxparams, params, sim.device.pclusters, cudaStreams[0]);
+			sim.simulation->temperature_buffer.push_back(temperature);
+			sim.runstatus.current_temperature = temperature;
+			if (params.apply_thermostat) {
+				sim.device.thermostatScalar = scalar;
 			}
 		}
 		HandleEarlyStoppingInEM(sim);

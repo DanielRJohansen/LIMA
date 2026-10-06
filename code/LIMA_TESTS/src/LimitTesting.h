@@ -299,18 +299,24 @@ namespace LimitTesting {
 			break;
 		}
 		case Kind::Thermostat: {
-			auto withoutLogging = MakeSimulation(2, 20, false, 0);
-			auto withLogging = MakeSimulation(2, 20, false, 1);
-			for (auto* simulation : {withoutLogging.get(), withLogging.get()}) {
+			// Logging intervals 0, 1 and 7 must not change the thermostat cadence or its dynamics
+			constexpr int steps = 20, temperatureInterval = 4;
+			std::array simulations{ MakeSimulation(2, steps, false, 0), MakeSimulation(2, steps, false, 1), MakeSimulation(2, steps, false, 7) };
+			for (auto& simulation : simulations) {
 				simulation->simParams.apply_thermostat = true;
 				simulation->simParams.ref_t = 600.f;
+				simulation->simParams.steps_per_temperature_measurement = temperatureInterval;
 				for (auto& state : simulation->box->pclusterInterimStates) state.vels_prev[0] = Float3{0.01f, 0.02f, 0.f};
 				Run(*simulation);
+				Require(simulation->temperature_buffer.size() == steps / temperatureInterval,
+					"Temperature measured " + std::to_string(simulation->temperature_buffer.size()) + " times, expected " + std::to_string(steps / temperatureInterval));
 			}
-			for (int pc = 0; pc < 2; ++pc) {
-				const auto a = withoutLogging->box->pclusterInterimStates[pc].vels_prev[0];
-				const auto b = withLogging->box->pclusterInterimStates[pc].vels_prev[0];
-				Require((a - b).len() <= 1e-7f, "Changing trajectory logging changed thermostat dynamics");
+			for (int i = 1; i < simulations.size(); ++i) {
+				for (int pc = 0; pc < 2; ++pc) {
+					const auto a = simulations[0]->box->pclusterInterimStates[pc].vels_prev[0];
+					const auto b = simulations[i]->box->pclusterInterimStates[pc].vels_prev[0];
+					Require((a - b).len() <= 1e-7f, "Changing trajectory logging changed thermostat dynamics");
+				}
 			}
 			break;
 		}

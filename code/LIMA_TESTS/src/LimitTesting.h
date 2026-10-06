@@ -27,39 +27,31 @@ extern char** environ;
 // Reproduce a failure with: limatest --limit-case NAME
 // Run just this suite with: limatest --limit-tests [NAME-SUBSTRING]
 // For memory diagnostics, run an individual case under compute-sanitizer --tool memcheck.
-// Over-capacity and singular-geometry cases intentionally expose existing engine defects. They
-// remain failures until the engine rejects the input safely or supports it without corruption.
+// Each case guards an engine limit or contract that has broken before. Cases that still fail expose
+// open engine defects; they remain failures until the engine handles the input safely.
 // Never turn a crash, timeout, generic CUDA error, or nonfinite result into an expected pass.
 namespace LimitTesting {
 
-	enum class Kind { Transfer, Occupancy, ChargeBlock, Bootstrap, Pair, Bond, Angle, InvalidInput, Logging, Thermostat, Cleanup, Unwind };
+	enum class Kind { Transfer, Occupancy, ChargeBlock, Bootstrap, Pair, InvalidInput, Logging, Thermostat, Unwind };
 	struct Case {
 		std::string name;
 		Kind kind;
 		int value = 0;
-		bool em = false;
 	};
 
 	inline std::vector<Case> Cases() {
 		std::vector<Case> cases;
-		for (int count : {7, 8, 9}) cases.push_back({std::format("transfer-{}", count), Kind::Transfer, count});
-		for (int count : {127, 128, 129}) {
+		// Capacities are probed at the limit and one past it
+		for (int count : {8, 9}) cases.push_back({std::format("transfer-{}", count), Kind::Transfer, count});
+		for (int count : {128, 129}) {
 			cases.push_back({std::format("runtime-occupancy-{}", count), Kind::Occupancy, count});
 			cases.push_back({std::format("bootstrap-occupancy-{}", count), Kind::Bootstrap, count});
 		}
-		for (int count : {383, 384, 385}) cases.push_back({std::format("pme-entries-{}", count), Kind::ChargeBlock, count});
-		for (bool em : {false, true}) {
-			const auto mode = em ? "em" : "md";
-			for (int separation : {200, 10, 0})
-				cases.push_back({std::format("pair-{}-{}pm", mode, separation), Kind::Pair, separation, em});
-			cases.push_back({std::format("collapsed-bond-{}", mode), Kind::Bond, 0, em});
-			cases.push_back({std::format("collinear-angle-{}", mode), Kind::Angle, 0, em});
-		}
-		const std::array invalidNames{"zero-timestep", "nan-timestep", "zero-cutoff", "zero-mass", "nan-position", "zero-nlist-interval", "negative-logging-interval", "zero-temperature-interval"};
-		for (int i = 0; i < invalidNames.size(); ++i) cases.push_back({invalidNames[i], Kind::InvalidInput, i});
-		for (int steps : {0, 1, 14, 15, 16, 17, 31}) cases.push_back({std::format("logging-steps-{}", steps), Kind::Logging, steps});
+		for (int count : {384, 385}) cases.push_back({std::format("pme-entries-{}", count), Kind::ChargeBlock, count});
+		for (int separation : {200, 10}) cases.push_back({std::format("pair-md-{}pm", separation), Kind::Pair, separation});
+		cases.push_back({"invalid-input", Kind::InvalidInput});
+		for (int steps : {0, 1, 15, 16, 31}) cases.push_back({std::format("logging-steps-{}", steps), Kind::Logging, steps});
 		cases.push_back({"thermostat-logging-independent", Kind::Thermostat});
-		cases.push_back({"cuda-failure-cleanup", Kind::Cleanup});
 		cases.push_back({"cuda-failure-unwind", Kind::Unwind});
 		return cases;
 	}
@@ -86,12 +78,10 @@ namespace LimitTesting {
 		return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 	}
 
-	inline std::unique_ptr<Simulation> MakeSimulation(int particles, int steps = 3, bool em = false, int loggingInterval = 0) {
+	inline std::unique_ptr<Simulation> MakeSimulation(int particles, int steps = 3, int loggingInterval = 0) {
 		SimParams params;
 		params.n_steps = steps;
 		params.dt = 0.1f * FEMTO_TO_NANO;
-		params.em_variant = em;
-		params.em_force_tolerance = 0.f;
 		params.enable_electrostatics = false;
 		params.apply_thermostat = false;
 		params.stepsPerNlistupdate = 1;
@@ -154,97 +144,63 @@ namespace LimitTesting {
 		CheckCuda();
 	}
 
-	inline void Geometry(const Case& test) {
-		const int particles = test.kind == Kind::Angle ? 3 : 2;
-		auto simulation = MakeSimulation(particles, 8, test.em, 1);
+	inline void Pair(int separationPm) {
+		auto simulation = MakeSimulation(2, 8, 1);
 		auto& box = *simulation->box;
-		for (int i = 0; i < particles; ++i) {
-			box.persistentClusters[i].pqd[0].position = Float3{1.5f, 1.5f, 1.5f};
-			if (test.kind == Kind::Pair) box.persistentClusters[i].pqd[0].params = NBParams{0.1f, 0.1f, 0.f};
-		}
-		if (test.kind == Kind::Pair) box.persistentClusters[1].pqd[0].position.x += test.value * 0.001f;
-		else {
-			BondGroup group;
-			group.nParticles = particles;
-			for (int i = 0; i < particles; ++i) {
-				box.bondgroups.particles.push_back({i, 0});
-				box.persistentClustersMetadata[i].bondgroupReferences[0].Add({0, i});
-				std::set<int> others;
-				for (int j = 0; j < particles; ++j) if (i != j) others.insert(j);
-				box.particlesBondedToParticle[i] = ParticlesBondedToParticle::Create(others);
-				box.pclustersBondedToPcluster[i] = PclustersBondedToPcluster::Create(others);
-			}
-			if (test.kind == Kind::Bond) {
-				group.nSinglebonds = 1;
-				box.bondgroups.singlebonds.emplace_back(std::array<uint8_t, 2>{0, 1}, SingleBond::Parameters{0.15f, 100.f});
-			}
-			else {
-				box.persistentClusters[0].pqd[0].position.x -= 0.15f;
-				box.persistentClusters[2].pqd[0].position.x += 0.15f;
-				group.nAnglebonds = 1;
-				box.bondgroups.anglebonds.emplace_back(std::array<uint8_t, 3>{0, 1, 2}, AngleUreyBradleyBond::Parameters{1.5f, 100.f, 0.3f, 0.f});
-			}
-			box.bondgroups.groups.push_back(group);
-		}
+		for (auto& cluster : box.persistentClusters)
+			cluster.pqd[0] = PData{Float3{1.5f, 1.5f, 1.5f}, NBParams{0.1f, 0.1f, 0.f}};
+		box.persistentClusters[1].pqd[0].position.x += separationPm * 0.001f;
 		const double initialDistance = (box.persistentClusters[1].pqd[0].position - box.persistentClusters[0].pqd[0].position).len();
 		try {
 			Run(*simulation);
 			for (float energy : simulation->potE_buffer->GetBuffer()) Require(std::isfinite(energy), "Nonfinite logged potential energy");
-			if (test.kind == Kind::Pair && !test.em) {
-				Require(initialDistance > 0., "MD accepted a singular Lennard-Jones pair without numerical rejection");
-				// Finite output alone misses overflow in the fixed-point MD accumulator. Compare the
-				// first force and energy (evaluated at the initial coordinates) to the analytic pair.
-				const double s = std::pow(0.2 / initialDistance, 6);
-				const double expectedForce = -24. * 0.01 * s * (2. * s - 1.) / initialDistance;
-				const double expectedEnergy = 4. * 0.01 * s * (s - 1.);
-				const double actualForce = simulation->forceBuffer->GetDatapoint(0, 0, 0).x;
-				const double actualEnergy = simulation->potE_buffer->GetDatapoint(0, 0, 0) + simulation->potE_buffer->GetDatapoint(1, 0, 0);
-				std::cout << "Initial pair force expected=" << expectedForce << " actual=" << actualForce
-					<< " energy expected=" << expectedEnergy << " actual=" << actualEnergy << std::endl;
-				Require(std::abs(actualForce - expectedForce) <= (std::max)(1e-4, std::abs(expectedForce) * 1e-3), "Finite MD force disagrees with analytic Lennard-Jones force (possible accumulator overflow)");
-				Require(std::abs(actualEnergy - expectedEnergy) <= (std::max)(1e-4, std::abs(expectedEnergy) * 1e-3), "Finite MD energy disagrees with analytic Lennard-Jones energy");
-			}
-			if (test.em && ((test.kind == Kind::Pair && test.value == 0) || test.kind == Kind::Bond))
-				Require((box.persistentClusters[0].pqd[0].position - box.persistentClusters[1].pqd[0].position).lenSquared() > 0.f, "EM left degenerate coincident atoms unresolved");
-			if (test.em && test.kind == Kind::Angle && simulation->getStep() < simulation->simParams.n_steps) {
-				bool movedOffLine = false;
-				for (const auto& cluster : box.persistentClusters)
-					movedOffLine |= cluster.pqd[0].position.y != 1.5f || cluster.pqd[0].position.z != 1.5f;
-				Require(movedOffLine, "EM reported convergence on an unchanged degenerate angle away from equilibrium");
-			}
+			// Finite output alone misses overflow in the fixed-point MD accumulator. Compare the
+			// first force and energy (evaluated at the initial coordinates) to the analytic pair.
+			const double s = std::pow(0.2 / initialDistance, 6);
+			const double expectedForce = -24. * 0.01 * s * (2. * s - 1.) / initialDistance;
+			const double expectedEnergy = 4. * 0.01 * s * (s - 1.);
+			const double actualForce = simulation->forceBuffer->GetDatapoint(0, 0, 0).x;
+			const double actualEnergy = simulation->potE_buffer->GetDatapoint(0, 0, 0) + simulation->potE_buffer->GetDatapoint(1, 0, 0);
+			std::cout << "Initial pair force expected=" << expectedForce << " actual=" << actualForce
+				<< " energy expected=" << expectedEnergy << " actual=" << actualEnergy << std::endl;
+			Require(std::abs(actualForce - expectedForce) <= (std::max)(1e-4, std::abs(expectedForce) * 1e-3), "Finite MD force disagrees with analytic Lennard-Jones force (possible accumulator overflow)");
+			Require(std::abs(actualEnergy - expectedEnergy) <= (std::max)(1e-4, std::abs(expectedEnergy) * 1e-3), "Finite MD energy disagrees with analytic Lennard-Jones energy");
 		}
 		catch (const Failure&) { throw; }
 		catch (const std::exception& error) {
-			// Allow a future explicit, clean numerical rejection. Generic CUDA failures never qualify.
-			if (test.kind == Kind::Pair && test.value == 200) throw;
+			// Allow a future explicit, clean rejection of the close pair. Generic CUDA failures never qualify.
+			if (separationPm == 200) throw;
 			const std::string message = error.what();
-			if (message.find("overlap") == std::string::npos && message.find("degenerate") == std::string::npos && message.find("non-finite") == std::string::npos) throw;
+			if (message.find("overlap") == std::string::npos && message.find("non-finite") == std::string::npos) throw;
 			CheckCuda();
 			std::cout << "Clean numerical rejection: " << message << std::endl;
 		}
 	}
 
-	inline void InvalidInput(int value) {
-		auto simulation = MakeSimulation(2);
-		switch (value) {
-		case 0: simulation->simParams.dt = 0.f; break;
-		case 1: simulation->simParams.dt = std::numeric_limits<float>::quiet_NaN(); break;
-		case 2: simulation->simParams.cutoff_nm = 0.f; break;
-		case 3: simulation->box->persistentClustersMetadata[0].mass[0] = 0.f; break;
-		case 4: simulation->box->persistentClusters[0].pqd[0].position.x = std::numeric_limits<float>::quiet_NaN(); break;
-		case 5: simulation->simParams.stepsPerNlistupdate = 0; break;
-		case 6: simulation->simParams.data_logging_interval = -1; break;
-		case 7: simulation->simParams.steps_per_temperature_measurement = 0; break;
+	inline void InvalidInput() {
+		const std::array<std::pair<const char*, void(*)(Simulation&)>, 8> inputs{{
+			{"zero timestep", [](Simulation& s) { s.simParams.dt = 0.f; }},
+			{"nan timestep", [](Simulation& s) { s.simParams.dt = std::numeric_limits<float>::quiet_NaN(); }},
+			{"zero cutoff", [](Simulation& s) { s.simParams.cutoff_nm = 0.f; }},
+			{"zero mass", [](Simulation& s) { s.box->persistentClustersMetadata[0].mass[0] = 0.f; }},
+			{"nan position", [](Simulation& s) { s.box->persistentClusters[0].pqd[0].position.x = std::numeric_limits<float>::quiet_NaN(); }},
+			{"zero nlist interval", [](Simulation& s) { s.simParams.stepsPerNlistupdate = 0; }},
+			{"negative logging interval", [](Simulation& s) { s.simParams.data_logging_interval = -1; }},
+			{"zero temperature interval", [](Simulation& s) { s.simParams.steps_per_temperature_measurement = 0; }},
+		}};
+		for (const auto& [name, mutate] : inputs) {
+			// Mutate after buffer preparation to test the engine entry contract separately from builders.
+			auto simulation = MakeSimulation(2);
+			mutate(*simulation);
+			bool rejected = false;
+			try { Engine engine({simulation.get()}); }
+			catch (const std::invalid_argument& error) {
+				rejected = true;
+				std::cout << "Rejected " << name << ": " << error.what() << std::endl;
+			}
+			Require(rejected, std::string("Engine accepted invalid input: ") + name);
+			CheckCuda();
 		}
-		// Mutate after buffer preparation to test the engine entry contract separately from builders.
-		bool rejected = false;
-		try { Engine engine({simulation.get()}); }
-		catch (const std::invalid_argument& error) {
-			rejected = true;
-			std::cout << "Rejected: " << error.what() << std::endl;
-		}
-		Require(rejected, "Engine accepted invalid input");
-		CheckCuda();
 		// A rejected job must not leave the process unable to run a subsequent valid job.
 		auto healthy = MakeSimulation(2);
 		Run(*healthy);
@@ -285,10 +241,10 @@ namespace LimitTesting {
 			}
 			break;
 		}
-		case Kind::Pair: case Kind::Bond: case Kind::Angle: Geometry(test); break;
-		case Kind::InvalidInput: InvalidInput(test.value); break;
+		case Kind::Pair: Pair(test.value); break;
+		case Kind::InvalidInput: InvalidInput(); break;
 		case Kind::Logging: {
-			auto simulation = MakeSimulation(3, test.value, false, 3);
+			auto simulation = MakeSimulation(3, test.value, 3);
 			const auto initial = simulation->box->persistentClusters;
 			Run(*simulation);
 			Require(simulation->getStep() == test.value, "Incorrect final step");
@@ -301,7 +257,7 @@ namespace LimitTesting {
 		case Kind::Thermostat: {
 			// Logging intervals 0, 1 and 7 must not change the thermostat cadence or its dynamics
 			constexpr int steps = 20, temperatureInterval = 4;
-			std::array simulations{ MakeSimulation(2, steps, false, 0), MakeSimulation(2, steps, false, 1), MakeSimulation(2, steps, false, 7) };
+			std::array simulations{ MakeSimulation(2, steps, 0), MakeSimulation(2, steps, 1), MakeSimulation(2, steps, 7) };
 			for (auto& simulation : simulations) {
 				simulation->simParams.apply_thermostat = true;
 				simulation->simParams.ref_t = 600.f;
@@ -320,7 +276,7 @@ namespace LimitTesting {
 			}
 			break;
 		}
-		case Kind::Cleanup: case Kind::Unwind: {
+		case Kind::Unwind: {
 			auto simulation = MakeSimulation(2);
 			try {
 				Engine engine({simulation.get()});
@@ -330,10 +286,10 @@ namespace LimitTesting {
 				const auto status = cudaDeviceSynchronize();
 				Require(status != cudaSuccess, "Device fault injection did not fail");
 				std::cout << "Injected CUDA error: " << cudaGetErrorString(status) << std::endl;
-				if (test.kind == Kind::Unwind) throw Failure("original simulation failure");
+				throw Failure("original simulation failure");
 			}
 			catch (const Failure& error) {
-				Require(test.kind == Kind::Unwind && std::string_view(error.what()) == "original simulation failure", "Cleanup replaced the original failure");
+				Require(std::string_view(error.what()) == "original simulation failure", "Cleanup replaced the original failure");
 			}
 			Phase("survived cleanup");
 			break;

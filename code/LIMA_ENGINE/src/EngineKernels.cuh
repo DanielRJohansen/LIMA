@@ -102,7 +102,12 @@ template <typename BoundaryCondition, bool emVariant>
 __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv) {
 	__shared__ Float3 positions[THREADS_PER_BONDSGROUPSKERNEL];
 
-	__shared__ float4 forceEnergyInterrims[THREADS_PER_BONDSGROUPSKERNEL];
+	// MD accumulates in parallel with deterministic fixed point atomics, EM serially in float, since its forces may exceed the fixed point range
+	using Accumulator = std::conditional_t<emVariant, LimaForcecalc::SerialBondAccumulator, LimaForcecalc::FixedPointBondAccumulator>;
+	__shared__ unsigned long long accumulatorBuffer[4 * THREADS_PER_BONDSGROUPSKERNEL]; // Large enough for either
+	Accumulator acc;
+	if constexpr (emVariant) acc = Accumulator{ reinterpret_cast<float4*>(accumulatorBuffer) };
+	else acc = Accumulator{ accumulatorBuffer, THREADS_PER_BONDSGROUPSKERNEL };
 
 	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
@@ -110,7 +115,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 
 	const BondGroup* const bondGroup = &bondGroups.groups[blockIdx.x];
 
-	forceEnergyInterrims[threadIdx.x] = float4{0,0,0,0};
+	acc.Init(threadIdx.x);
 
 	// Fetch positions. Periodic boundaries are applied per bond, since a group may contain several molecules far apart
 	if (threadIdx.x < bondGroup->nParticles) {
@@ -130,7 +135,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			LimaForcecalc::computeSinglebondForces<BoundaryCondition, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, forceEnergyInterrims, 0, boxSize, boxSizeInv);
+			LimaForcecalc::computeSinglebondForces<BoundaryCondition, Accumulator, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, acc, 0, boxSize, boxSizeInv);
 		}
 	}
 
@@ -144,7 +149,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			LimaForcecalc::computeAnglebondForces<BoundaryCondition, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeAnglebondForces<BoundaryCondition, Accumulator, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
@@ -158,7 +163,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			LimaForcecalc::computeDihedralForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeDihedralForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
@@ -172,7 +177,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			LimaForcecalc::computeImproperdihedralForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeImproperdihedralForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
@@ -188,15 +193,12 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			LimaForcecalc::computePairbondForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computePairbondForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
-	Float3 force{ forceEnergyInterrims[threadIdx.x].x, forceEnergyInterrims[threadIdx.x].y, forceEnergyInterrims[threadIdx.x].z };
-	float potE = forceEnergyInterrims[threadIdx.x].w;
-
 	if (threadIdx.x < bondGroup->nParticles)
-		forceEnergiesOut[bondGroup->indexOfFirstParticle + threadIdx.x] = ForceEnergy{ force, potE };
+		forceEnergiesOut[bondGroup->indexOfFirstParticle + threadIdx.x] = acc.Get(threadIdx.x);
 }
 
 

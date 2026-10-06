@@ -294,6 +294,62 @@ __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Flo
 
 // ------------------------------------------------------------ Forcecalc handlers ------------------------------------------------------------ //
 
+// Accumulates the per-particle bond results of a bondgroup in shared memory. Both are deterministic:
+// Serial: float sums, added one thread at a time in a fixed order. Used in EM, where forces may exceed the fixed point range
+struct SerialBondAccumulator {
+	static constexpr bool parallel = false;
+	float4* feInterrims;
+
+	__device__ void Init(int index) const { feInterrims[index] = float4{ 0, 0, 0, 0 }; }
+	__device__ void Add(int index, const Float3& force, float potE) const {
+		feInterrims[index] = ::Add(feInterrims[index], make_float4(force.x, force.y, force.z, potE));
+	}
+	__device__ ForceEnergy Get(int index) const {
+		const float4 v = feInterrims[index];
+		return ForceEnergy{ Float3{ v.x, v.y, v.z }, v.w };
+	}
+};
+// Parallel: 64-bit fixed point summed with shared memory integer atomics, which are order independent, so all threads can add at once.
+// Same scale as NbForceAccumulator: resolution 6e-8, range +-5.5e11
+struct FixedPointBondAccumulator {
+	static constexpr bool parallel = true;
+	static constexpr float scale = 16777216.f;		// 2^24
+	static constexpr float scaleInv = 1.f / scale;	// Power of 2, so Get is exactly the rounded sum
+	unsigned long long* values; // [4][THREADS_PER_BONDSGROUPSKERNEL]: fx, fy, fz, potE
+	int stride;
+
+	__device__ static unsigned long long ToFixed(float v) { return static_cast<unsigned long long>(llrintf(v * scale)); }
+	__device__ static float ToFloat(unsigned long long v) { return static_cast<float>(static_cast<long long>(v)) * scaleInv; }
+
+	__device__ void Init(int index) const { for (int i = 0; i < 4; i++) values[i * stride + index] = 0; }
+	__device__ void Add(int index, const Float3& force, float potE) const {
+		atomicAdd(&values[index], ToFixed(force.x));
+		atomicAdd(&values[stride + index], ToFixed(force.y));
+		atomicAdd(&values[2 * stride + index], ToFixed(force.z));
+		atomicAdd(&values[3 * stride + index], ToFixed(potE));
+	}
+	__device__ ForceEnergy Get(int index) const {
+		return ForceEnergy{ Float3{ ToFloat(values[index]), ToFloat(values[stride + index]), ToFloat(values[2 * stride + index]) }, ToFloat(values[3 * stride + index]) };
+	}
+};
+
+// Adds each thread's bond results to the accumulator, then syncs so the bonds buffer may be reused
+template <typename Accumulator, typename AddResults>
+__device__ inline void ScatterBondResults(const Accumulator& acc, bool hasBond, AddResults addResults) {
+	if constexpr (Accumulator::parallel) {
+		if (hasBond)
+			addResults();
+		__syncthreads();
+	}
+	else {
+		for (int tid = 0; tid < blockDim.x; tid++) {
+			if (threadIdx.x == tid && hasBond)
+				addResults();
+			__syncthreads();
+		}
+	}
+}
+
 // A bondgroup may contain several molecules (small molecules are packed together), which can be far apart.
 // So periodic boundaries are applied per bond, placing each atom at the image nearest the bond's first atom
 template <typename BoundaryCondition, int n>
@@ -306,8 +362,8 @@ __device__ inline void LoadBondPositions(const Float3* const positions, const ui
 }
 
 // only works if n threads >= n bonds
-template<typename BoundaryCondition, bool energyMinimization>
-__device__ inline void computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,	float4* const feInterrims, int bridgekernel,
+template<typename BoundaryCondition, typename Accumulator, bool energyMinimization>
+__device__ inline void computeSinglebondForces(const SingleBond* const singlebonds, const int n_singlebonds, const Float3* const positions,	const Accumulator& acc, int bridgekernel,
 	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_singlebonds; bond_offset++) {
@@ -333,18 +389,15 @@ __device__ inline void computeSinglebondForces(const SingleBond* const singlebon
 			);
 		}
 
-		for (int tid = 0; tid < blockDim.x; tid++) {
-			if (threadIdx.x == tid && pb != nullptr) {
-				feInterrims[pb->idInBondgroup[0]] = Add(feInterrims[pb->idInBondgroup[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential * 0.5f));
-				feInterrims[pb->idInBondgroup[1]] = Add(feInterrims[pb->idInBondgroup[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential * 0.5f));
-			}
-			__syncthreads();
-		}
+		ScatterBondResults(acc, pb != nullptr, [&] {
+				acc.Add(pb->idInBondgroup[0], forces[0], potential * 0.5f);
+				acc.Add(pb->idInBondgroup[1], forces[1], potential * 0.5f);
+			});
 	}
 }
 
-template<typename BoundaryCondition>
-__device__ inline void computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,	float4* const feInterrims,
+template<typename BoundaryCondition, typename Accumulator>
+__device__ inline void computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,	const Accumulator& acc,
 	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_pairbonds; bond_offset++) {
@@ -366,18 +419,15 @@ __device__ inline void computePairbondForces(const PairBond* const pairbonds, co
 			forces[1] = -forceOnLeft;
 		}
 
-		for (int tid = 0; tid < blockDim.x; tid++) {
-			if (threadIdx.x == tid && pb != nullptr) {
-				feInterrims[pb->atom_indexes[0]] = Add(feInterrims[pb->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential)); // No *0.5f here, since LJ computes the pot per atom already;
-				feInterrims[pb->atom_indexes[1]] = Add(feInterrims[pb->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential));
-			}
-			__syncthreads();
-		}
+		ScatterBondResults(acc, pb != nullptr, [&] {
+				acc.Add(pb->atom_indexes[0], forces[0], potential); // No *0.5f here, since LJ computes the pot per atom already;
+				acc.Add(pb->atom_indexes[1], forces[1], potential);
+			});
 	}
 }
 
-template<typename BoundaryCondition, bool energyMinimization>
-__device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions, float4* const feInterrims,
+template<typename BoundaryCondition, typename Accumulator, bool energyMinimization>
+__device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions, const Accumulator& acc,
 	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_anglebonds; bond_offset++) {
@@ -402,20 +452,17 @@ __device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const 
 		}
 
 
-		for (int tid = 0; tid < blockDim.x; tid++) {
-			if (threadIdx.x == tid && ab != nullptr) {
-				feInterrims[ab->atom_indexes[0]] = Add(feInterrims[ab->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential / 3.f));
-				feInterrims[ab->atom_indexes[1]] = Add(feInterrims[ab->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential / 3.f));
-				feInterrims[ab->atom_indexes[2]] = Add(feInterrims[ab->atom_indexes[2]], make_float4(forces[2].x, forces[2].y, forces[2].z, potential / 3.f));
-			}
-			__syncthreads();
-		}
+		ScatterBondResults(acc, ab != nullptr, [&] {
+				acc.Add(ab->atom_indexes[0], forces[0], potential / 3.f);
+				acc.Add(ab->atom_indexes[1], forces[1], potential / 3.f);
+				acc.Add(ab->atom_indexes[2], forces[2], potential / 3.f);
+			});
 	}
 }
 
 
-template<typename BoundaryCondition>
-__device__ inline void computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,	float4* const feInterrims,
+template<typename BoundaryCondition, typename Accumulator>
+__device__ inline void computeDihedralForces(const DihedralBond* const dihedrals, const int n_dihedrals, const Float3* const positions,	const Accumulator& acc,
 	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_dihedrals; bond_offset++) {
@@ -439,20 +486,17 @@ __device__ inline void computeDihedralForces(const DihedralBond* const dihedrals
 			);
 		}
 
-		for (int tid = 0; tid < blockDim.x; tid++) {
-			if (threadIdx.x == tid && db != nullptr) {
-				feInterrims[db->atom_indexes[0]] = Add(feInterrims[db->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential * 0.25f));
-				feInterrims[db->atom_indexes[1]] = Add(feInterrims[db->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential * 0.25f));
-				feInterrims[db->atom_indexes[2]] = Add(feInterrims[db->atom_indexes[2]], make_float4(forces[2].x, forces[2].y, forces[2].z, potential * 0.25f));
-				feInterrims[db->atom_indexes[3]] = Add(feInterrims[db->atom_indexes[3]], make_float4(forces[3].x, forces[3].y, forces[3].z, potential * 0.25f));
-			}
-			__syncthreads();
-		}
+		ScatterBondResults(acc, db != nullptr, [&] {
+				acc.Add(db->atom_indexes[0], forces[0], potential * 0.25f);
+				acc.Add(db->atom_indexes[1], forces[1], potential * 0.25f);
+				acc.Add(db->atom_indexes[2], forces[2], potential * 0.25f);
+				acc.Add(db->atom_indexes[3], forces[3], potential * 0.25f);
+			});
 	}
 }
 
-template<typename BoundaryCondition>
-__device__ inline void computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,	float4* const feInterrims,
+template<typename BoundaryCondition, typename Accumulator>
+__device__ inline void computeImproperdihedralForces(const ImproperDihedralBond* const impropers, const int n_impropers, const Float3* const positions,	const Accumulator& acc,
 	const Float3& boxSize, const Float3& boxSizeInv)
 {
 	for (int bond_offset = 0; (bond_offset * blockDim.x) < n_impropers; bond_offset++) {
@@ -478,15 +522,12 @@ __device__ inline void computeImproperdihedralForces(const ImproperDihedralBond*
 			);
 		}
 
-		for (int tid = 0; tid < blockDim.x; tid++) {
-			if (threadIdx.x == tid && db != nullptr) {
-				feInterrims[db->atom_indexes[0]] = Add(feInterrims[db->atom_indexes[0]], make_float4(forces[0].x, forces[0].y, forces[0].z, potential * 0.25f));
-				feInterrims[db->atom_indexes[1]] = Add(feInterrims[db->atom_indexes[1]], make_float4(forces[1].x, forces[1].y, forces[1].z, potential * 0.25f));
-				feInterrims[db->atom_indexes[2]] = Add(feInterrims[db->atom_indexes[2]], make_float4(forces[2].x, forces[2].y, forces[2].z, potential * 0.25f));
-				feInterrims[db->atom_indexes[3]] = Add(feInterrims[db->atom_indexes[3]], make_float4(forces[3].x, forces[3].y, forces[3].z, potential * 0.25f));
-			}
-			__syncthreads();
-		}
+		ScatterBondResults(acc, db != nullptr, [&] {
+				acc.Add(db->atom_indexes[0], forces[0], potential * 0.25f);
+				acc.Add(db->atom_indexes[1], forces[1], potential * 0.25f);
+				acc.Add(db->atom_indexes[2], forces[2], potential * 0.25f);
+				acc.Add(db->atom_indexes[3], forces[3], potential * 0.25f);
+			});
 	}
 }
 

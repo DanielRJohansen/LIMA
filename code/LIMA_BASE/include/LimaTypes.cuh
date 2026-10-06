@@ -3,6 +3,7 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <math.h>
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 #include <string>

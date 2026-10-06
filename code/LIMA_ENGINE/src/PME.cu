@@ -454,7 +454,8 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGri
 
 
 // blockDim = (SuperCluster::nParticles, 1, 1)
-__global__ void InterpolateForcesAndPotentialCompounds(
+// blockDim = (16, 4): 1 supercluster per y, so warps are full (1 supercluster per block only used half a warp)
+__global__ void __launch_bounds__(64) InterpolateForcesAndPotentialCompounds(
 	SuperCluster* const scData,
 	SuperClusterMeta* const scMeta,
 	const float* realspaceGrid,
@@ -462,10 +463,13 @@ __global__ void InterpolateForcesAndPotentialCompounds(
 	ForceEnergy* const forceEnergies,
 	const float* selfenergyCorrections,			// [J/mol]
 	Float3 boxSize,
-	Float3 boxSizeInv, const int* simulationSlots
+	Float3 boxSizeInv, const int* simulationSlots,
+	int nSuperclusters
 )
 {
-	const int scId = blockIdx.x;
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	if (scId >= nSuperclusters)
+		return;
 	const int simulationId = scMeta[scId].simulationId;
 	const size_t gridOffset = size_t(simulationSlots[simulationId]) * gridDim.InnerProduct();
 	Float3 pos = scData[scId].Position(threadIdx.x);
@@ -758,7 +762,9 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gri
 			;
 	}
 
-	d_greensFunction[index1D] = static_cast<float>(currentGreensValue);
+	// The inverse FFT is unnormalized, so the 1/N normalization of the realspace grid is folded in here instead of a separate pass
+	const double nGridpointsRealspace = double(gridpointsPerDim.x) * gridpointsPerDim.y * gridpointsPerDim.z;
+	d_greensFunction[index1D] = static_cast<float>(currentGreensValue / nGridpointsRealspace);
 }
 
 
@@ -779,14 +785,6 @@ __global__ void ApplyGreensFunctionKernel(
 		d_reciprocalFreqData[index1D].y * d_greensFunctionArray[index1D % gridSize]
 	};
 
-}
-
-__global__ void Normalize(float* realspaceGrid, int nGridpointsRealspace, float normalizationFactor) {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-	if (index >= nGridpointsRealspace)
-		return;
-
-	realspaceGrid[index] *= normalizationFactor;
 }
 
 
@@ -878,12 +876,10 @@ void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta
 	CheckFft(cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid));
 	ApplyGreensFunctionKernel<<<(size_t(nGridpointsReciprocalspace) * batchCount + 63) / 64, 64, 0, stream>>>(
 		fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, batchCount);
-	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid));
-	Normalize<<<(nGridpointsRealspace * batchCount + 63) / 64, 64, 0, stream>>>(
-		realspaceGrid, static_cast<int>(nGridpointsRealspace * batchCount), 1.0 / static_cast<double>(nGridpointsRealspace));
-	InterpolateForcesAndPotentialCompounds<<<nSuperclusters, SuperCluster::maxParticles, 0, stream>>>(
+	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
+	InterpolateForcesAndPotentialCompounds<<<(nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
 		scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrections.Get(), boxlenNm, boxlenNm.Inv(),
-		simulationSlots.Get());
+		simulationSlots.Get(), nSuperclusters);
 	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
 }
 

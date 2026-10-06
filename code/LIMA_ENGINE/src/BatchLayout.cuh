@@ -22,6 +22,8 @@ struct SimulationDeviceData {
 };
 
 // Compact per-simulation data consumed by the batch-wide integration kernel.
+// Device copy of per-simulation data needed by the integration kernel. Built from EngineSimulationData::device,
+// so after changing any of these fields there, call Engine::UploadIntegrationSimulationData()
 struct IntegrationSimulationData {
 	BatchRange particles;
 	BatchRange pclusters;

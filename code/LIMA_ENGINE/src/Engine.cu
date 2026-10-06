@@ -53,6 +53,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
 		cudaStreamCreate(&pmeStream);
+		for (auto& event : streamJoinEvents) cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
 		for (size_t simulationId = 0; simulationId < renderDataPipes.size(); ++simulationId) {
 			if (!renderDataPipes[simulationId]) continue;
 			const auto count = batch->simulations[simulationId].device.pclusters.count * PersistentCluster::maxParticles;
@@ -65,6 +66,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		BootstrapClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 		InitializePME();
+		UploadIntegrationSimulationData();
 		bool retired = false;
 		for (auto& sim : batch->simulations) {
 			BootstrapTrajbufferWithCoords(sim);
@@ -81,6 +83,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		batch.reset();
 		for (auto stream : cudaStreams) if (stream) cudaStreamDestroy(stream);
 		if (pmeStream) cudaStreamDestroy(pmeStream);
+		for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 		throw;
 	}
 }
@@ -91,12 +94,23 @@ Engine::~Engine() {
 	batch.reset(); // Controllers reference streams, so destroy them first.
 	for (auto stream : cudaStreams) cudaStreamDestroy(stream);
 	cudaStreamDestroy(pmeStream);
+	for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
 }
 
 void Engine::Synchronize() {
 	cudaStreamSynchronize(pmeStream);
 	for (auto stream : cudaStreams) cudaStreamSynchronize(stream);
+}
+
+// Makes work subsequently queued on cudaStreams[0] wait for all work queued so far on the other streams, on the GPU, so the host doesn't block
+void Engine::JoinStreamsIntoMainStream() {
+	cudaEventRecord(streamJoinEvents[0], pmeStream);
+	cudaStreamWaitEvent(cudaStreams[0], streamJoinEvents[0]);
+	for (size_t i = 1; i < cudaStreams.size(); i++) {
+		cudaEventRecord(streamJoinEvents[i], cudaStreams[i]);
+		cudaStreamWaitEvent(cudaStreams[0], streamJoinEvents[i]);
+	}
 }
 
 const RunStatus& Engine::GetRunStatus(size_t simulationId) const {
@@ -228,6 +242,7 @@ void Engine::RebuildActiveBatch() {
 	else RunClustering(cudaStreams[0]);
 	MakeSuperClusterTasksGPU(cudaStreams[0]);
 	InitializePME();
+	UploadIntegrationSimulationData();
 	Synchronize();
 }
 
@@ -260,6 +275,7 @@ void Engine::step() {
 			ResetEnergyMinimization();
 		if (sim.device.dt != batch->params.dt) {
 			sim.device.dt = batch->params.dt;
+			UploadIntegrationSimulationData();
 		}
 	}
 	deviceMaster();
@@ -305,6 +321,7 @@ void Engine::PublishRenderData(size_t simulationIndex) {
 
 bool Engine::hostMaster() {
 	bool retired = false;
+	bool thermostatScalarsChanged = false;
 	// Temperature cadence is independent of logging, otherwise the logging interval changes the thermostat's dynamics
 	const bool measureTemperature = batch->step % batch->params.steps_per_temperature_measurement == 0;
 	if (measureTemperature)
@@ -322,6 +339,7 @@ bool Engine::hostMaster() {
 			sim.simulation->temperature_buffer.push_back(temperature);
 			sim.runstatus.current_temperature = temperature;
 			if (params.apply_thermostat) {
+				thermostatScalarsChanged |= sim.device.thermostatScalar != scalar;
 				sim.device.thermostatScalar = scalar;
 			}
 		}
@@ -334,10 +352,25 @@ bool Engine::hostMaster() {
 		}
 	}
 	if (retired && !IsFinished()) {
-		RebuildActiveBatch();
+		RebuildActiveBatch(); // Uploads the integration data itself
 		return true;
 	}
+	if (thermostatScalarsChanged)
+		UploadIntegrationSimulationData();
 	return false;
+}
+
+void Engine::UploadIntegrationSimulationData() {
+	std::vector<IntegrationSimulationData> simulationData;
+	simulationData.reserve(batch->simulations.size());
+	for (const auto& sim : batch->simulations) {
+		simulationData.push_back({
+			sim.device.particles, sim.device.pclusters, sim.device.logOffset, sim.device.dt, sim.device.thermostatScalar });
+	}
+	batch->integrationSimulationDataDevice.Expand(simulationData.size());
+	// Queued on the stream used by the integration kernel, so it is ordered before the next integration
+	cudaMemcpyAsync(batch->integrationSimulationDataDevice.Get(), simulationData.data(),
+		sizeof(IntegrationSimulationData) * simulationData.size(), cudaMemcpyHostToDevice, cudaStreams[0]);
 }
 
 void Engine::FinalizeSimulation(EngineSimulationData& sim) {
@@ -541,20 +574,14 @@ void Engine::_deviceMaster() {
 		const Float3 boxSizeInv = boxSize.Inv();
 		BondgroupsKernel<BoundaryCondition, emvariant><<<batch->nBondgroups, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
 			bondGroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, batch->pClusterDevice.Get(), boxSize, boxSizeInv);
-		PclusterBondgroupsGather<<<(nPcs + 31) / 32, 32, 0, cudaStreams[4]>>>(
-			batch->pClusterMetaDevice.Get(), nPcs, *batch->forceEnergyInterims);
+		// The integrate kernel gathers each particle's bondgroup results directly
 	}
-	Synchronize();
-	if (nScs > 0) {
-		std::vector<IntegrationSimulationData> simulationData;
-		simulationData.reserve(batch->simulations.size());
-		for (const auto& sim : batch->simulations) {
-			simulationData.push_back({
-				sim.device.particles, sim.device.pclusters, sim.device.logOffset, sim.device.dt, sim.device.thermostatScalar});
-		}
-		batch->integrationSimulationDataDevice.Expand(simulationData.size());
-		cudaMemcpyAsync(batch->integrationSimulationDataDevice.Get(), simulationData.data(),
-			sizeof(IntegrationSimulationData) * simulationData.size(), cudaMemcpyHostToDevice, cudaStreams[0]);
+	if (nScs == 0) {
+		Synchronize();
+	}
+	else {
+		// Integration waits for the force kernels on the GPU, so the host can queue it without a roundtrip
+		JoinStreamsIntoMainStream();
 
 		const int nBlocks = (nScs + 4 - 1) / 4;
 		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(

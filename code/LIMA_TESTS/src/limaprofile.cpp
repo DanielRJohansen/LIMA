@@ -27,6 +27,12 @@ int main(int argc, char** argv) {
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 	}
+	if (argc > 1 && std::string_view(argv[1]) == "--t4") {
+		if (argc != 4) { std::cerr << "Usage: limaprofile --t4 steps runs\n"; return 1; }
+		auto result = Benchmarks::T4(Environment::Get(), EnvMode::Headless, std::stoi(argv[2]), std::stoi(argv[3])).RunToCompletion();
+		result.printStatus();
+		return result.success ? 0 : 1;
+	}
 	int stmvSteps = 300;
 	if (argc > 1 && std::string_view(argv[1]) == "--stmv") {
 		if (argc != 3) { std::cerr << "Usage: limaprofile --stmv steps\n"; return 1; }

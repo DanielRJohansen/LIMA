@@ -199,30 +199,6 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 		forceEnergiesOut[bondGroup->indexOfFirstParticle + threadIdx.x] = ForceEnergy{ force, potE };
 }
 
-// gridDim = (nPclusters, 1, 1)
-// blockDim = (32, 1, 1) // TODO OPTIM: Use y=4, and have 1 particle in pc per y-thread
-__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies) {
-	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (workId >= nPclusters) return;
-	const int pcId = workId;
-
-	for (int pid = 0; pid < 4; pid++) {
-		int pidGlobal = pclusterMeta[pcId].particleIdsGlobal[pid];
-		if (pidGlobal == -1)
-			continue;
-
-		BondgroupRefManager beRefs = pclusterMeta[pcId].bondgroupReferences[pid];
-		ForceEnergy fe{};
-		for (int i = 0; i < beRefs.nBondgroupApperances; i++) {
-			BondgroupRef bondgroupRef = beRefs.bondgroupApperances[i];
-			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.indexInForceEnergiesBondgroups];
-		}
-
-		forceEnergies.bonded[pcId * PersistentCluster::maxParticles + pid] = fe;
-		//printf("Gatherout pid %d fx %f\n", pidGlobal, fe.force.x);
-	}
-}
-
 
 
 // Deterministic accumulation of NB forces, replacing SCResult for MD: each partial force is converted to 64-bit fixed point
@@ -445,7 +421,12 @@ const ForceEnergy* const nbForceenergy*/) {
 		fe += result;
 	}
 //	fe += nbForceenergy[scIdGlobal * SuperCluster::nParticles + threadIdx.x];
-	fe += forceEnergies.bonded[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
+	// Gather from the bondgroups this particle appears in
+	{
+		const BondgroupRefManager& beRefs = pcMeta[pcIdGlobal].bondgroupReferences[pidInPcluster];
+		for (int i = 0; i < beRefs.nBondgroupApperances; i++)
+			fe += forceEnergies.forceEnergiesBondgroups[beRefs.bondgroupApperances[i].indexInForceEnergiesBondgroups];
+	}
 	fe += forceEnergies.snf[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster]; // TODO: Should this be compiletime, or maybe launch param decided to ignore? Since most simulations would ignore...
 	fe += forceEnergies.pme[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster]; // TODO: OPTIM: These should follow SC layout, not PC
 

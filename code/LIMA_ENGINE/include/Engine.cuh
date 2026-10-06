@@ -125,6 +125,11 @@ private:
 
 	std::array<cudaStream_t, 5> cudaStreams{};
 	cudaStream_t pmeStream = nullptr;
+	// Used to make cudaStreams[0] wait for the other streams on the GPU, without a host roundtrip. [0] is for pmeStream, [i] for cudaStreams[i]
+	std::array<cudaEvent_t, 5> streamJoinEvents{};
+	void JoinStreamsIntoMainStream();
+	// Must be called after changing any field that IntegrationSimulationData is built from
+	void UploadIntegrationSimulationData();
 	EngineRunMode mode;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 

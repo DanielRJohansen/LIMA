@@ -84,7 +84,6 @@ struct ForceEnergyInterims {
 	void Free() const;
 
 	// These are temp, pushed into fromSuperclusters*
-	ForceEnergy* bonded = nullptr; // TODO: Also temp, not sure how i wanna proceed here..
 	ForceEnergy* pme = nullptr;
 
 	// Pushed to from pclusters

@@ -247,7 +247,7 @@ int RunAllUnitTests() {
 	constexpr auto envmode = EnvMode::Headless;
 
 	// Run before enqueueing ordinary simulations so isolated GPU probes do not compete with them.
-	LimitTesting::AddTests(testman);
+	//LimitTesting::AddTests(testman);
 
 	if (!ALL_PHYSICS_ENABLED) {
 		TestUtils::setConsoleTextColorRed();

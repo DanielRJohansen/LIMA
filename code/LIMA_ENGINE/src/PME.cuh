@@ -3,6 +3,7 @@
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
 #include "SimulationData.h"
+#include "CapacityOverflow.cuh"
 namespace ChargeBlock { struct ChargeblockBuffers; }
 
 #include <cufft.h>
@@ -55,6 +56,9 @@ namespace PME {
 		~Controller();
 
 		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy);
+
+		// Charge-block capacity status, or nullptr while no simulation is active
+		const CapacityOverflow* Overflow() const;
 
 	private:
 		//Just for debugging

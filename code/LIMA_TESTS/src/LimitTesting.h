@@ -43,7 +43,7 @@ namespace LimitTesting {
 	inline std::vector<Case> Cases() {
 		std::vector<Case> cases;
 		for (int count : {7, 8, 9}) cases.push_back({std::format("transfer-{}", count), Kind::Transfer, count});
-		for (int count : {63, 64, 65}) {
+		for (int count : {127, 128, 129}) {
 			cases.push_back({std::format("runtime-occupancy-{}", count), Kind::Occupancy, count});
 			cases.push_back({std::format("bootstrap-occupancy-{}", count), Kind::Bootstrap, count});
 		}
@@ -266,11 +266,11 @@ namespace LimitTesting {
 	inline void RunCase(const Case& test) {
 		switch (test.kind) {
 		case Kind::Transfer: ProbeCapacity(EngineLimitProbe::ClusterTransfer, test.value, 8); break;
-		case Kind::Occupancy: ProbeCapacity(EngineLimitProbe::ClusterOccupancy, test.value, 64); break;
+		case Kind::Occupancy: ProbeCapacity(EngineLimitProbe::ClusterOccupancy, test.value, 128); break;
 		case Kind::ChargeBlock: ProbeCapacity(EngineLimitProbe::ChargeBlock, test.value, 384); break;
 		case Kind::Bootstrap: {
 			auto simulation = MakeSimulation(test.value);
-			if (test.value <= 64) Run(*simulation);
+			if (test.value <= 128) Run(*simulation);
 			else {
 				bool rejected = false;
 				try { Engine engine({simulation.get()}); }

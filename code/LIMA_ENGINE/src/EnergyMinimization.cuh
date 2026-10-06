@@ -170,7 +170,7 @@ namespace EM {
 				values.gDotG = g.dot(g);
 				// fmaxf drops NaN, which would let a broken force look converged. Report it as infinite instead
 				const float forceSq = force.lenSquared();
-				values.maxForceSq = isfinite(forceSq) ? forceSq : INFINITY;
+				values.maxForceSq = isfinite(forceSq) ? forceSq : __int_as_float(0x7f800000); // +inf
 				values.nParticles = 1;
 			}
 		}

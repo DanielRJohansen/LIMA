@@ -10,6 +10,7 @@
 #include "DeviceAlgorithms.cuh"
 #include "Utilities.h"
 #include "LimitTesting.cuh"
+#include "PME.cuh"
 #include "LimaPositionSystem.cuh"
 
 #include <cooperative_groups.h>
@@ -60,7 +61,6 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 
 
 	//const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
-	Float3 temp = meanPos;
 	Float3 gridPosF = meanPos.Floor();
 	PeriodicBoundaryCondition::ApplyBC(gridPosF, boxSizeFloat, boxSizeFloatInv);
 	PeriodicBoundaryCondition::ApplyHyperpos(gridPosF, meanPos, boxSizeFloat, boxSizeFloatInv);
@@ -72,13 +72,12 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	}
 	const int blockIndex = gridOffset + BoxGrid::Get1dIndex(blockId, boxSize);
 	int indexInBlock = atomicAdd(&transferModule.nPClustersPerBlock[blockIndex], 1);
-	int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
-
-	if constexpr (INDEXING_CHECKS){
-		if (indexInBlock >= PClusterTransfermodule::maxClustersPerBlock) {
-			printf("Too many pclusters in block %d %d %d. Count %d temppos %f %f %f\n", blockId.x, blockId.y, blockId.z, indexInBlock, temp.x, temp.y, temp.z);
-		}
+	if (indexInBlock >= PClusterTransfermodule::maxClustersPerBlock) {
+		// The counter keeps growing past capacity; every reader clamps it
+		transferModule.overflow.Report(CapacityOverflow::ClusterOccupancy, blockIndex, indexInBlock + 1, PClusterTransfermodule::maxClustersPerBlock);
+		return;
 	}
+	int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
 
 	transferModule.idsOfPclustersInBlocks[index] = pcId;
 	transferModule.meanPositionOfPClustersPerBlock[index] = meanPos; // TODO: THis is not even the actual meanposition is it?
@@ -91,7 +90,7 @@ __global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModul
 	__shared__ int ids[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ Float3 positions[PClusterTransfermodule::maxClustersPerBlock];
 
-	const int nPclustersToSort = transferModule.nPClustersPerBlock[blockIdx.x];
+	const int nPclustersToSort = min(transferModule.nPClustersPerBlock[blockIdx.x], PClusterTransfermodule::maxClustersPerBlock);
 
 	if constexpr (INDEXING_CHECKS) {
 		if (threadIdx.x == 0 && nPclustersToSort > PClusterTransfermodule::maxClustersPerBlock) {
@@ -141,7 +140,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	__shared__ int directionIndexOfPCluster[PClusterTransfermodule::maxClustersPerBlock]; // -1 for stay
 
 	if (threadIdx.x == 0) {
-		nPClusters = transferModule.nPClustersPerBlock[blockIdx.x];
+		nPClusters = min(transferModule.nPClustersPerBlock[blockIdx.x], PClusterTransfermodule::maxClustersPerBlock);
 		indexOfFirstCluster = blockIdx.x * PClusterTransfermodule::maxClustersPerBlock;
 	}
 	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
@@ -181,16 +180,17 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	__shared__ int clusterIdsThisDirectionRelativeToBlock[PClusterTransfermodule::maxOutgoingClusters * 6];
 	if (threadIdx.x < 6) {
 		int myCount = 0;
-		if constexpr (INDEXING_CHECKS) {
-			if (myCount >= PClusterTransfermodule::maxOutgoingClusters)
-				printf("Too many pClusters in one direction");
-		}
 		for (int i = 0; i < nPClusters; i++) {
-			if (directionIndexOfPCluster[i] == threadIdx.x) {				
-				clusterIdsThisDirectionRelativeToBlock[threadIdx.x * PClusterTransfermodule::maxOutgoingClusters + myCount] = i;
+			if (directionIndexOfPCluster[i] == threadIdx.x) {
+				if (myCount < PClusterTransfermodule::maxOutgoingClusters)
+					clusterIdsThisDirectionRelativeToBlock[threadIdx.x * PClusterTransfermodule::maxOutgoingClusters + myCount] = i;
 				myCount++;
 			}
-		}	
+		}
+		if (myCount > PClusterTransfermodule::maxOutgoingClusters) {
+			transferModule.overflow.Report(CapacityOverflow::ClusterTransfer, blockIdx.x, myCount, PClusterTransfermodule::maxOutgoingClusters);
+			myCount = PClusterTransfermodule::maxOutgoingClusters;
+		}
 		nClustersThisDirection[threadIdx.x] = myCount;
 	}
 	__syncthreads();
@@ -288,7 +288,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	const Float3 blockCenter = BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize).toFloat3() + Float3{ 0.5f };
 
 	if (threadIdx.x == 0) {
-		nPclustersInBlock = transferModule.nPClustersPerBlock[blockIdx.x];
+		nPclustersInBlock = min(transferModule.nPClustersPerBlock[blockIdx.x], PClusterTransfermodule::maxClustersPerBlock);
 	}
 
 	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
@@ -306,17 +306,18 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	}
 	for (int dir = 0; dir < 6; dir++){
 		const int incomingBaseIndex = (blockIdx.x * 6 + dir) * PClusterTransfermodule::maxOutgoingClusters;
-		if (threadIdx.x < transferModule.nIncomingClusters[blockIdx.x * 6 + dir]) {
+		const int nIncoming = transferModule.nIncomingClusters[blockIdx.x * 6 + dir];
+		if (threadIdx.x < nIncoming && nPclustersInBlock + threadIdx.x < PClusterTransfermodule::maxClustersPerBlock) {
 			const int indexInBlock = nPclustersInBlock + threadIdx.x;
 			meanPositionsOfPClusters[indexInBlock] = transferModule.meanpositionsOfIncomingClusters[incomingBaseIndex + threadIdx.x];
 			idsOfPclustersInBlock[indexInBlock] = transferModule.idsOfIncomingClusters[incomingBaseIndex + threadIdx.x];
 		}
 		__syncthreads();
 		if (threadIdx.x == 0) {
-			nPclustersInBlock += transferModule.nIncomingClusters[blockIdx.x * 6 + dir];
-			if constexpr (INDEXING_CHECKS) {
-				if (nPclustersInBlock > PClusterTransfermodule::maxClustersPerBlock)
-					printf("Too many clusters in block after adding incoming. Block %d, count %d\n", blockIdx.x, nPclustersInBlock);
+			nPclustersInBlock += nIncoming;
+			if (nPclustersInBlock > PClusterTransfermodule::maxClustersPerBlock) {
+				transferModule.overflow.Report(CapacityOverflow::ClusterOccupancy, blockIdx.x, nPclustersInBlock, PClusterTransfermodule::maxClustersPerBlock);
+				nPclustersInBlock = PClusterTransfermodule::maxClustersPerBlock;
 			}
 		}
 		__syncthreads();
@@ -605,7 +606,16 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after Prefixsum");
 		cudaMemcpyAsync(&batch->nSuperclusters, batch->superclusterStagingControl->nClustersPrefixSum + nElements - 1,
 			sizeof(int), cudaMemcpyDeviceToHost, stream);
+		// Capacity status rides on this existing sync. PME runs on its own stream, so its status may lag
+		// by a step; FinalizeSimulation does a fully synchronized check.
+		int overflow[2][CapacityOverflow::nValues]{};
+		cudaMemcpyAsync(overflow[0], batch->pclusterTransfermodule->overflow.status, sizeof(overflow[0]), cudaMemcpyDeviceToHost, stream);
+		const CapacityOverflow* pmeOverflow = batch->pmeController ? batch->pmeController->Overflow() : nullptr;
+		if (pmeOverflow)
+			cudaMemcpyAsync(overflow[1], pmeOverflow->status, sizeof(overflow[1]), cudaMemcpyDeviceToHost, stream);
 		cudaStreamSynchronize(stream);
+		CapacityOverflow::ThrowIfSet(overflow[0]);
+		CapacityOverflow::ThrowIfSet(overflow[1]);
 	}
 
 	// Clusters are compressed in bin order, so each simulation remains a range.
@@ -700,6 +710,7 @@ namespace EngineLimitTesting {
 			const bool inQueue = i >= first && i < first + PClusterTransfermodule::maxOutgoingClusters;
 			Require(inQueue || actual[i] == -1, "Cluster transfer overwrote a neighboring queue");
 		}
+		transfer->overflow.Check();
 		Require(count <= PClusterTransfermodule::maxOutgoingClusters, "Cluster transfer accepted more than 8 outgoing clusters without rejecting the overflow");
 		Require(remaining[source] == 0 && actualCounts[target * 6] == count, "Cluster transfer lost particles");
 		for (int i = 0; i < count; ++i)
@@ -736,7 +747,8 @@ namespace EngineLimitTesting {
 		CheckCuda();
 		ClusteringKernel<<<1, 32>>>(*transfer, clustersDevice.Get(), *staging, metadataDevice.Get(), Int3{1, 1, 1}, Float3{1.f});
 		CheckCuda();
-		Require(count <= PClusterTransfermodule::maxClustersPerBlock, "Runtime clustering accepted more than 64 clusters without rejecting the overflow");
+		transfer->overflow.Check();
+		Require(count <= PClusterTransfermodule::maxClustersPerBlock, "Runtime clustering accepted more than 128 clusters without rejecting the overflow");
 		const auto nClusters = GenericCopyToHost(staging->nClustersPerBlock, 1).front();
 		Require(nClusters > 0 && nClusters <= SuperClustersControl::maxClustersPerBlock, "Invalid supercluster count");
 		const auto output = GenericCopyToHost(staging->scMeta, nClusters);

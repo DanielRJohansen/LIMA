@@ -184,10 +184,9 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 			const int targetBlockIndex = blockOffset + BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
 			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
 
-			if constexpr (INDEXING_CHECKS) {
-				if (indexInTarget >= ChargeBlock::maxParticlesInBlock) {
-					printf("Error: Chargeblock %d has %d particles of max %d\n", targetBlockIndex, indexInTarget, ChargeBlock::maxParticlesInBlock);
-				}
+			if (indexInTarget >= ChargeBlock::maxParticlesInBlock) {
+				chargeblockBuffers.overflow.Report(CapacityOverflow::ChargeBlock, targetBlockIndex, indexInTarget + 1, ChargeBlock::maxParticlesInBlock);
+				continue;
 			}
 
 			ChargeBlock::GetParticles(chargeblockBuffers, targetBlockIndex)[indexInTarget] = ChargePos{ relposRelativeToTargetBlock, charges[designatedParticleId] };
@@ -209,7 +208,7 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 		localGrid[i] = 0;
 
 	if (threadIdx.x == 0) {
-		nParticles = chargeblockBuffers.nParticlesInBlock[blockIdx.x];	
+		nParticles = min(chargeblockBuffers.nParticlesInBlock[blockIdx.x], static_cast<uint32_t>(ChargeBlock::maxParticlesInBlock));	
 		chargeblockBuffers.nParticlesInBlock[blockIdx.x] = 0; // Reset the particle count for the next round of accumulation	
 	}
 	__syncthreads();
@@ -865,6 +864,10 @@ PME::Controller::~Controller() {
 	if (chargeblockBuffers) chargeblockBuffers->Free();
 }
 
+const CapacityOverflow* PME::Controller::Overflow() const {
+	return chargeblockBuffers ? &chargeblockBuffers->overflow : nullptr;
+}
+
 void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy) {
 	if (nSuperclusters == 0 || batchCount == 0) return;
 	const Int3 blocksPerDim = boxlenNm.ToInt3();
@@ -953,6 +956,7 @@ namespace EngineLimitTesting {
 		const auto actual = GenericCopyToHost(buffers->chargeposBuffer, 8 * ChargeBlock::maxParticlesInBlock);
 		for (size_t i = ChargeBlock::maxParticlesInBlock; i < actual.size(); ++i)
 			Require(actual[i].charge == 0.f, "PME charge distribution overwrote a neighboring charge block");
+		buffers->overflow.Check();
 		Require(count <= ChargeBlock::maxParticlesInBlock, "PME accepted more than 384 charge entries without rejecting the overflow");
 		const auto counts = GenericCopyToHost(buffers->nParticlesInBlock, 8);
 		Require(counts[0] == count, "PME charge distribution lost entries");

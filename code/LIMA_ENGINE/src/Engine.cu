@@ -343,6 +343,10 @@ bool Engine::hostMaster() {
 void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 	if (sim.finalized) return;
 	Synchronize();
+	// Results are only valid if no kernel dropped entries at a capacity limit
+	if (batch->pclusterTransfermodule) batch->pclusterTransfermodule->overflow.Check();
+	if (batch->pmeController)
+		if (const CapacityOverflow* overflow = batch->pmeController->Overflow()) overflow->Check();
 	OffloadLoggingData(sim);
 	const auto range = sim.device.pclusters;
 	cudaMemcpy(sim.simulation->box->pclusterInterimStates.data(), batch->boxState.pclusterInterimStates + range.offset,
@@ -754,7 +758,7 @@ void Engine::TestLimit(EngineLimitProbe probe, int count) {
 		ClusterTransfer(count);
 		break;
 	case EngineLimitProbe::ClusterOccupancy:
-		Require(count >= 1 && count <= 65, "Invalid occupancy fixture size");
+		Require(count >= 1 && count <= PClusterTransfermodule::maxClustersPerBlock + 1, "Invalid occupancy fixture size");
 		ClusterOccupancy(count);
 		break;
 	case EngineLimitProbe::ChargeBlock:

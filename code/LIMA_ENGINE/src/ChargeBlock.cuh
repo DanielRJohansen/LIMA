@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include "CapacityOverflow.cuh"
 
 
 namespace ChargeBlock {
@@ -20,14 +21,17 @@ namespace ChargeBlock {
 
 			cudaMemset(nParticlesInBlock, 0, nChargeblocks * sizeof(uint32_t));
 			cudaMemset(chargeposBuffer, 0, nChargeblocks * maxParticlesInBlock * sizeof(ChargePos));
+			overflow = CapacityOverflow::Create();
 		}
 
 		void Free() const {
 			cudaFree(nParticlesInBlock);
 			cudaFree(chargeposBuffer);
+			CapacityOverflow{ overflow }.Free();
 		}
 		uint32_t* nParticlesInBlock;
 		ChargePos* chargeposBuffer;
+		CapacityOverflow overflow;
 	};
 
 

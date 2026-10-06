@@ -2,6 +2,7 @@
 
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
+#include "CapacityOverflow.cuh"
 
 #include <cuda_runtime.h>
 //#include <cuda_fp8.h>
@@ -34,6 +35,8 @@ public:
 	int* idsOfIncomingClusters = nullptr;
 	Float3* meanpositionsOfIncomingClusters = nullptr;
 
+	CapacityOverflow overflow;
+
 	__host__ static PClusterTransfermodule Create(int nBlocksTotal) {
 		PClusterTransfermodule transferModule;
 		cudaMalloc(&transferModule.meanPositionOfPClustersPerBlock, sizeof(Float3) * maxClustersPerBlock * nBlocksTotal);		
@@ -43,6 +46,7 @@ public:
 		cudaMalloc(&transferModule.nIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.idsOfIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.meanpositionsOfIncomingClusters, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
+		transferModule.overflow = CapacityOverflow::Create();
 		transferModule.Reset(nBlocksTotal);
 
 		cudaMemset(transferModule.idsOfIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
@@ -61,6 +65,7 @@ public:
 		cudaFree(nIncomingClusters);
 		cudaFree(idsOfIncomingClusters);
 		cudaFree(meanpositionsOfIncomingClusters);
+		overflow.Free();
 	}
 };
 	

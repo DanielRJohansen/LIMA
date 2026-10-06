@@ -76,6 +76,11 @@ target_link_libraries(LIMA_DEPENDS PUBLIC
     ${GLFW_LIBRARIES}
     ${OPENGL_LIBRARIES}
 )
+if (MSVC)
+    # Only load OpenGL when a window is opened. Headless runs otherwise pay ~60 ms to load and unload it.
+    target_link_options(LIMA_DEPENDS PUBLIC "/DELAYLOAD:OPENGL32.dll")
+    target_link_libraries(LIMA_DEPENDS PUBLIC delayimp)
+endif()
 
 # GLEW_NO_GLU: LIMA does not use GLU, so dont require its headers or library
 target_compile_definitions(LIMA_DEPENDS PUBLIC GLEW_STATIC GLEW_NO_GLU)

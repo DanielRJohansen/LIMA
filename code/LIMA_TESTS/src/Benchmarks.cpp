@@ -75,6 +75,39 @@ namespace Benchmarks {
 			envmode == Full };
 	}
 
+	// Profiles preparing a small system end to end: gro/top parsing, then BoxImage + Box building,
+	// Engine construction and the first step inside the Environment
+	TestRoutine LoadT4(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = TestsDir() / "benchmarking/t4";
+
+		TimeIt fileTimer;
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace(workDir / "conf.gro");
+		job.topfile.emplace(workDir / "topol.top");
+		job.simParams.emplace(workDir / "../sim_params.txt");
+		const std::chrono::duration<double> fileTime = fileTimer.stop();
+
+		job.mode = EnvMode::Headless;
+		job.mustRunAlone = true;
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; };
+
+		auto completed = co_await environment.Submit(std::move(job));
+		if (!completed.simulation || completed.simulation->getStep() != 1)
+			co_return LimaUnittestResult{ false, "T4 load benchmark did not complete its step", envmode == Full };
+
+		// environmentTime excludes time spent queued behind other jobs
+		const std::chrono::duration<double> setupTime = completed.environmentTime;
+		const std::chrono::duration<double> totalTime = fileTime + setupTime;
+		const std::chrono::duration<double> allowedTime{ 0.5 };
+
+		co_return LimaUnittestResult{ totalTime < allowedTime,
+			Lima::Format("files {:.0f} + setup {:.0f} (1st step {:.1f}) = {:.0f}/{:.0f} [ms]",
+				fileTime.count() * 1000., setupTime.count() * 1000., completed.engineTime.count() * 1000.,
+				totalTime.count() * 1000., allowedTime.count() * 1000.),
+			envmode == Full };
+	}
+
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
 		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns) {

@@ -149,8 +149,10 @@ private:
 		if (locked) {
 			throw std::runtime_error("Cannot add to database after it has been locked");
 		}
-		for (const auto& param : parameters) {
-			if (param.bonded_typenames == element.bonded_typenames && param.params == element.params) {
+		// Only entries with identical typenames can be duplicates, so index by typenames to keep loading linear
+		std::vector<size_t>& sameNames = indicesByTypenames[JoinTypenames(element.bonded_typenames)];
+		for (const size_t index : sameNames) {
+			if (parameters[index].params == element.params) {
 				// I think this will be a problem, either because we include multiple files for the forcefiel, either 
 				// custom or there are duplicates in the ffnabonded.itp, or it may just be a problem with the forcefield itself
 				//throw std::runtime_error("Duplicate bond type found in forcefield");
@@ -160,12 +162,23 @@ private:
 				return;
 			}
 		}
+		sameNames.push_back(parameters.size());
 		parameters.push_back(element);
 	}
 
 	const std::vector<typename GenericBondType::Parameters> emptyParams{}; // Return this if we find no matches
 	std::vector<GenericBondType> parameters;
 	std::unordered_map<std::string, std::vector<typename GenericBondType::Parameters>> fastLookup;	// Map a query to an index in parameters
+	std::unordered_map<std::string, std::vector<size_t>> indicesByTypenames;	// Indices in parameters, for duplicate detection
+
+	static std::string JoinTypenames(const std::array<std::string, GenericBondType::nAtoms>& names) {
+		std::string key;
+		for (const auto& name : names) {
+			key += name;
+			key += ' ';
+		}
+		return key;
+	}
 
 	bool locked = false; // Once this is true, we may no longer add to the database
 

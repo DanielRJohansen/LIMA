@@ -43,6 +43,7 @@ namespace Benchmarks {
 	const fs::path TestsDir();
 	TestRoutine ToGmxLargeCif(Environment&, EnvMode envmode);
 	TestRoutine Load3J3Q(Environment& environment, EnvMode envmode);
+	TestRoutine LoadT4(Environment& environment, EnvMode envmode);
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 			fs::path groPath, fs::path topPath, fs::path simParamsPath,
 			PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns);

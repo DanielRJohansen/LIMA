@@ -18,6 +18,8 @@
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
 #include <cuda_profiler_api.h>
+#include <cuda_runtime.h>
+#include <cstdlib>
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -181,6 +183,18 @@ void Environment::SetLiveEditSimulation(
 }
 
 Environment::Environment() {
+	// Creating the CUDA context costs ~120 ms of driver time on Windows. Doing it in the background
+	// overlaps it with file parsing and box building; CUDA calls from other threads wait for it.
+	cudaWarmup = std::async(std::launch::async, [] {
+#ifdef _WIN32
+		// Load every kernel module now, while it is off the critical path, instead of on each
+		// kernel's first launch. Must be set before the driver initializes; respect a user override.
+		if (!std::getenv("CUDA_MODULE_LOADING"))
+			_putenv_s("CUDA_MODULE_LOADING", "EAGER");
+#endif
+		cudaFree(nullptr);
+		cudaGetLastError(); // A missing GPU is reported by the first real CUDA call instead
+	});
 	StartScheduling();
 }
 
@@ -191,6 +205,7 @@ Environment& Environment::Get() {
 
 Environment::~Environment() {
 	StopScheduling();
+	cudaWarmup.wait();
 }
 
 size_t Environment::WorkerSlots::Reserve() {

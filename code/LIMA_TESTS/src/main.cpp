@@ -322,6 +322,7 @@ int RunAllUnitTests() {
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
 	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
+	ADD_TEST("LoadT4", Benchmarks::LoadT4);
 	ADD_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
 	ADD_TEST("stmv sim performance", Benchmarks::STMV, 200, Benchmarks::automatedTestRuns);
 

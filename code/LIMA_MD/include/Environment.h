@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -261,6 +262,8 @@ private:
 	std::unique_ptr<SimulationSession> liveEditSession;
 
 	std::mutex schedulingMutex;
+	// Creates the CUDA context while the caller parses files and builds the box. Destroyed last.
+	std::future<void> cudaWarmup;
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
 	size_t unpreparedSimulations = 0; // Submitted jobs not yet finished by Preprocess.

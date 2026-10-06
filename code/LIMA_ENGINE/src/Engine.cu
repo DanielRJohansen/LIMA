@@ -15,6 +15,7 @@
 #include "SuperclusterStagingControl.cuh"
 #include "TaskBuilderControl.cuh"
 #include "BatchData.cuh"
+#include "LimitTesting.cuh"
 #include "RenderDataPipe.h"
 
 #include <random>
@@ -739,4 +740,29 @@ bool Engine::TestAlgorithms() {
 	runCase(8, 8);   // effectively 16x4
 
 	return success;
+}
+
+namespace EngineLimitTesting {
+	__global__ void DeviceFailureKernel() { asm("trap;"); }
+}
+
+void Engine::TestLimit(EngineLimitProbe probe, int count) {
+	using namespace EngineLimitTesting;
+	switch (probe) {
+	case EngineLimitProbe::ClusterTransfer:
+		Require(count >= 1 && count <= 9, "Invalid transfer fixture size");
+		ClusterTransfer(count);
+		break;
+	case EngineLimitProbe::ClusterOccupancy:
+		Require(count >= 1 && count <= 65, "Invalid occupancy fixture size");
+		ClusterOccupancy(count);
+		break;
+	case EngineLimitProbe::ChargeBlock:
+		Require(count >= 1 && count <= 385, "Invalid PME fixture size");
+		EngineLimitTesting::ChargeBlock(count);
+		break;
+	case EngineLimitProbe::DeviceFailure:
+		DeviceFailureKernel<<<1, 1>>>();
+		break;
+	}
 }

@@ -42,6 +42,9 @@ struct RunStatus {
 
 enum class EngineRunMode { Simulation, Interactive };
 
+// Direct kernel fixtures used by the isolated limit tests. Never call DeviceFailure in a live engine process.
+enum class EngineLimitProbe { ClusterTransfer, ClusterOccupancy, ChargeBlock, DeviceFailure };
+
 class Engine {
 public:
 	// Simulations are nonowning and must outlive this engine. Interactive mode
@@ -59,6 +62,7 @@ public:
 	void terminateSimulation();
 
 	static bool TestAlgorithms();
+	static void TestLimit(EngineLimitProbe probe, int count = 0);
 
 	// Optional. Makes the energy-minimization preconditioner of an EM simulation before an Engine is constructed for it,
 	// so this host work does not delay the GPU. The simulation must not be modified before it is run

@@ -9,6 +9,7 @@
 #include "BoundaryCondition.cuh"
 #include "DeviceAlgorithms.cuh"
 #include "Utilities.h"
+#include "LimitTesting.cuh"
 #include "LimaPositionSystem.cuh"
 
 #include <cooperative_groups.h>
@@ -665,4 +666,88 @@ void Engine::BootstrapClustering(cudaStream_t stream) {
 	cudaMemcpyAsync(batch->pclusterTransfermodule->idsOfPclustersInBlocks, ids.data(), sizeof(int) * ids.size(), cudaMemcpyHostToDevice, stream);
 	cudaMemcpyAsync(batch->pclusterTransfermodule->nPClustersPerBlock, counts.data(), sizeof(int) * counts.size(), cudaMemcpyHostToDevice, stream);
 	RunClustering(stream, false);
+}
+
+namespace EngineLimitTesting {
+	void ClusterTransfer(int count) {
+		constexpr Int3 boxSize{4, 4, 4};
+		constexpr int blocks = 64;
+		const int source = BoxGrid::Get1dIndex(Int3{1, 1, 1}, boxSize);
+		const int target = BoxGrid::Get1dIndex(Int3{2, 1, 1}, boxSize);
+		auto transfer = MakeTransferModule(blocks);
+		std::vector<int> counts(blocks), ids(blocks * PClusterTransfermodule::maxClustersPerBlock, -1);
+		std::vector<Float3> positions(ids.size());
+		counts[source] = count;
+		for (int i = 0; i < count; ++i) {
+			const int index = source * PClusterTransfermodule::maxClustersPerBlock + i;
+			ids[index] = i;
+			positions[index] = Float3{2.1f, 1.5f, 1.5f};
+		}
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->nPClustersPerBlock, counts.data(), counts.size() * sizeof(int), cudaMemcpyHostToDevice));
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->idsOfPclustersInBlocks, ids.data(), ids.size() * sizeof(int), cudaMemcpyHostToDevice));
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->meanPositionOfPClustersPerBlock, positions.data(), positions.size() * sizeof(Float3), cudaMemcpyHostToDevice));
+		// Sentinel slots catch writes crossing a logical queue even if they stay within the allocation.
+		std::vector<int> incoming(blocks * 6 * PClusterTransfermodule::maxOutgoingClusters, -1);
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->idsOfIncomingClusters, incoming.data(), incoming.size() * sizeof(int), cudaMemcpyHostToDevice));
+		CheckCuda();
+		ClusteringPretransferKernel<PeriodicBoundaryCondition><<<blocks, 32>>>(*transfer, boxSize, Float3{4.f});
+		CheckCuda();
+		const auto actual = GenericCopyToHost(transfer->idsOfIncomingClusters, incoming.size());
+		const auto actualCounts = GenericCopyToHost(transfer->nIncomingClusters, blocks * 6);
+		const auto remaining = GenericCopyToHost(transfer->nPClustersPerBlock, blocks);
+		const int first = target * 6 * PClusterTransfermodule::maxOutgoingClusters;
+		for (size_t i = 0; i < actual.size(); ++i) {
+			const bool inQueue = i >= first && i < first + PClusterTransfermodule::maxOutgoingClusters;
+			Require(inQueue || actual[i] == -1, "Cluster transfer overwrote a neighboring queue");
+		}
+		Require(count <= PClusterTransfermodule::maxOutgoingClusters, "Cluster transfer accepted more than 8 outgoing clusters without rejecting the overflow");
+		Require(remaining[source] == 0 && actualCounts[target * 6] == count, "Cluster transfer lost particles");
+		for (int i = 0; i < count; ++i)
+			Require(actual[first + i] == i, "Cluster transfer changed particle identities");
+	}
+
+	void ClusterOccupancy(int count) {
+		// One cell starts with count-1 clusters and receives one. This exercises the runtime merge,
+		// independently of bootstrap validation and GetPclusterPositions rebuilding membership.
+		auto transfer = MakeTransferModule(1);
+		const int resident = count - 1;
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->nPClustersPerBlock, &resident, sizeof(int), cudaMemcpyHostToDevice));
+		std::vector<int> ids(PClusterTransfermodule::maxClustersPerBlock);
+		std::iota(ids.begin(), ids.end(), 0);
+		std::vector<Float3> positions(ids.size(), Float3{0.5f});
+		std::vector<PersistentCluster> clusters(count);
+		std::vector<PersistentClusterMeta> metadata(count);
+		for (int i = 0; i < count; ++i) {
+			clusters[i].pqd[0] = PData{Float3{0.5f}, NBParams{0.f, 0.f, 0.f}};
+			metadata[i].nParticles = 1;
+			metadata[i].particleIdsGlobal[0] = i;
+		}
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->idsOfPclustersInBlocks, ids.data(), ids.size() * sizeof(int), cudaMemcpyHostToDevice));
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->meanPositionOfPClustersPerBlock, positions.data(), positions.size() * sizeof(Float3), cudaMemcpyHostToDevice));
+		const int incoming = 1;
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->nIncomingClusters, &incoming, sizeof(int), cudaMemcpyHostToDevice));
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->idsOfIncomingClusters, &resident, sizeof(int), cudaMemcpyHostToDevice));
+		LIMA_UTILS::genericErrorCheck(cudaMemcpy(transfer->meanpositionsOfIncomingClusters, positions.data(), sizeof(Float3), cudaMemcpyHostToDevice));
+		CudaBuffer<PersistentCluster> clustersDevice;
+		CudaBuffer<PersistentClusterMeta> metadataDevice;
+		clustersDevice.SetData(clusters);
+		metadataDevice.SetData(metadata);
+		std::unique_ptr<SuperclusterStagingControl, FreeDeviceMembers<SuperclusterStagingControl>> staging(new SuperclusterStagingControl(1));
+		CheckCuda();
+		ClusteringKernel<<<1, 32>>>(*transfer, clustersDevice.Get(), *staging, metadataDevice.Get(), Int3{1, 1, 1}, Float3{1.f});
+		CheckCuda();
+		Require(count <= PClusterTransfermodule::maxClustersPerBlock, "Runtime clustering accepted more than 64 clusters without rejecting the overflow");
+		const auto nClusters = GenericCopyToHost(staging->nClustersPerBlock, 1).front();
+		Require(nClusters > 0 && nClusters <= SuperClustersControl::maxClustersPerBlock, "Invalid supercluster count");
+		const auto output = GenericCopyToHost(staging->scMeta, nClusters);
+		std::vector<int> actualIds;
+		for (const auto& meta : output) {
+			Require(meta.nParticles > 0 && meta.nParticles <= SuperCluster::maxParticles, "Invalid supercluster particle count");
+			for (int i = 0; i < meta.nParticles; ++i) actualIds.push_back(meta.globalParticleIds[i]);
+		}
+		std::ranges::sort(actualIds);
+		Require(actualIds.size() == count, "Runtime clustering lost or duplicated particles");
+		for (int i = 0; i < count; ++i) Require(actualIds[i] == i, "Runtime clustering changed particle identities");
+	}
+
 }

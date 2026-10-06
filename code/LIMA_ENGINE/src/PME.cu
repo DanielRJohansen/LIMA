@@ -11,6 +11,7 @@
 #include "BoundaryCondition.cuh"
 #include "Filehandling.h"
 #include "Utilities.h"
+#include "LimitTesting.cuh"
 
 using namespace ChargeBlock;
 using namespace PME;
@@ -922,4 +923,43 @@ void PME::Controller::PlotPotentialSlices() {
 	std::string command = "python " + pyscriptPath + " " + std::to_string(numSlices * 2 + 1) + " " + gridpointsPerDim.toString() + " " + std::to_string(centerSlice) + " " + std::to_string(spacing);
 	std::cout << "Executing command:\n" << command << std::endl;
 	std::system(command.c_str());
+}
+
+namespace EngineLimitTesting {
+	void ChargeBlock(int count) {
+		// All positions are inside the central part of charge block zero, away from stencil transfers.
+		// Block one is a sentinel: overflowing block zero can corrupt it without leaving the allocation.
+		const int nClusters = (count + SuperCluster::maxParticles - 1) / SuperCluster::maxParticles;
+		std::vector<SuperCluster> clusters(nClusters);
+		std::vector<SuperClusterMeta> metadata(nClusters);
+		for (int sc = 0; sc < nClusters; ++sc) {
+			for (int lane = 0; lane < SuperCluster::maxParticles; ++lane) {
+				const int id = sc * SuperCluster::maxParticles + lane;
+				clusters[sc].posX[lane] = clusters[sc].posY[lane] = clusters[sc].posZ[lane] = 0.5f;
+				clusters[sc].epsilonSqrt[lane] = id < count ? 0.f : -1.f;
+				clusters[sc].charge[lane] = id < count ? static_cast<float>(id + 1) : 0.f;
+			}
+		}
+		CudaBuffer<SuperCluster> clustersDevice;
+		CudaBuffer<SuperClusterMeta> metadataDevice;
+		CudaBuffer<int> slots;
+		clustersDevice.SetData(clusters);
+		metadataDevice.SetData(metadata);
+		slots.SetData({0});
+		std::unique_ptr<ChargeBlock::ChargeblockBuffers, FreeDeviceMembers<ChargeBlock::ChargeblockBuffers>> buffers(new ChargeBlock::ChargeblockBuffers(8));
+		CheckCuda();
+		DistributeCompoundchargesToBlocksKernel<<<nClusters, 32>>>(clustersDevice.Get(), *buffers, Int3{2, 2, 2}, metadataDevice.Get(), slots.Get());
+		CheckCuda();
+		const auto actual = GenericCopyToHost(buffers->chargeposBuffer, 8 * ChargeBlock::maxParticlesInBlock);
+		for (size_t i = ChargeBlock::maxParticlesInBlock; i < actual.size(); ++i)
+			Require(actual[i].charge == 0.f, "PME charge distribution overwrote a neighboring charge block");
+		Require(count <= ChargeBlock::maxParticlesInBlock, "PME accepted more than 384 charge entries without rejecting the overflow");
+		const auto counts = GenericCopyToHost(buffers->nParticlesInBlock, 8);
+		Require(counts[0] == count, "PME charge distribution lost entries");
+		std::vector<float> charges;
+		for (int i = 0; i < count; ++i) charges.push_back(actual[i].charge);
+		std::ranges::sort(charges);
+		for (int i = 0; i < count; ++i) Require(charges[i] == static_cast<float>(i + 1), "PME charge distribution changed charges");
+	}
+
 }

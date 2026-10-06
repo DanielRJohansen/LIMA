@@ -1,6 +1,7 @@
 #include "Tests.h"
 #include "Display.h"
 #include "Workflow.h"
+#include "LimitTesting.h"
 
 
 using namespace TestUtils;
@@ -12,7 +13,7 @@ using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
 using namespace BatchingTests;
 
-void RunAllUnitTests();
+int RunAllUnitTests();
 
 void TestDisplayT4() {
 	const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
@@ -164,6 +165,21 @@ void ShowcaseMultisim() {
 
 int main(int argc, char** argv) {
 	try {
+		// Dispatch before creating Environment: fatal GPU probes belong only to the child process.
+		if (argc == 3 && std::string_view(argv[1]) == "--limit-case") {
+			const int result = LimitTesting::RunChild(argv[2]);
+			// RunChild has destroyed every fixture and explicitly tested Engine cleanup. Skip global
+			// CUDA/CRT teardown, which can hang after a deliberately poisoned device context.
+			std::cout.flush();
+			std::cerr.flush();
+			std::_Exit(result);
+		}
+		if (argc >= 2 && std::string_view(argv[1]) == "--limit-tests") {
+			if (argc > 3) throw std::invalid_argument("Usage: limatest --limit-tests [NAME-SUBSTRING]");
+			LimaUnittestManager testman(false);
+			LimitTesting::AddTests(testman, argc == 3 ? argv[2] : "");
+			return testman.Finish() == 0 ? 0 : 1;
+		}
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
 		//TestDisplayT4();
@@ -197,7 +213,7 @@ int main(int argc, char** argv) {
 		//ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
-		RunAllUnitTests();
+		return RunAllUnitTests() == 0 ? 0 : 1;
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
@@ -209,7 +225,7 @@ int main(int argc, char** argv) {
 		std::cerr << "\nCaught unnamed exception";
 	}
 
-	return 0;
+	return 1;
 }
 
 
@@ -224,11 +240,14 @@ int main(int argc, char** argv) {
 	ADD_TEST(description, test_function __VA_OPT__(,) __VA_ARGS__)
 
 // Runs all unit tests with the fastest/crucial ones first
-void RunAllUnitTests() {
+int RunAllUnitTests() {
 	TimeIt timer("RunAllUnitTests", true);
 	Environment& environment = Environment::Get();
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
+
+	// Run before enqueueing ordinary simulations so isolated GPU probes do not compete with them.
+	LimitTesting::AddTests(testman);
 
 	if (!ALL_PHYSICS_ENABLED) {
 		TestUtils::setConsoleTextColorRed();
@@ -311,5 +330,5 @@ void RunAllUnitTests() {
 
 
 
-	// Total test status will print as testman is destructed
+	return testman.Finish();
 }

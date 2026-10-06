@@ -57,10 +57,17 @@ __device__ inline void calcSinglebondForces(const Float3& p0, const Float3& p1, 
 #endif
 }
 
+template <bool energyMinimize>
 __device__ inline void calcAnglebondForces(const Float3& pos_left, const Float3& pos_middle, const Float3& pos_right, const AngleUreyBradleyBond& angletype, Float3* results, float& potE) {
 	const Float3 v1 = (pos_left - pos_middle).norm();
 	const Float3 v2 = (pos_right - pos_middle).norm();
-	const Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
+	Float3 normal = v1.cross(v2).norm();	// Poiting towards y, when right is pointing toward x
+	if (energyMinimize && normal.lenSquared() == 0.f) {
+		// Collinear: the bending plane is undefined, so the bending force is zero, matching GROMACS.
+		// EM must still escape a straight angle away from theta0, so pick any plane containing v1.
+		const bool alongX = fabsf(v1.x) >= 0.9f;
+		normal = v1.cross(Float3{ alongX ? 0.f : 1.f, alongX ? 1.f : 0.f, 0.f }).norm();
+	}
 
 	const Float3 inward_force_direction1 = (v1.cross(normal * -1.f)).norm();
 	const Float3 inward_force_direction2 = (v2.cross(normal)).norm();
@@ -369,7 +376,7 @@ __device__ inline void computePairbondForces(const PairBond* const pairbonds, co
 	}
 }
 
-template<typename BoundaryCondition>
+template<typename BoundaryCondition, bool energyMinimization>
 __device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const anglebonds, const int n_anglebonds, const Float3* const positions, float4* const feInterrims,
 	const Float3& boxSize, const Float3& boxSizeInv)
 {
@@ -384,7 +391,7 @@ __device__ inline void computeAnglebondForces(const AngleUreyBradleyBond* const 
 
 			Float3 pos[AngleUreyBradleyBond::nAtoms];
 			LoadBondPositions<BoundaryCondition>(positions, ab->atom_indexes, pos, boxSize, boxSizeInv);
-			LimaForcecalc::calcAnglebondForces(
+			LimaForcecalc::calcAnglebondForces<energyMinimization>(
 				pos[0],
 				pos[1],
 				pos[2],

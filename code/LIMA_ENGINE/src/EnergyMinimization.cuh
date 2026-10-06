@@ -168,7 +168,9 @@ namespace EM {
 				values.velocityDotVelocity = velocity.dot(velocity);
 				values.gDotVelocity = g.dot(velocity);
 				values.gDotG = g.dot(g);
-				values.maxForceSq = force.lenSquared();
+				// fmaxf drops NaN, which would let a broken force look converged. Report it as infinite instead
+				const float forceSq = force.lenSquared();
+				values.maxForceSq = isfinite(forceSq) ? forceSq : INFINITY;
 				values.nParticles = 1;
 			}
 		}

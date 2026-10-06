@@ -17,7 +17,6 @@ TestRoutine TestBoxIsSavedCorrectlyBetweenSimulations(Environment& environment, 
 	second.workDir = workDir;
 	second.initialSimulation = std::move(firstResult.simulation);
 	second.simParams = SimParams{};
-	second.simParams->dt = 0.f;
 	second.simParams->n_steps = 1;
 	auto secondResult = co_await environment.Submit(std::move(second));
 	co_return LimaUnittestResult{ static_cast<bool>(secondResult.simulation), "Success", envmode == Full };

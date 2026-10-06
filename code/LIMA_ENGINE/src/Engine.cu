@@ -467,6 +467,8 @@ void Engine::HandleEarlyStoppingInEM(EngineSimulationData& sim) {
 	entry.step = sim.step;
 	entry.maxForce = sim.runstatus.greatestForce;
 	entry.dt = state.dt;
+	if (!std::isfinite(sim.runstatus.greatestForce))
+		throw std::runtime_error("Energy minimization produced non-finite forces at step " + std::to_string(sim.step));
 	if (sim.runstatus.greatestForce <= batch->params.em_force_tolerance) sim.runstatus.simulation_finished = true;
 }
 

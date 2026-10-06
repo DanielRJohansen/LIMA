@@ -3,7 +3,10 @@
 #include "EngineBodies.cuh"
 #include "PhysicsUtils.cuh"
 #include <algorithm>
+#include <cmath>
+#include "Format.h"
 #include <type_traits>
+#include <unordered_map>
 
 namespace EngineBatch {
 	template<typename T>
@@ -14,6 +17,102 @@ namespace EngineBatch {
 	int CheckedCount(size_t count) {
 		if (count > INT_MAX) throw std::invalid_argument("Engine batch exceeds 32-bit work indices");
 		return static_cast<int>(count);
+	}
+
+	bool FinitePositive(float value) { return value > 0.f && std::isfinite(value); }
+
+	void ValidateParticles(const Box& box) {
+		for (size_t pc = 0; pc < box.persistentClusters.size(); ++pc) {
+			const auto& meta = box.persistentClustersMetadata[pc];
+			for (int lane = 0; lane < meta.nParticles; ++lane) {
+				const Float3 pos = box.persistentClusters[pc].pqd[lane].position;
+				if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+					throw std::invalid_argument(Lima::Format("Particle {} position must be finite", meta.particleIdsGlobal[lane]));
+				if (!FinitePositive(meta.mass[lane]))
+					throw std::invalid_argument(Lima::Format("Particle {} mass must be finite and positive", meta.particleIdsGlobal[lane]));
+			}
+		}
+	}
+
+	struct ParticleRef { int pc; int lane; };
+
+	// Calls onPair(a, b, distance) for every pair of particles closer than maxDistance.
+	// Pairs listed in particlesBondedToParticle are skipped unless includeBonded is set.
+	template <typename OnPair>
+	void ForEachClosePair(const Box& box, BoundaryConditionSelect bc, float maxDistance, bool includeBonded, OnPair&& onPair) {
+		const Int3 size = box.boxparams.boxSize;
+		const Int3 nCells{ std::max(1, static_cast<int>(size.x / maxDistance)), std::max(1, static_cast<int>(size.y / maxDistance)), std::max(1, static_cast<int>(size.z / maxDistance)) };
+		const Float3 cellSize{ size.x / static_cast<float>(nCells.x), size.y / static_cast<float>(nCells.y), size.z / static_cast<float>(nCells.z) };
+		const auto Wrap = [](int value, int n) { return ((value % n) + n) % n; };
+		// Aliasing between keys (outside the box with NoBC) only adds candidate pairs; the distance test stays exact
+		const auto Key = [&](int x, int y, int z) { return (static_cast<int64_t>(x) * nCells.y + y) * nCells.z + z; };
+		struct Entry { Float3 pos; ParticleRef ref; };
+		std::unordered_map<int64_t, std::vector<Entry>> cells;
+		for (int pc = 0; pc < static_cast<int>(box.persistentClusters.size()); ++pc) {
+			const auto& meta = box.persistentClustersMetadata[pc];
+			for (int lane = 0; lane < meta.nParticles; ++lane) {
+				Float3 pos = box.persistentClusters[pc].pqd[lane].position;
+				if (bc == PBC) {
+					pos.x -= std::floor(pos.x / size.x) * size.x;
+					pos.y -= std::floor(pos.y / size.y) * size.y;
+					pos.z -= std::floor(pos.z / size.z) * size.z;
+				}
+				const int id = meta.particleIdsGlobal[lane];
+				const int cx = static_cast<int>(std::floor(pos.x / cellSize.x)), cy = static_cast<int>(std::floor(pos.y / cellSize.y)), cz = static_cast<int>(std::floor(pos.z / cellSize.z));
+				for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) for (int dz = -1; dz <= 1; ++dz) {
+					const int nx = bc == PBC ? Wrap(cx + dx, nCells.x) : cx + dx;
+					const int ny = bc == PBC ? Wrap(cy + dy, nCells.y) : cy + dy;
+					const int nz = bc == PBC ? Wrap(cz + dz, nCells.z) : cz + dz;
+					const auto found = cells.find(Key(nx, ny, nz));
+					if (found == cells.end()) continue;
+					for (const Entry& other : found->second) {
+						Float3 diff = pos - other.pos;
+						if (bc == PBC) {
+							diff.x -= std::round(diff.x / size.x) * size.x;
+							diff.y -= std::round(diff.y / size.y) * size.y;
+							diff.z -= std::round(diff.z / size.z) * size.z;
+						}
+						if (diff.lenSquared() >= maxDistance * maxDistance) continue;
+						const int otherId = box.persistentClustersMetadata[other.ref.pc].particleIdsGlobal[other.ref.lane];
+						if (!includeBonded && id >= 0 && id < static_cast<int>(box.particlesBondedToParticle.size()) && box.particlesBondedToParticle[id].Contains(otherId)) continue;
+						onPair(other.ref, ParticleRef{ pc, lane }, diff.len());
+					}
+				}
+				cells[Key(cx, cy, cz)].push_back({ pos, { pc, lane } });
+			}
+		}
+	}
+
+	// MD has no way to resolve coincident nonbonded particles: the pair force is singular. EM is
+	// expected to push such particles apart, so it skips this check.
+	void ValidateNoOverlap(const Box& box, BoundaryConditionSelect bc) {
+		constexpr float minDistance = 0.005f; // [nm]
+		ForEachClosePair(box, bc, minDistance, false, [&](ParticleRef a, ParticleRef b, float distance) {
+			throw std::invalid_argument(Lima::Format("Particle overlap: particles {} and {} are {:.4f} nm apart (minimum {} nm); run energy minimization first",
+				box.persistentClustersMetadata[a.pc].particleIdsGlobal[a.lane], box.persistentClustersMetadata[b.pc].particleIdsGlobal[b.lane], distance, minDistance));
+		});
+	}
+
+	// Exactly coincident particles have no defined force direction, so EM would see zero force and
+	// report convergence. Nudge them apart deterministically so the minimizer has a gradient to follow.
+	void SeparateCoincidentParticles(Box& box, BoundaryConditionSelect bc) {
+		constexpr float coincident = 1e-4f;	// [nm]
+		constexpr float nudge = 0.01f;		// [nm]
+		for (int pass = 0; pass < 8; ++pass) {
+			std::vector<ParticleRef> moves;
+			ForEachClosePair(box, bc, coincident, true, [&](ParticleRef, ParticleRef b, float) { moves.push_back(b); });
+			if (moves.empty()) return;
+			for (const ParticleRef ref : moves) {
+				// Golden-angle direction per particle id, so particles in a coincident cluster all move differently
+				const int id = box.persistentClustersMetadata[ref.pc].particleIdsGlobal[ref.lane] + pass * 7919;
+				const float z = 1.f - 2.f * std::fmod(id * 0.618034f + 0.5f, 1.f);
+				const float r = std::sqrt(std::max(0.f, 1.f - z * z));
+				const float phi = id * 2.399963f;
+				auto& position = box.persistentClusters[ref.pc].pqd[ref.lane].position;
+				position = position + Float3{ r * std::cos(phi), r * std::sin(phi), z } * nudge;
+			}
+		}
+		throw std::invalid_argument("Could not separate coincident particles for energy minimization");
 	}
 
 	void Validate(const std::vector<Simulation*>& simulations) {
@@ -28,6 +127,10 @@ namespace EngineBatch {
 			const auto& params = sim->simParams;
 			if (params.stepsPerNlistupdate <= 0 || params.steps_per_temperature_measurement <= 0 || params.data_logging_interval < 0)
 				throw std::invalid_argument("Invalid engine measurement or update interval");
+			if (!FinitePositive(params.dt))
+				throw std::invalid_argument("Timestep must be finite and positive");
+			if (!FinitePositive(params.cutoff_nm))
+				throw std::invalid_argument("Cutoff must be finite and positive");
 			if (params.n_steps.value > INT64_MAX)
 				throw std::invalid_argument("Simulation step count exceeds engine limit");
 			const auto& box = *sim->box;
@@ -40,6 +143,8 @@ namespace EngineBatch {
 			if (params.data_logging_interval > 0 && (!sim->traj_buffer || !sim->potE_buffer || !sim->vel_buffer || !sim->forceBuffer))
 				throw std::invalid_argument("Simulation logging buffers have not been prepared");
 			if (sim->box->persistentClusters.empty()) throw std::invalid_argument("Cannot simulate an empty box");
+			ValidateParticles(box);
+			if (!params.em_variant) ValidateNoOverlap(box, params.bc_select);
 			if (auto mismatch = FindIncompatibility(*simulations.front(), *sim))
 				throw std::invalid_argument("Incompatible batch parameter: " + std::string(*mismatch));
 		}
@@ -65,6 +170,7 @@ namespace EngineBatch {
 				batch.simulations.push_back(retired);
 				continue;
 			}
+			if (!active && simulation->simParams.em_variant) SeparateCoincidentParticles(*simulation->box, simulation->simParams.bc_select);
 			const auto& box = *simulation->box;
 			EngineSimulationData sim;
 			sim.simulation = simulation;

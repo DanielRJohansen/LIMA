@@ -144,7 +144,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 			}
 			__syncthreads();
 
-			LimaForcecalc::computeAnglebondForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeAnglebondForces<BoundaryCondition, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
 		}
 	}
 

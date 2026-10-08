@@ -148,13 +148,9 @@ struct EngineBatchData {
 	CudaBuffer<DihedralBond> bondgroupDihedralbonds;
 	CudaBuffer<ImproperDihedralBond> bondgroupImproperdihedralbonds;
 
-	// EM only, see NbNonlocalEmKernel
-	CudaBuffer<ScScTask> scscTasksDevice;
-	CudaBuffer<int> idsOfQuerySuperclustersDevice;
-	CudaBuffer<int> resultIndicesDevice;
-	CudaBuffer<BoolMatrix16x16> noInteractionMatricesDevice;
-	CudaBuffer<QuarterEntryTask> quarterEntryTasksDevice;	// MD only, see NbNonlocalKernel
-	CudaBuffer<QuarterEntry> quarterEntriesDevice;			// MD only
+	CudaBuffer<QuarterEntryTask> quarterEntryTasksDevice;	// See NbNonlocalKernel
+	CudaBuffer<QuarterEntry> quarterEntriesDevice;
+	CudaBuffer<int> quarterEntryResultIndicesDevice;		// EM only, the SCResult each entry's j forces are stored in
 	int nQuarterEntries = 0;
 	CudaBuffer<SCResult> scResultsDevice;					// EM only
 	CudaBuffer<unsigned long long> nbForceAccumulatorDevice;	// MD only, see NbForceAccumulator. [fx|fy|fz|potE] each nSuperclusters*16

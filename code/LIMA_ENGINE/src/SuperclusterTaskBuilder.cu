@@ -1,8 +1,9 @@
 // Builds the supercluster interaction tasks, Engine::MakeSuperClusterTasksGPU. A translation unit of its own, compiled
 // in parallel with Engine.cu
 //
-// Both paths start with the same neighbor search, FindNeighborsKernel. MD then emits the QuarterEntries of NbNonlocalKernel,
-// while EM converts the neighbors to the owned and nonowned interaction lists that NbNonlocalEmKernel's tasks are built from.
+// The neighbor search, FindNeighborsKernel, lists the 4x4 blocks of particle quarters with pairs in range, and
+// EmitQuarterEntriesKernel turns them into the QuarterEntries of NbNonlocalKernel. EM additionally needs a result slot for every
+// supercluster pair, see MakeNbTasksEM.
 
 #include "Engine.cuh"
 #include "TaskBuilderControl.cuh"
@@ -18,10 +19,10 @@ namespace {
 	constexpr int maxNeighborsPerSc = TaskBuilderControlContents::maxTasksPerSc;
 	constexpr int neighborSearchWarpsPerBlock = 4;
 
-	// MD lists also include 4x4 blocks that are within this distance beyond the cutoff, so pairs moving within the cutoff
+	// The lists also include 4x4 blocks that are within this distance beyond the cutoff, so pairs moving within the cutoff
 	// before the next task build are still computed. 0.05 nm misses as few pairs as the supercluster granular lists of
 	// earlier versions did [nm]
-	constexpr float mdListBuffer = 0.05f;
+	constexpr float listBuffer = 0.05f;
 }
 
 __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const SuperClusterMeta& sc1, const PclustersBondedToPcluster* const pclustersBondedToPcluster) {
@@ -99,12 +100,13 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, f
 // blockDim = 32 * neighborSearchWarpsPerBlock, one warp per own supercluster.
 // Lists the superclusters each supercluster owns an interaction with (queryId >= own id): those with a pair of particles within
 // the list radius, and which of their 4x4 blocks of quarters have such a pair. Pairs within a self interaction count in one order only.
+// entryCounts is the number of QuarterEntries EmitQuarterEntriesKernel will write, with allQuarters as passed to it.
 // The cells from -cellRangeLo to cellRangeHi around the own cell are searched, but only those whose AABB is within reach, and of
 // those only the superclusters whose bounding sphere is. Candidates are enumerated in a fixed order, so the lists are deterministic.
 __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const int* const scCells,
 	const float4* const cellMin, const float4* const cellMax, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
 	ScNeighbor* const neighbors, int* const nNeighbors, int* const entryCounts, int* const overflow,
-	int nSuperclusters, Int3 boxSize, Int3 cellRangeLo, Int3 cellRangeHi, float listRadius, bool includeSelf, Float3 boxSizeF, Float3 boxSizeInv)
+	int nSuperclusters, Int3 boxSize, Int3 cellRangeLo, Int3 cellRangeHi, float listRadius, bool allQuarters, Float3 boxSizeF, Float3 boxSizeInv)
 {
 	__shared__ float4 stage[neighborSearchWarpsPerBlock][SuperCluster::maxParticles];
 	const int warpInBlock = threadIdx.x >> 5;
@@ -200,12 +202,12 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 				bits = __reduce_or_sync(0xFFFFFFFFu, bits);
 				__syncwarp(); // Before the stage is reused
 
-				if (bits || (includeSelf && selfTask)) {
+				if (bits) {
 					const bool bonded = selfTask || Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryId], pclustersBondedToPcluster);
 					if (lane == 0 && count < maxNeighborsPerSc)
 						neighbors[scId * maxNeighborsPerSc + count] = ScNeighbor{ queryId, static_cast<uint16_t>(bits), static_cast<uint16_t>(bonded) };
 					count++;
-					entryCount += __popc((bits | bits >> 4 | bits >> 8 | bits >> 12) & 0xF);
+					entryCount += allQuarters && !selfTask ? 4 : __popc((bits | bits >> 4 | bits >> 8 | bits >> 12) & 0xF);
 				}
 			}
 		}
@@ -223,19 +225,24 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 
 
 
-// ------------------------------------------------------------- MD -------------------------------------------------------------- //
+// ---------------------------------------------------------- Entries ----------------------------------------------------------- //
 
 // Order in which ownQuarterMask classes are emitted. Neighbouring classes differ in one bit (Gray code), so when a warp's
-// 8 groups straddle two classes, the union of their masks is small
-__constant__ uint8_t quarterMaskEmitOrder[15] = { 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8 };
+// 8 groups straddle two classes, the union of their masks is small. EM's entries without pairs in range (class 0) go last
+__constant__ uint8_t quarterMaskEmitOrder[16] = { 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8, 0 };
 
 // gridDim = nSuperclusters, blockDim = 32. Writes the QuarterEntries of each supercluster: one per quarter of a neighbor with a pair
 // within the list radius. Sorted by ownQuarterMask in quarterMaskEmitOrder, and within a class by (chunk of 32 neighbors, query
-// quarter, neighbor), so the result is deterministic
+// quarter, neighbor), so the result is deterministic.
+// EM (allQuarters) also writes entries for the quarters of other superclusters without pairs in range, so every quarter of their
+// result gets written, the index of each entry's result, and the result range of each supercluster
+template <bool allQuarters>
 __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, const ScNeighbor* const neighbors,
 	const int* const nNeighbors, const uint16_t* const scValidMasks, const ParticlesBondedToParticle* const particlesBondedToParticle,
-	const int* const entryStarts, QuarterEntryTask* const entryTasks, QuarterEntry* const entries)
+	const int* const entryStarts, QuarterEntryTask* const entryTasks, QuarterEntry* const entries,
+	const TaskBuilderControlContents tbContents /*EM only*/, int* const entryResultIndices /*EM only*/)
 {
+	constexpr uint32_t noEntry = 16;
 	const int scId = blockIdx.x;
 	const int lane = threadIdx.x;
 	const int n = nNeighbors[scId];
@@ -252,49 +259,76 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 				ownMasks |= ((quarterMask >> (iq * 4 + jq)) & 1u) << (jq * 4 + iq);
 		return ownMasks;
 	};
+	// The class of an entry for a query quarter, or noEntry
+	auto EntryClass = [scId](uint32_t ownMasks, int jq, int queryScId) {
+		const uint32_t maskClass = (ownMasks >> (jq * 4)) & 0xF;
+		return maskClass || (allQuarters && queryScId != scId) ? maskClass : noEntry;
+	};
 
 	// Count the entries of each class, then turn the counts into each class's first index
 	if (lane < 16)
 		classOffsets[lane] = 0;
 	__syncwarp();
 	for (int k = lane; k < n; k += 32) {
-		const uint32_t ownMasks = OwnMasks(neighbors[scId * maxNeighborsPerSc + k].quarterMask);
+		const ScNeighbor neighbor = neighbors[scId * maxNeighborsPerSc + k];
+		const uint32_t ownMasks = OwnMasks(neighbor.quarterMask);
 		for (int jq = 0; jq < 4; jq++) {
-			const uint32_t c = (ownMasks >> (jq * 4)) & 0xF;
-			if (c) atomicAdd(&classOffsets[c], 1);
+			const uint32_t c = EntryClass(ownMasks, jq, neighbor.queryScId);
+			if (c != noEntry) atomicAdd(&classOffsets[c], 1);
 		}
 	}
 	__syncwarp();
 	if (lane == 0) {
 		int sum = entryStarts[scId];
-		for (int r = 0; r < 15; r++) {
+		for (int r = 0; r < 16; r++) {
 			const int c = quarterMaskEmitOrder[r];
 			const int count = classOffsets[c];
 			classOffsets[c] = sum;
 			sum += count;
 		}
 		entryTasks[scId] = QuarterEntryTask{ entryStarts[scId], sum - entryStarts[scId] };
+		if constexpr (allQuarters) {
+			scControl.scMeta[scId].resultsStartIndex = tbContents.nResultsPrefixsum[scId];
+			scControl.scMeta[scId].nResults = tbContents.nResults[scId];
+		}
 	}
 	__syncwarp();
 
 	for (int base = 0; base < n; base += 32) {
 		const int k = base + lane;
-		const ScNeighbor neighbor = k < n ? neighbors[scId * maxNeighborsPerSc + k] : ScNeighbor{ 0, 0, 0 };
+		const bool validNeighbor = k < n;
+		const ScNeighbor neighbor = validNeighbor ? neighbors[scId * maxNeighborsPerSc + k] : ScNeighbor{ 0, 0, 0 };
 		const uint32_t ownMasks = OwnMasks(neighbor.quarterMask);
 		const int queryScId = neighbor.queryScId;
 		const bool selfTask = queryScId == scId;
-		const uint32_t queryValid = k < n ? scValidMasks[queryScId] : 0;
+		const uint32_t queryValid = validNeighbor ? scValidMasks[queryScId] : 0;
+
+		// The result this supercluster writes the query's forces to: after the query's own result, the results of the
+		// superclusters owning an interaction with it are ordered by id, so find this one's position with a binary search
+		int resultIndex = -1;
+		if constexpr (allQuarters) {
+			if (validNeighbor && !selfTask) {
+				const int* const owners = &tbContents.scIdsQueryNonowned[queryScId * TaskBuilderControlContents::maxTasksPerSc];
+				int lo = 0, hi = tbContents.nInteractionsNonowned[queryScId];
+				while (lo < hi) {
+					const int mid = (lo + hi) / 2;
+					if (owners[mid] < scId) lo = mid + 1;
+					else hi = mid;
+				}
+				resultIndex = tbContents.nResultsPrefixsum[queryScId] + 1 + lo;
+			}
+		}
 
 		for (int jq = 0; jq < 4; jq++) {
-			const uint32_t maskClass = (ownMasks >> (jq * 4)) & 0xF;
+			const uint32_t maskClass = validNeighbor ? EntryClass(ownMasks, jq, queryScId) : noEntry;
 			const uint32_t sameClass = __match_any_sync(0xFFFFFFFFu, maskClass);
 			const int rank = __popc(sameClass & ((1u << lane) - 1));
-			const int dst = classOffsets[maskClass] + rank;
+			const int dst = maskClass != noEntry ? classOffsets[maskClass] + rank : 0;
 			__syncwarp();
-			if (maskClass && rank == 0)
+			if (maskClass != noEntry && rank == 0)
 				classOffsets[maskClass] += __popc(sameClass);
 			__syncwarp();
-			if (!maskClass)
+			if (maskClass == noEntry)
 				continue;
 
 			const uint32_t queryValid4 = (queryValid >> (jq * 4)) & 0xF;
@@ -313,7 +347,7 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 				}
 				if (selfTask && iq == jq)
 					noInteractions |= 0xF731; // Pairs with jLocal <= iLocal are computed in the other order
-				if (neighbor.bonded) {
+				if (neighbor.bonded && ((maskClass >> iq) & 1)) {
 					for (int iLocal = 0; iLocal < 4; iLocal++) {
 						const int pidOwn = scControl.scMeta[scId].globalParticleIds[iq * 4 + iLocal];
 						if (pidOwn == -1) continue;
@@ -327,6 +361,8 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 				out.noInteractions[iq] = static_cast<uint16_t>(noInteractions);
 			}
 			entries[dst] = out;
+			if constexpr (allQuarters)
+				entryResultIndices[dst] = resultIndex;
 		}
 	}
 }
@@ -335,156 +371,40 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 
 // ------------------------------------------------------------- EM -------------------------------------------------------------- //
 
-// gridDim = nSuperclusters, blockDim = 32. The neighbors become the owned interactions, and each is also a nonowned
-// interaction of its query supercluster. TaskBuilderControl::Reset must have zeroed nInteractionsNonowned
+// gridDim = nSuperclusters, blockDim = 32. Lists each supercluster as an owner of an interaction with each of its neighbors.
+// TaskBuilderControl::Reset must have zeroed nInteractionsNonowned
 __global__ void DistributeEmInteractionsKernel(const ScNeighbor* const neighbors, const int* const nNeighbors, TaskBuilderControlContents tbContents, int* const overflow) {
 	const int scId = blockIdx.x;
 	const int n = nNeighbors[scId];
 	for (int k = threadIdx.x; k < n; k += blockDim.x) {
-		const ScNeighbor neighbor = neighbors[scId * maxNeighborsPerSc + k];
-		tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + k] = InteractionToken(neighbor.queryScId, neighbor.bonded);
-		if (neighbor.queryScId != scId) {
-			const int index = atomicAdd(&tbContents.nInteractionsNonowned[neighbor.queryScId], 1);
-			if (index < TaskBuilderControlContents::maxTasksPerSc)
-				tbContents.scIdsQueryNonowned[neighbor.queryScId * TaskBuilderControlContents::maxTasksPerSc + index] = scId;
-			else
-				atomicMax(overflow, index + 1);
-		}
+		const int queryScId = neighbors[scId * maxNeighborsPerSc + k].queryScId;
+		if (queryScId == scId)
+			continue;
+		const int index = atomicAdd(&tbContents.nInteractionsNonowned[queryScId], 1);
+		if (index < TaskBuilderControlContents::maxTasksPerSc)
+			tbContents.scIdsQueryNonowned[queryScId * TaskBuilderControlContents::maxTasksPerSc + index] = scId;
+		else
+			atomicMax(overflow, index + 1);
 	}
-	if (threadIdx.x == 0)
-		tbContents.nInteractionsOwned[scId] = n;
 }
 
-// blockDim = maxTasksPerSc. The nonowned interactions are placed by atomics, so they must be sorted to be deterministic
+// blockDim = maxTasksPerSc. The owners are placed by atomics, so they must be sorted to be deterministic
 __global__ void SortEmInteractionsKernel(TaskBuilderControlContents tbContents) {
 	const int scId = blockIdx.x;
 
-	static_assert(sizeof(InteractionToken) == sizeof(uint32_t), "InteractionToken must be 32 bits");
-	uint32_t* intTokenBufferRaw = reinterpret_cast<uint32_t*>(tbContents.interactionsOwned);
-	LAL::Sort(&intTokenBufferRaw[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const uint32_t& token) {
-		return token;
-		});
 	LAL::Sort(&tbContents.scIdsQueryNonowned[scId * TaskBuilderControlContents::maxTasksPerSc], TaskBuilderControlContents::maxTasksPerSc, [](const int& id) {
 		return id;
 		});
 
 	if (threadIdx.x == 0)
-		tbContents.nResults[scId] = 1 + tbContents.nInteractionsNonowned[scId]; // 1 for the sum of all owned interactions, 1 result per unowned interaction
-}
-
-constexpr int IndexOfId(int* ids, int nIds, int idToFind) {
-	for (int i = 0; i < nIds; i++) {
-		if (ids[i] == idToFind)
-			return i;
-	}
-	return -1;
-}
-
-__device__ inline int GetResultIndexOfQuery(TaskBuilderControlContents tbContents, int scId, int scIdQuery, int selfResultIndex) {
-	if (scId == scIdQuery)
-		return selfResultIndex;
-
-	const int indexInQuery = IndexOfId(
-		&tbContents.scIdsQueryNonowned[scIdQuery * TaskBuilderControlContents::maxTasksPerSc],
-		tbContents.nInteractionsNonowned[scIdQuery],
-		scId
-	);
-
-	if (indexInQuery == -1) {
-		printf("Illegal query index for scId %d querying scId %d. Check %d ids\n", scId, scIdQuery, tbContents.nInteractionsNonowned[scIdQuery]);
-		return -1;
-	}
-
-	const int queryHasOwnedResult = tbContents.nInteractionsOwned[scIdQuery] > 0 ? 1 : 0;
-	return tbContents.nResultsPrefixsum[scIdQuery] + queryHasOwnedResult + indexInQuery;
-}
-
-__global__ void BuildTasks(
-	TaskBuilderControlContents tbContents,
-	SuperClusterMeta* const superClusterMeta,
-	int nSuperclusters,
-	ScScTask* const tasks,
-	int* const idsOfQuerySuperclusters,
-	int* const resultIndices
-) {
-	const int scId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (scId >= nSuperclusters)
-		return;
-
-	const int nOwnedInteractions = tbContents.nInteractionsOwned[scId];
-	const int queryBufferStart = tbContents.nQueryBuffersPrefixsum[scId];
-	const int selfResultIndex = tbContents.nResultsPrefixsum[scId];
-
-	ScScTask task;
-	task.startIndexInQueriesBuffers = queryBufferStart;
-	task.nQueryScs = nOwnedInteractions;
-
-	for (int i = 0; i < nOwnedInteractions; i++) {
-		const InteractionToken token = tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + i];
-		const int scIdQuery = token.GetQueryId();
-
-		idsOfQuerySuperclusters[queryBufferStart + i] = scIdQuery;
-		resultIndices[queryBufferStart + i] = GetResultIndexOfQuery(tbContents, scId, scIdQuery, selfResultIndex);
-	}
-
-	tasks[scId] = task;
-
-	superClusterMeta[scId].resultsStartIndex = tbContents.nResultsPrefixsum[scId];
-	superClusterMeta[scId].nResults = tbContents.nResults[scId];
-}
-
-
-
-//// gridDim = (nSuperclusters, 1, 1)
-//// blockDim = (16, 1, 1)
-__global__ void BuildNointeractionMatricesKernel(
-	const SuperClusterMeta* const superClusterMetas,
-	const PersistentClusterMeta* const pClustersMeta,
-	TaskBuilderControlContents tbContents,
-	BoolMatrix16x16* const nointeractionMatrices,
-	int nSuperclusters
-) {
-	const int scId = blockIdx.x;
-	const int row = threadIdx.x;
-
-	const int nOwnedInteractions = tbContents.nInteractionsOwned[scId];
-	const int queryBufferStart = tbContents.nQueryBuffersPrefixsum[scId];
-
-	for (int i = 0; i < nOwnedInteractions; i++) {
-		const InteractionToken token = tbContents.interactionsOwned[scId * TaskBuilderControlContents::maxTasksPerSc + i];
-		const int matrixIndex = queryBufferStart + i;
-
-		uint16_t rowData = 0;
-
-		// Padding pairs are always masked, so the NB kernel does not need to check particle validity per pair
-		const int scIdQuery = token.GetQueryId();
-		const bool isSelfInteractionTask = scId == scIdQuery;
-		const int pidQuery = superClusterMetas[scIdQuery].globalParticleIds[row];
-
-		for (int col = 0; col < 16; ++col) {
-			const int pidSelf = superClusterMetas[scId].globalParticleIds[col];
-
-			bool noInteraction;
-			if (pidSelf == -1 || pidQuery == -1)
-				noInteraction = true;
-			else if (token.UseNointeractionMatrix())
-				noInteraction = tbContents.particlesBondedToParticle[pidSelf].Contains(pidQuery) || (isSelfInteractionTask && row == col);
-			else
-				noInteraction = false;
-
-			if (noInteraction)
-				BoolMatrix16x16::SetValueInRow(col, rowData);
-		}
-
-		nointeractionMatrices[matrixIndex].SetRow(row, rowData);
-	}
+		tbContents.nResults[scId] = 1 + tbContents.nInteractionsNonowned[scId]; // 1 for its own forces, 1 per supercluster owning an interaction with it
 }
 
 
 
 // ------------------------------------------------------------ Host ------------------------------------------------------------- //
 
-void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bool includeSelf) {
+void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bool allQuarters) {
 	const int n = batch->nSuperclusters;
 	const int nCells = batch->nGridnodes;
 	const Int3 boxSize = batch->boxSize;
@@ -513,7 +433,7 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	FindNeighborsKernel<<<(n + neighborSearchWarpsPerBlock - 1) / neighborSearchWarpsPerBlock, 32 * neighborSearchWarpsPerBlock, 0, stream>>>(
 		*batch->superClustersControl, tb.scSpheres.Get(), tb.scCells.Get(), tb.cellMin.Get(), tb.cellMax.Get(), tb.contents.pclustersBondedToPcluster,
 		tb.neighbors.Get(), tb.nNeighbors.Get(), tb.entryCounts.Get(), tb.overflow.Get(),
-		n, boxSize, rangeLo, rangeHi, listRadius, includeSelf, boxSizeF, boxSizeF.Inv());
+		n, boxSize, rangeLo, rangeHi, listRadius, allQuarters, boxSizeF, boxSizeF.Inv());
 	LIMA_UTILS::genericErrorCheck(stream, "FindNeighborsKernel");
 }
 
@@ -528,7 +448,7 @@ namespace {
 void Engine::MakeNbTasksMD(cudaStream_t stream) {
 	const int n = batch->nSuperclusters;
 	auto& tb = *batch->taskbuilderControl;
-	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + mdListBuffer, false);
+	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + listBuffer, false);
 
 	tb.entryStarts.Expand(n + 1, 1.2);
 	batch->quarterEntryTasksDevice.Expand(n, 1.2);
@@ -543,16 +463,19 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 	ThrowIfNeighborOverflow(overflow);
 	batch->quarterEntriesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
 
-	EmitQuarterEntriesKernel<<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
-		tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get());
+	EmitQuarterEntriesKernel<false><<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
+		tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(),
+		tb.contents, nullptr);
 	LIMA_UTILS::genericErrorCheck(stream, "EmitQuarterEntriesKernel");
 }
 
+// EM uses the same entries as MD, but stores its forces in SCResults rather than summing them with fixed point atomics, see
+// NbNonlocalKernel. Each supercluster has a result for its own forces, followed by one per supercluster owning an interaction
+// with it, ordered by owner id.
 void Engine::MakeNbTasksEM(cudaStream_t stream) {
 	const int n = batch->nSuperclusters;
 	auto& tb = *batch->taskbuilderControl;
-	// NbNonlocalEmKernel needs every supercluster to own its self interaction, as that is where its owned result is stored
-	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm, true);
+	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + listBuffer, true);
 
 	int neighborOverflow = 0;
 	cudaMemcpyAsync(&neighborOverflow, tb.overflow.Get(), sizeof(int), cudaMemcpyDeviceToHost, stream);
@@ -564,47 +487,29 @@ void Engine::MakeNbTasksEM(cudaStream_t stream) {
 	SortEmInteractionsKernel<<<n, TaskBuilderControlContents::maxTasksPerSc, 0, stream>>>(tb.contents);
 	LIMA_UTILS::genericErrorCheck(stream, "SortEmInteractionsKernel");
 
+	tb.entryStarts.Expand(n + 1, 1.2);
+	batch->quarterEntryTasksDevice.Expand(n, 1.2);
 	cudaMemsetAsync(tb.contents.nResults + n, 0, sizeof(int), stream);
-	cudaMemsetAsync(tb.contents.nInteractionsOwned + n, 0, sizeof(int), stream);
+	cudaMemsetAsync(tb.entryCounts.Get() + n, 0, sizeof(int), stream);
 	CubWrappers::ExclusiveScan(tb.contents.nResults, tb.contents.nResults + n + 1, tb.contents.nResultsPrefixsum, stream);
-	CubWrappers::ExclusiveScan(tb.contents.nInteractionsOwned, tb.contents.nInteractionsOwned + n + 1, tb.contents.nQueryBuffersPrefixsum, stream);
+	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), stream);
 
 	int overflow = 0;
-	int nQueryBufferEntries = 0;
 	cudaMemcpyAsync(&overflow, tb.overflow.Get(), sizeof(int), cudaMemcpyDeviceToHost, stream);
 	cudaMemcpyAsync(&batch->nResults, tb.contents.nResultsPrefixsum + n, sizeof(int), cudaMemcpyDeviceToHost, stream);
-	cudaMemcpyAsync(&nQueryBufferEntries, tb.contents.nQueryBuffersPrefixsum + n, sizeof(int), cudaMemcpyDeviceToHost, stream);
+	cudaMemcpyAsync(&batch->nQuarterEntries, tb.entryStarts.Get() + n, sizeof(int), cudaMemcpyDeviceToHost, stream);
 	cudaStreamSynchronize(stream);
 	if (overflow > 0)
 		throw std::runtime_error("A supercluster is the neighbor of " + std::to_string(overflow) + " superclusters, more than the capacity of "
 			+ std::to_string(TaskBuilderControlContents::maxTasksPerSc));
-
-	batch->scscTasksDevice.Expand(n, 1.2);
-	batch->idsOfQuerySuperclustersDevice.Expand(nQueryBufferEntries, 1.2);
-	batch->resultIndicesDevice.Expand(nQueryBufferEntries, 1.2);
-	batch->noInteractionMatricesDevice.Expand(nQueryBufferEntries, 1.2);
+	batch->quarterEntriesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
+	batch->quarterEntryResultIndicesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
 	// scResultsDevice is expanded lazily in _deviceMaster
 
-	BuildTasks << <(n + 31) / 32, 32, 0, stream >> > (
-		tb.contents,
-		batch->superClustersControl->scMeta,
-		n,
-		batch->scscTasksDevice.Get(),
-		batch->idsOfQuerySuperclustersDevice.Get(),
-		batch->resultIndicesDevice.Get()
-		);
-
-	LIMA_UTILS::genericErrorCheck(stream, "BuildTasks");
-
-	BuildNointeractionMatricesKernel << <n, 16, 0, stream >> > (
-		batch->superClustersControl->scMeta,
-		batch->pClusterMetaDevice.Get(),
-		tb.contents,
-		batch->noInteractionMatricesDevice.Get(),
-		n
-		);
-
-	LIMA_UTILS::genericErrorCheck(stream, "BuildNointeractionMatricesKernel");
+	EmitQuarterEntriesKernel<true><<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
+		tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(),
+		tb.contents, batch->quarterEntryResultIndicesDevice.Get());
+	LIMA_UTILS::genericErrorCheck(stream, "EmitQuarterEntriesKernel");
 }
 
 bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {

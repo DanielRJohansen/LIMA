@@ -359,64 +359,6 @@ using PclustersBondedToPcluster = StaticSet<32>;
 
 
 
-class BoolMatrix16x16 {
-	uint16_t data[16]; // rowmajor
-
-public:
-	constexpr BoolMatrix16x16() {}
-	constexpr void Clear() {
-		for (int i = 0; i < 16; i++)
-			data[i] = 0;
-	}
-
-	constexpr static bool Get(const uint16_t& row, int col) {
-		return (row >> col) & 1;
-	}
-	template <typename T> constexpr static bool Get(const T& row, int col) = delete;
-
-	constexpr uint16_t GetRow(int row) const {
-		return data[row];
-	}
-
-	constexpr uint16_t SetRow(int row, uint16_t val) {
-		return data[row] = val;
-	}
-
-	constexpr uint16_t GetColumn(int col) const {
-		uint16_t out = 0;
-		for (int row = 0; row < 16; ++row)
-			out |= static_cast<uint16_t>(((data[row] >> col) & 1u) << row);
-		return out;
-	}
-
-	// TODO: Optim this with a SetRow
-	constexpr void Set(int row, int col, bool val) {
-		unsigned bit = 1u << col;
-		unsigned mask = -static_cast<unsigned>(val);  // 0xFFFFFFFF if val==1, else 0
-		unsigned old = data[row];
-
-		data[row] = (old & ~bit) | (mask & bit);
-		/*if (val)
-			data[row] |= (1 << col);
-		else
-			data[row] &= ~(1 << col);		*/
-	}
-
-	constexpr static void SetValueInRow(int col, uint16_t& rowData) {
-		rowData |= (1 << col);
-	}
-
-	__host__ void Print() const {
-		for (int r = 0; r < 16; r++) {
-			for (int c = 0; c < 16; c++) {
-				printf("%d ", Get(data[r], c) ? 1 : 0);
-			}
-			printf("\n");
-		}
-		printf("\n");
-	}
-};
-class NoMat {};// Needed as a nonlocal variant of the one above.
 
 
 struct SuperCluster {
@@ -528,23 +470,7 @@ struct SCResult {
 	}
 };
 
-//struct ScScTask {
-//	static constexpr int nInteractions = 4;
-//
-//	int sc0Id;
-//	int queryScIds[nInteractions];
-//	int sc0ResultIndex;
-//	int queryResultIndices[nInteractions];
-//	int nointeractionMatrixIndex[nInteractions];
-//};
-
-struct ScScTask {
-//	int sc0Id; // implicitly the index of this task	
-	int startIndexInQueriesBuffers = 0;
-	int nQueryScs = 0;
-};
-
-// MD nonbonded work, see NbNonlocalKernel. Superclusters are split in quarters of 4 particles, and pairs are only computed
+// Nonbonded work, see NbNonlocalKernel. Superclusters are split in quarters of 4 particles, and pairs are only computed
 // for the 4x4 blocks of quarters that had a pair within the list radius when the tasks were built.
 // An entry is quarter jQuarter of supercluster jScId, with the blocks it forms with the quarters of the task's own supercluster
 struct QuarterEntry {

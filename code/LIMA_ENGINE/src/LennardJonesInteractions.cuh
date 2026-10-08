@@ -99,68 +99,28 @@ namespace LJ {
 		return force;	// [1/24 J/mol/nm]
 	}
 
-	// The EM pair interaction. Separate from ComputePairNB, since the force activation function is applied to the LJ force alone
-	template<bool computePotE, bool emvariant>
-	__device__ inline ForceEnergy ComputeParticleParticleNBEm(const PData& pdOwned, const SuperCluster& sc0, int sc0Index, int p0ParticleGlobalId, int p1ParticleGlobalId, float ewaldKappa)
+	// The EM pair interaction, on unscaled particle parameters. diff is from p0 to p1, the returned fe is on p0, invert to get fe on p1.
+	// Separate from ComputePairNB, since the force activation function is applied to the LJ force alone.
+	// The caller must skip masked pairs (padding particles may overlap other particles), rather than discard the result
+	template<bool computePotE>
+	__device__ inline ForceEnergy ComputePairNBEm(const Float3& diff, float sigma, float epsilon, float chargeProduct, float ewaldKappa)
 	{
 		ForceEnergy fe{}; // on p0
-		
-		//const Float3 diff = Float3(queryParticles[queryIndex].relPos) - myPosition;
-		//const Float3 diff = sc1.positions[sc1Index] - sc0.positions[sc0Index];
-		const Float3 diff{
-			sc0.posCharge[sc0Index].x - pdOwned.position.x,
-			sc0.posCharge[sc0Index].y - pdOwned.position.y,
-			sc0.posCharge[sc0Index].z - pdOwned.position.z
-		};
-		
-		
-		if (sc0.sigmaEpsilon[sc0Index].y != -1.f && pdOwned.params.epsilonSqrt != -1.f) {
-			//diff.print('d');
-			fe.force = calcLJForceOptim<computePotE, emvariant>(diff, 1.f / diff.lenSquared(), fe.potE,
-				CalcSigma(sc0.sigmaEpsilon[sc0Index].x, pdOwned.params.sigmaHalf),
-				CalcEpsilon(sc0.sigmaEpsilon[sc0Index].y, pdOwned.params.epsilonSqrt),
-				//precomputedOO.sigma, precomputedOO.epsilon,
-				CalcLJOrigin::PP,
-				p0ParticleGlobalId, p1ParticleGlobalId
-			) * 24.f;
 
-
-			//if (fe.force.len() > 10000.f) {
-			//	printf("p0 %d p1 %d force %f %f %f p0 %f %f %f p1 %f %f %f dist %f sigma %f %f eps %f %f\n", p0ParticleGlobalId, p1ParticleGlobalId,
-			//		fe.force.x, fe.force.y, fe.force.z, p0.position.x, p0.position.y, p0.position.z, p1.position.x, p1.position.y, p1.position.z, 
-			//		diff.len(), p0.params.sigmaHalf, p1.params.sigmaHalf, p0.params.epsilonSqrt, p1.params.epsilonSqrt);
-			//}
-
-			//fe.force.print('f');	
-			//printf("\nNEW sigma %f %f eps %f %f charge %f %f dist %f\n", p0.params.sigmaHalf, p1.params.sigmaHalf, p0.params.epsilonSqrt, p1.params.epsilonSqrt, p0.params.charge, p1.params.charge, diff.len());
-		}
+		fe.force = calcLJForceOptim<computePotE, true>(diff, 1.f / diff.lenSquared(), fe.potE, sigma, epsilon, CalcLJOrigin::PP) * 24.f;
 
 		if constexpr (ENABLE_ES_SR) {
-			const float chargeProduct = sc0.posCharge[sc0Index].w * pdOwned.params.charge;
 			if (chargeProduct != 0.f) {
-				
-				//printf("PP charproduct %f force %f %f %f\n", chargeProduct,
-				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).x,
-				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).y,
-				//	PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).z
-				//);
-				//PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff).print('C');
 				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, ewaldKappa);
 				if constexpr (computePotE)
 					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotential(chargeProduct, diff.lenSquared(), ewaldKappa);
 			}
 		}
 
-
 		if constexpr (FORCE_CHECKS) {
-			if (fe.force.isNan() || isnan(fe.potE)) {
-				printf("PP NB is nan. diff: %f %f %f  sigma: %f %f  eps: %f %f charge: %f %f distance %f\n",
-					diff.x, diff.y, diff.z,
-					sc0.sigmaEpsilon[sc0Index].y, pdOwned.params.epsilonSqrt,
-					sc0.sigmaEpsilon[sc0Index].x, pdOwned.params.sigmaHalf,
-					sc0.posCharge[sc0Index].w, pdOwned.params.charge,
-					diff.len());
-			}
+			if (fe.force.isNan() || isnan(fe.potE))
+				printf("PP NB EM is nan. diff: %f %f %f  sigma: %f  eps: %f  charge product: %f  distance %f\n",
+					diff.x, diff.y, diff.z, sigma, epsilon, chargeProduct, diff.len());
 		}
 
 		return fe;

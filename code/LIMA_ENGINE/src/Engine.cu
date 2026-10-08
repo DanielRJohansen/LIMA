@@ -561,17 +561,10 @@ void Engine::_deviceMaster() {
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
-		if constexpr (emvariant) {
-			// Blocksize must not exceed 64 threads, see __launch_bounds__ on the kernel
-			NbNonlocalEmKernel<BoundaryCondition, logData><<<nScs, dim3(16,4,1), 0, cudaStreams[0]>>>(
-				scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), batch->idsOfQuerySuperclustersDevice.Get(),
-				batch->resultIndicesDevice.Get(), batch->noInteractionMatricesDevice.Get(), boxSize, boxSizeInv, batch->ewaldKappa);
-		}
-		else {
-			// Blocksize must be 64, 2 superclusters per block, see the kernel
-			NbNonlocalKernel<BoundaryCondition, logData><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
-				batch->quarterEntriesDevice.Get(), nbForceAcc, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
-		}
+		// Blocksize must be 64, 2 superclusters per block, see the kernel
+		NbNonlocalKernel<BoundaryCondition, emvariant, logData><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
+			batch->quarterEntriesDevice.Get(), nbForceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
+			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
 	if (batch->nBondgroups > 0) {

@@ -203,7 +203,7 @@ __global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxSta
 
 
 
-// Deterministic accumulation of NB forces, replacing SCResult for MD: each partial force is converted to 64-bit fixed point
+// Deterministic accumulation of NB forces in MD: each partial force is converted to 64-bit fixed point
 // and summed with integer atomics. Unlike float atomics, integer addition is associative, so the sum is bitwise
 // independent of the order the atomics arrive in. The accumulator is small enough to stay L2 resident.
 // Not used in EM, where forces can exceed the fixed point range.
@@ -235,7 +235,130 @@ struct NbForceAccumulator {
 	}
 };
 
-// blockdim=16,4,1
+// MD nonbonded forces. Each warp computes the QuarterEntries of one supercluster, see EmitQuarterEntriesKernel.
+// blockDim = 64, 2 superclusters per block. computePotE must match logData of the following SuperclusterIntegrateKernel.
+//
+// The warp's 8 groups of 4 lanes each take one entry: lane l stages particle l of the entry's j quarter in shared memory,
+// then for every own quarter in the entry's mask, holds own particle l of that quarter, and in iteration k pairs it with
+// j particle (l+k)&3. Own forces thus accumulate in the lane that owns the particle for the whole task, and the j forces
+// in accJ[k] only need routing to their lanes once per entry. Loading the j quarter and flushing its forces once per entry
+// rather than once per 4x4 block matters: the kernel is close to L2 bound.
+// Entries are sorted by ownQuarterMask, so the groups of a warp mostly share a mask, and the warp loops over their union.
+// Pairs beyond the cutoff are masked, so the forces do not depend on how the task builder grouped the pairs.
+//
+// __launch_bounds__: 64 registers avoid spills (16 blocks per SM), the potE variant needs 80 (12 blocks per SM).
+// After larger changes, check ncu for local memory traffic and revisit the bounds.
+template <typename BoundaryCondition, bool computePotE>
+__global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(const SuperCluster* const superClusters, const QuarterEntryTask* const tasks,
+	const QuarterEntry* const entries, const NbForceAccumulator nbForceAcc, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa, float cutoffSq, int nSuperclusters)
+{
+	constexpr int nGroups = 8;
+	const int warpInBlock = threadIdx.x >> 5;
+	const int scId = blockIdx.x * 2 + warpInBlock;
+	if (scId >= nSuperclusters)
+		return; // Only warp level syncs below
+	const int laneInWarp = threadIdx.x & 31;
+	const int group = laneInWarp >> 2;
+	const int lane = laneInWarp & 3;
+
+	// Charge and epsilon pre-scaled, see LJ::PrescaleNBParams
+	__shared__ float4 ownPosCharge[2][SuperCluster::maxParticles];
+	__shared__ float2 ownSigmaEpsilon[2][SuperCluster::maxParticles];
+	__shared__ float4 jPosCharge[2][nGroups][4];
+	__shared__ float2 jSigmaEpsilon[2][nGroups][4];
+
+	if (laneInWarp < SuperCluster::maxParticles) {
+		float4 pq = superClusters[scId].posCharge[laneInWarp];
+		float2 se = superClusters[scId].sigmaEpsilon[laneInWarp];
+		LJ::PrescaleNBParams(se.y, pq.w);
+		ownPosCharge[warpInBlock][laneInWarp] = pq;
+		ownSigmaEpsilon[warpInBlock][laneInWarp] = se;
+	}
+	const QuarterEntryTask task = tasks[scId];
+	__syncwarp();
+
+	const Float3 reference{ ownPosCharge[warpInBlock][0].x, ownPosCharge[warpInBlock][0].y, ownPosCharge[warpInBlock][0].z };
+	ForceEnergy accOwn[4]{};
+
+	const int end = task.firstEntry + task.nEntries;
+	for (int base = task.firstEntry; base < end; base += nGroups) {
+		const int e = base + group;
+		const bool activeGroup = e < end;
+		const QuarterEntry entry = entries[activeGroup ? e : base];
+		const uint32_t ownQuarterMask = activeGroup ? entry.ownQuarterMask : 0u;
+
+		const int jIndex = entry.jQuarter * 4 + lane;
+		float4 pqJ = superClusters[entry.jScId].posCharge[jIndex];
+		float2 seJ = superClusters[entry.jScId].sigmaEpsilon[jIndex];
+		const bool validJ = seJ.y != -1.f;
+		LJ::PrescaleNBParams(seJ.y, pqJ.w);
+		BoundaryCondition::ApplyHyperpos(reference, pqJ.x, pqJ.y, pqJ.z, boxSize, boxSizeInv);
+		jPosCharge[warpInBlock][group][lane] = pqJ;
+		jSigmaEpsilon[warpInBlock][group][lane] = seJ;
+		__syncwarp();
+
+		const uint32_t unionMask = __reduce_or_sync(0xFFFFFFFFu, ownQuarterMask);
+		ForceEnergy accJ[4]{};
+#pragma unroll
+		for (int ownQuarter = 0; ownQuarter < 4; ownQuarter++) {
+			if (!((unionMask >> ownQuarter) & 1))
+				continue;
+			// This lane's row of the block's noInteractions, rotated so bit k is j particle (lane+k)&3. All set if this group's entry lacks the quarter
+			const uint32_t row = (entry.noInteractions[ownQuarter] >> (lane * 4)) & 0xFu;
+			const uint32_t noInteractions = ((ownQuarterMask >> ownQuarter) & 1) ? ((row | (row << 4)) >> lane) & 0xFu : 0xFu;
+			const float4 pqI = ownPosCharge[warpInBlock][ownQuarter * 4 + lane];
+			const float2 seI = ownSigmaEpsilon[warpInBlock][ownQuarter * 4 + lane];
+#pragma unroll
+			for (int k = 0; k < 4; k++) {
+				const int jLocal = (lane + k) & 3;
+				const float4 pqJ = jPosCharge[warpInBlock][group][jLocal];
+				const float2 seJ = jSigmaEpsilon[warpInBlock][group][jLocal];
+				const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
+				const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
+				ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewaldKappa);
+				accJ[k] += fe;
+				accOwn[ownQuarter] += fe.InvertForce();
+			}
+		}
+
+		// Lane m collects accJ[k] from lane (m-k)&3, which computed j particle m in iteration k
+		ForceEnergy jForce = accJ[0];
+#pragma unroll
+		for (int k = 1; k < 4; k++) {
+			const int srcLane = (lane - k) & 3;
+			jForce.force.x += __shfl_sync(0xFFFFFFFFu, accJ[k].force.x, srcLane, 4);
+			jForce.force.y += __shfl_sync(0xFFFFFFFFu, accJ[k].force.y, srcLane, 4);
+			jForce.force.z += __shfl_sync(0xFFFFFFFFu, accJ[k].force.z, srcLane, 4);
+			if constexpr (computePotE)
+				jForce.potE += __shfl_sync(0xFFFFFFFFu, accJ[k].potE, srcLane, 4);
+		}
+		if (activeGroup && validJ)
+			nbForceAcc.Add<computePotE>(entry.jScId * SuperCluster::maxParticles + jIndex, jForce);
+		__syncwarp(); // Before the j quarter is restaged
+	}
+
+	// Sum the own forces over the groups. A butterfly gives all groups the bitwise identical sum
+#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		for (int offset = 4; offset < 32; offset <<= 1) {
+			accOwn[q].force.x += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.x, offset);
+			accOwn[q].force.y += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.y, offset);
+			accOwn[q].force.z += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.z, offset);
+			if constexpr (computePotE)
+				accOwn[q].potE += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].potE, offset);
+		}
+	}
+	// Group q writes own quarter q
+#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		if (group == q && superClusters[scId].Valid(q * 4 + lane))
+			nbForceAcc.Add<computePotE>(scId * SuperCluster::maxParticles + q * 4 + lane, accOwn[q]);
+	}
+}
+
+// EM nonbonded forces. blockdim=16,4,1, one block per supercluster, each row of 16 threads computing one of its tasks.
+// Every task stores its own result, which SuperclusterIntegrateKernel sums in a fixed order, since EM forces can exceed
+// the range of NbForceAccumulator.
 // computePotE must match logData of the following SuperclusterIntegrateKernel, as results only contain potE when computePotE
 //
 // __launch_bounds__(64, 20): max 64 threads per block, and we want at least 20 blocks resident per SM.
@@ -245,33 +368,22 @@ struct NbForceAccumulator {
 // - The kernel must never be launched with more than 64 threads per block, or the launch fails
 // - If future changes need more than 48 registers, the compiler spills to (slow) local memory instead of growing,
 //   so after larger changes check ncu for local memory traffic, and revisit the bound
-template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks,
-	SCResult* const results /*Only used in EM*/, const NbForceAccumulator nbForceAcc /*Only used in MD*/,
-	const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices,
-	const SuperClusterMeta* const superClusterMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
+template <typename BoundaryCondition, bool computePotE>
+__global__ void __launch_bounds__(64, 20) NbNonlocalEmKernel(const SuperCluster* const superClusters, const ScScTask* const tasks,
+	SCResult* const results, const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices,
+	Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
 	const int scId = blockIdx.x;
 	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
 	__shared__ SuperCluster scSelf;
 	__shared__ ScScTask task; // TODO: We dont access this much, no need to store in shared mem...
-	//__shared__ ForceEnergy forceenergySelfShared[SuperCluster::maxParticles * 4]; // Blockdim must be 4!
-	//__shared__ ForceEnergy feAcc[SuperCluster::maxParticles];
 
 	auto tb = cooperative_groups::this_thread_block();
 	cooperative_groups::memcpy_async(tb, &scSelf, &superClusters[scId], sizeof(SuperCluster));
 	if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
 		task = tasks[scId];
 	}	
-	//feAcc[threadIdx.x] = ForceEnergy{};
 	cooperative_groups::wait(tb);
 	__syncthreads();
-
-	if constexpr (!energyMinimize) {
-		if (threadIdx.y == 0)
-			LJ::PrescaleNBParams(scSelf.epsilonSqrt[threadIdx.x], scSelf.charge[threadIdx.x]);
-		__syncthreads();
-	}
-
 
 	ForceEnergy feInScSelf{};
 
@@ -282,24 +394,21 @@ __global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* c
 		const bool validQuery = relativeInteractionIndex < task.nQueryScs;
 		const int queryScId = validQuery ? idsOfQuerySuperclusters[indexInQueriesBuffer] : 0; // For invalid queries we simply load whatever data is at index 0, and continue as normal. This only happens in the final batch, and we dont wanna slow down all other batches with checks
 
-		//cooperative_groups::memcpy_async(tb, &nointeractionsMatrix, &nointeractionMatrices[task.nointeractionMatrixIndex[indexInQueriesBuffer]], sizeof(BoolMatrix16x16));
 		PData pdataQueryAtom{};
 		superClusters[queryScId].LoadPdata(pdataQueryAtom, threadIdx.x);
-		if constexpr (!energyMinimize)
-			LJ::PrescaleNBParams(pdataQueryAtom.params.epsilonSqrt, pdataQueryAtom.params.charge);
-		BoundaryCondition::ApplyHyperpos(Float3{ scSelf.posX[0], scSelf.posY[0], scSelf.posZ[0] }, pdataQueryAtom.position, boxSize, boxSizeInv);
+		BoundaryCondition::ApplyHyperpos(scSelf.Position(0), pdataQueryAtom.position, boxSize, boxSizeInv);
 		const uint16_t noInteractions = validQuery
 			? nointeractionMatrices[indexInQueriesBuffer].GetRow(threadIdx.x)
 			: 0xFFFF;
 
-		//ForceEnergy myForceEnergy{};
 		ForceEnergy feInQuerySc{};
 
 		for (int i = 0; i < 16; i++) {
 			const int indexInScSelf = (threadIdx.x + i) & 15; //% SuperCluster::maxParticles;
 			const bool masked = BoolMatrix16x16::Get(noInteractions, indexInScSelf);
 
-			ForceEnergy fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pdataQueryAtom, scSelf, indexInScSelf, masked, ewaldKappa);
+			// Masked pairs (bonded, self or padding, see BuildNointeractionMatricesKernel) are skipped, padding particles may overlap others
+			ForceEnergy fe = masked ? ForceEnergy{} : LJ::ComputeParticleParticleNBEm<computePotE, true>(pdataQueryAtom, scSelf, indexInScSelf, -1, -1, ewaldKappa);
 			feInQuerySc += fe;
 
 			const int sourceLane = (threadIdx.x - i) & 15;
@@ -311,26 +420,12 @@ __global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* c
 				fe.potE = __shfl_sync(0xFFFFFFFFu, fe.potE, sourceLane, 16);
 
 			feInScSelf += fe.InvertForce();
-
-			//forceenergySelfShared[threadIdx.y * SuperCluster::maxParticles + indexInScSelf] += fe.InvertForce();
-			//__syncwarp();
 		}
 
-		if (validQuery) {
-			if constexpr (energyMinimize)
-				results[resultIndices[indexInQueriesBuffer]].Store<computePotE>(threadIdx.x, feInQuerySc);
-			// The self-task's query forces are dropped: its pairs are evaluated in both orders, so the reaction forces in feInScSelf
-			// already hold the full force. (In the EM path this result is overwritten by the self reduction below)
-			else if (queryScId != scId)
-				nbForceAcc.Add<computePotE>(queryScId * SuperCluster::maxParticles + threadIdx.x, feInQuerySc);
-		}
-		//__syncthreads(); // Im not sure this is necessary..
-	}
-
-	if constexpr (!energyMinimize) {
-		// No need to reduce the rows first, the fixed point sum is order independent
-		nbForceAcc.Add<computePotE>(scId * SuperCluster::maxParticles + threadIdx.x, feInScSelf);
-		return;
+		// The self-task's query result is overwritten by the self reduction below: its pairs are evaluated in both orders,
+		// so the reaction forces in feInScSelf already hold the full force
+		if (validQuery)
+			results[resultIndices[indexInQueriesBuffer]].Store<computePotE>(threadIdx.x, feInQuerySc);
 	}
 
 	__syncthreads();
@@ -504,9 +599,7 @@ const ForceEnergy* const nbForceenergy*/) {
 		simulation.pclusters.count * PersistentCluster::maxParticles, trajBuffer + simulation.logOffset, potEBuffer + simulation.logOffset,
 		velocityBuffer + simulation.logOffset, forceBuffer + simulation.logOffset);
 
-	superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
-	superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;
-	superClusters[scIdGlobal].posZ[threadIdx.x] = pos.z;
+	superClusters[scIdGlobal].SetPosition(threadIdx.x, pos);
 	pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;
 }
 

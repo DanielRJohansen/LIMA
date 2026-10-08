@@ -249,9 +249,7 @@ namespace EM {
 		pos = pos + velocity * dt;
 
 		particles[slot].velocity = velocity;
-		superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
-		superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;
-		superClusters[scIdGlobal].posZ[threadIdx.x] = pos.z;
+		superClusters[scIdGlobal].SetPosition(threadIdx.x, pos);
 		pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;
 	}
 }

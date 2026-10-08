@@ -539,6 +539,8 @@ void Engine::UpdateEnergyMinimization(Float3 boxSize) {
 
 template <typename BoundaryCondition, bool emvariant, bool logData>
 void Engine::_deviceMaster() {
+	if (emvariant != tasksBuiltForEm)
+		MakeSuperClusterTasksGPU(cudaStreams[0]);
 	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
 	const int nScs = batch->nSuperclusters;
 	const int nPcs = batch->nPclusters;
@@ -558,12 +560,18 @@ void Engine::_deviceMaster() {
 	}
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
-		const auto* scMeta = batch->superClustersControl->scMeta;
 		const Float3 boxSizeInv = boxSize.Inv();
-		// Blocksize must not exceed 64 threads, see __launch_bounds__ on the kernel
-		NbNonlocalKernel<BoundaryCondition, emvariant, logData, true><<<nScs, dim3(16,4,1), 0, cudaStreams[0]>>>(
-			scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), nbForceAcc, batch->idsOfQuerySuperclustersDevice.Get(),
-			batch->resultIndicesDevice.Get(), batch->noInteractionMatricesDevice.Get(), scMeta, boxSize, boxSizeInv, batch->ewaldKappa);
+		if constexpr (emvariant) {
+			// Blocksize must not exceed 64 threads, see __launch_bounds__ on the kernel
+			NbNonlocalEmKernel<BoundaryCondition, logData><<<nScs, dim3(16,4,1), 0, cudaStreams[0]>>>(
+				scData, batch->scscTasksDevice.Get(), batch->scResultsDevice.Get(), batch->idsOfQuerySuperclustersDevice.Get(),
+				batch->resultIndicesDevice.Get(), batch->noInteractionMatricesDevice.Get(), boxSize, boxSizeInv, batch->ewaldKappa);
+		}
+		else {
+			// Blocksize must be 64, 2 superclusters per block, see the kernel
+			NbNonlocalKernel<BoundaryCondition, logData><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
+				batch->quarterEntriesDevice.Get(), nbForceAcc, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
+		}
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
 	if (batch->nBondgroups > 0) {

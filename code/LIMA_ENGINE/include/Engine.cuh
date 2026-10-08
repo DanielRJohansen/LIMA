@@ -140,6 +140,10 @@ private:
 
 	// Temp
 	bool MakeSuperClusterTasksGPU(cudaStream_t stream);
+	void FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bool includeSelf);
+	void MakeNbTasksMD(cudaStream_t stream);
+	void MakeNbTasksEM(cudaStream_t stream);
+	bool tasksBuiltForEm = false; // The MD and EM nonbonded kernels use different tasks
 	void RunClustering(cudaStream_t stream, bool runPclustering = true);
 	void BootstrapClustering(cudaStream_t stream);
 };

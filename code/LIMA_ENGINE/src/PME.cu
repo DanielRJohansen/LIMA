@@ -130,8 +130,8 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 
 	if (threadIdx.x < SuperCluster::maxParticles) {
 		Float3 pos = superclusters[scId].Position(threadIdx.x);
-		float charge = superclusters[scId].charge[threadIdx.x];
-		float epsSqrt = superclusters[scId].epsilonSqrt[threadIdx.x];// TODO OPTIM: Remove this, find another way to determine IsValid!
+		float charge = superclusters[scId].Charge(threadIdx.x);
+		float epsSqrt = superclusters[scId].EpsilonSqrt(threadIdx.x);// TODO OPTIM: Remove this, find another way to determine IsValid!
 
 		if (epsSqrt != -1) {// prev PData.IsValid()
 			Float3 scNodeOrigoPos = nearestGridnode.toFloat3();// superclusters[scId].pData[0].position.Floor();
@@ -473,8 +473,8 @@ __global__ void __launch_bounds__(64) InterpolateForcesAndPotentialCompounds(
 	const int simulationId = scMeta[scId].simulationId;
 	const size_t gridOffset = size_t(simulationSlots[simulationId]) * gridDim.InnerProduct();
 	Float3 pos = scData[scId].Position(threadIdx.x);
-	float charge = scData[scId].charge[threadIdx.x];
-	float epsSqrt = scData[scId].epsilonSqrt[threadIdx.x];
+	float charge = scData[scId].Charge(threadIdx.x);
+	float epsSqrt = scData[scId].EpsilonSqrt(threadIdx.x);
 	//PData pqd = scData[scId].pData[threadIdx.x];
 	//if (!pqd.Valid())
 	if (epsSqrt == -1 || charge == 0.f)
@@ -934,9 +934,7 @@ namespace EngineLimitTesting {
 		for (int sc = 0; sc < nClusters; ++sc) {
 			for (int lane = 0; lane < SuperCluster::maxParticles; ++lane) {
 				const int id = sc * SuperCluster::maxParticles + lane;
-				clusters[sc].posX[lane] = clusters[sc].posY[lane] = clusters[sc].posZ[lane] = 0.5f;
-				clusters[sc].epsilonSqrt[lane] = id < count ? 0.f : -1.f;
-				clusters[sc].charge[lane] = id < count ? static_cast<float>(id + 1) : 0.f;
+				clusters[sc].SetPdata(PData{ Float3{ 0.5f }, NBParams{ 0.f, id < count ? 0.f : -1.f, id < count ? static_cast<float>(id + 1) : 0.f } }, lane);
 			}
 		}
 		CudaBuffer<SuperCluster> clustersDevice;

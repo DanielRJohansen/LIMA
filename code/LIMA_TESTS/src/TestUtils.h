@@ -578,6 +578,15 @@ namespace TestUtils {
 			PumpReadyTests();
 		}
 
+		// For timing-sensitive tests: waits until every earlier test has finished, then runs this
+		// test to completion before later tests are added, so no other work competes for CPU or GPU
+		template<typename Factory>
+		void AddSerialTest(std::string name, Factory&& factory) {
+			RunUntilAllComplete();
+			AddTest(std::move(name), std::forward<Factory>(factory));
+			RunUntilAllComplete();
+		}
+
 	private:
 		bool PumpReadyTests() {
 			bool madeProgress = false;
@@ -609,6 +618,10 @@ namespace TestUtils {
 		void Run() {
 			if (hasRun) return;
 			hasRun = true;
+			RunUntilAllComplete();
+		}
+
+		void RunUntilAllComplete() {
 			// Drive every ready test forward by one or more sequential Submit() calls.
 			// Results may complete in any order, but nextToPrint preserves registration order.
 			while (completedCount < tests.size()) {

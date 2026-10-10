@@ -236,8 +236,11 @@ int main(int argc, char** argv) {
 		return test_function(environment, envmode __VA_OPT__(,) __VA_ARGS__); \
 	})
 
+// Runs with no other test in flight, for tests that time CPU or GPU work
 #define ADD_SERIAL_TEST(description, test_function, ...) \
-	ADD_TEST(description, test_function __VA_OPT__(,) __VA_ARGS__)
+	testman.AddSerialTest(description, [&] { \
+		return test_function(environment, envmode __VA_OPT__(,) __VA_ARGS__); \
+	})
 
 // Runs all unit tests with the fastest/crucial ones first
 int RunAllUnitTests() {
@@ -322,8 +325,8 @@ int RunAllUnitTests() {
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
 	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
-	ADD_TEST("LoadT4", Benchmarks::LoadT4);
-	ADD_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
+	ADD_SERIAL_TEST("LoadT4", Benchmarks::LoadT4);
+	ADD_SERIAL_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
 	ADD_TEST("stmv sim performance", Benchmarks::STMV, 200, Benchmarks::automatedTestRuns);
 
 	// Meta tests

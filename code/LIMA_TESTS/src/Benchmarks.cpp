@@ -110,10 +110,8 @@ namespace Benchmarks {
 
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
-		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns) {
-		std::vector<SimulationHandle> handles;
-		handles.reserve(nRuns);
-		for (int run = 0; run < nRuns; run++) {
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps) {
+		const auto MakeJob = [&](int steps) {
 			SimulationJob job;
 			job.workDir = workDir;
 			job.grofile.emplace(groPath);
@@ -121,18 +119,27 @@ namespace Benchmarks {
 			job.simParams.emplace(simParamsPath);
 			job.mode = EnvMode::Headless;
 			job.mustRunAlone = true;
-			job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
+			job.preprocess = [steps](GroFile&, TopologyFile&, SimParams& params) {
 				params.data_logging_interval = 20;
 				params.enable_electrostatics = true;
-				params.n_steps = nSteps;
+				params.n_steps = steps;
 			};
+			return job;
+		};
 
-			handles.push_back(environment.Submit(std::move(job)));
+		// The GPU drops to idle clocks within ~1 s without work, and small systems load it too lightly
+		// to ramp back up quickly. An untimed run first brings it back to full clocks.
+		if (warmupSteps > 0) {
+			auto warmup = co_await environment.Submit(MakeJob(warmupSteps));
+			if (!warmup.simulation || warmup.simulation->getStep() != warmupSteps)
+				co_return LimaUnittestResult{ false, "Warmup simulation did not run fully", envmode != Headless };
 		}
+
 		std::vector<std::chrono::microseconds> timesPerStep;
 		timesPerStep.reserve(nRuns);
-		for (auto& handle : handles) {
-			auto completed = co_await std::move(handle);
+		// Await each run before submitting the next, so a run's preparation never overlaps the previous run's timed steps
+		for (int run = 0; run < nRuns; run++) {
+			auto completed = co_await environment.Submit(MakeJob(nSteps));
 			if (!completed.simulation || completed.simulation->getStep() != completed.simulation->simParams.n_steps)
 				co_return LimaUnittestResult{ false, "Simulation did not run fully", envmode != Headless };
 			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(completed.engineTime / nSteps));
@@ -156,7 +163,7 @@ namespace Benchmarks {
 	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
 		const fs::path workDir = TestsDir() / "benchmarking/t4";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
-			workDir / "../sim_params.txt", { std::chrono::microseconds{ 180 }, std::chrono::microseconds{ 300 } },
-			nSteps, nRuns);
+			workDir / "../sim_params.txt", { std::chrono::microseconds{ 100 }, std::chrono::microseconds{ 400 } },
+			nSteps, nRuns, 2000);
 	}
 }

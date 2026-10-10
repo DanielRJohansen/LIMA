@@ -472,9 +472,10 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 
 	tb.entryStarts.Expand(n + 1, 1.2);
 	batch->quarterEntryTasksDevice.Expand(n, 1.2);
-	// The integrate kernel keeps the accumulator zeroed, but its layout changes with the superclusters
-	batch->forceAccumulatorDevice.Expand(size_t(n) * SuperCluster::maxParticles * 4, 1.2);
-	cudaMemsetAsync(batch->forceAccumulatorDevice.Get(), 0, sizeof(unsigned long long) * n * SuperCluster::maxParticles * 4, stream);
+	// Integration clears the atomic planes. Primary bonded planes are overwritten by their owning groups.
+	// Clear both on rebuild, since supercluster slots change and particles without bonds have no writer.
+	batch->forceAccumulatorDevice.Expand(size_t(n) * SuperCluster::maxParticles * 8, 1.2);
+	cudaMemsetAsync(batch->forceAccumulatorDevice.Get(), 0, sizeof(unsigned long long) * n * SuperCluster::maxParticles * 8, stream);
 
 	cudaMemsetAsync(tb.entryCounts.Get() + n, 0, sizeof(int), stream);
 	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), stream);

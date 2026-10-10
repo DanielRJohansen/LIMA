@@ -11,6 +11,7 @@
 #include "Engine.cuh"
 #include "BatchLayout.cuh"
 #include "EnergyMinimizationTypes.h"
+#include "CompactBondTable.h"
 
 class Thermostat;
 struct SuperClustersControl;
@@ -143,19 +144,22 @@ struct EngineBatchData {
 
 	CudaBuffer<BondGroup> bondgroupDescriptors;
 	CudaBuffer<BondGroup::ParticleRef> bondgroupParticles;
-	CudaBuffer<SingleBond> bondgroupSinglebonds;
-	CudaBuffer<PairBond> bondgroupPairbonds;
-	CudaBuffer<AngleUreyBradleyBond> bondgroupAnglebonds;
-	CudaBuffer<DihedralBond> bondgroupDihedralbonds;
-	CudaBuffer<ImproperDihedralBond> bondgroupImproperdihedralbonds;
+	CompactBondTable<SingleBond> bondgroupSinglebonds;
+	CompactBondTable<PairBond> bondgroupPairbonds;
+	CompactBondTable<AngleUreyBradleyBond> bondgroupAnglebonds;
+	CompactBondTable<DihedralBond> bondgroupDihedralbonds;
+	CompactBondTable<ImproperDihedralBond> bondgroupImproperdihedralbonds;
 
 	CudaBuffer<QuarterEntryTask> quarterEntryTasksDevice;	// See NbNonlocalKernel
 	CudaBuffer<QuarterEntry> quarterEntriesDevice;
 	CudaBuffer<int> quarterEntryResultIndicesDevice;		// EM only, the SCResult each entry's j forces are stored in
 	int nQuarterEntries = 0;
 	CudaBuffer<SCResult> scResultsDevice;					// EM only
-	CudaBuffer<unsigned long long> forceAccumulatorDevice;	// MD only, see ForceAccumulator. [fx|fy|fz|potE] each nSuperclusters*16
+	CudaBuffer<unsigned long long> forceAccumulatorDevice;	// MD only: four atomic planes, then four primary bonded planes, each nSuperclusters*16
 	CudaBuffer<int> pclusterParticleSlots;					// Slot (scId * 16 + index) of each pcluster particle in the current superclusters, -1 if none
+	CudaBuffer<ulonglong4> extraBondForceResults; // Only secondary bondgroup appearances
+	CudaBuffer<int> bondgroupExtraResultIndices; // -1 for primary appearances, otherwise an extra result index
+	CudaBuffer<int> slotExtraBondReferences; // Three planes of secondary indices, rebuilt with superclusters
 	CudaBuffer<int> bondgroupParticleSlots;					// Slot of each of bondgroupParticles, so BondgroupsKernel finds them directly
 	CudaBuffer<ParticleIntegrationState> integrationStates;	// Indexed by supercluster slot
 	bool integrationStatesLoaded = false;					// integrationStates hold the current state, which pcluster states may lag

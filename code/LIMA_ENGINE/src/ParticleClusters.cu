@@ -583,7 +583,7 @@ __global__ void MapPclusterParticlesToSlots(const SuperClusterMeta* const scMeta
 
 // blockDim = (16, 4, 1)
 __global__ void LoadIntegrationStatesKernel(const SuperClusterMeta* const scMeta, int nSuperclusters, const PersistentclusterInterimState* const pcStates,
-	const PersistentClusterMeta* const pcMeta, ParticleIntegrationState* const states) {
+	const PersistentClusterMeta* const pcMeta, ParticleIntegrationState* const states, int* const bondReferences, const int* const extraResultIndices) {
 	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
 	if (scId >= nSuperclusters)
 		return;
@@ -591,6 +591,19 @@ __global__ void LoadIntegrationStatesKernel(const SuperClusterMeta* const scMeta
 	const int index = scMeta[scId].indexInPcluster[threadIdx.x];
 	states[scId * SuperCluster::maxParticles + threadIdx.x] = pcId == -1 ? ParticleIntegrationState{} : ParticleIntegrationState{
 		pcStates[pcId].vels_prev[index], pcMeta[pcId].mass[index], pcStates[pcId].forces_prev[index], pcId * PersistentCluster::maxParticles + index };
+	static_assert(BondgroupRefManager::maxBondgroupApperances == 4);
+	const int slot = scId * SuperCluster::maxParticles + threadIdx.x;
+	const int nSlots = nSuperclusters * SuperCluster::maxParticles;
+#pragma unroll
+	for (int i = 0; i < 3; i++) {
+		int extra = -1;
+		if (pcId != -1) {
+			const BondgroupRefManager& refs = pcMeta[pcId].bondgroupReferences[index];
+			if (refs.nBondgroupApperances > i + 1)
+				extra = extraResultIndices[refs.bondgroupApperances[i + 1].indexInForceEnergiesBondgroups];
+		}
+		bondReferences[i * nSlots + slot] = extra;
+	}
 }
 
 // forcesMagnitudeSquared may be nullptr. blockDim = (16, 4, 1)
@@ -625,10 +638,11 @@ void Engine::StoreIntegrationStates(cudaStream_t stream) {
 
 void Engine::LoadIntegrationStates(cudaStream_t stream) {
 	batch->integrationStates.Expand(size_t(batch->nSuperclusters) * SuperCluster::maxParticles, 1.2);
+	batch->slotExtraBondReferences.Expand(size_t(batch->nSuperclusters) * SuperCluster::maxParticles * 3, 1.2);
 	if (batch->nSuperclusters > 0)
 		LoadIntegrationStatesKernel<<<(batch->nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
 			batch->superClustersControl->scMeta, batch->nSuperclusters, batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
-			batch->integrationStates.Get());
+			batch->integrationStates.Get(), batch->slotExtraBondReferences.Get(), batch->bondgroupExtraResultIndices.Get());
 	batch->integrationStatesLoaded = true;
 }
 

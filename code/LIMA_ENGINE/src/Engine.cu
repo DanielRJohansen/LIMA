@@ -661,9 +661,11 @@ void Engine::_deviceMaster() {
 	ForkStreamsFromMainStream();
 	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
 	const int nScs = batch->nSuperclusters;
-	// MD: all force kernels add to forceAcc, which the previous step's integration (or the task build) left zeroed, so they need
-	// not wait for each other
+	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
+	// and are gathered by integration, so all force kernels can run concurrently.
 	ForceAccumulator forceAcc{};
+	ForceAccumulator primaryBondForces{};
+	ulonglong4* const extraBondForces = batch->extraBondForceResults.Get();
 	if constexpr (emvariant) {
 		batch->scResultsDevice.Expand(batch->nResults, 1.2); // Noop once allocated. Not allocated at all in MD, where it would be ~1GB for large systems
 	}
@@ -671,6 +673,7 @@ void Engine::_deviceMaster() {
 		const size_t n = size_t(nScs) * SuperCluster::maxParticles;
 		unsigned long long* const base = batch->forceAccumulatorDevice.Get();
 		forceAcc = ForceAccumulator{ base, base + n, base + 2 * n, logData ? base + 3 * n : nullptr };
+		primaryBondForces = ForceAccumulator{ base + 4 * n, base + 5 * n, base + 6 * n, logData ? base + 7 * n : nullptr };
 	}
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
 		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
@@ -685,13 +688,13 @@ void Engine::_deviceMaster() {
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);
 	if (batch->nBondgroups > 0) {
-		const BondGroupsDevice bondGroups{
-			batch->bondgroupDescriptors.Get(), batch->bondgroupParticles.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
+		const CompactBondGroupsDevice bondGroups{
+			batch->bondgroupDescriptors.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
 			batch->bondgroupAnglebonds.Get(), batch->bondgroupDihedralbonds.Get(), batch->bondgroupImproperdihedralbonds.Get()
 		};
 		const Float3 boxSizeInv = boxSize.Inv();
-		BondgroupsKernel<BoundaryCondition, emvariant><<<batch->nBondgroups, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
-			bondGroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, forceAcc, batch->superClustersControl->scData,
+		BondgroupsKernel<BoundaryCondition, emvariant, logData><<<(batch->nBondgroups + BONDGROUPS_PER_BLOCK - 1) / BONDGROUPS_PER_BLOCK, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
+			bondGroups, batch->nBondgroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, primaryBondForces, extraBondForces, batch->bondgroupExtraResultIndices.Get(), batch->superClustersControl->scData,
 			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv);
 	}
 	if (nScs == 0) {
@@ -719,7 +722,7 @@ void Engine::_deviceMaster() {
 			// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
 			batch->forceMagnitudesInStates = !liveEdit.Any();
 			SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-				forceAcc, batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
+				forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 				batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
 				liveEdit, log);
 		}

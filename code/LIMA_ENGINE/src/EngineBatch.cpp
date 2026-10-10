@@ -7,6 +7,8 @@
 #include "Format.h"
 #include <type_traits>
 #include <unordered_map>
+#include <cstdio>
+#include <cstdlib>
 
 namespace EngineBatch {
 	template<typename T>
@@ -237,11 +239,34 @@ namespace EngineBatch {
 		batch.bondgroupDescriptors.SetData(bonds.groups);
 		batch.bondgroupParticles.SetData(bonds.particles);
 		batch.nBondgroupParticles = CheckedCount(bonds.particles.size());
+		// One group owns the primary result in each particle slot. Only other appearances need gathered output.
+		std::vector<int> extraResultIndices(bonds.particles.size(), -1);
+		size_t nExtraResults = 0;
+		for (const auto& meta : metadata) {
+			for (const auto& refs : meta.bondgroupReferences) {
+				for (int i = 1; i < refs.nBondgroupApperances; i++)
+					extraResultIndices[refs.bondgroupApperances[i].indexInForceEnergiesBondgroups] = CheckedCount(nExtraResults++);
+			}
+		}
+		batch.bondgroupExtraResultIndices.SetData(extraResultIndices);
+		batch.extraBondForceResults.Expand(nExtraResults);
 		batch.bondgroupSinglebonds.SetData(bonds.singlebonds);
 		batch.bondgroupPairbonds.SetData(bonds.pairbonds);
 		batch.bondgroupAnglebonds.SetData(bonds.anglebonds);
 		batch.bondgroupDihedralbonds.SetData(bonds.dihedralbonds);
 		batch.bondgroupImproperdihedralbonds.SetData(bonds.improperdihedralbonds);
+		if (std::getenv("LIMA_BOND_LAYOUT_STATS")) {
+			const auto PrintTable = [](const char* name, const auto& host, const auto& device) {
+				std::printf("Bond table %s: %zu bonds, %zu parameters, %d-byte indices, %zu -> %zu bytes\n",
+					name, host.size(), device.ParameterCount(), device.Get().parameterIdBytes,
+					host.size() * sizeof(typename std::decay_t<decltype(host)>::value_type), device.Bytes());
+			};
+			PrintTable("single", bonds.singlebonds, batch.bondgroupSinglebonds);
+			PrintTable("pair", bonds.pairbonds, batch.bondgroupPairbonds);
+			PrintTable("angle", bonds.anglebonds, batch.bondgroupAnglebonds);
+			PrintTable("dihedral", bonds.dihedralbonds, batch.bondgroupDihedralbonds);
+			PrintTable("improper", bonds.improperdihedralbonds, batch.bondgroupImproperdihedralbonds);
+		}
 		batch.forceEnergyInterims = std::make_unique<ForceEnergyInterims>(CheckedCount(bonds.particles.size()), batch.nParticles, batch.nPclusters);
 		batch.forcesMagnitudeSquareDevice.Expand(batch.nParticles);
 		cudaMemset(batch.forcesMagnitudeSquareDevice.Get(), 0, sizeof(float) * batch.nParticles);

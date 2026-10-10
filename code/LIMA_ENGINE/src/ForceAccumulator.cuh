@@ -3,10 +3,12 @@
 #include "LimaTypes.cuh"
 #include "Bodies.cuh"
 
-// Deterministic accumulation of all forces on each particle in MD: the NB, bonded, PME and SNF kernels convert their
+// Deterministic accumulation of forces on each particle in MD: the NB, PME and SNF kernels convert their
 // partial forces to 64-bit fixed point and sum them with integer atomics. Unlike float atomics, integer addition is
 // associative, so the sum is bitwise independent of the order the atomics arrive in, and the kernels may run concurrently.
-// The integrate kernel takes each particle's sum, leaving the accumulator zeroed for the next step.
+// Each particle's first bondgroup stores its sum in a separate supercluster-slot plane. Integration reads it
+// coalesced and gathers only the remaining appearances, all as integers before the single float conversion.
+// The integrate kernel combines both sums before converting to float, leaving the accumulator zeroed for the next step.
 // Not used in EM, where forces can exceed the fixed point range.
 struct ForceAccumulator {
 	static constexpr float scale = 16777216.f;		// 2^24 -> resolution 6e-8 J/mol/nm, range +-5.5e11 J/mol/nm
@@ -46,10 +48,27 @@ struct ForceAccumulator {
 		else AddFixed<false>(slot, x, y, z, e);
 	}
 
-	// Returns the particle's summed forces and zeroes its slot, so the accumulator is ready for the next step
+	// Gather the separately stored bonded sums before the single float conversion. No rounding-order change.
+	// Zero the global accumulator slot; bonded entries are overwritten by their owning groups next step.
 	template <bool withPotE>
-	__device__ ForceEnergy Take(int slot) const {
-		const ForceEnergy fe{ Float3{ ToFloat(fx[slot]), ToFloat(fy[slot]), ToFloat(fz[slot]) }, withPotE ? ToFloat(potE[slot]) : 0.f };
+	__device__ ForceEnergy Take(int slot, const ForceAccumulator& primary, const ulonglong4* const bonded, const int* const refs, int nSlots) const {
+		unsigned long long x = fx[slot] + primary.fx[slot], y = fy[slot] + primary.fy[slot], z = fz[slot] + primary.fz[slot];
+		unsigned long long e = withPotE ? potE[slot] + primary.potE[slot] : 0;
+#pragma unroll
+		for (int i = 0; i < 3; i++) {
+			const int index = refs[i * nSlots + slot];
+			if (index < 0) break;
+			const ulonglong2 xy = __ldg(reinterpret_cast<const ulonglong2*>(&bonded[index]));
+			x += xy.x;
+			y += xy.y;
+			if constexpr (withPotE) {
+				const ulonglong2 ze = __ldg(reinterpret_cast<const ulonglong2*>(&bonded[index].z));
+				z += ze.x;
+				e += ze.y;
+			}
+			else z += __ldg(&bonded[index].z);
+		}
+		const ForceEnergy fe{ Float3{ ToFloat(x), ToFloat(y), ToFloat(z) }, withPotE ? ToFloat(e) : 0.f };
 		fx[slot] = 0;
 		fy[slot] = 0;
 		fz[slot] = 0;

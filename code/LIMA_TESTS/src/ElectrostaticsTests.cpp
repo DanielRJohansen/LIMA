@@ -307,102 +307,109 @@ namespace ElectrostaticsTests {
 	//}
 
 
-	TestRoutine TestLongrangeEsNoLJTwoParticles(
-		Environment& environment, EnvMode envmode) {
-		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-
-		struct TestSetup {
-			Float3 p0, p1;
-			std::string name{};
-			Float3 mirrorDir{ -1,0, 0 };
+	// The electrostatic forces on random +-1e ions (no LJ) against an exact Ewald sum in double precision: the realspace sum within
+	// the cutoff, and the reciprocal sum over every wavevector where it is not negligible. SPME matches it to ~0.1% RMS.
+	// Many charges and an RMS error, rather than pair forces: SPME gives each charge a small force from its own spread charge
+	// (~0.7 kJ/mol/nm for 1e at 0.125 nm spacing), which dominates the error of a lone pair but averages out in a system
+	TestRoutine TestPmeMatchesEwaldSum(Environment& environment, EnvMode envmode) {
+		const float boxLen = 5.f;
+		const fs::path workDir = HeavyTestsDir() / "PmeMatchesEwaldSum";
+		const AtomsSelection atoms{
+			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lp", 0, 1.f, 12.011f}, 50},
+			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "ln", 0, -1.f, 12.011f}, 50},
 		};
-
-		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
-		std::vector<TestSetup> testSetups{
-			 {Float3{ 6.025f, 10.025f, 10.f }, Float3{ 8.025f, 10.025f, 10.025f }, "x-dim only 2 nm"}
-			,{Float3{ 4.f, 10.f, 10.f }, Float3{ 10.07f, 10.025f, 10.025f },  "x-dim only 8 nm"}
-			,{Float3{ 4.025f, 11.025f, 9.025f }, Float3{ 10.025f, 10.025f, 10.025f }, "3d force"}
-			,{Float3{ 9.6f, 10.f, 10.f }, Float3{ 10.f, 10.f, 10.f}, "Within SR range"}
-			,{Float3{ .1f, 10.f, 10.f }, Float3{ 5.6f, 10.f, 10.f }, "Close to boundary"}
-			,{Float3{ .1f, 10.f, 10.f }, Float3{ 28.f, 10.f, 10.f }, "With hyperpos closest", {0.f,0.f, 0.f}}
-		};
-
-
-
-
 
 		SimParams params{};
 		params.n_steps = 1;
 		params.data_logging_interval = 1;
-		const float c0 = -1.f * elementaryChargeToKiloCoulombPerMole;
-		const float c1 = 1.f * elementaryChargeToKiloCoulombPerMole;
-		std::vector<SimulationHandle> handles;
-		handles.reserve(testSetups.size());
-		for (const auto& setup : testSetups) {
-			SimulationJob job;
-			job.workDir = work_folder;
-			job.simParams = params;
-			job.mode = envmode;
-			job.preprocess = [setup](GroFile& grofile, TopologyFile&, SimParams&) {
-				grofile.box_size = Float3{ 30.f };
-				grofile.atoms[0].position = setup.p0;
-				grofile.atoms[1].position = setup.p1;
-			};
-			job.configureSimulation = [c0, c1](Simulation& simulation) {
-				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
-				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
-			};
-			handles.push_back(environment.Submit(std::move(job)));
-		}
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace();
+		job.topfile.emplace();
+		job.simParams = params;
+		job.mode = envmode;
+		auto generatedGrofile = std::make_shared<GroFile>();
+		job.preprocess = [workDir, boxLen, atoms, generatedGrofile](GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			fs::create_directories(workDir);
+			MakeChargeParticlesSim(grofile, topfile, workDir, boxLen, atoms, 1.f);
+			*generatedGrofile = grofile;
+		};
+		auto completed = co_await environment.Submit(std::move(job));
+		const GroFile& grofile = *generatedGrofile;
+		const int n = static_cast<int>(grofile.atoms.size());
 
-		for (size_t testIndex = 0; testIndex < testSetups.size(); testIndex++) {
-			const auto& setup = testSetups[testIndex];
-			Float3 hyperposOther = setup.p1;
-			BoundaryConditionPublic::applyHyperposNM(setup.p0, hyperposOther, Float3{ 30.f }, PBC);
-			
-			const Float3 diff = setup.p0 - hyperposOther;
+		const double kappa = PhysicsUtils::CalcEwaldkappa(params.cutoff_nm);	// [nm^-1]
+		const double cutoff = params.cutoff_nm;									// [nm]
+		const double coulomb = PhysicsUtils::modifiedCoulombConstant;
+		const double volume = double(boxLen) * boxLen * boxLen;
+		std::vector<double> charges(n);
+		for (int i = 0; i < n; i++)
+			charges[i] = (grofile.atoms[i].atomName == "lp" ? 1. : -1.) * elementaryChargeToKiloCoulombPerMole;
+		auto position = [&](int i, int dim) { return double(grofile.atoms[i].position[dim]); };
+		std::vector<std::array<double, 3>> expected(n, std::array<double, 3>{});
 
-			const Float3 diffFromMirror = setup.p0 - (setup.p1 + (Float3{ 30.f } * setup.mirrorDir));
-			const Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diffFromMirror);
-			const float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diffFromMirror.len()) * 0.5f;
-
-
-			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f + mirrorPotential;
-			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff) + mirrorForce;
-
-
-			auto completed = co_await std::move(handles[testIndex]);
-			auto sim = std::move(completed.simulation);
-
-			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
-			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
-			const float potEError = std::abs((actualPotential - expectedPotential) / expectedPotential);
-			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
-
-			
-			//ghostforce.print('G');
-			if (envmode == Full) {
-				printf("Exp Force %.3e %.3e %.3e\n", expectedForce.x, expectedForce.y, expectedForce.z);
-				//printf("CPU Force %.3e %.3e %.3e\n", forceEnergy[0].force.x, forceEnergy[0].force.y, forceEnergy[0].force.z);
-				printf("GPU force %.3e %.3e %.3e\n", actualForce.x, actualForce.y, actualForce.z);
-				printf("Mir force %.3e %.3e %.3e\n", mirrorForce.x, mirrorForce.y, mirrorForce.z);
-				printf("Expected pot %.3e GPU %.3e mirror %.3e\n", expectedPotential, actualPotential, mirrorPotential);
+		// Realspace part, minimum image (cutoff < boxLen / 2)
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				if (i == j) continue;
+				double diff[3];
+				for (int d = 0; d < 3; d++) {
+					diff[d] = position(i, d) - position(j, d);
+					diff[d] -= boxLen * std::round(diff[d] / boxLen);
+				}
+				const double dist = std::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
+				if (dist >= cutoff) continue;
+				const double magnitude = coulomb * charges[i] * charges[j]
+					* (std::erfc(kappa * dist) / (dist * dist) + 2. * kappa / std::sqrt(PI) * std::exp(-kappa * kappa * dist * dist) / dist);
+				for (int d = 0; d < 3; d++)
+					expected[i][d] += magnitude * diff[d] / dist;
 			}
-
-			if (forceError >= 0.07f)
-				co_return LimaUnittestResult{ false, Lima::Format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError), envmode == Full };
-			// Potential is hopeless to match realspace and kspace
-			if (potEError >= 3.f)
-				co_return LimaUnittestResult{ false, Lima::Format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError), envmode == Full };
-
-			const Float3 actualForceP1 = sim->forceBuffer->GetDatapoint(1, 0, 0);
-			if ((actualForce + actualForceP1).len() / actualForce.len() >= 0.001f)
-				co_return LimaUnittestResult{ false,
-					Lima::Format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
-						actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z), envmode == Full };
 		}
 
-		co_return LimaUnittestResult{ true, "Success", envmode == Full };
+		// Reciprocal part: wavevectors up to where exp(-k^2 / 4 kappa^2) < 1e-12
+		const double kMax = 2. * kappa * std::sqrt(12. * std::log(10.));
+		const int nMax = static_cast<int>(std::ceil(kMax * boxLen / (2. * PI)));
+		for (int nx = -nMax; nx <= nMax; nx++) {
+			for (int ny = -nMax; ny <= nMax; ny++) {
+				for (int nz = -nMax; nz <= nMax; nz++) {
+					if (nx == 0 && ny == 0 && nz == 0) continue;
+					const double k[3]{ 2. * PI * nx / boxLen, 2. * PI * ny / boxLen, 2. * PI * nz / boxLen };
+					const double kSquared = k[0] * k[0] + k[1] * k[1] + k[2] * k[2];
+					if (kSquared > kMax * kMax) continue;
+					const double greens = 4. * PI / kSquared * std::exp(-kSquared / (4. * kappa * kappa));
+
+					// Structure factor S(k) = sum_j q_j exp(-i k.r_j)
+					double structureRe = 0., structureIm = 0.;
+					for (int j = 0; j < n; j++) {
+						const double phase = k[0] * position(j, 0) + k[1] * position(j, 1) + k[2] * position(j, 2);
+						structureRe += charges[j] * std::cos(phase);
+						structureIm -= charges[j] * std::sin(phase);
+					}
+					for (int i = 0; i < n; i++) {
+						const double phase = k[0] * position(i, 0) + k[1] * position(i, 1) + k[2] * position(i, 2);
+						// Im(exp(i k.r_i) S(k)) = sum_j q_j sin(k.(r_i - r_j))
+						const double im = std::sin(phase) * structureRe + std::cos(phase) * structureIm;
+						for (int d = 0; d < 3; d++)
+							expected[i][d] += coulomb / volume * charges[i] * greens * im * k[d];
+					}
+				}
+			}
+		}
+
+		double errorSquaredSum = 0., forceSquaredSum = 0., maxError = 0.;
+		for (int i = 0; i < n; i++) {
+			const Float3 actual = completed.simulation->forceBuffer->GetDatapoint(i, 0, 0);
+			double errorSquared = 0.;
+			for (int d = 0; d < 3; d++) {
+				errorSquared += (actual[d] - expected[i][d]) * (actual[d] - expected[i][d]);
+				forceSquaredSum += expected[i][d] * expected[i][d];
+			}
+			errorSquaredSum += errorSquared;
+			maxError = std::max(maxError, std::sqrt(errorSquared));
+		}
+		const double relativeRmsError = std::sqrt(errorSquaredSum / forceSquaredSum);
+		co_return LimaUnittestResult{ relativeRmsError < 0.005,
+			Lima::Format("RMS force error {:.3f}% of RMS force, max {:.0f} J/mol/nm ({} ions)", relativeRmsError * 100., maxError, n), envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {

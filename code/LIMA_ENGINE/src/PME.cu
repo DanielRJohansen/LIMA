@@ -292,69 +292,48 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	}
 }
 
-// B-spline interpolation of the potential at gridPos, and of the field from the potential's central differences.
+// B-spline interpolation of the potential at gridPos, and of the field from the B-splines' derivatives (standard SPME).
 // phi(X, Y, Z) returns the potential at a gridpoint, which may be outside the grid
 template <typename Phi>
 __device__ ForceEnergy InterpolateForceEnergy(Float3 gridPos, Phi phi) {
-	int ix = static_cast<int>(floorf(gridPos.x));
-	int iy = static_cast<int>(floorf(gridPos.y));
-	int iz = static_cast<int>(floorf(gridPos.z));
+	const int ix = static_cast<int>(floorf(gridPos.x));
+	const int iy = static_cast<int>(floorf(gridPos.y));
+	const int iz = static_cast<int>(floorf(gridPos.z));
 
-	float fx = gridPos.x - static_cast<float>(ix);
-	float fy = gridPos.y - static_cast<float>(iy);
-	float fz = gridPos.z - static_cast<float>(iz);
+	const float fx = gridPos.x - static_cast<float>(ix);
+	const float fy = gridPos.y - static_cast<float>(iy);
+	const float fz = gridPos.z - static_cast<float>(iz);
 
 	float wx[4], wy[4], wz[4];
 	LAL::CalcBspline(fx, wx);
 	LAL::CalcBspline(fy, wy);
 	LAL::CalcBspline(fz, wz);
+	float dwx[4], dwy[4], dwz[4];
+	LAL::CalcBsplineDerivative(fx, dwx);
+	LAL::CalcBsplineDerivative(fy, dwy);
+	LAL::CalcBsplineDerivative(fz, dwz);
 
-	ForceEnergy fe{};
-
+	// The gradient is with respect to grid units, gridpointsPerNm converts it to per nm
+	Float3 gradient{};
+	float potential = 0.f;
 	for (int dz = 0; dz < 4; dz++) {
-		int Z = iz - 1 + dz;
-		float wzCur = wz[dz];
 		for (int dy = 0; dy < 4; dy++) {
-			int Y = iy - 1 + dy;
-			float wyzCur = wzCur * wy[dy];
-
-			// Load all values used in this YZ plane
-			float phisPlusY[4];
-			float phisMinusY[4];
-			float phisPlusZ[4];
-			float phisMinusZ[4];
-			float phisCenter[6];
 #pragma unroll
 			for (int dx = 0; dx < 4; dx++) {
-				phisPlusY[dx] = phi(ix - 1 + dx, Y + 1, Z);
-				phisMinusY[dx] = phi(ix - 1 + dx, Y - 1, Z);
-				phisPlusZ[dx] = phi(ix - 1 + dx, Y, Z + 1);
-				phisMinusZ[dx] = phi(ix - 1 + dx, Y, Z - 1);
-			}
-#pragma unroll
-			for (int dx = 0; dx < 6; dx++)
-				phisCenter[dx] = phi(ix - 2 + dx, Y, Z);
-
-#pragma unroll
-			for (int dx = 0; dx < 4; dx++) {
-				float wxyzCur = wyzCur * wx[dx];
-
-				float& phi = phisCenter[dx + 1];
-				float E_x = -(phisCenter[dx + 2] - phisCenter[dx]) * (gridpointsPerNm / 2.0f);
-				float E_y = -(phisPlusY[dx] - phisMinusY[dx]) * (gridpointsPerNm / 2.0f);
-				float E_z = -(phisPlusZ[dx] - phisMinusZ[dx]) * (gridpointsPerNm / 2.0f);
-
-				fe.force += Float3{ E_x, E_y, E_z } *wxyzCur;
-				fe.potE += phi * wxyzCur;
+				const float p = phi(ix - 1 + dx, iy - 1 + dy, iz - 1 + dz);
+				gradient.x += dwx[dx] * wy[dy] * wz[dz] * p;
+				gradient.y += wx[dx] * dwy[dy] * wz[dz] * p;
+				gradient.z += wx[dx] * wy[dy] * dwz[dz] * p;
+				potential += wx[dx] * wy[dy] * wz[dz] * p;
 			}
 		}
 	}
-
-	return fe;
+	return ForceEnergy{ gradient * -gridpointsPerNm_f, potential };
 }
 
-// The grid around a chargeblock that its particles' interpolation reads: the block's gridpoints, plus 2 below and 3 above
-constexpr int interpolationTileLen = gridpointsPerNm + 5;
+// The grid around a chargeblock that its particles' interpolation reads: the block's gridpoints, plus the spline's reach of
+// 1 below and 2 above
+constexpr int interpolationTileLen = gridpointsPerNm + 3;
 
 // Interpolates the forces on the particles a chargeblock owns, from a tile of the grid around the block in shared memory.
 // One chargeblock per block, blockDim = interpolateThreads
@@ -369,7 +348,7 @@ __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(co
 
 	const int nBlocksPerGrid = blocksPerDim.InnerProduct();
 	const float* const grid = realspaceGrid + size_t(blockIdx.x / nBlocksPerGrid) * gridDim.InnerProduct();
-	const NodeIndex tileOrigin = BoxGrid::Get3dIndex(blockIdx.x % nBlocksPerGrid, blocksPerDim) * gridpointsPerNm - NodeIndex{ 2, 2, 2 };
+	const NodeIndex tileOrigin = BoxGrid::Get3dIndex(blockIdx.x % nBlocksPerGrid, blocksPerDim) * gridpointsPerNm - NodeIndex{ 1, 1, 1 };
 
 	if (threadIdx.x == 0) {
 		nOwned = min(chargeblockBuffers.nOwnedInBlock[blockIdx.x], static_cast<uint32_t>(ChargeBlock::maxParticlesInBlock));
@@ -615,14 +594,6 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gri
 	int kyShiftedIndex = (freqIndex.y <= halfNodes.y) ? freqIndex.y : freqIndex.y - gridpointsPerDim.y;
 	int kzShiftedIndex = (freqIndex.z <= halfNodes.z) ? freqIndex.z : freqIndex.z - gridpointsPerDim.z;
 
-	// Ewald kappa fixed
-	//double delta = boxLen / (double)gridpointsPerDim;		// [nm]
-	double delta = std::min(std::min(	// TODO: Compute this on host instead
-		boxLenX / (double)gridpointsPerDim.x,
-		boxLenY / (double)gridpointsPerDim.y),
-		boxLenZ / (double)gridpointsPerDim.z);	// [nm]
-
-
 	// Physical wavevectors
 	double kx = (2.0 * PI * (double)kxIndex) / boxLenX;
 	double ky = (2.0 * PI * (double)kyShiftedIndex) / boxLenY;
@@ -630,31 +601,17 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gri
 
 	double kSquared = kx * kx + ky * ky + kz * kz;
 
-	double currentGreensValue = 0.0f;
-
-	// Compute B-spline structure factor (4th order)
-	double kHalfX = kx * (delta * 0.5);
-	double kHalfY = ky * (delta * 0.5);
-	double kHalfZ = kz * (delta * 0.5);
-
-	const double epsilon = 1e-14; // TODO try to change this
-
-	auto splineFactor = [epsilon](double kh) {
-		if (fabs(kh) < epsilon) return 1.0;
-		double ratio = sin(kh) / kh;
-		return pow(ratio, 4);
+	// Spreading the charges and interpolating the forces each smooth by the cubic B-spline, whose discrete Fourier transform
+	// is (2 + cos(k h)) / 3 per dimension. Dividing it out twice makes the reciprocal sum exact up to aliasing (Essmann 1995)
+	auto splineModulusSquared = [](double kh) {
+		const double modulus = (2.0 + cos(kh)) / 3.0;
+		return modulus * modulus;
 		};
+	const double splineCorrection = 1.0 / (splineModulusSquared(kx * boxLenX / gridpointsPerDim.x)
+		* splineModulusSquared(ky * boxLenY / gridpointsPerDim.y) * splineModulusSquared(kz * boxLenZ / gridpointsPerDim.z));
 
-	double Sx = splineFactor(kHalfX);
-	double Sy = splineFactor(kHalfY);
-	double Sz = splineFactor(kHalfZ);
-
-	double splineCorrection = (Sx * Sy * Sz);
-	splineCorrection = splineCorrection * splineCorrection; // squared for forward+back interpolation
-
-	//splineCorrection = 1;
-
-	if (kSquared > epsilon) {
+	double currentGreensValue = 0.0;
+	if (kSquared > 0.0) {
 		currentGreensValue = (4.0 * PI / (kSquared))
 			* exp(-kSquared / (4.0 * ewaldKappa * ewaldKappa))
 			* splineCorrection

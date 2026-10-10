@@ -34,6 +34,14 @@ namespace LAL {
 		w[3] = (f * f * f) / 6.f;
 	}
 
+	// Derivatives of CalcBspline's weights with respect to f
+	__device__ inline void CalcBsplineDerivative(float f, float* dw) {
+		dw[0] = -0.5f * (1.f - f) * (1.f - f);
+		dw[1] = -2.f * f + 1.5f * f * f;
+		dw[2] = 0.5f + f - 1.5f * f * f;
+		dw[3] = 0.5f * f * f;
+	}
+
 	template<int order>
 	__device__ __forceinline__
 		float EvalPoly(const float x, const std::array<float, order>& coeffs)

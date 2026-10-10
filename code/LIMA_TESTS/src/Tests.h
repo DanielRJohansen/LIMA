@@ -61,8 +61,7 @@ namespace ElectrostaticsTests {
 			const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3);
 	TestRoutine TestChargedParticlesVelocityInUniformElectricField(
 			Environment& environment, EnvMode envmode);
-	TestRoutine TestLongrangeEsNoLJTwoParticles(
-			Environment& environment, EnvMode envmode);
+	TestRoutine TestPmeMatchesEwaldSum(Environment& environment, EnvMode envmode);
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode);
 	LimaUnittestResult TestConsistentEnergyWhenGoingFromLresToSres(EnvMode envmode);
 	TestRoutine TestLongrangeEsNoLJManyParticles(

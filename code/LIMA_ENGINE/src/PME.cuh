@@ -14,7 +14,9 @@ namespace ChargeBlock { struct ChargeblockBuffers; }
 
 
 namespace PME {
-	const int gridpointsPerNm = 10;
+	// 0.125 nm grid spacing. With 4th order B-splines this gives ~0.3% RMS reciprocal force error on a solvated protein,
+	// measured against an exact Ewald sum (0.14% at 0.1 nm)
+	const int gridpointsPerNm = 8;
 	constexpr float gridpointsPerNm_f = static_cast<float>(gridpointsPerNm);
 	constexpr float invCellVolume = static_cast<float>(gridpointsPerNm * gridpointsPerNm * gridpointsPerNm);
 
@@ -42,7 +44,7 @@ namespace PME {
 		std::unique_ptr<ChargeBlock::ChargeblockBuffers> chargeblockBuffers;
 
 		// The Greens multiply could be folded into the inverse FFT's load with a cuFFT LTO callback (cufftXtSetJITCallback),
-		// saving ApplyGreensFunctionKernel (~60 us/step on STMV). Not done: it JIT-links at plan creation, and complicates the
+		// saving ApplyGreensFunctionKernel (~45 us/step on STMV). Not done: it JIT-links at plan creation, and complicates the
 		// static cuFFT linking on Linux
 		cufftHandle planForward = 0;
 		cufftHandle planInverse = 0;

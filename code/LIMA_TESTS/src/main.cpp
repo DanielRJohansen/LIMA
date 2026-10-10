@@ -293,7 +293,7 @@ int RunAllUnitTests() {
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck);
-	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles);
+	ADD_TEST("TestPmeMatchesEwaldSum", TestPmeMatchesEwaldSum);
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles);
 	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField);

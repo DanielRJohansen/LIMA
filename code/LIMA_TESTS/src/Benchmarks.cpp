@@ -156,7 +156,7 @@ namespace Benchmarks {
 	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
-			workDir / "sim_params.txt", { std::chrono::microseconds{ 4500 }, std::chrono::microseconds{ 7500 } },
+			workDir / "sim_params.txt", { std::chrono::microseconds{ 4000 }, std::chrono::microseconds{ 7500 } },
 			nSteps, nRuns);
 	}
 

@@ -90,18 +90,12 @@ namespace device_tables {
 	};
 }
 
-constexpr bool Floorindex3dShouldBeTransferredThisDirection(const Int3& floorindex3d, const Direction3& queryDirection) {
-	return !(
-		(queryDirection.x() == -1 && floorindex3d.x > 0) ||
-		(queryDirection.x() == 1 && floorindex3d.x < gridpointsPerNm - 2) ||
-		(queryDirection.x() == 0 && (floorindex3d.x < -2 || floorindex3d.x > gridpointsPerNm)) ||
-		(queryDirection.y() == -1 && floorindex3d.y > 0) ||
-		(queryDirection.y() == 1 && floorindex3d.y < gridpointsPerNm - 2) ||
-		(queryDirection.y() == 0 && (floorindex3d.y < -2 || floorindex3d.y > gridpointsPerNm)) ||		
-		(queryDirection.z() == -1 && floorindex3d.z > 0) ||
-		(queryDirection.z() == 1 && floorindex3d.z < gridpointsPerNm - 2) ||
-		(queryDirection.z() == 0 && (floorindex3d.z < -2 || floorindex3d.z > gridpointsPerNm))
-		);
+// Bit d+1 is set if a particle at this grid floor index (relative to its chargeblock) spreads to the neighbor block in direction
+// d along the axis. The spline reaches 2 gridpoints below and 1 above the floor index
+constexpr uint32_t DirectionsAlongAxis(int floorIndex) {
+	return uint32_t(floorIndex <= 0)
+		| uint32_t(floorIndex >= -2 && floorIndex <= gridpointsPerNm) << 1
+		| uint32_t(floorIndex >= gridpointsPerNm - 2) << 2;
 }
 
 constexpr Int3 FloorIndex3d(const Float3& relpos) {
@@ -114,83 +108,85 @@ constexpr Int3 FloorIndex3d(const Float3& relpos) {
 
 // --------------------------------------------------------------- PME Kernels --------------------------------------------------------------- //	
 
-// blockDim = (32, 1, 1)
-__global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* const superclusters, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim, const SuperClusterMeta* metadata, const int* simulationSlots)
+// Copies each charged particle to the chargeblocks whose grid it spreads to: its own, and neighbors when it is within the
+// spline's reach of the border. One warp per supercluster, a lane per particle. blockDim = (32, distributeScsPerBlock, 1)
+constexpr int distributeScsPerBlock = 4;
+__global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* const superclusters, const ChargeblockBuffers chargeblockBuffers, Int3 blocksPerDim,
+	const SuperClusterMeta* metadata, const int* simulationSlots, int nSuperclusters, Float3 boxSize, Float3 boxSizeInv)
 {
-	const int scId = blockIdx.x;
+	const int scId = blockIdx.x * distributeScsPerBlock + threadIdx.y;
+	if (scId >= nSuperclusters)
+		return;
+	const int lane = threadIdx.x;
 	const int blockOffset = simulationSlots[metadata[scId].simulationId] * blocksPerDim.InnerProduct();
-	__shared__ Float3 relPositions[SuperCluster::maxParticles];
-	__shared__ float charges[SuperCluster::maxParticles];
+	const NodeIndex nearestGridnode = superclusters[scId].Position(0).Floor().ToInt3();
 
-	__shared__ int outgoingParticlesId[27 * SuperCluster::maxParticles];
-	__shared__ int offsetsInTarget[27];
-	__shared__ int nOutgoingParticles[27];
+	// Positions are relative to the chargeblock of the supercluster's first particle
+	bool charged = false;
+	Float3 pos{};
+	float charge = 0.f;
+	if (lane < SuperCluster::maxParticles) {
+		charge = superclusters[scId].Charge(lane);
+		charged = superclusters[scId].EpsilonSqrt(lane) != -1 && charge != 0.f;
+		pos = superclusters[scId].Position(lane);
+	}
+	const Float3 relPos = pos - nearestGridnode.toFloat3();
 
-	NodeIndex nearestGridnode = superclusters[scId].Position(0).Floor().ToInt3();
-
-	if (threadIdx.x < SuperCluster::maxParticles) {
-		Float3 pos = superclusters[scId].Position(threadIdx.x);
-		float charge = superclusters[scId].Charge(threadIdx.x);
-		float epsSqrt = superclusters[scId].EpsilonSqrt(threadIdx.x);// TODO OPTIM: Remove this, find another way to determine IsValid!
-
-		if (epsSqrt != -1) {// prev PData.IsValid()
-			Float3 scNodeOrigoPos = nearestGridnode.toFloat3();// superclusters[scId].pData[0].position.Floor();
-			relPositions[threadIdx.x] = pos - scNodeOrigoPos;// +Float3{ 0.5, 0.5, 0.5 };
-			charges[threadIdx.x] = charge;
+	// List the particle once in the block owning its grid floor index, which interpolates its force
+	PeriodicBoundaryCondition::ApplyBC(pos, boxSize, boxSizeInv);
+	// Wrapped first, as a position just below 0 can come out of ApplyBC, and integer division would round its floor index -1 up to block 0
+	const NodeIndex ownerBlock = PeriodicBoundaryCondition::applyBC(FloorIndex3d(pos), blocksPerDim * gridpointsPerNm) / gridpointsPerNm;
+	const int ownerBlockIndex = charged ? blockOffset + BoxGrid::Get1dIndex(ownerBlock, blocksPerDim) : -1;
+	const uint32_t sameOwner = __match_any_sync(0xFFFFFFFFu, ownerBlockIndex);
+	if (charged) {
+		const int firstLane = __ffs(sameOwner) - 1;
+		int offsetInOwner = 0;
+		if (lane == firstLane)
+			offsetInOwner = atomicAdd(&chargeblockBuffers.nOwnedInBlock[ownerBlockIndex], __popc(sameOwner));
+		const int indexInOwner = __shfl_sync(sameOwner, offsetInOwner, firstLane) + __popc(sameOwner & ((1u << lane) - 1));
+		if (indexInOwner >= ChargeBlock::maxParticlesInBlock) {
+			chargeblockBuffers.overflow.Report(CapacityOverflow::ChargeBlock, ownerBlockIndex, indexInOwner + 1, ChargeBlock::maxParticlesInBlock);
 		}
 		else {
-			relPositions[threadIdx.x] = Float3{ NAN, NAN, NAN };
-			charges[threadIdx.x] = 0.f;
+			const int index = ownerBlockIndex * ChargeBlock::maxParticlesInBlock + indexInOwner;
+			chargeblockBuffers.owned.particles[index].Store(pos, charge);
+			chargeblockBuffers.owned.slots[index] = scId * SuperCluster::maxParticles + lane;
 		}
 	}
-	for (int i = threadIdx.x; i < 27; i+=blockDim.x) {
-		nOutgoingParticles[threadIdx.x] = 0;
-	}
-	__syncthreads();
+	const Int3 floorIndex3d = FloorIndex3d(relPos);
+	const uint32_t xDirections = DirectionsAlongAxis(floorIndex3d.x);
+	const uint32_t yDirections = DirectionsAlongAxis(floorIndex3d.y);
+	const uint32_t zDirections = DirectionsAlongAxis(floorIndex3d.z);
 
-	
-
-	// The first 27 threads are assigned a direction. They then count which particles are in their node, and store the id's
-	if (threadIdx.x < 27) {
-		const Direction3 myDirection = device_tables::sIndexToDirection[threadIdx.x];
-		const int targetBlockIndex = blockOffset + BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + myDirection.ToNodeIndex(), blocksPerDim), blocksPerDim);
-		int myCount = 0;
-
-		for (int i = 0; i < SuperCluster::maxParticles; i++) {
-			if (charges[i] == 0.f || isnan(charges[i])) // Skip particles with no charge
-				continue;
-
-			const Int3 floorIndex3d = FloorIndex3d(relPositions[i]);
-			if (Floorindex3dShouldBeTransferredThisDirection(floorIndex3d, myDirection)) {
-				outgoingParticlesId[threadIdx.x * SuperCluster::maxParticles + myCount] = i; 
-				myCount++;
-			}
-		}
-
-		// Now reserve space for these particles
-		offsetsInTarget[threadIdx.x] = atomicAdd(&chargeblockBuffers.nParticlesInBlock[targetBlockIndex], myCount);
-		nOutgoingParticles[threadIdx.x] = myCount;
-	}
-	__syncthreads();
-
-	// Now all threads collaborate in pushing the outbound particles
+	// Lane d collects which particles go in direction d, and reserves space for them in that block. The reservations are
+	// independent, so all 27 atomics are in flight at once
+	uint32_t goingMask = 0;
 	for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
-		if (threadIdx.x < nOutgoingParticles[directionIndex]) {
-			const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
-			
-			const int designatedParticleId = outgoingParticlesId[directionIndex * SuperCluster::maxParticles + threadIdx.x];
-			const Float3 relposRelativeToTargetBlock = relPositions[designatedParticleId] - direction.ToFloat3();
+		const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
+		const bool goes = charged && ((xDirections >> (direction.x() + 1)) & (yDirections >> (direction.y() + 1)) & (zDirections >> (direction.z() + 1)) & 1);
+		const uint32_t mask = __ballot_sync(0xFFFFFFFFu, goes);
+		if (lane == directionIndex)
+			goingMask = mask;
+	}
+	int targetBlockIndex = 0;
+	int offsetInTarget = 0;
+	if (goingMask != 0) {
+		const Direction3 direction = device_tables::sIndexToDirection[lane];
+		targetBlockIndex = blockOffset + BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
+		offsetInTarget = atomicAdd(&chargeblockBuffers.nParticlesInBlock[targetBlockIndex], __popc(goingMask));
+	}
 
-			const int targetBlockIndex = blockOffset + BoxGrid::Get1dIndex(PeriodicBoundaryCondition::applyBC(nearestGridnode + direction.ToNodeIndex(), blocksPerDim), blocksPerDim);
-			const int indexInTarget = offsetsInTarget[directionIndex] + threadIdx.x;
-
-			if (indexInTarget >= ChargeBlock::maxParticlesInBlock) {
-				chargeblockBuffers.overflow.Report(CapacityOverflow::ChargeBlock, targetBlockIndex, indexInTarget + 1, ChargeBlock::maxParticlesInBlock);
-				continue;
-			}
-
-			ChargeBlock::GetParticles(chargeblockBuffers, targetBlockIndex)[indexInTarget] = ChargePos{ relposRelativeToTargetBlock, charges[designatedParticleId] };
-		}
+	for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
+		const uint32_t mask = __shfl_sync(0xFFFFFFFFu, goingMask, directionIndex);
+		const int target = __shfl_sync(0xFFFFFFFFu, targetBlockIndex, directionIndex);
+		const int offset = __shfl_sync(0xFFFFFFFFu, offsetInTarget, directionIndex);
+		if (!((mask >> lane) & 1))
+			continue;
+		const int indexInTarget = offset + __popc(mask & ((1u << lane) - 1));
+		if (indexInTarget >= ChargeBlock::maxParticlesInBlock)
+			chargeblockBuffers.overflow.Report(CapacityOverflow::ChargeBlock, target, indexInTarget + 1, ChargeBlock::maxParticlesInBlock);
+		else
+			ChargeBlock::GetParticles(chargeblockBuffers, target)[indexInTarget].Store(relPos - device_tables::sIndexToDirection[directionIndex].ToFloat3(), charge);
 	}
 }
 
@@ -296,7 +292,10 @@ __global__ void ChargeblockDistributeToGrid(ChargeblockBuffers chargeblockBuffer
 	}
 }
 
-__device__ ForceEnergy InterpolateForceEnergyFromGrid(const float* realspaceGrid, Float3 gridPos, Int3 gridDim) {
+// B-spline interpolation of the potential at gridPos, and of the field from the potential's central differences.
+// phi(X, Y, Z) returns the potential at a gridpoint, which may be outside the grid
+template <typename Phi>
+__device__ ForceEnergy InterpolateForceEnergy(Float3 gridPos, Phi phi) {
 	int ix = static_cast<int>(floorf(gridPos.x));
 	int iy = static_cast<int>(floorf(gridPos.y));
 	int iz = static_cast<int>(floorf(gridPos.z));
@@ -318,66 +317,6 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid(const float* realspaceGrid
 		for (int dy = 0; dy < 4; dy++) {
 			int Y = iy - 1 + dy;
 			float wyzCur = wzCur * wy[dy];
-			for (int dx = 0; dx < 4; dx++) {
-				int X = ix - 1 + dx;
-				float wxyzCur = wyzCur * wx[dx];
-
-				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ X, Y, Z }, gridDim);
-				const int gridIndex = GetGridIndexRealspace(node, gridDim);
-
-				float phi = realspaceGrid[gridIndex];
-
-				NodeIndex plusX = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x + 1, node.y,     node.z }, gridDim);
-				NodeIndex minusX = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x - 1, node.y,     node.z }, gridDim);
-				NodeIndex plusY = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y + 1, node.z }, gridDim);
-				NodeIndex minusY = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y - 1, node.z }, gridDim);
-				NodeIndex plusZ = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z + 1 }, gridDim);
-				NodeIndex minusZ = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z - 1 }, gridDim);
-
-				float phi_plusX = realspaceGrid[GetGridIndexRealspace(plusX, gridDim)];
-				float phi_minusX = realspaceGrid[GetGridIndexRealspace(minusX, gridDim)];
-				float phi_plusY = realspaceGrid[GetGridIndexRealspace(plusY, gridDim)];
-				float phi_minusY = realspaceGrid[GetGridIndexRealspace(minusY, gridDim)];
-				float phi_plusZ = realspaceGrid[GetGridIndexRealspace(plusZ, gridDim)];
-				float phi_minusZ = realspaceGrid[GetGridIndexRealspace(minusZ, gridDim)];
-
-				float E_x = -(phi_plusX - phi_minusX) * (gridpointsPerNm / 2.0f);
-				float E_y = -(phi_plusY - phi_minusY) * (gridpointsPerNm / 2.0f);
-				float E_z = -(phi_plusZ - phi_minusZ) * (gridpointsPerNm / 2.0f);
-
-				fe.force += Float3{ E_x, E_y, E_z } *wxyzCur;
-				fe.potE += phi * wxyzCur;
-			}
-		}
-	}
-
-	return fe;
-}
-
-
-__device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGrid, Float3 gridPos, Int3 gridDim) {
-	int ix = static_cast<int>(floorf(gridPos.x));
-	int iy = static_cast<int>(floorf(gridPos.y));
-	int iz = static_cast<int>(floorf(gridPos.z));
-
-	float fx = gridPos.x - static_cast<float>(ix);
-	float fy = gridPos.y - static_cast<float>(iy);
-	float fz = gridPos.z - static_cast<float>(iz);
-
-	float wx[4], wy[4], wz[4];
-	LAL::CalcBspline(fx, wx);
-	LAL::CalcBspline(fy, wy);
-	LAL::CalcBspline(fz, wz);
-
-	ForceEnergy fe{};
-
-	for (int dz = 0; dz < 4; dz++) {
-		int Z = iz - 1 + dz;
-		float wzCur = wz[dz];
-		for (int dy = 0; dy < 4; dy++) {
-			int Y = iy - 1 + dy;
-			float wyzCur = wzCur * wy[dy];
-
 
 			// Load all values used in this YZ plane
 			float phisPlusY[4];
@@ -385,54 +324,16 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGri
 			float phisPlusZ[4];
 			float phisMinusZ[4];
 			float phisCenter[6];
-
 #pragma unroll
 			for (int dx = 0; dx < 4; dx++) {
-				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ ix - 1 + dx, Y + 1, Z }, gridDim);
-				phisPlusY[dx] = realspaceGrid[GetGridIndexRealspace(node, gridDim)];
-			}
-
-#pragma unroll
-			for (int dx = 0; dx < 4; dx++) {
-				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ ix - 1 + dx, Y - 1, Z }, gridDim);
-				phisMinusY[dx] = realspaceGrid[GetGridIndexRealspace(node, gridDim)];
+				phisPlusY[dx] = phi(ix - 1 + dx, Y + 1, Z);
+				phisMinusY[dx] = phi(ix - 1 + dx, Y - 1, Z);
+				phisPlusZ[dx] = phi(ix - 1 + dx, Y, Z + 1);
+				phisMinusZ[dx] = phi(ix - 1 + dx, Y, Z - 1);
 			}
 #pragma unroll
-			for (int dx = 0; dx < 4; dx++) {
-				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ ix - 1 + dx, Y, Z + 1 }, gridDim);
-				phisPlusZ[dx] = realspaceGrid[GetGridIndexRealspace(node, gridDim)];
-			}
-#pragma unroll
-			for (int dx = 0; dx < 4; dx++) {
-				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ ix - 1 + dx, Y, Z - 1 }, gridDim);
-				phisMinusZ[dx] = realspaceGrid[GetGridIndexRealspace(node, gridDim)];
-			}
-
-
-
-
-
-//#pragma unroll
-//			for (int dx = 0; dx < 4; dx++) {
-//				int X = ix - 1 + dx;
-//				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ X, Y, Z }, gridDim);
-//				NodeIndex plusY = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y + 1, node.z }, gridDim);
-//				NodeIndex minusY = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y - 1, node.z }, gridDim);
-//				NodeIndex plusZ = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z + 1 }, gridDim);
-//				NodeIndex minusZ = PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z - 1 }, gridDim);
-//				phisPlusY[dx] = realspaceGrid[GetGridIndexRealspace(plusY, gridDim)];
-//				phisMinusY[dx] = realspaceGrid[GetGridIndexRealspace(minusY, gridDim)];
-//				phisPlusZ[dx] = realspaceGrid[GetGridIndexRealspace(plusZ, gridDim)];
-//				phisMinusZ[dx] = realspaceGrid[GetGridIndexRealspace(minusZ, gridDim)];
-//			}
-
-
-#pragma unroll
-			for (int dx = 0; dx < 6; dx++) {
-				int X = ix - 2 + dx;
-				const NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ X, Y, Z }, gridDim);
-				phisCenter[dx] = realspaceGrid[GetGridIndexRealspace(node, gridDim)];
-			}
+			for (int dx = 0; dx < 6; dx++)
+				phisCenter[dx] = phi(ix - 2 + dx, Y, Z);
 
 #pragma unroll
 			for (int dx = 0; dx < 4; dx++) {
@@ -452,84 +353,79 @@ __device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* realspaceGri
 	return fe;
 }
 
+// The grid around a chargeblock that its particles' interpolation reads: the block's gridpoints, plus 2 below and 3 above
+constexpr int interpolationTileLen = gridpointsPerNm + 5;
 
-// blockDim = (SuperCluster::nParticles, 1, 1)
-// blockDim = (16, 4): 1 supercluster per y, so warps are full (1 supercluster per block only used half a warp)
-__global__ void __launch_bounds__(64) InterpolateForcesAndPotentialCompounds(
-	SuperCluster* const scData,
-	SuperClusterMeta* const scMeta,
-	const float* realspaceGrid,
-	Int3 gridDim,
-	ForceEnergy* const forceEnergies,			// EM only
-	const ForceAccumulator forceAcc,			// MD only, forceAcc.fx == nullptr in EM
-	const float* selfenergyCorrections,			// [J/mol]
-	Float3 boxSize,
-	Float3 boxSizeInv, const int* simulationSlots,
-	int nSuperclusters
-)
+// Interpolates the forces on the particles a chargeblock owns, from a tile of the grid around the block in shared memory.
+// One chargeblock per block, blockDim = interpolateThreads
+constexpr int interpolateThreads = 128;
+__global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(const ChargeblockBuffers chargeblockBuffers, const float* const realspaceGrid,
+	Int3 blocksPerDim, Int3 gridDim, const SuperClusterMeta* const scMeta, const float* const selfenergyCorrections /*[J/mol]*/,
+	ForceEnergy* const forceEnergies /*EM only*/, const ForceAccumulator forceAcc /*MD only, forceAcc.fx == nullptr in EM*/)
 {
-	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
-	if (scId >= nSuperclusters)
-		return;
-	const int simulationId = scMeta[scId].simulationId;
-	const size_t gridOffset = size_t(simulationSlots[simulationId]) * gridDim.InnerProduct();
-	Float3 pos = scData[scId].Position(threadIdx.x);
-	float charge = scData[scId].Charge(threadIdx.x);
-	float epsSqrt = scData[scId].EpsilonSqrt(threadIdx.x);
-	//PData pqd = scData[scId].pData[threadIdx.x];
-	//if (!pqd.Valid())
-	if (epsSqrt == -1 || charge == 0.f)
-		return;
+	constexpr int tileLen = interpolationTileLen;
+	__shared__ float tile[tileLen][tileLen][tileLen];
+	__shared__ int nOwned;
 
-	PeriodicBoundaryCondition::ApplyBC(pos, boxSize, boxSizeInv);
+	const int nBlocksPerGrid = blocksPerDim.InnerProduct();
+	const float* const grid = realspaceGrid + size_t(blockIdx.x / nBlocksPerGrid) * gridDim.InnerProduct();
+	const NodeIndex tileOrigin = BoxGrid::Get3dIndex(blockIdx.x % nBlocksPerGrid, blocksPerDim) * gridpointsPerNm - NodeIndex{ 2, 2, 2 };
 
-	const Float3 gridPos = pos * gridpointsPerNm_f;
-	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid + gridOffset, gridPos, gridDim);
-
-	// Now add self charge to calculations
-	fe.force *= charge;
-	fe.potE *= charge;
-
-	// Ewald self-energy correction
-	fe.potE += selfenergyCorrections[simulationId];
-
-	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
-
-#ifdef FORCE_NAN_CHECK
-	if (force.isNan()) {
-		printf("PME computed NaN force\n");
-		asm("trap;");
+	if (threadIdx.x == 0) {
+		nOwned = min(chargeblockBuffers.nOwnedInBlock[blockIdx.x], static_cast<uint32_t>(ChargeBlock::maxParticlesInBlock));
+		chargeblockBuffers.nOwnedInBlock[blockIdx.x] = 0; // Reset for the next step
 	}
-#endif
-
-	if (forceAcc.fx) {
-		forceAcc.Add(scId * SuperCluster::maxParticles + threadIdx.x, fe);
+	// All of a thread's loads are issued before storing any, so they are in flight together
+	constexpr int tileSize = tileLen * tileLen * tileLen;
+	constexpr int loadsPerThread = (tileSize + interpolateThreads - 1) / interpolateThreads;
+	float loaded[loadsPerThread];
+#pragma unroll
+	for (int k = 0; k < loadsPerThread; k++) {
+		const int i = threadIdx.x + k * interpolateThreads;
+		const NodeIndex local{ i % tileLen, (i / tileLen) % tileLen, i / (tileLen * tileLen) };
+		if (i < tileSize)
+			loaded[k] = grid[GetGridIndexRealspace(PeriodicBoundaryCondition::applyBC(tileOrigin + local, gridDim), gridDim)];
 	}
-	else {
-		const int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
-		const int indexInPc = scMeta[scId].indexInPcluster[threadIdx.x];
-		forceEnergies[pcId * PersistentCluster::maxParticles + indexInPc] = fe;
+#pragma unroll
+	for (int k = 0; k < loadsPerThread; k++) {
+		const int i = threadIdx.x + k * interpolateThreads;
+		if (i < tileSize)
+			(&tile[0][0][0])[i] = loaded[k];
+	}
+	__syncthreads();
+
+	for (int i = threadIdx.x; i < nOwned; i += interpolateThreads) {
+		const int index = blockIdx.x * ChargeBlock::maxParticlesInBlock + i;
+		const ChargePos particle = chargeblockBuffers.owned.particles[index];
+		const int slot = chargeblockBuffers.owned.slots[index];
+		const Float3 gridPos = particle.pos * gridpointsPerNm_f;
+
+		// A floor index on the grid's upper edge is a grid length off its block's tile
+		const NodeIndex fromOrigin = FloorIndex3d(particle.pos) - tileOrigin;
+		const NodeIndex wrap = PeriodicBoundaryCondition::applyBC(fromOrigin, gridDim) - fromOrigin;
+		ForceEnergy fe = InterpolateForceEnergy(gridPos, [&](int X, int Y, int Z) {
+			return tile[Z - tileOrigin.z + wrap.z][Y - tileOrigin.y + wrap.y][X - tileOrigin.x + wrap.x];
+			});
+
+		// Now add self charge to calculations
+		fe.force *= particle.charge;
+		fe.potE *= particle.charge;
+
+		// Ewald self-energy correction
+		const int scId = slot / SuperCluster::maxParticles;
+		fe.potE += selfenergyCorrections[scMeta[scId].simulationId];
+
+		fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
+
+		if (forceAcc.fx) {
+			forceAcc.Add(slot, fe);
+		}
+		else {
+			const int indexInSc = slot % SuperCluster::maxParticles;
+			forceEnergies[scMeta[scId]._pclusterIds[indexInSc] * PersistentCluster::maxParticles + scMeta[scId].indexInPcluster[indexInSc]] = fe;
+		}
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /// ------------------------------
 /// Tiled version
@@ -873,17 +769,16 @@ const CapacityOverflow* PME::Controller::Overflow() const {
 void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc) {
 	if (nSuperclusters == 0 || batchCount == 0) return;
 	const Int3 blocksPerDim = boxlenNm.ToInt3();
-	DistributeCompoundchargesToBlocksKernel<<<nSuperclusters, 32, 0, stream>>>(
-		scData, *chargeblockBuffers, blocksPerDim, scMeta, simulationSlots.Get());
-	ChargeblockDistributeToGrid<<<nChargeblocks * batchCount, 32, 0, stream>>>(
+	DistributeCompoundchargesToBlocksKernel<<<(nSuperclusters + distributeScsPerBlock - 1) / distributeScsPerBlock, dim3(32, distributeScsPerBlock, 1), 0, stream>>>(
+		scData, *chargeblockBuffers, blocksPerDim, scMeta, simulationSlots.Get(), nSuperclusters, boxlenNm, boxlenNm.Inv());
+	ChargeblockDistributeToGrid<<<nChargeblocks * batchCount, 128, 0, stream>>>(
 		*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim);
 	CheckFft(cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid));
 	ApplyGreensFunctionKernel<<<(size_t(nGridpointsReciprocalspace) * batchCount + 63) / 64, 64, 0, stream>>>(
 		fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, batchCount);
 	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
-	InterpolateForcesAndPotentialCompounds<<<(nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
-		scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, forceAcc, selfenergyCorrections.Get(), boxlenNm, boxlenNm.Inv(),
-		simulationSlots.Get(), nSuperclusters);
+	InterpolateForcesKernel<<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
+		scMeta, selfenergyCorrections.Get(), forceEnergy, forceAcc);
 	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
 }
 
@@ -949,7 +844,8 @@ namespace EngineLimitTesting {
 		slots.SetData({0});
 		std::unique_ptr<ChargeBlock::ChargeblockBuffers, FreeDeviceMembers<ChargeBlock::ChargeblockBuffers>> buffers(new ChargeBlock::ChargeblockBuffers(8));
 		CheckCuda();
-		DistributeCompoundchargesToBlocksKernel<<<nClusters, 32>>>(clustersDevice.Get(), *buffers, Int3{2, 2, 2}, metadataDevice.Get(), slots.Get());
+		DistributeCompoundchargesToBlocksKernel<<<(nClusters + distributeScsPerBlock - 1) / distributeScsPerBlock, dim3(32, distributeScsPerBlock, 1)>>>(
+			clustersDevice.Get(), *buffers, Int3{2, 2, 2}, metadataDevice.Get(), slots.Get(), nClusters, Float3{ 2.f }, Float3{ 0.5f });
 		CheckCuda();
 		const auto actual = GenericCopyToHost(buffers->chargeposBuffer, 8 * ChargeBlock::maxParticlesInBlock);
 		for (size_t i = ChargeBlock::maxParticlesInBlock; i < actual.size(); ++i)

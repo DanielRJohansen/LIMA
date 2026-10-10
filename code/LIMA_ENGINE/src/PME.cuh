@@ -41,6 +41,9 @@ namespace PME {
 		// Chargeblocks 
 		std::unique_ptr<ChargeBlock::ChargeblockBuffers> chargeblockBuffers;
 
+		// The Greens multiply could be folded into the inverse FFT's load with a cuFFT LTO callback (cufftXtSetJITCallback),
+		// saving ApplyGreensFunctionKernel (~60 us/step on STMV). Not done: it JIT-links at plan creation, and complicates the
+		// static cuFFT linking on Linux
 		cufftHandle planForward = 0;
 		cufftHandle planInverse = 0;
 

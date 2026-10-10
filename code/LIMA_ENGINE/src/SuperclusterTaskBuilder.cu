@@ -269,6 +269,22 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 
 // ---------------------------------------------------------- Entries ----------------------------------------------------------- //
 
+// Bit j: whether queryIds[j] is in the sorted set. One pass over the set for all four, ending at the first value beyond them
+template <int size>
+__device__ inline uint32_t BondedQueryMask(const StaticSet<size>& set, const int (&queryIds)[4]) {
+	const int maxId = max(max(queryIds[0], queryIds[1]), max(queryIds[2], queryIds[3]));
+	uint32_t mask = 0;
+	for (int i = 0; i < size; i++) {
+		const int value = set.Get(i);
+		if (!StaticSet<size>::IsValue(value) || value > maxId)
+			break;
+#pragma unroll
+		for (int j = 0; j < 4; j++)
+			mask |= uint32_t(value == queryIds[j]) << j;
+	}
+	return mask;
+}
+
 // Order in which ownQuarterMask classes are emitted. Neighbouring classes differ in one bit (Gray code), so when a warp's
 // 8 groups straddle two classes, the union of their masks is small. EM's entries without pairs in range (class 0) go last
 __constant__ uint8_t quarterMaskEmitOrder[16] = { 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8, 0 };
@@ -334,6 +350,10 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 			scControl.scMeta[scId].nResults = tbContents.nResults[scId];
 		}
 	}
+	// The own particles' ids, for the bonded exclusions
+	__shared__ int ownParticleIds[SuperCluster::maxParticles];
+	if (lane < SuperCluster::maxParticles)
+		ownParticleIds[lane] = scControl.scMeta[scId].globalParticleIds[lane];
 	__syncwarp();
 
 	for (int base = 0; base < n; base += 32) {
@@ -374,6 +394,10 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 				continue;
 
 			const uint32_t queryValid4 = (queryValid >> (jq * 4)) & 0xF;
+			int queryParticleIds[4]{ -1, -1, -1, -1 };
+			if (neighbor.bonded)
+				for (int jLocal = 0; jLocal < 4; jLocal++)
+					queryParticleIds[jLocal] = scControl.scMeta[queryScId].globalParticleIds[jq * 4 + jLocal];
 			QuarterEntry out{};
 			out.jScId = queryScId;
 			out.jQuarter = static_cast<uint8_t>(jq);
@@ -391,13 +415,9 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 					noInteractions |= 0xF731; // Pairs with jLocal <= iLocal are computed in the other order
 				if (neighbor.bonded && ((maskClass >> iq) & 1)) {
 					for (int iLocal = 0; iLocal < 4; iLocal++) {
-						const int pidOwn = scControl.scMeta[scId].globalParticleIds[iq * 4 + iLocal];
-						if (pidOwn == -1) continue;
-						for (int jLocal = 0; jLocal < 4; jLocal++) {
-							const int pidQuery = scControl.scMeta[queryScId].globalParticleIds[jq * 4 + jLocal];
-							if (pidQuery != -1 && particlesBondedToParticle[pidOwn].Contains(pidQuery))
-								noInteractions |= 1u << (iLocal * 4 + jLocal);
-						}
+						const int pidOwn = ownParticleIds[iq * 4 + iLocal];
+						if (pidOwn != -1)
+							noInteractions |= BondedQueryMask(particlesBondedToParticle[pidOwn], queryParticleIds) << (iLocal * 4);
 					}
 				}
 				out.noInteractions[iq] = static_cast<uint16_t>(noInteractions);

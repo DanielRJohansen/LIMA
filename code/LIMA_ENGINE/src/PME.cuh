@@ -29,8 +29,6 @@ namespace PME {
 		Float3 boxlenNm{};
 		const int nChargeblocks;
 
-		// Always applied constant per particle
-		CudaBuffer<float> selfenergyCorrections;
 		CudaBuffer<int> simulationSlots;
 		std::vector<int> activeSimulationIds;
 		int batchCount = 0;
@@ -52,8 +50,6 @@ namespace PME {
 		cudaStream_t& stream;
 		// For system with a net charge, we apply to correction to each realspaceGridnode
 		//LAL::optional<float> backgroundchargeCorrection;
-
-		static float CalcEnergyCorrection(const Box& box, float ewaldKappa);
 
 	public:
 

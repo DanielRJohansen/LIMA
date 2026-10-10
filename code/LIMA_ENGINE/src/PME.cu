@@ -339,7 +339,7 @@ constexpr int interpolationTileLen = gridpointsPerNm + 3;
 // One chargeblock per block, blockDim = interpolateThreads
 constexpr int interpolateThreads = 128;
 __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(const ChargeblockBuffers chargeblockBuffers, const float* const realspaceGrid,
-	Int3 blocksPerDim, Int3 gridDim, const SuperClusterMeta* const scMeta, const float* const selfenergyCorrections /*[J/mol]*/,
+	Int3 blocksPerDim, Int3 gridDim, const SuperClusterMeta* const scMeta, float ewaldKappa /*[nm^-1]*/,
 	ForceEnergy* const forceEnergies /*EM only*/, const ForceAccumulator forceAcc /*MD only, forceAcc.fx == nullptr in EM*/)
 {
 	constexpr int tileLen = interpolationTileLen;
@@ -390,11 +390,12 @@ __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(co
 		fe.force *= particle.charge;
 		fe.potE *= particle.charge;
 
-		// Ewald self-energy correction
-		const int scId = slot / SuperCluster::maxParticles;
-		fe.potE += selfenergyCorrections[scMeta[scId].simulationId];
-
 		fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
+
+		// The reciprocal sum includes each charge's interaction with its own Gaussian, which the Ewald self-energy removes
+		fe.potE -= ewaldKappa / sqrtf(PI) * PhysicsUtilsDevice::modifiedCoulombConstant * particle.charge * particle.charge;
+
+		const int scId = slot / SuperCluster::maxParticles;
 
 		if (forceAcc.fx) {
 			forceAcc.Add(slot, fe);
@@ -664,9 +665,6 @@ PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations
 	nGridpointsReciprocalspace = gridpointsPerDim.z * gridpointsPerDim.y * (gridpointsPerDim.x / 2 + 1);
 	if (nGridpointsRealspace > INT_MAX || nGridpointsRealspace * simulations.size() > INT_MAX)
 		throw std::runtime_error("PME batch exceeds grid index range");
-	std::vector<float> corrections;
-	for (const auto& sim : simulations) corrections.push_back(CalcEnergyCorrection(*sim.simulation->box, ewaldKappa));
-	selfenergyCorrections.SetData(corrections);
 	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
 	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
 		greensFunctionScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa);
@@ -735,16 +733,8 @@ void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta
 		fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, batchCount);
 	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
 	InterpolateForcesKernel<<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
-		scMeta, selfenergyCorrections.Get(), forceEnergy, forceAcc);
+		scMeta, ewaldKappa, forceEnergy, forceAcc);
 	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
-}
-
-float PME::Controller::CalcEnergyCorrection(const Box& box, float ewaldKappa) {
-	double chargeSquaredSum = 0;
-	for (const auto& pc : box.persistentClusters)
-		for (const auto& pqd : pc.pqd)
-			if (pqd.Valid()) chargeSquaredSum += pqd.params.charge * pqd.params.charge;
-	return static_cast<float>(-ewaldKappa / std::sqrt(PI) * chargeSquaredSum * PhysicsUtils::modifiedCoulombConstant);
 }
 
 void PME::Controller::PlotPotentialSlices() {

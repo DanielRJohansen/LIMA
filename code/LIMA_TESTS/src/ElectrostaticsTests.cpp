@@ -307,7 +307,7 @@ namespace ElectrostaticsTests {
 	//}
 
 
-	// The electrostatic forces on random +-1e ions (no LJ) against an exact Ewald sum in double precision: the realspace sum within
+	// The electrostatic forces and energy of random +-1e ions (no LJ) against an exact Ewald sum in double precision: the realspace sum within
 	// the cutoff, and the reciprocal sum over every wavevector where it is not negligible. SPME matches it to ~0.1% RMS.
 	// Many charges and an RMS error, rather than pair forces: SPME gives each charge a small force from its own spread charge
 	// (~0.7 kJ/mol/nm for 1e at 0.125 nm spacing), which dominates the error of a lone pair but averages out in a system
@@ -347,6 +347,7 @@ namespace ElectrostaticsTests {
 			charges[i] = (grofile.atoms[i].atomName == "lp" ? 1. : -1.) * elementaryChargeToKiloCoulombPerMole;
 		auto position = [&](int i, int dim) { return double(grofile.atoms[i].position[dim]); };
 		std::vector<std::array<double, 3>> expected(n, std::array<double, 3>{});
+		double expectedEnergy = 0.;
 
 		// Realspace part, minimum image (cutoff < boxLen / 2)
 		for (int i = 0; i < n; i++) {
@@ -359,6 +360,7 @@ namespace ElectrostaticsTests {
 				}
 				const double dist = std::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
 				if (dist >= cutoff) continue;
+				expectedEnergy += 0.5 * coulomb * charges[i] * charges[j] * std::erfc(kappa * dist) / dist;
 				const double magnitude = coulomb * charges[i] * charges[j]
 					* (std::erfc(kappa * dist) / (dist * dist) + 2. * kappa / std::sqrt(PI) * std::exp(-kappa * kappa * dist * dist) / dist);
 				for (int d = 0; d < 3; d++)
@@ -385,6 +387,7 @@ namespace ElectrostaticsTests {
 						structureRe += charges[j] * std::cos(phase);
 						structureIm -= charges[j] * std::sin(phase);
 					}
+					expectedEnergy += coulomb / (2. * volume) * greens * (structureRe * structureRe + structureIm * structureIm);
 					for (int i = 0; i < n; i++) {
 						const double phase = k[0] * position(i, 0) + k[1] * position(i, 1) + k[2] * position(i, 2);
 						// Im(exp(i k.r_i) S(k)) = sum_j q_j sin(k.(r_i - r_j))
@@ -396,20 +399,25 @@ namespace ElectrostaticsTests {
 			}
 		}
 
-		double errorSquaredSum = 0., forceSquaredSum = 0., maxError = 0.;
+		// Self-energy: the reciprocal sum includes each charge's interaction with its own Gaussian
+		for (int i = 0; i < n; i++)
+			expectedEnergy -= kappa / std::sqrt(PI) * coulomb * charges[i] * charges[i];
+
+		double errorSquaredSum = 0., forceSquaredSum = 0., actualEnergy = 0.;
 		for (int i = 0; i < n; i++) {
 			const Float3 actual = completed.simulation->forceBuffer->GetDatapoint(i, 0, 0);
+			actualEnergy += completed.simulation->potE_buffer->GetDatapoint(i, 0, 0);
 			double errorSquared = 0.;
 			for (int d = 0; d < 3; d++) {
 				errorSquared += (actual[d] - expected[i][d]) * (actual[d] - expected[i][d]);
 				forceSquaredSum += expected[i][d] * expected[i][d];
 			}
 			errorSquaredSum += errorSquared;
-			maxError = std::max(maxError, std::sqrt(errorSquared));
 		}
 		const double relativeRmsError = std::sqrt(errorSquaredSum / forceSquaredSum);
-		co_return LimaUnittestResult{ relativeRmsError < 0.005,
-			Lima::Format("RMS force error {:.3f}% of RMS force, max {:.0f} J/mol/nm ({} ions)", relativeRmsError * 100., maxError, n), envmode == Full };
+		const double relativeEnergyError = std::abs(actualEnergy - expectedEnergy) / std::abs(expectedEnergy);
+		co_return LimaUnittestResult{ relativeRmsError < 0.005 && relativeEnergyError < 0.005,
+			Lima::Format("Force err {:.2f}% Energy err {:.2f}%", relativeRmsError * 100., relativeEnergyError * 100.), envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {

@@ -20,3 +20,4 @@
 ## nstlist vs list-buffer tuning: a bigger buffer and fewer rebuilds may be cheaper overall. Parameter/accuracy call for you.
 ## BondgroupsKernel packing: 18/32 threads active, latency-bound. Fill warps with several bondgroups per block so position loads overlap. ~−50 to 100 µs.
 ## NB kernel flattened entries: known ~4% SIMT gain left over from densetasks.
+## Rebuild-step host syncs: ~1.1 ms GPU idle per nlist rebuild (~55 us/step on STMV). genericErrorCheck(stream) after FindNeighbors/Emit syncs, CubWrappers::ExclusiveScan always syncs (its shared TempStorage relies on it), and count readbacks (nSuperclusters, boundaries, nQuarterEntries, overflow) each force a round trip. Use NoSync checks, a stream-ordered scan, and fewer/merged readbacks (or capacity-sized buffers so counts stay on GPU).

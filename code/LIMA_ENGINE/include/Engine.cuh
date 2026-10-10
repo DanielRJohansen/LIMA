@@ -103,6 +103,13 @@ private:
 
 	// streams every n steps
 	void OffloadLoggingData(EngineSimulationData& simData);
+	// Logging data is drained without stalling the steps: the ring is snapshotted on the GPU, copied to pinned memory on
+	// logCopyStream while the simulation continues, and unpacked into the host buffers by a thread. One drain per simulation index
+	struct LogDrain;
+	std::vector<std::unique_ptr<LogDrain>> logDrains;
+	cudaStream_t logCopyStream = nullptr;
+	// Waits until every drained log entry is in the host buffers
+	void JoinLogDrains();
 	void PublishRenderData();
 	void PublishRenderData(size_t simulationIndex);
 

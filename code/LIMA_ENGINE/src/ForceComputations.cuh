@@ -331,6 +331,11 @@ struct FixedPointBondAccumulator {
 	__device__ ForceEnergy Get(int index) const {
 		return ForceEnergy{ Float3{ ToFloat(values[index]), ToFloat(values[stride + index]), ToFloat(values[2 * stride + index]) }, ToFloat(values[3 * stride + index]) };
 	}
+	// Adds the particle's sum to a ForceAccumulator exactly, as both use the same fixed point
+	template <typename ForceAccumulator>
+	__device__ void AddTo(const ForceAccumulator& target, int index, int slot) const {
+		target.AddFixed(slot, values[index], values[stride + index], values[2 * stride + index], values[3 * stride + index]);
+	}
 };
 
 // Adds each thread's bond results to the accumulator, then syncs so the bonds buffer may be reused

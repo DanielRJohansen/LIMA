@@ -19,6 +19,16 @@ namespace BoxGrid {
 };
 
 
+// MD integration state of a particle, kept in its supercluster slot (scId * 16 + index) so SuperclusterIntegrateKernel reads
+// and writes it coalesced, like the position in SuperCluster. The pcluster states (PersistentclusterInterimState) and positions
+// are the persistent copy, which is synced at each clustering and before anything else reads it, see Engine::StoreIntegrationStates
+struct alignas(16) ParticleIntegrationState {
+	Float3 velocity;
+	float mass;					// [kg/mol], 0 in unused slots
+	Float3 forcePrev;			// [J/mol/nm]
+	int pclusterParticle = -1;	// pcId * PersistentCluster::maxParticles + index in the pcluster
+};
+
 // Todo move this impl to ParticleClusters.cuh
 class PClusterTransfermodule {
 public:

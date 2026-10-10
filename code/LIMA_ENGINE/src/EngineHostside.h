@@ -8,6 +8,7 @@
 
 
 void Engine::CopySimulationToHost(size_t simulationId) {
+	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
 	auto& sim = batch->simulations.at(simulationId);
 	const auto range = sim.device.pclusters;

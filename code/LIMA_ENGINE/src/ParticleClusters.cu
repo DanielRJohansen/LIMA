@@ -541,6 +541,74 @@ __global__ void SetSuperclusterSimulationId(SuperClusterMeta* metadata, int firs
 	if (index < count) metadata[firstSupercluster + index].simulationId = simulationId;
 }
 
+// blockDim = (16, 4, 1)
+__global__ void MapPclusterParticlesToSlots(const SuperClusterMeta* const scMeta, int nSuperclusters, int* const pclusterParticleSlots) {
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	if (scId >= nSuperclusters)
+		return;
+	const int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
+	if (pcId != -1)
+		pclusterParticleSlots[pcId * PersistentCluster::maxParticles + scMeta[scId].indexInPcluster[threadIdx.x]] = scId * SuperCluster::maxParticles + threadIdx.x;
+}
+
+// blockDim = (16, 4, 1)
+__global__ void LoadIntegrationStatesKernel(const SuperClusterMeta* const scMeta, int nSuperclusters, const PersistentclusterInterimState* const pcStates,
+	const PersistentClusterMeta* const pcMeta, ParticleIntegrationState* const states) {
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	if (scId >= nSuperclusters)
+		return;
+	const int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
+	const int index = scMeta[scId].indexInPcluster[threadIdx.x];
+	states[scId * SuperCluster::maxParticles + threadIdx.x] = pcId == -1 ? ParticleIntegrationState{} : ParticleIntegrationState{
+		pcStates[pcId].vels_prev[index], pcMeta[pcId].mass[index], pcStates[pcId].forces_prev[index], pcId * PersistentCluster::maxParticles + index };
+}
+
+// forcesMagnitudeSquared may be nullptr. blockDim = (16, 4, 1)
+__global__ void StoreIntegrationStatesKernel(const SuperCluster* const superClusters, const SuperClusterMeta* const scMeta, int nSuperclusters,
+	const ParticleIntegrationState* const states, PersistentCluster* const pclusters, PersistentclusterInterimState* const pcStates, float* const forcesMagnitudeSquared) {
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	if (scId >= nSuperclusters)
+		return;
+	const ParticleIntegrationState state = states[scId * SuperCluster::maxParticles + threadIdx.x];
+	if (state.mass == 0.f) // Unused slot
+		return;
+	const int pcId = state.pclusterParticle / PersistentCluster::maxParticles;
+	const int index = state.pclusterParticle % PersistentCluster::maxParticles;
+	pclusters[pcId].pqd[index].position = superClusters[scId].Position(threadIdx.x);
+	pcStates[pcId].vels_prev[index] = state.velocity;
+	pcStates[pcId].forces_prev[index] = state.forcePrev;
+	if (forcesMagnitudeSquared)
+		forcesMagnitudeSquared[scMeta[scId].globalParticleIds[threadIdx.x]] = state.forcePrev.lenSquared();
+}
+
+// Copies the positions and MD integration states from the supercluster slots back to the pclusters, and the force magnitudes to
+// forcesMagnitudeSquareDevice. Anything reading the pclusters' positions or states must call this first
+void Engine::StoreIntegrationStates(cudaStream_t stream) {
+	if (!batch->integrationStatesLoaded || batch->nSuperclusters == 0)
+		return;
+	StoreIntegrationStatesKernel<<<(batch->nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
+		batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->nSuperclusters, batch->integrationStates.Get(),
+		batch->pClusterDevice.Get(), batch->boxState.pclusterInterimStates,
+		batch->forceMagnitudesInStates ? batch->forcesMagnitudeSquareDevice.Get() : nullptr);
+	batch->forceMagnitudesInStates = false;
+}
+
+void Engine::LoadIntegrationStates(cudaStream_t stream) {
+	batch->integrationStates.Expand(size_t(batch->nSuperclusters) * SuperCluster::maxParticles, 1.2);
+	if (batch->nSuperclusters > 0)
+		LoadIntegrationStatesKernel<<<(batch->nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
+			batch->superClustersControl->scMeta, batch->nSuperclusters, batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
+			batch->integrationStates.Get());
+	batch->integrationStatesLoaded = true;
+}
+
+__global__ void MapBondgroupParticlesToSlots(const BondGroup::ParticleRef* const particles, int nParticles, const int* const pclusterParticleSlots,
+	int* const bondgroupParticleSlots) {
+	const int index = blockIdx.x * blockDim.x + threadIdx.x;
+	if (index < nParticles)
+		bondgroupParticleSlots[index] = pclusterParticleSlots[particles[index].pcid * PersistentCluster::maxParticles + particles[index].pid];
+}
+
 void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	const Int3 boxSize = batch->boxSize;
 	const int nBlocks = batch->nGridnodes;
@@ -552,6 +620,9 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	if (!batch->superclusterStagingControl) {
 		batch->superclusterStagingControl = std::make_unique<SuperclusterStagingControl>(batch->nGridnodes);
 	}
+
+	// The integration states move with the particles to their new supercluster slots
+	StoreIntegrationStates(stream);
 	
 	//auto pClusters = GenericCopyToHost(batch->pClusterDevice, nPclusters);
 	//DebugUtils::VerifyIdentical(pClusters, "PClustersBeforeClustering" + std::to_string(batch->step));
@@ -643,6 +714,18 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	}
 
 	batch->pclusterTransfermodule->Reset(batch->nGridnodes, stream);
+
+	batch->pclusterParticleSlots.Expand(size_t(nPclusters) * PersistentCluster::maxParticles);
+	cudaMemsetAsync(batch->pclusterParticleSlots.Get(), 0xFF, sizeof(int) * nPclusters * PersistentCluster::maxParticles, stream);
+	if (batch->nSuperclusters > 0)
+		MapPclusterParticlesToSlots<<<(batch->nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
+			batch->superClustersControl->scMeta, batch->nSuperclusters, batch->pclusterParticleSlots.Get());
+	const int nBondgroupParticles = batch->nBondgroupParticles;
+	batch->bondgroupParticleSlots.Expand(nBondgroupParticles);
+	if (nBondgroupParticles > 0)
+		MapBondgroupParticlesToSlots<<<(nBondgroupParticles + 127) / 128, 128, 0, stream>>>(batch->bondgroupParticles.Get(), nBondgroupParticles,
+			batch->pclusterParticleSlots.Get(), batch->bondgroupParticleSlots.Get());
+	LoadIntegrationStates(stream);
 
 
 	//DebugUtils::VerifyIdentical(batch->superClustersControl->scData, batch->nSuperclusters, "RunClustering_SCData_Compressed", batch->step);

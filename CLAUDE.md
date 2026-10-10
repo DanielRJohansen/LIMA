@@ -22,4 +22,5 @@ Workflow for GPU performance work: measure, change one isolated thing, measure a
   - `limatest.exe` full suite (RunAllUnitTests): "Deterministic Simulations", force sanity tests, and the VC / energy-gradient drift targets. VC/drift targets are calibrated to exact numerics, so rounding-order changes can trip them; judge whether stability got *significantly* worse rather than requiring a pass.
   - `agenttesting.exe --energy-minimization-tests` with `LIMA_EM_LABEL=<name>` when the EM path may be affected.
   - For changes that could destabilize, also run a longer STMV (`--stmv 3000`).
-- **Determinism** is required: no float atomics. Deterministic accumulation uses 64-bit fixed-point integer atomics (see `NbForceAccumulator`).
+- **Determinism** is required: no float atomics. Deterministic accumulation uses 64-bit fixed-point integer atomics (see `ForceAccumulator`).
+- **Always finish performance work with a full ncu report** of the final build for the user to inspect before they commit: `ncu --set full -f -o build/x64-Release/ncu/<name> limaprofile_<name>.exe --stmv 3`, plus one of the baseline exe when comparing. Give the report paths in the final summary, and don't delete them in cleanup.

@@ -460,7 +460,8 @@ __global__ void __launch_bounds__(64) InterpolateForcesAndPotentialCompounds(
 	SuperClusterMeta* const scMeta,
 	const float* realspaceGrid,
 	Int3 gridDim,
-	ForceEnergy* const forceEnergies,
+	ForceEnergy* const forceEnergies,			// EM only
+	const ForceAccumulator forceAcc,			// MD only, forceAcc.fx == nullptr in EM
 	const float* selfenergyCorrections,			// [J/mol]
 	Float3 boxSize,
 	Float3 boxSizeInv, const int* simulationSlots,
@@ -501,11 +502,14 @@ __global__ void __launch_bounds__(64) InterpolateForcesAndPotentialCompounds(
 	}
 #endif
 
-	
-	int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
-	int indexInPc = scMeta[scId].indexInPcluster[threadIdx.x];
-	//int pid = threadIdx.x % 4;	
-	forceEnergies[pcId * PersistentCluster::maxParticles + indexInPc] = fe;
+	if (forceAcc.fx) {
+		forceAcc.Add(scId * SuperCluster::maxParticles + threadIdx.x, fe);
+	}
+	else {
+		const int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
+		const int indexInPc = scMeta[scId].indexInPcluster[threadIdx.x];
+		forceEnergies[pcId * PersistentCluster::maxParticles + indexInPc] = fe;
+	}
 }
 
 
@@ -866,7 +870,7 @@ const CapacityOverflow* PME::Controller::Overflow() const {
 	return chargeblockBuffers ? &chargeblockBuffers->overflow : nullptr;
 }
 
-void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy) {
+void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc) {
 	if (nSuperclusters == 0 || batchCount == 0) return;
 	const Int3 blocksPerDim = boxlenNm.ToInt3();
 	DistributeCompoundchargesToBlocksKernel<<<nSuperclusters, 32, 0, stream>>>(
@@ -878,7 +882,7 @@ void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta
 		fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, batchCount);
 	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
 	InterpolateForcesAndPotentialCompounds<<<(nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
-		scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, selfenergyCorrections.Get(), boxlenNm, boxlenNm.Inv(),
+		scData, scMeta, realspaceGrid, gridpointsPerDim, forceEnergy, forceAcc, selfenergyCorrections.Get(), boxlenNm, boxlenNm.Inv(),
 		simulationSlots.Get(), nSuperclusters);
 	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
 }

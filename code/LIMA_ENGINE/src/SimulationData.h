@@ -118,6 +118,7 @@ struct EngineBatchData {
 	int64_t step = 0;
 	int nPclusters = 0;
 	int nBondgroups = 0;
+	int nBondgroupParticles = 0;
 	int nParticles = 0;
 	int nGridnodes = 0;
 	int nSuperclusters = 0;
@@ -153,7 +154,12 @@ struct EngineBatchData {
 	CudaBuffer<int> quarterEntryResultIndicesDevice;		// EM only, the SCResult each entry's j forces are stored in
 	int nQuarterEntries = 0;
 	CudaBuffer<SCResult> scResultsDevice;					// EM only
-	CudaBuffer<unsigned long long> nbForceAccumulatorDevice;	// MD only, see NbForceAccumulator. [fx|fy|fz|potE] each nSuperclusters*16
+	CudaBuffer<unsigned long long> forceAccumulatorDevice;	// MD only, see ForceAccumulator. [fx|fy|fz|potE] each nSuperclusters*16
+	CudaBuffer<int> pclusterParticleSlots;					// Slot (scId * 16 + index) of each pcluster particle in the current superclusters, -1 if none
+	CudaBuffer<int> bondgroupParticleSlots;					// Slot of each of bondgroupParticles, so BondgroupsKernel finds them directly
+	CudaBuffer<ParticleIntegrationState> integrationStates;	// Indexed by supercluster slot
+	bool integrationStatesLoaded = false;					// integrationStates hold the current state, which pcluster states may lag
+	bool forceMagnitudesInStates = false;					// The last step left forcesMagnitudeSquareDevice to StoreIntegrationStates
 	CudaBuffer<IntegrationSimulationData> integrationSimulationDataDevice;
 
 	std::unique_ptr<SuperClustersControl> superClustersControl;

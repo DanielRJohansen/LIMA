@@ -236,6 +236,7 @@ namespace EngineBatch {
 		batch.boxState.pclusterInterimStates = GenericCopyToDevice(states);
 		batch.bondgroupDescriptors.SetData(bonds.groups);
 		batch.bondgroupParticles.SetData(bonds.particles);
+		batch.nBondgroupParticles = CheckedCount(bonds.particles.size());
 		batch.bondgroupSinglebonds.SetData(bonds.singlebonds);
 		batch.bondgroupPairbonds.SetData(bonds.pairbonds);
 		batch.bondgroupAnglebonds.SetData(bonds.anglebonds);

@@ -4,6 +4,7 @@
 #include "Simulation.cuh"
 #include "SimulationData.h"
 #include "CapacityOverflow.cuh"
+#include "ForceAccumulator.cuh"
 namespace ChargeBlock { struct ChargeblockBuffers; }
 
 #include <cufft.h>
@@ -55,7 +56,8 @@ namespace PME {
 		void SetActiveSimulations(const std::vector<EngineSimulationData>& simulations);
 		~Controller();
 
-		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy);
+		// MD adds the forces to forceAcc, EM stores them in forceEnergy (pcluster layout)
+		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc);
 
 		// Charge-block capacity status, or nullptr while no simulation is active
 		const CapacityOverflow* Overflow() const;

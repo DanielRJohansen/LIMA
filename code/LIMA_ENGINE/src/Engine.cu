@@ -191,6 +191,7 @@ void Engine::UploadEnergyMinimizationPreconditioner() {
 }
 
 void Engine::RebuildActiveBatch() {
+	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
 	std::vector<Simulation*> simulations;
 	std::vector<bool> active;
@@ -308,6 +309,7 @@ void Engine::PublishRenderData(size_t simulationIndex) {
 	if (!pipe || !simulation.device.active) return;
 	Float3* destination = pipe->TryBeginWrite();
 	if (!destination) return;
+	StoreIntegrationStates(cudaStreams[0]);
 	const int count = simulation.device.pclusters.count * PersistentCluster::maxParticles;
 	PackRenderPositions<<<(count + 255) / 256, 256, 0, cudaStreams[0]>>>(
 		batch->pClusterDevice.Get(), destination, simulation.device.pclusters.offset, count);
@@ -324,9 +326,11 @@ bool Engine::hostMaster() {
 	bool thermostatScalarsChanged = false;
 	// Temperature cadence is independent of logging, otherwise the logging interval changes the thermostat's dynamics
 	const bool measureTemperature = batch->step % batch->params.steps_per_temperature_measurement == 0;
-	if (measureTemperature)
+	if (measureTemperature) {
+		StoreIntegrationStates(cudaStreams[0]);
 		batch->thermostat->ComputeKineticEnergy(batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
 			batch->nPclusters, cudaStreams[0]);
+	}
 	for (auto& sim : batch->simulations) {
 		if (!sim.device.active) continue;
 		const auto step = sim.step;
@@ -375,6 +379,7 @@ void Engine::UploadIntegrationSimulationData() {
 
 void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 	if (sim.finalized) return;
+	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
 	// Results are only valid if no kernel dropped entries at a capacity limit
 	if (batch->pclusterTransfermodule) batch->pclusterTransfermodule->overflow.Check();
@@ -426,6 +431,7 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState(size_t simulationId) {
 	const auto& sim = batch->simulations.at(simulationId);
 	const auto range = sim.device.pclusters;
+	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
 	const size_t count = sim.finalized ? sim.simulation->box->persistentClusters.size() : range.count;
 	batch->pdataCopyBuffer.Expand(count);
@@ -437,6 +443,7 @@ CudaBuffer<PersistentCluster>& Engine::OffloadPclusterState(size_t simulationId)
 CudaBuffer<float>& Engine::OffloadForcesMagnitudeBuffer(size_t simulationId) {
 	const auto& sim = batch->simulations.at(simulationId);
 	const auto range = sim.device.particles;
+	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
 	const size_t count = sim.finalized ? sim.finalForcesMagnitudeSquared.size() : range.count;
 	batch->forcesMagnitudeCopyBuffer.Expand(count);
@@ -543,30 +550,29 @@ void Engine::_deviceMaster() {
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
 	const int nScs = batch->nSuperclusters;
-	const int nPcs = batch->nPclusters;
-	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
-		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
-			nScs, batch->forceEnergyInterims->pme);
-	NbForceAccumulator nbForceAcc{};
+	// MD: all force kernels add to forceAcc, which the previous step's integration (or the task build) left zeroed, so they need
+	// not wait for each other
+	ForceAccumulator forceAcc{};
 	if constexpr (emvariant) {
 		batch->scResultsDevice.Expand(batch->nResults, 1.2); // Noop once allocated. Not allocated at all in MD, where it would be ~1GB for large systems
 	}
 	else {
 		const size_t n = size_t(nScs) * SuperCluster::maxParticles;
-		unsigned long long* const base = batch->nbForceAccumulatorDevice.Get();
-		nbForceAcc = NbForceAccumulator{ base, base + n, base + 2 * n, base + 3 * n };
-		if (nScs > 0)
-			cudaMemsetAsync(base, 0, sizeof(unsigned long long) * n * (logData ? 4 : 3), cudaStreams[0]);
+		unsigned long long* const base = batch->forceAccumulatorDevice.Get();
+		forceAcc = ForceAccumulator{ base, base + n, base + 2 * n, logData ? base + 3 * n : nullptr };
 	}
+	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
+		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
+			nScs, batch->forceEnergyInterims->pme, forceAcc);
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
 		// Blocksize must be 64, 2 superclusters per block, see the kernel
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
-			batch->quarterEntriesDevice.Get(), nbForceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
+			batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
 			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
 	}
-	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2]);
+	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);
 	if (batch->nBondgroups > 0) {
 		const BondGroupsDevice bondGroups{
 			batch->bondgroupDescriptors.Get(), batch->bondgroupParticles.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
@@ -574,8 +580,8 @@ void Engine::_deviceMaster() {
 		};
 		const Float3 boxSizeInv = boxSize.Inv();
 		BondgroupsKernel<BoundaryCondition, emvariant><<<batch->nBondgroups, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
-			bondGroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, batch->pClusterDevice.Get(), boxSize, boxSizeInv);
-		// The integrate kernel gathers each particle's bondgroup results directly
+			bondGroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, forceAcc, batch->superClustersControl->scData,
+			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv);
 	}
 	if (nScs == 0) {
 		Synchronize();
@@ -584,18 +590,28 @@ void Engine::_deviceMaster() {
 		// Integration waits for the force kernels on the GPU, so the host can queue it without a roundtrip
 		JoinStreamsIntoMainStream();
 
+		const LogBuffers log{ batch->dataBuffersDevice->traj_buffer, batch->dataBuffersDevice->potE_buffer, batch->dataBuffersDevice->vel_buffer,
+			batch->dataBuffersDevice->forceBuffer, batch->params.data_logging_interval, batch->step };
 		const int nBlocks = (nScs + 4 - 1) / 4;
-		SuperclusterIntegrateKernel<BoundaryCondition, emvariant, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-			*batch->forceEnergyInterims, batch->emForces.Get(), batch->params.data_logging_interval, batch->scResultsDevice.Get(), nbForceAcc,
-			batch->superClustersControl->scData, batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
-			batch->boxState.pclusterInterimStates, batch->step, batch->integrationSimulationDataDevice.Get(), nScs,
-			batch->forcesMagnitudeSquareDevice.Get(), boxSize, batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
-			batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
-			batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr,
-			batch->dataBuffersDevice->traj_buffer, batch->dataBuffersDevice->potE_buffer, batch->dataBuffersDevice->vel_buffer,
-			batch->dataBuffersDevice->forceBuffer);
-		if constexpr (emvariant)
+		if constexpr (emvariant) {
+			EmCollectForcesKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+				*batch->forceEnergyInterims, batch->scResultsDevice.Get(), batch->emForces.Get(), batch->superClustersControl->scData,
+				batch->superClustersControl->scMeta, batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(),
+				batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(), log);
+			batch->forceMagnitudesInStates = false;
 			UpdateEnergyMinimization<BoundaryCondition>(boxSize);
+		}
+		else {
+			const LiveEditBuffers liveEdit{ batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
+				batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
+				batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr };
+			// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
+			batch->forceMagnitudesInStates = !liveEdit.Any();
+			SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+				forceAcc, batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
+				batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
+				liveEdit, log);
+		}
 		cudaStreamSynchronize(cudaStreams[0]);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
@@ -647,20 +663,22 @@ void Engine::deviceMaster() {
 
 
 template <typename BoundaryCondition, bool emvariant>
-void Engine::SnfHandler(cudaStream_t& stream) {
+void Engine::SnfHandler(cudaStream_t& stream, const ForceAccumulator& forceAcc) {
 	const int nPcs = batch->nPclusters;
 	if (nPcs == 0) return;
+	const SnfForceOutput output = emvariant ? SnfForceOutput{ batch->forceEnergyInterims->snf } : SnfForceOutput{ nullptr, forceAcc };
+	const ParticleSlots particleSlots{ batch->superClustersControl->scData, batch->pclusterParticleSlots.Get() };
 	for (const auto& sim : batch->simulations) {
 		if (!sim.device.active) continue;
 		const int count = sim.device.pclusters.count;
 		if (batch->params.snf_select.contains(HorizontalChargeField)) {
 			PclusterSnfKernel<BoundaryCondition, emvariant><<<(count + 31) / 32, 32, 0, stream>>>(
 				batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(), sim.device.uniformElectricField,
-				batch->forceEnergyInterims->snf, sim.device.pclusters.offset, count);
+				output, particleSlots, sim.device.pclusters.offset, count);
 		}
 		if (batch->params.snf_select.contains(ElasticPosition) && batch->elasticPositionsBuffer) {
 			ElasticPositionsForceKernel<<<(count + 31) / 32, 32, 0, stream>>>(
-				batch->pClusterDevice.Get(), batch->pClusterMetaDevice.Get(), batch->elasticPositionsBuffer->Get(), batch->forceEnergyInterims->snf,
+				batch->pClusterMetaDevice.Get(), batch->elasticPositionsBuffer->Get(), output, particleSlots,
 				sim.device.pclusters.offset, count, NodeIndex(batch->boxSize).toFloat3());
 		}
 	}

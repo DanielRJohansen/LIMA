@@ -14,6 +14,7 @@
 class Thermostat;
 struct ForceEnergyInterims;
 struct SuperClustersControl;
+struct ForceAccumulator;
 struct PClusterTransfermodule;
 struct PersistentCluster;
 class SuperclusterStagingControl;
@@ -95,7 +96,7 @@ private:
 	void _deviceMaster();
 
 	template <typename BoundaryCondition, bool emvariant>
-	void SnfHandler(cudaStream_t& stream);
+	void SnfHandler(cudaStream_t& stream, const ForceAccumulator& forceAcc);
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void verifyEngine();
@@ -146,6 +147,9 @@ private:
 	bool tasksBuiltForEm = false; // The MD and EM nonbonded kernels use different tasks
 	void RunClustering(cudaStream_t stream, bool runPclustering = true);
 	void BootstrapClustering(cudaStream_t stream);
+	// MD keeps the integration states in supercluster slots, see ParticleIntegrationState
+	void LoadIntegrationStates(cudaStream_t stream);
+	void StoreIntegrationStates(cudaStream_t stream);
 };
 
  

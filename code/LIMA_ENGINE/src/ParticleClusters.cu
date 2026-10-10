@@ -270,6 +270,42 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 //	return (mask1 & 0xF) << 28 | (mask2 & 0xF) << 24 | (fractionAsInt & 0xFFFFFF);
 //}
 
+// Stably sorts each bin of binSize entries of ids (and tiebreakers along with them) by the position component dim of the entry, ties
+// broken by tiebreaker. Only entries [0, n) are sorted, the padding after them stays in place. Each entry's rank within its bin is
+// counted directly, so it needs no passes over the padding. blockDim = 32
+template <int binSize>
+__device__ void StableSortInBins(const Float3* const positions, int dim, int* const tiebreakers, int* const ids, int n) {
+	constexpr int perThread = PClusterTransfermodule::maxClustersPerBlock / 32;
+	auto component = [&](int id) { const Float3 p = positions[id]; return dim == 0 ? p.x : dim == 1 ? p.y : p.z; };
+	int newIndex[perThread], id[perThread], tiebreaker[perThread];
+	#pragma unroll
+	for (int e = 0; e < perThread; e++) {
+		const int i = threadIdx.x + e * 32;
+		newIndex[e] = -1;
+		if (i >= n) continue;
+		id[e] = ids[i];
+		tiebreaker[e] = tiebreakers[i];
+		const float key = component(id[e]);
+		const int binStart = i / binSize * binSize;
+		const int binEnd = min(binStart + binSize, n);
+		int rank = binStart;
+		for (int j = binStart; j < binEnd; j++) {
+			const float otherKey = component(ids[j]);
+			const int otherTiebreaker = tiebreakers[j];
+			rank += otherKey < key || (otherKey == key && (otherTiebreaker < tiebreaker[e] || (otherTiebreaker == tiebreaker[e] && j < i)));
+		}
+		newIndex[e] = rank;
+	}
+	__syncthreads();
+	#pragma unroll
+	for (int e = 0; e < perThread; e++) {
+		if (newIndex[e] < 0) continue;
+		ids[newIndex[e]] = id[e];
+		tiebreakers[newIndex[e]] = tiebreaker[e];
+	}
+	__syncthreads();
+}
+
 // Called with 32 threads
 __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl, 
 	const PersistentClusterMeta* const persistentClusterMeta, Int3 boxSize, Float3 boxSizeFloat)
@@ -278,7 +314,6 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int nPclustersInBlock;
 
-	__shared__ float sortKeys[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int sortIds[PClusterTransfermodule::maxClustersPerBlock]; // starts out as iota, tracks relative
 	__shared__ int idsOfPclustersSorted[PClusterTransfermodule::maxClustersPerBlock];// Used for deterministic tie-breaking
 
@@ -331,120 +366,115 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	}
 
 
+	const int nPclusters = nPclustersInBlock;
 	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i+=blockDim.x) {
 		idsOfPclustersSorted[i] = idsOfPclustersInBlock[i];
 	}
 	__syncthreads();
 
 	const int bucketsPerDim = 4;
-	// Sort along z 
-	{
-		for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i+=blockDim.x) {
-			sortKeys[i] = meanPositionsOfPClusters[sortIds[i]].z;
-		}
-		__syncthreads();
-		const int bucketSize = PClusterTransfermodule::maxClustersPerBlock;
-		LAL::SortInBins<1, bucketSize>(sortKeys, idsOfPclustersSorted, sortIds);
-		__syncthreads();
-	}
-	// Sort the 4 buckets along y
-	{
-		for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
-			sortKeys[i] = meanPositionsOfPClusters[sortIds[i]].y;
-		}
-		__syncthreads();
-		const int bucketSize = PClusterTransfermodule::maxClustersPerBlock / bucketsPerDim;		
-		LAL::SortInBins<bucketsPerDim, bucketSize>(sortKeys, idsOfPclustersSorted, sortIds);
-		__syncthreads();
-	}
-	// Sort the 4x4 buckets along x
-	{
-		for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
-			sortKeys[i] = meanPositionsOfPClusters[sortIds[i]].x;
-		}
-		__syncthreads();
-		const int bucketSize = PClusterTransfermodule::maxClustersPerBlock / (bucketsPerDim * bucketsPerDim);
-		LAL::SortInBins<bucketsPerDim * bucketsPerDim, bucketSize>(sortKeys, idsOfPclustersSorted, sortIds);
-		__syncthreads();
-	}
+	// Sort all along z, then the 4 buckets along y, then the 4x4 buckets along x
+	StableSortInBins<PClusterTransfermodule::maxClustersPerBlock>(meanPositionsOfPClusters, 2, idsOfPclustersSorted, sortIds, nPclusters);
+	StableSortInBins<PClusterTransfermodule::maxClustersPerBlock / bucketsPerDim>(meanPositionsOfPClusters, 1, idsOfPclustersSorted, sortIds, nPclusters);
+	StableSortInBins<PClusterTransfermodule::maxClustersPerBlock / (bucketsPerDim * bucketsPerDim)>(meanPositionsOfPClusters, 0, idsOfPclustersSorted, sortIds, nPclusters);
 
-	// Assign scIds
+	// Fill superclusters greedily in sorted order. Only the fill is sequential, the superclusters are then written per particle slot
+	constexpr int maxScs = 32;	// Beyond SuperClustersControl::maxClustersPerBlock, which INDEXING_CHECKS reports
+	__shared__ int nParticlesSorted[PClusterTransfermodule::maxClustersPerBlock];
+	__shared__ int firstSlots[PClusterTransfermodule::maxClustersPerBlock];
+	__shared__ int uniqueIndices[PClusterTransfermodule::maxClustersPerBlock];
+	__shared__ int slotSources[maxScs * SuperCluster::maxParticles];	// Sorted pcluster index * 4 + index in pcluster, -1 for padding
+	__shared__ int uniquePclusterIds[maxScs * SuperCluster::maxParticles];
+	__shared__ int scNParticles[maxScs];
+	__shared__ int scNUniquePcIds[maxScs];
+	for (int i = threadIdx.x; i < nPclusters; i += blockDim.x)
+		nParticlesSorted[i] = persistentClusterMeta[idsOfPclustersInBlock[sortIds[i]]].nParticles;
+	for (int i = threadIdx.x; i < maxScs * SuperCluster::maxParticles; i += blockDim.x) {
+		slotSources[i] = -1;
+		uniquePclusterIds[i] = 0;
+	}
+	__syncthreads();
+
 	__shared__ int nClustersToMake;
 	if (threadIdx.x == 0) {
 		int scId = 0;
 		int scParticlesSum = 0;
-		for (int i = 0; i < nPclustersInBlock; i++) {
-			const int pcIdRelativeToBlock = sortIds[i];
-			const int pcIdGlobal = idsOfPclustersInBlock[pcIdRelativeToBlock];
-			const int nParticles = persistentClusterMeta[pcIdGlobal].nParticles;
+		int nUnique = 0;
+		for (int i = 0; i < nPclusters; i++) {
+			const int nParticles = nParticlesSorted[i];
 			if (scParticlesSum + nParticles > 16) {
+				if (scId < maxScs) { scNParticles[scId] = scParticlesSum; scNUniquePcIds[scId] = nUnique; }
 				scId++;
 				scParticlesSum = 0;
+				nUnique = 0;
 			}
 			assignedScIds[i] = scId;
+			firstSlots[i] = scParticlesSum;
+			uniqueIndices[i] = nParticles > 0 ? nUnique++ : -1;
 			scParticlesSum += nParticles;
 		}
 
-		if (scParticlesSum > 0)
+		if (scParticlesSum > 0) {
+			if (scId < maxScs) { scNParticles[scId] = scParticlesSum; scNUniquePcIds[scId] = nUnique; }
 			scId++;
+		}
 		nClustersToMake = scId;
 		scStagingControl.nClustersPerBlock[blockIdx.x] = nClustersToMake;
 		if constexpr (INDEXING_CHECKS) {
 			if (nClustersToMake > SuperClustersControl::maxClustersPerBlock) {
 				printf("Trying to make too many superclusters in block %d: %d (max %d)\n", blockIdx.x, nClustersToMake, SuperClustersControl::maxClustersPerBlock);
 			}
-		}		
+		}
+	}
+	__syncthreads();
+	const int nScs = min(nClustersToMake, maxScs);
+
+	for (int i = threadIdx.x; i < nPclusters; i += blockDim.x) {
+		const int scId = assignedScIds[i];
+		if (scId >= nScs) continue;
+		const int pcIdGlobal = idsOfPclustersInBlock[sortIds[i]];
+		if (sortIds[i] < 0 || sortIds[i] >= PClusterTransfermodule::maxClustersPerBlock || pcIdGlobal < 0 || nParticlesSorted[i] < 0) {
+			printf("Invalid cluster id. Relative %d global %d\n", sortIds[i], pcIdGlobal);
+		}
+		for (int indexInPc = 0; indexInPc < nParticlesSorted[i]; indexInPc++)
+			slotSources[scId * SuperCluster::maxParticles + firstSlots[i] + indexInPc] = i * PersistentCluster::maxParticles + indexInPc;
+		if (uniqueIndices[i] >= 0)
+			uniquePclusterIds[scId * SuperCluster::maxParticles + uniqueIndices[i]] = pcIdGlobal;
 	}
 	__syncthreads();
 
-
-	if (threadIdx.x < nClustersToMake){
-		SuperClusterMeta scMeta{};
-		scMeta.simulationId = blockIdx.x / boxSize.InnerProduct();
-		SuperCluster sc{};
-
-
-		for (int i = 0; i < nPclustersInBlock; i++) {
-			if (assignedScIds[i] != threadIdx.x) {
-				continue;
-			}
-
-			const int pcIdRelativeToBlock = sortIds[i];
-			const int pcIdGlobal = idsOfPclustersInBlock[pcIdRelativeToBlock];
-			const int nParticles = persistentClusterMeta[pcIdGlobal].nParticles;
-
-			if (pcIdRelativeToBlock < 0 || pcIdRelativeToBlock >= PClusterTransfermodule::maxClustersPerBlock || pcIdGlobal < 0 || nParticles < 0) {
-				printf("Invalid cluster id. Relative %d global %d\n", pcIdRelativeToBlock, pcIdGlobal);
-			}
-
-			for (int indexInPc = 0; indexInPc < nParticles; indexInPc++) {
-				const int indexInSc = scMeta.nParticles + indexInPc;
-				PData pData = pClusters[pcIdGlobal].pqd[indexInPc];
-				PeriodicBoundaryCondition::applyHyperposNM(blockCenter, pData.position, boxSizeFloat);
-				sc.SetPdata(pData, indexInSc);
-				scMeta._pclusterIds[indexInSc] = pcIdGlobal;
-				scMeta.globalParticleIds[indexInSc] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[indexInPc];
-				scMeta.indexInPcluster[indexInSc] = indexInPc;
-
-				if (scMeta.nUniquePcIds == 0 || scMeta.uniquePclusterIds[scMeta.nUniquePcIds - 1] != pcIdGlobal) {
-					scMeta.uniquePclusterIds[scMeta.nUniquePcIds] = pcIdGlobal;
-					scMeta.nUniquePcIds++;
-				}
-			}
-			scMeta.nParticles += nParticles;
+	const int stagingStartIndex = blockIdx.x * SuperClustersControl::maxClustersPerBlock;
+	for (int slot = threadIdx.x; slot < nScs * SuperCluster::maxParticles; slot += blockDim.x) {
+		const int scId = slot / SuperCluster::maxParticles;
+		const int indexInSc = slot % SuperCluster::maxParticles;
+		SuperCluster& sc = scStagingControl.scData[stagingStartIndex + scId];
+		SuperClusterMeta& scMeta = scStagingControl.scMeta[stagingStartIndex + scId];
+		const int source = slotSources[slot];
+		if (source >= 0) {
+			const int indexInPc = source % PersistentCluster::maxParticles;
+			const int pcIdGlobal = idsOfPclustersInBlock[sortIds[source / PersistentCluster::maxParticles]];
+			PData pData = pClusters[pcIdGlobal].pqd[indexInPc];
+			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, pData.position, boxSizeFloat);
+			sc.SetPdata(pData, indexInSc);
+			scMeta._pclusterIds[indexInSc] = pcIdGlobal;
+			scMeta.globalParticleIds[indexInSc] = persistentClusterMeta[pcIdGlobal].particleIdsGlobal[indexInPc];
+			scMeta.indexInPcluster[indexInSc] = indexInPc;
 		}
-		for (int i = scMeta.nParticles; i < SuperCluster::maxParticles; i++) {
-			sc.SetPdata(PData{}, i);
-			scMeta._pclusterIds[i] = -1;
-			scMeta.globalParticleIds[i] = -1;
-			scMeta.indexInPcluster[i] = -1;
+		else {
+			sc.SetPdata(PData{}, indexInSc);
+			scMeta._pclusterIds[indexInSc] = -1;
+			scMeta.globalParticleIds[indexInSc] = -1;
+			scMeta.indexInPcluster[indexInSc] = -1;
 		}
-
-		const int stagingStartIndex = blockIdx.x * SuperClustersControl::maxClustersPerBlock;
-		scStagingControl.scData[stagingStartIndex + threadIdx.x] = sc;
-		scStagingControl.scMeta[stagingStartIndex + threadIdx.x] = scMeta;
+		scMeta.uniquePclusterIds[indexInSc] = uniquePclusterIds[slot];
+		if (indexInSc == 0) {
+			scMeta.nUniquePcIds = scNUniquePcIds[scId];
+			scMeta.nParticles = static_cast<int16_t>(scNParticles[scId]);
+			scMeta.simulationId = static_cast<int16_t>(blockIdx.x / boxSize.InnerProduct());
+			scMeta.resultsStartIndex = 0;
+			scMeta.nResults = 0;
+		}
 	}
-	__syncthreads();
 }
 
 // 1 cudablock per block, blockdim = 32,1,1

@@ -120,7 +120,7 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 // entryCounts is the number of QuarterEntries EmitQuarterEntriesKernel will write, with allQuarters as passed to it.
 // The cells from -cellRangeLo to cellRangeHi around the own cell are searched, but only those whose AABB is within reach, and of
 // those only the superclusters whose bounding sphere is. Candidates are enumerated in a fixed order, so the lists are deterministic.
-__global__ void FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const uint8_t* const scExternalBonds, const int* const scCells,
+__global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const uint8_t* const scExternalBonds, const int* const scCells,
 	const float4* const cellMin, const float4* const cellMax, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
 	ScNeighbor* const neighbors, int* const nNeighbors, int* const entryCounts, int* const overflow,
 	int nSuperclusters, Int3 boxSize, Int3 cellRangeLo, Int3 cellRangeHi, float listRadius, bool allQuarters, Float3 boxSizeF, Float3 boxSizeInv)
@@ -139,6 +139,14 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 	const Float3 ownCenter{ ownSphere.x, ownSphere.y, ownSphere.z };
 	const bool ownExternalBonds = scExternalBonds[scId];
 	const float listRadiusSq = listRadius * listRadius;
+	// Padding is placed far away, own at +1e18 and staged candidates at -1e18, so the pair test needs no validity checks
+	const Float3 ownTestPos = ownValid ? ownPos : Float3{ 1e18f };
+	// Bit m: whether staged particle (lane >> 4) + 2m may pair with this own particle within a self interaction, which counts pairs in one order
+	uint32_t selfMask = 0;
+#pragma unroll
+	for (int m = 0; m < 8; m++)
+		if ((lane >> 4) + 2 * m > ownIndex) selfMask |= 1u << m;
+	const uint32_t ownQuarterBit = 1u << ((ownIndex >> 2) * 4);
 
 	const int cell = scCells[scId];
 	const int nCellsPerSimulation = boxSize.x * boxSize.y * boxSize.z;
@@ -184,6 +192,7 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 
 			int candidateId = -1;
 			bool coarseHit = false;
+			float4 candidateSphere{};	// Center in the image nearest the own center
 			if (lane < nCandidates) {
 				candidateId = scControl.scIdsInBlocks[candidateCell * SuperClustersControl::maxClustersPerBlock + lane];
 				if (candidateId >= scId) {
@@ -192,6 +201,7 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 					PeriodicBoundaryCondition::ApplyHyperpos(ownCenter, c, boxSizeF, boxSizeInv);
 					const float reach = listRadius + ownSphere.w + s.w;
 					coarseHit = (c - ownCenter).lenSquared() < reach * reach;
+					candidateSphere = float4{ c.x, c.y, c.z, s.w };
 				}
 			}
 
@@ -202,21 +212,35 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 				const int queryId = __shfl_sync(0xFFFFFFFFu, candidateId, k);
 				const bool selfTask = queryId == scId;
 
+				// Most candidates passing the sphere test have no pair in range. No pair is possible unless an own particle is within
+				// reach of the candidate's sphere, which costs one test per own particle rather than loading the candidate's particles.
+				// The slack keeps it conservative under rounding, so the lists are unchanged
+				const Float3 candidateCenter{ __shfl_sync(0xFFFFFFFFu, candidateSphere.x, k), __shfl_sync(0xFFFFFFFFu, candidateSphere.y, k),
+					__shfl_sync(0xFFFFFFFFu, candidateSphere.z, k) };
+				const float candidateReach = listRadius + __shfl_sync(0xFFFFFFFFu, candidateSphere.w, k) + 1e-4f;
+				if (!__any_sync(0xFFFFFFFFu, ownValid && (ownPos - candidateCenter).lenSquared() < candidateReach * candidateReach))
+					continue;
+
 				if (lane < SuperCluster::maxParticles) {
 					Float3 p = scControl.scData[queryId].Position(lane);
 					PeriodicBoundaryCondition::ApplyHyperpos(ownCenter, p, boxSizeF, boxSizeInv);
-					stage[warpInBlock][lane] = float4{ p.x, p.y, p.z, scControl.scData[queryId].Valid(lane) ? 1.f : 0.f };
+					if (!scControl.scData[queryId].Valid(lane)) p = Float3{ -1e18f };
+					stage[warpInBlock][lane] = float4{ p.x, p.y, p.z, 0.f };
 				}
 				__syncwarp();
-				uint32_t bits = 0;
+				uint32_t inRange = 0;
 #pragma unroll
 				for (int m = 0; m < 8; m++) {
-					const int queryIndex = (lane >> 4) + 2 * m;
-					const float4 q = stage[warpInBlock][queryIndex];
-					const bool inRange = (ownPos - Float3{ q.x, q.y, q.z }).lenSquared() < listRadiusSq;
-					if (ownValid && q.w != 0.f && inRange && (!selfTask || queryIndex > ownIndex))
-						bits |= 1u << ((ownIndex >> 2) * 4 + (queryIndex >> 2));
+					const float4 q = stage[warpInBlock][(lane >> 4) + 2 * m];
+					if ((ownTestPos - Float3{ q.x, q.y, q.z }).lenSquared() < listRadiusSq)
+						inRange |= 1u << m;
 				}
+				inRange &= selfTask ? selfMask : 0xFFu;
+				// Staged particles 2m and 2m+1 relative to the half warp are in query quarter m / 2
+				uint32_t bits = 0;
+#pragma unroll
+				for (int jq = 0; jq < 4; jq++)
+					if (inRange & (3u << (2 * jq))) bits |= ownQuarterBit << jq;
 				bits = __reduce_or_sync(0xFFFFFFFFu, bits);
 				__syncwarp(); // Before the stage is reused
 

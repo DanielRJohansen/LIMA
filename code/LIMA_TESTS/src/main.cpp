@@ -326,8 +326,8 @@ int RunAllUnitTests() {
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
 	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
 	ADD_SERIAL_TEST("LoadT4", Benchmarks::LoadT4);
-	ADD_SERIAL_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
-	ADD_TEST("stmv sim performance", Benchmarks::STMV, 200, Benchmarks::automatedTestRuns);
+	ADD_SERIAL_TEST("T4", Benchmarks::T4, 500, Benchmarks::automatedTestRuns);
+	ADD_TEST("stmv sim performance", Benchmarks::STMV, 500, Benchmarks::automatedTestRuns);
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

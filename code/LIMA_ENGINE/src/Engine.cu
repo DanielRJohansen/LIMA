@@ -54,6 +54,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
 		cudaStreamCreate(&pmeStream);
 		for (auto& event : streamJoinEvents) cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
+		cudaEventCreateWithFlags(&stepStartEvent, cudaEventDisableTiming);
 		for (size_t simulationId = 0; simulationId < renderDataPipes.size(); ++simulationId) {
 			if (!renderDataPipes[simulationId]) continue;
 			const auto count = batch->simulations[simulationId].device.pclusters.count * PersistentCluster::maxParticles;
@@ -84,6 +85,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		for (auto stream : cudaStreams) if (stream) cudaStreamDestroy(stream);
 		if (pmeStream) cudaStreamDestroy(pmeStream);
 		for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
+		if (stepStartEvent) cudaEventDestroy(stepStartEvent);
 		throw;
 	}
 }
@@ -95,6 +97,7 @@ Engine::~Engine() {
 	for (auto stream : cudaStreams) cudaStreamDestroy(stream);
 	cudaStreamDestroy(pmeStream);
 	for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
+	if (stepStartEvent) cudaEventDestroy(stepStartEvent);
 	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
 }
 
@@ -111,6 +114,14 @@ void Engine::JoinStreamsIntoMainStream() {
 		cudaEventRecord(streamJoinEvents[i], cudaStreams[i]);
 		cudaStreamWaitEvent(cudaStreams[0], streamJoinEvents[i]);
 	}
+}
+
+// Makes work subsequently queued on the other streams wait for all work queued so far on cudaStreams[0], on the GPU
+void Engine::ForkStreamsFromMainStream() {
+	cudaEventRecord(stepStartEvent, cudaStreams[0]);
+	cudaStreamWaitEvent(pmeStream, stepStartEvent);
+	for (size_t i = 1; i < cudaStreams.size(); i++)
+		cudaStreamWaitEvent(cudaStreams[i], stepStartEvent);
 }
 
 const RunStatus& Engine::GetRunStatus(size_t simulationId) const {
@@ -548,6 +559,8 @@ template <typename BoundaryCondition, bool emvariant, bool logData>
 void Engine::_deviceMaster() {
 	if (emvariant != tasksBuiltForEm)
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
+	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
+	ForkStreamsFromMainStream();
 	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
 	const int nScs = batch->nSuperclusters;
 	// MD: all force kernels add to forceAcc, which the previous step's integration (or the task build) left zeroed, so they need
@@ -612,7 +625,9 @@ void Engine::_deviceMaster() {
 				batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
 				liveEdit, log);
 		}
-		cudaStreamSynchronize(cudaStreams[0]);
+		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster
+		if constexpr (emvariant)
+			cudaStreamSynchronize(cudaStreams[0]);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 }

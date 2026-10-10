@@ -129,6 +129,9 @@ private:
 	// Used to make cudaStreams[0] wait for the other streams on the GPU, without a host roundtrip. [0] is for pmeStream, [i] for cudaStreams[i]
 	std::array<cudaEvent_t, 5> streamJoinEvents{};
 	void JoinStreamsIntoMainStream();
+	// Recorded on cudaStreams[0] at the start of each step, so the other streams wait for the previous step on the GPU
+	cudaEvent_t stepStartEvent = nullptr;
+	void ForkStreamsFromMainStream();
 	// Must be called after changing any field that IntegrationSimulationData is built from
 	void UploadIntegrationSimulationData();
 	EngineRunMode mode;

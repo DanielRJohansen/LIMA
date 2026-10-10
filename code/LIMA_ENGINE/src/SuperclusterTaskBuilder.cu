@@ -47,10 +47,11 @@ __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const Super
 
 // ------------------------------------------------------- Neighbor search ------------------------------------------------------- //
 
-// gridDim = nGridnodes, blockDim = 32. Bounding sphere, cell and valid particles of every supercluster, and the AABB of every cell
-__global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, float4* const scSpheres, int* const scCells, uint16_t* const scValidMasks,
-	float4* const cellMin, float4* const cellMax)
+// gridDim = nGridnodes, blockDim = 32. Bounding sphere, cell, valid particles and external bonds of every supercluster, and the AABB of every cell
+__global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
+	float4* const scSpheres, int* const scCells, uint16_t* const scValidMasks, uint8_t* const scExternalBonds, float4* const cellMin, float4* const cellMax)
 {
+	static_assert(sizeof(PclustersBondedToPcluster) == 32 * sizeof(int), "One lane per value of a bonded set");
 	const int cell = blockIdx.x;
 	const int lane = threadIdx.x;
 	const int n = scControl.nSuperclustersInBlocks[cell];
@@ -78,6 +79,22 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, f
 			scCells[scId] = cell;
 			scValidMasks[scId] = static_cast<uint16_t>(validMask);
 		}
+		// Whether any value in the bonded sets of the supercluster's pclusters is a pcluster outside it. Superclusters without are bonded
+		// to no other supercluster, so FindNeighborsKernel can skip checking their pairs
+		const int nUnique = scControl.scMeta[scId].nUniquePcIds;
+		const int ownPcluster = lane < nUnique ? scControl.scMeta[scId].uniquePclusterIds[lane] : -1;
+		bool externalBond = false;
+		for (int u = 0; u < nUnique; u++) {
+			const int bondedPcluster = pclustersBondedToPcluster[__shfl_sync(0xFFFFFFFFu, ownPcluster, u)].Get(lane);
+			bool internal = !PclustersBondedToPcluster::IsValue(bondedPcluster);
+			for (int v = 0; v < nUnique; v++)
+				internal |= __shfl_sync(0xFFFFFFFFu, ownPcluster, v) == bondedPcluster;
+			externalBond |= !internal;
+		}
+		externalBond = __any_sync(0xFFFFFFFFu, externalBond);
+		if (lane == 0)
+			scExternalBonds[scId] = externalBond;
+
 		if (valid) {
 			lo = Float3{ fminf(lo.x, p.x), fminf(lo.y, p.y), fminf(lo.z, p.z) };
 			hi = Float3{ fmaxf(hi.x, p.x), fmaxf(hi.y, p.y), fmaxf(hi.z, p.z) };
@@ -103,7 +120,7 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, f
 // entryCounts is the number of QuarterEntries EmitQuarterEntriesKernel will write, with allQuarters as passed to it.
 // The cells from -cellRangeLo to cellRangeHi around the own cell are searched, but only those whose AABB is within reach, and of
 // those only the superclusters whose bounding sphere is. Candidates are enumerated in a fixed order, so the lists are deterministic.
-__global__ void FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const int* const scCells,
+__global__ void FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const uint8_t* const scExternalBonds, const int* const scCells,
 	const float4* const cellMin, const float4* const cellMax, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
 	ScNeighbor* const neighbors, int* const nNeighbors, int* const entryCounts, int* const overflow,
 	int nSuperclusters, Int3 boxSize, Int3 cellRangeLo, Int3 cellRangeHi, float listRadius, bool allQuarters, Float3 boxSizeF, Float3 boxSizeInv)
@@ -120,6 +137,7 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 	const bool ownValid = scControl.scData[scId].Valid(ownIndex);
 	const float4 ownSphere = scSpheres[scId];
 	const Float3 ownCenter{ ownSphere.x, ownSphere.y, ownSphere.z };
+	const bool ownExternalBonds = scExternalBonds[scId];
 	const float listRadiusSq = listRadius * listRadius;
 
 	const int cell = scCells[scId];
@@ -203,7 +221,7 @@ __global__ void FindNeighborsKernel(const SuperClustersControl scControl, const 
 				__syncwarp(); // Before the stage is reused
 
 				if (bits) {
-					const bool bonded = selfTask || Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryId], pclustersBondedToPcluster);
+					const bool bonded = selfTask || (ownExternalBonds && Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryId], pclustersBondedToPcluster));
 					if (lane == 0 && count < maxNeighborsPerSc)
 						neighbors[scId * maxNeighborsPerSc + count] = ScNeighbor{ queryId, static_cast<uint16_t>(bits), static_cast<uint16_t>(bonded) };
 					count++;
@@ -420,6 +438,7 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	tb.scSpheres.Expand(n, 1.2);
 	tb.scCells.Expand(n, 1.2);
 	tb.scValidMasks.Expand(n, 1.2);
+	tb.scExternalBonds.Expand(n, 1.2);
 	tb.cellMin.Expand(nCells);
 	tb.cellMax.Expand(nCells);
 	tb.neighbors.Expand(size_t(n) * maxNeighborsPerSc, 1.2);
@@ -427,11 +446,12 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	tb.entryCounts.Expand(n + 1, 1.2);
 	tb.overflow.Expand(1);
 
-	SuperclusterBoundsKernel<<<nCells, 32, 0, stream>>>(*batch->superClustersControl, tb.scSpheres.Get(), tb.scCells.Get(), tb.scValidMasks.Get(),
-		tb.cellMin.Get(), tb.cellMax.Get());
+	SuperclusterBoundsKernel<<<nCells, 32, 0, stream>>>(*batch->superClustersControl, tb.contents.pclustersBondedToPcluster, tb.scSpheres.Get(),
+		tb.scCells.Get(), tb.scValidMasks.Get(), tb.scExternalBonds.Get(), tb.cellMin.Get(), tb.cellMax.Get());
 	cudaMemsetAsync(tb.overflow.Get(), 0, sizeof(int), stream);
 	FindNeighborsKernel<<<(n + neighborSearchWarpsPerBlock - 1) / neighborSearchWarpsPerBlock, 32 * neighborSearchWarpsPerBlock, 0, stream>>>(
-		*batch->superClustersControl, tb.scSpheres.Get(), tb.scCells.Get(), tb.cellMin.Get(), tb.cellMax.Get(), tb.contents.pclustersBondedToPcluster,
+		*batch->superClustersControl, tb.scSpheres.Get(), tb.scExternalBonds.Get(), tb.scCells.Get(), tb.cellMin.Get(), tb.cellMax.Get(),
+		tb.contents.pclustersBondedToPcluster,
 		tb.neighbors.Get(), tb.nNeighbors.Get(), tb.entryCounts.Get(), tb.overflow.Get(),
 		n, boxSize, rangeLo, rangeHi, listRadius, allQuarters, boxSizeF, boxSizeF.Inv());
 	LIMA_UTILS::genericErrorCheck(stream, "FindNeighborsKernel");

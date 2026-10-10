@@ -309,6 +309,10 @@ public:
 			if (value != noVal) value += offset;
 	}
 
+	// The index-th value, or a value IsValue rejects past the last one
+	constexpr int Get(int index) const { return data[index]; }
+	static constexpr bool IsValue(int value) { return value != noVal; }
+
 	constexpr bool Contains(int value) const {
 		for (int i = 0; i < size; i++) {
 			if (data[i] == value)

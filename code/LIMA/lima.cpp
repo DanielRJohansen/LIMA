@@ -588,6 +588,15 @@ int Cli::RunEnergyMinimization(const Context& ctx, int argc, char** argv) {
         fs::canonical(ctx.Resolve(topPath)), SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
     emResult.FinalSystem().coordinates.printToFile(ctx.Resolve(confPathOut));
 
+    const auto& maxForces = emResult.simulation->maxForceBuffer;
+    if (!maxForces.empty()) {
+        const float force = maxForces.back().second;
+        ctx.out << Lima::Format("em finished after {} steps with a max force of {:.1f} kJ/mol/nm{}\n", emResult.simulation->getStep(),
+            force, force > emtol ? Lima::Format(", above the tolerance of {:.1f}", emtol) : "");
+    }
+    if (emResult.execution.batchSize > 1)
+        ctx.out << Lima::Format("Ran in a batch of {} simulations\n", emResult.execution.batchSize);
+
     return 0;
 }
 

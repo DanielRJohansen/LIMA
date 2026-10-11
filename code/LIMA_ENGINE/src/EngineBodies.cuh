@@ -34,7 +34,7 @@ class PClusterTransfermodule {
 public:
 	static const int maxClustersPerBlock = 128;
 	static const int blockLen = 1;	
-	static const int maxOutgoingClusters = 8;
+	static const int maxOutgoingClusters = 16;
 
 	// Set by GetPclusterPositions kernel
 	Float3* meanPositionOfPClustersPerBlock = nullptr; // 1 value per pCluster per block

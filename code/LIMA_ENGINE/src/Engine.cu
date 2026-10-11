@@ -921,7 +921,7 @@ void Engine::TestLimit(EngineLimitProbe probe, int count) {
 	using namespace EngineLimitTesting;
 	switch (probe) {
 	case EngineLimitProbe::ClusterTransfer:
-		Require(count >= 1 && count <= 9, "Invalid transfer fixture size");
+		Require(count >= 1 && count <= PClusterTransfermodule::maxOutgoingClusters + 1, "Invalid transfer fixture size");
 		ClusterTransfer(count);
 		break;
 	case EngineLimitProbe::ClusterOccupancy:

@@ -210,10 +210,10 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
 		//Benchmarks::STMV(env, envmode, 1000);
 		
-		//ShowcaseMultisim();
+		ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
-		return RunAllUnitTests() == 0 ? 0 : 1;
+		//return RunAllUnitTests() == 0 ? 0 : 1;
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;

@@ -838,7 +838,7 @@ namespace EngineLimitTesting {
 			Require(inQueue || actual[i] == -1, "Cluster transfer overwrote a neighboring queue");
 		}
 		transfer->overflow.Check();
-		Require(count <= PClusterTransfermodule::maxOutgoingClusters, "Cluster transfer accepted more than 8 outgoing clusters without rejecting the overflow");
+		Require(count <= PClusterTransfermodule::maxOutgoingClusters, "Cluster transfer accepted more outgoing clusters than its capacity without rejecting the overflow");
 		Require(remaining[source] == 0 && actualCounts[target * 6] == count, "Cluster transfer lost particles");
 		for (int i = 0; i < count; ++i)
 			Require(actual[first + i] == i, "Cluster transfer changed particle identities");

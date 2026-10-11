@@ -18,7 +18,7 @@ struct ScNeighbor {
 
 // Pass to GPU. The arrays are only used, and allocated, in EM
 struct TaskBuilderControlContents {
-	static const int maxTasksPerSc = 256;
+	static const int maxTasksPerSc = 512;
 
 	ParticlesBondedToParticle* particlesBondedToParticle = nullptr;
 	PclustersBondedToPcluster* pclustersBondedToPcluster = nullptr;

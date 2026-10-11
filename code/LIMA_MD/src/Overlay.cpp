@@ -252,12 +252,16 @@ namespace
             simulation.title = "Simulation";
             if (status.step)
                 simulation.lines.push_back({ "Step", Lima::Format("{}", *status.step) });
-            if (status.progress)
-                simulation.lines.push_back({ {}, {}, {}, std::clamp(*status.progress, 0.f, 1.f) });
+            // The bar goes under what it measures: steps for MD, the max force (towards its tolerance) for EM
+            const auto Progress = [&] { simulation.lines.push_back({ {}, {}, {}, std::clamp(*status.progress, 0.f, 1.f) }); };
+            if (status.progress && !status.maxForce)
+                Progress();
             if (status.temperature)
                 simulation.lines.push_back({ "Temperature", Lima::Format("{:.2f}", *status.temperature), "K" });
             if (status.maxForce)
                 simulation.lines.push_back({ "Max force", Lima::Format("{:.2e}", *status.maxForce), "kJ/mol/nm" });
+            if (status.progress && status.maxForce)
+                Progress();
             if (status.expectedTimeToFinish)
                 simulation.lines.push_back({ "Remaining", StringUtils::FormatTime(*status.expectedTimeToFinish, 3, 2) });
         }

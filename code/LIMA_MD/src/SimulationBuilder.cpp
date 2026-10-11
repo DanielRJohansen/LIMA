@@ -323,14 +323,16 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
 	// but it will be slightly more complex code
 
-	// Keep newly placed water atoms outside the van der Waals envelope of the
-	// existing system. The previous 0.12 nm cutoff filled membrane-occupied grid
-	// cells at bulk-water density and could overflow the engine's cluster bins.
-	const float distanceThreshold = 0.25f;	// [nm]
+	// Minimum distance from a new water to another new water
+	const float distanceThreshold = 0.20f;	// [nm]
+	// Minimum distance from a new water to an atom of the input system. Larger than between waters, so waters
+	// are not placed in the gaps between packed molecules, eg. in the hydrophobic core of a membrane
+	const float soluteDistanceThreshold = 0.35f;	// [nm]
 
 	// Place candidate waters on a box-wide cubic lattice at the desired density. Random placement with the
 	// exclusion distance above saturates at ~40% of bulk water density. The lattice spacing at bulk density
-	// (~0.31 nm) exceeds the exclusion distance, so only waters overlapping the input system are removed below
+	// (~0.31 nm) exceeds the exclusion distance, so only waters overlapping the input system are removed below.
+	// Each water is jittered a little, so the lattice planes don't show up as a sawtooth in density profiles
 	const Int3 latticeDim{
 		std::max(1, static_cast<int>(std::round(grofile.box_size.x * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
 		std::max(1, static_cast<int>(std::round(grofile.box_size.y * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
@@ -339,11 +341,18 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	if (std::min({ latticeSpacing.x, latticeSpacing.y, latticeSpacing.z }) < distanceThreshold)
 		throw std::invalid_argument(Lima::Format("Solvent density {}/nm^3 is too high, the maximum is {}",
 			desiredSolventsPerNm3, static_cast<int>(1.f / (distanceThreshold * distanceThreshold * distanceThreshold))));
+	const float latticeJitter = 0.06f;	// [nm] max offset per dimension
 
 	for (int x = 0; x < latticeDim.x; x++) {
 		for (int y = 0; y < latticeDim.y; y++) {
 			for (int z = 0; z < latticeDim.z; z++) {
-				const Float3 position{ (x + 0.5f) * latticeSpacing.x, (y + 0.5f) * latticeSpacing.y, (z + 0.5f) * latticeSpacing.z };
+				// A cheap hash of the lattice index, 3 bytes of it give an offset in [-1,1] per dimension
+				uint32_t hash = static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u ^ static_cast<uint32_t>(z) * 83492791u;
+				hash ^= hash >> 15; hash *= 0x2c1b3c6du; hash ^= hash >> 12; hash *= 0x297a2d39u; hash ^= hash >> 15;
+				const auto Jitter = [hash](int byte) { return ((hash >> (byte * 8)) & 0xffu) / 127.5f - 1.f; };
+				Float3 position = Float3{ (x + 0.5f) * latticeSpacing.x, (y + 0.5f) * latticeSpacing.y, (z + 0.5f) * latticeSpacing.z }
+					+ Float3{ Jitter(0), Jitter(1), Jitter(2) } * latticeJitter;
+				BoundaryConditionPublic::applyBCNM(position, grofile.box_size, BoundaryConditionSelect::PBC);
 				const NodeIndex nodeindex{ static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y)), static_cast<int>(std::floor(position.z)) };
 				const Float3 relPos = position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
 				boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, false });
@@ -373,7 +382,8 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 							continue;
 
 
-						if ((particles[pid].relPos - particles[otherId].relPos).len() < distanceThreshold) {
+						const float threshold = particles[otherId].presentInInputfile ? soluteDistanceThreshold : distanceThreshold;
+						if ((particles[pid].relPos - particles[otherId].relPos).len() < threshold) {
 							particles[pid].markedForDeletion = true;
 							break;
 						}
@@ -408,7 +418,8 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 									if (!queryParticle.presentInInputfile && boxgrid.GetIndex(otherNodeIndex) < boxgrid.GetIndex(nodeindex))
 										continue;
 
-									if ((particle.relPos - queryParticlePosition).len() < distanceThreshold) {
+									const float threshold = queryParticle.presentInInputfile ? soluteDistanceThreshold : distanceThreshold;
+									if ((particle.relPos - queryParticlePosition).len() < threshold) {
 										particle.markedForDeletion = true;
 									}
 								}

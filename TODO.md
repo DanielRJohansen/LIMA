@@ -5,6 +5,8 @@
 
 ## Investigate startup latency for small systems (say t4 in 7^3nm^3 box). Defined as time from command to first step.
 
+## Solvate by tiling a pre-equilibrated water box (like gmx solvate with spc216.gro) instead of a jittered cubic lattice (SimulationBuilder::SolvateGrofile). Faster, the water starts with a realistic structure, and needs less EM/equilibration. The lattice still shows faintly as a sawtooth in water density profiles of short runs.
+
 ## The tests: Test T4 (MD performance) and LoadT4 (setup performance) are always noisy. Find a better way to isolate them from other tests.
 
 # Performance ideas. These are not set in stone todo's, rather concepts that are interesting to explore to see if they give any speed. Some makes the most sense together

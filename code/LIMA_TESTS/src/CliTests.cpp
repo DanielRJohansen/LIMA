@@ -56,6 +56,8 @@ Config config;
 // Children are assigned to this job, so they die with the test runner instead of lingering with open windows
 HANDLE jobObject = nullptr;
 
+constexpr int daemonIdleSeconds = 5;
+
 std::wstring ToWide(const std::string& s) {
 	if (s.empty()) return {};
 	const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
@@ -929,6 +931,74 @@ TestRoutine TestSelfTest(fs::path workDir) {
 	co_return LimaUnittestResult{ true, "", false };
 }
 
+// GPU commands without -d go through the lima daemon. main() points LIMA_DAEMON_DIR at a private directory, so
+// this test never touches the user's own daemon, and the job object kills its daemon when limaclitest exits
+TestRoutine TestDaemon(fs::path workDir) {
+	Banner("lima daemon");
+	RunOptions quiet{ .timeout = 600s, .captureStdout = true, .echo = false };
+	const auto daemonRunning = [&] {
+		auto status = Run(workDir, { "daemon", "status" }, quiet);
+		RequireSuccess(status);
+		return status.output.find("No lima daemon is running") == std::string::npos;
+	};
+	const auto makeRunDir = [&](const std::string& name, int nSteps) {
+		const fs::path dir = workDir / name;
+		fs::create_directories(dir);
+		CopyFixtures(dir, { "metsol.gro", "metsol.top", "Protein_chain_A.itp", "SOL.itp" });
+		std::ofstream(dir / "sim_params.txt") << "n_steps=" << nSteps << "\ndt=2\ndata_logging_interval=200\n";
+		return dir;
+	};
+
+	RequireSuccess(Run(workDir, { "daemon", "stop" }, quiet));	// Left over from an aborted run
+	ASSERT(!daemonRunning(), "'lima daemon status' reports a daemon after 'lima daemon stop'");
+
+	// Separate lima processes started together run on one daemon, with the same results as on their own
+	const fs::path reference = makeRunDir("reference", 2000);
+	RequireSuccess(Run(reference, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top" }, quiet));
+	constexpr int nConcurrent = 3;
+	std::vector<std::unique_ptr<ChildProcess>> children;
+	for (int i = 0; i < nConcurrent; i++)
+		children.push_back(std::make_unique<ChildProcess>(std::vector<std::string>{ "mdrun", "-c", "metsol.gro", "-t", "metsol.top" },
+			makeRunDir("concurrent" + std::to_string(i), 2000), true, false));
+	int batched = 0;
+	for (int i = 0; i < nConcurrent; i++) {
+		const auto code = children[i]->WaitFor(600s);
+		const std::string output = children[i]->Output();
+		ASSERT(code == 0, Lima::Format("Concurrent 'lima mdrun' {} exited with {}. Output:\n{}", i,
+			code ? DescribeExitCode(*code) : "a timeout", Tail(output)));
+		ASSERT(ReadBytes(workDir / ("concurrent" + std::to_string(i)) / "out.gro") == ReadBytes(reference / "out.gro"),
+			Lima::Format("Concurrent 'lima mdrun' {} gave different coordinates than the same run without the daemon", i));
+		batched += output.find("Ran in a batch of") != std::string::npos;
+	}
+	children.clear();
+	ASSERT(daemonRunning(), "No daemon is running after GPU commands were sent to it");
+
+	// Errors come back with the same exit codes as in-process
+	RequireExitCode(Run(reference, { "em", "-c", "missing.gro", "-t", "metsol.top" }, quiet), 1);
+	RequireExitCode(Run(reference, { "mdrun", "--notanoption" }, quiet), 2);
+
+	// A client that is killed does not stop its command: it completes and writes its output.
+	// 'daemon stop' waits for it
+	const fs::path orphan = makeRunDir("orphan", 20000);
+	{
+		ChildProcess client({ "mdrun", "-c", "metsol.gro", "-t", "metsol.top" }, orphan, true, false);
+		std::this_thread::sleep_for(1500ms);
+		client.Kill();
+	}
+	RequireSuccess(Run(workDir, { "daemon", "stop" }, quiet));
+	ASSERT(fs::exists(orphan / "out.gro"), "The command of a killed client did not complete");
+	RequireFinite(ReadGro(orphan / "out.gro"), "out.gro of the killed client");
+	ASSERT(!daemonRunning(), "The daemon is still running after 'lima daemon stop'");
+
+	// It exits by itself after LIMA_DAEMON_IDLE seconds without work
+	RequireSuccess(Run(reference, { "em", "-c", "metsol.gro", "-t", "metsol.top", "--conf-out", "em.gro" }, quiet));
+	ASSERT(daemonRunning(), "'lima em' did not start a daemon");
+	std::this_thread::sleep_for(std::chrono::seconds(daemonIdleSeconds + 3));
+	ASSERT(!daemonRunning(), Lima::Format("The daemon was still running {} s after its last command", daemonIdleSeconds + 3));
+
+	co_return LimaUnittestResult{ true, Lima::Format("{} of {} concurrent runs shared a batch, identical results, idle exit", batched, nConcurrent), false };
+}
+
 struct CliTest {
 	std::string command;	// The lima command this test covers, or "dispatcher"
 	TestRoutine(*function)(fs::path);
@@ -949,6 +1019,7 @@ const std::vector<CliTest> cliTests{
 	{ "buildmembrane", TestBuildMembrane },
 	{ "render", TestRender },
 	{ "selftest", TestSelfTest },
+	{ "daemon", TestDaemon },
 };
 
 // ------------------------------------------------ Setup ------------------------------------------------ //
@@ -1002,6 +1073,10 @@ void SetupConsoleAndJob() {
 	DWORD mode = 0;
 	if (GetConsoleMode(out, &mode))
 		SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+
+	// Our own daemon, which the children inherit. A short path, as Unix socket paths are limited to 108 characters
+	_putenv_s("LIMA_DAEMON_DIR", (fs::temp_directory_path() / "limaclitest_daemon").string().c_str());
+	_putenv_s("LIMA_DAEMON_IDLE", std::to_string(daemonIdleSeconds).c_str());
 
 	jobObject = CreateJobObjectW(nullptr, nullptr);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};

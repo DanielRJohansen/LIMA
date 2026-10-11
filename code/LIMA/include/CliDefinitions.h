@@ -3,9 +3,11 @@
 #include <array>
 #include <string_view>
 
+#include "CliContext.h"
+
 namespace Cli {
 
-using CommandHandler = int(*)(int argc, char** argv);
+using CommandHandler = int(*)(const Context& ctx, int argc, char** argv);
 
 // Handler-free so tools other than lima (eg. limaclitest) can enumerate the commands.
 // lima.cpp maps each name to its handler.
@@ -15,18 +17,19 @@ struct CommandDefinition {
     std::string_view helpText;
 };
 
-int RunMdrun(int argc, char** argv);
-int RunBuildMembrane(int argc, char** argv);
-int RunMakeSimParams(int argc, char** argv);
-int RunSelfTest(int argc, char** argv);
-int RunRender(int argc, char** argv);
-int RunMakeBox(int argc, char** argv);
-int RunSolvate(int argc, char** argv);
-int RunInsertMolecule(int argc, char** argv);
-int RunInsertMolecules(int argc, char** argv);
-int RunEditConf(int argc, char** argv);
-int RunEnergyMinimization(int argc, char** argv);
-int RunToGmx(int argc, char** argv);
+int RunMdrun(const Context& ctx, int argc, char** argv);
+int RunBuildMembrane(const Context& ctx, int argc, char** argv);
+int RunMakeSimParams(const Context& ctx, int argc, char** argv);
+int RunSelfTest(const Context& ctx, int argc, char** argv);
+int RunRender(const Context& ctx, int argc, char** argv);
+int RunMakeBox(const Context& ctx, int argc, char** argv);
+int RunSolvate(const Context& ctx, int argc, char** argv);
+int RunInsertMolecule(const Context& ctx, int argc, char** argv);
+int RunInsertMolecules(const Context& ctx, int argc, char** argv);
+int RunEditConf(const Context& ctx, int argc, char** argv);
+int RunEnergyMinimization(const Context& ctx, int argc, char** argv);
+int RunToGmx(const Context& ctx, int argc, char** argv);
+int RunDaemon(const Context& ctx, int argc, char** argv);
 
 inline constexpr std::string_view MdrunHelp = R"(Usage: lima mdrun [OPTION]...
 
@@ -188,6 +191,26 @@ Options:
   -h, --help                   Display this help and exit
 )";
 
+inline constexpr std::string_view DaemonHelp = R"(Usage: lima daemon status|stop
+
+GPU commands (mdrun, em and buildmembrane) run in a background lima process, the
+daemon, so commands started at the same time share the GPU efficiently:
+
+  for d in run1 run2 run3; do (cd $d && lima mdrun) & done; wait
+
+The daemon starts by itself and exits after 2 minutes without work. Commands
+that display (-d) run in their own process.
+
+Commands:
+  status                       List the commands the daemon is running
+  stop                         Let running commands finish, then exit
+
+Environment:
+  LIMA_NO_DAEMON=1             Run every command in its own process
+  LIMA_DAEMON_IDLE=SECONDS     Idle time before the daemon exits (default: 120)
+  LIMA_DAEMON_DIR=PATH         Where the daemon keeps its socket and log
+)";
+
 inline constexpr std::string_view ToGmxHelp = R"(Usage: lima togmx [OPTION]...
 
 Build CHARMM27 coordinates, topology, and position restraints from a protein
@@ -215,6 +238,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp },
     CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp },
     CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 files.", ToGmxHelp },
+    CommandDefinition{ "daemon", "Show or stop the background GPU process.", DaemonHelp },
 };
 
 } // namespace Cli

@@ -3,6 +3,9 @@
 #include "EngineBodies.cuh"
 #include "PhysicsUtils.cuh"
 #include <algorithm>
+#include <array>
+#include <exception>
+#include "ParallelFor.h"
 #include <cmath>
 #include "Format.h"
 #include <type_traits>
@@ -40,16 +43,13 @@ namespace EngineBatch {
 
 	// Calls onPair(a, b, distance) for every pair of particles closer than maxDistance.
 	// Pairs listed in particlesBondedToParticle are skipped unless includeBonded is set.
+	// For each particle, in (pcluster, lane) order, its pairs with earlier particles are reported, so b is always the later one.
 	template <typename OnPair>
 	void ForEachClosePair(const Box& box, BoundaryConditionSelect bc, float maxDistance, bool includeBonded, OnPair&& onPair) {
 		const Int3 size = box.boxparams.boxSize;
-		const Int3 nCells{ std::max(1, static_cast<int>(size.x / maxDistance)), std::max(1, static_cast<int>(size.y / maxDistance)), std::max(1, static_cast<int>(size.z / maxDistance)) };
-		const Float3 cellSize{ size.x / static_cast<float>(nCells.x), size.y / static_cast<float>(nCells.y), size.z / static_cast<float>(nCells.z) };
-		const auto Wrap = [](int value, int n) { return ((value % n) + n) % n; };
-		// Aliasing between keys (outside the box with NoBC) only adds candidate pairs; the distance test stays exact
-		const auto Key = [&](int x, int y, int z) { return (static_cast<int64_t>(x) * nCells.y + y) * nCells.z + z; };
-		struct Entry { Float3 pos; ParticleRef ref; };
-		std::unordered_map<int64_t, std::vector<Entry>> cells;
+		struct Entry { Float3 pos; ParticleRef ref; int id; };
+		std::vector<Entry> entries;
+		entries.reserve(box.persistentClusters.size() * PersistentCluster::maxParticles);
 		for (int pc = 0; pc < static_cast<int>(box.persistentClusters.size()); ++pc) {
 			const auto& meta = box.persistentClustersMetadata[pc];
 			for (int lane = 0; lane < meta.nParticles; ++lane) {
@@ -59,30 +59,85 @@ namespace EngineBatch {
 					pos.y -= std::floor(pos.y / size.y) * size.y;
 					pos.z -= std::floor(pos.z / size.z) * size.z;
 				}
-				const int id = meta.particleIdsGlobal[lane];
-				const int cx = static_cast<int>(std::floor(pos.x / cellSize.x)), cy = static_cast<int>(std::floor(pos.y / cellSize.y)), cz = static_cast<int>(std::floor(pos.z / cellSize.z));
-				for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) for (int dz = -1; dz <= 1; ++dz) {
-					const int nx = bc == PBC ? Wrap(cx + dx, nCells.x) : cx + dx;
-					const int ny = bc == PBC ? Wrap(cy + dy, nCells.y) : cy + dy;
-					const int nz = bc == PBC ? Wrap(cz + dz, nCells.z) : cz + dz;
-					const auto found = cells.find(Key(nx, ny, nz));
-					if (found == cells.end()) continue;
-					for (const Entry& other : found->second) {
-						Float3 diff = pos - other.pos;
-						if (bc == PBC) {
-							diff.x -= std::round(diff.x / size.x) * size.x;
-							diff.y -= std::round(diff.y / size.y) * size.y;
-							diff.z -= std::round(diff.z / size.z) * size.z;
-						}
-						if (diff.lenSquared() >= maxDistance * maxDistance) continue;
-						const int otherId = box.persistentClustersMetadata[other.ref.pc].particleIdsGlobal[other.ref.lane];
-						if (!includeBonded && id >= 0 && id < static_cast<int>(box.particlesBondedToParticle.size()) && box.particlesBondedToParticle[id].Contains(otherId)) continue;
-						onPair(other.ref, ParticleRef{ pc, lane }, diff.len());
-					}
-				}
-				cells[Key(cx, cy, cz)].push_back({ pos, { pc, lane } });
+				entries.push_back({ pos, { pc, lane }, meta.particleIdsGlobal[lane] });
 			}
 		}
+		if (entries.empty()) return;
+
+		// A flat grid of about one particle per cell. Cells are never smaller than maxDistance, so every close pair is
+		// in the same or adjacent cells. Cells this small as a hash map were the cost of starting a large batch
+		Float3 lo{}, hi{ static_cast<float>(size.x), static_cast<float>(size.y), static_cast<float>(size.z) };
+		if (bc != PBC) {
+			lo = hi = entries.front().pos;
+			for (const Entry& entry : entries) {
+				lo = Float3{ std::min(lo.x, entry.pos.x), std::min(lo.y, entry.pos.y), std::min(lo.z, entry.pos.z) };
+				hi = Float3{ std::max(hi.x, entry.pos.x), std::max(hi.y, entry.pos.y), std::max(hi.z, entry.pos.z) };
+			}
+		}
+		const Float3 extent{ std::max(hi.x - lo.x, maxDistance), std::max(hi.y - lo.y, maxDistance), std::max(hi.z - lo.z, maxDistance) };
+		const float cell = std::max(maxDistance, std::cbrt(extent.x * extent.y * extent.z / static_cast<float>(entries.size())));
+		const Int3 nCells{ std::max(1, static_cast<int>(extent.x / cell)), std::max(1, static_cast<int>(extent.y / cell)), std::max(1, static_cast<int>(extent.z / cell)) };
+		const auto CellIndex = [&](float value, float origin, float length, int n) {
+			return std::clamp(static_cast<int>(std::floor((value - origin) / length * static_cast<float>(n))), 0, n - 1);
+		};
+		std::vector<Int3> cellOf(entries.size());
+		std::vector<int> cellStart(static_cast<size_t>(nCells.x) * nCells.y * nCells.z + 1, 0);
+		const auto Flat = [&](Int3 c) { return (static_cast<size_t>(c.x) * nCells.y + c.y) * nCells.z + c.z; };
+		for (size_t i = 0; i < entries.size(); ++i) {
+			cellOf[i] = Int3{ CellIndex(entries[i].pos.x, lo.x, extent.x, nCells.x), CellIndex(entries[i].pos.y, lo.y, extent.y, nCells.y),
+				CellIndex(entries[i].pos.z, lo.z, extent.z, nCells.z) };
+			++cellStart[Flat(cellOf[i]) + 1];
+		}
+		for (size_t c = 1; c < cellStart.size(); ++c) cellStart[c] += cellStart[c - 1];
+		std::vector<int> particlesInCells(entries.size());	// In particle order within each cell
+		{
+			std::vector<int> fill(cellStart.begin(), cellStart.end() - 1);
+			for (size_t i = 0; i < entries.size(); ++i) particlesInCells[fill[Flat(cellOf[i])]++] = static_cast<int>(i);
+		}
+
+		for (size_t i = 0; i < entries.size(); ++i) {
+			const Entry& entry = entries[i];
+			std::array<size_t, 27> neighborCells;
+			int nNeighborCells = 0;
+			for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) for (int dz = -1; dz <= 1; ++dz) {
+				Int3 c{ cellOf[i].x + dx, cellOf[i].y + dy, cellOf[i].z + dz };
+				if (bc == PBC) c = Int3{ (c.x + nCells.x) % nCells.x, (c.y + nCells.y) % nCells.y, (c.z + nCells.z) % nCells.z };
+				else if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= nCells.x || c.y >= nCells.y || c.z >= nCells.z) continue;
+				const size_t flat = Flat(c);
+				// A box only a few cells wide reaches the same cell from both sides
+				if (std::find(neighborCells.begin(), neighborCells.begin() + nNeighborCells, flat) == neighborCells.begin() + nNeighborCells)
+					neighborCells[nNeighborCells++] = flat;
+			}
+			for (int n = 0; n < nNeighborCells; ++n) {
+				for (int k = cellStart[neighborCells[n]]; k < cellStart[neighborCells[n] + 1]; ++k) {
+					const int j = particlesInCells[k];
+					if (j >= static_cast<int>(i)) break;	// Later particles report this pair themselves
+					const Entry& other = entries[j];
+					Float3 diff = entry.pos - other.pos;
+					if (bc == PBC) {
+						diff.x -= std::round(diff.x / size.x) * size.x;
+						diff.y -= std::round(diff.y / size.y) * size.y;
+						diff.z -= std::round(diff.z / size.z) * size.z;
+					}
+					if (diff.lenSquared() >= maxDistance * maxDistance) continue;
+					if (!includeBonded && entry.id >= 0 && entry.id < static_cast<int>(box.particlesBondedToParticle.size()) && box.particlesBondedToParticle[entry.id].Contains(other.id)) continue;
+					onPair(other.ref, entry.ref, diff.len());
+				}
+			}
+		}
+	}
+
+	// Calls f(i) for every simulation in parallel. If several fail, the lowest index's error is rethrown, so the
+	// message does not depend on thread timing
+	template <typename F>
+	void ForEachSimulationInParallel(size_t n, F&& f) {
+		std::vector<std::exception_ptr> errors(n);
+		ParallelUtils::ParallelFor(n, [&](size_t i) {
+			try { f(i); }
+			catch (...) { errors[i] = std::current_exception(); }
+		});
+		for (const auto& error : errors)
+			if (error) std::rethrow_exception(error);
 	}
 
 	// MD has no way to resolve coincident nonbonded particles: the pair force is singular. EM is
@@ -145,11 +200,15 @@ namespace EngineBatch {
 			if (params.data_logging_interval > 0 && (!sim->traj_buffer || !sim->potE_buffer || !sim->vel_buffer || !sim->forceBuffer))
 				throw std::invalid_argument("Simulation logging buffers have not been prepared");
 			if (sim->box->persistentClusters.empty()) throw std::invalid_argument("Cannot simulate an empty box");
-			ValidateParticles(box);
-			if (!params.em_variant) ValidateNoOverlap(box, params.bc_select);
 			if (auto mismatch = FindIncompatibility(*simulations.front(), *sim))
 				throw std::invalid_argument("Incompatible batch parameter: " + std::string(*mismatch));
 		}
+		// The per-particle checks rely on the metadata checked above, and are by far the most expensive
+		ForEachSimulationInParallel(simulations.size(), [&](size_t i) {
+			const auto& box = *simulations[i]->box;
+			ValidateParticles(box);
+			if (!simulations[i]->simParams.em_variant) ValidateNoOverlap(box, simulations[i]->simParams.bc_select);
+		});
 	}
 
 	void Pack(EngineBatchData& batch, const std::vector<Simulation*>& simulations, const std::vector<bool>* active) {
@@ -162,6 +221,10 @@ namespace EngineBatch {
 		std::vector<PersistentClusterMeta> metadata;
 		std::vector<PersistentclusterInterimState> states;
 		BondGroups bonds;
+		if (!active)
+			ForEachSimulationInParallel(simulations.size(), [&](size_t i) {
+				if (simulations[i]->simParams.em_variant) SeparateCoincidentParticles(*simulations[i]->box, simulations[i]->simParams.bc_select);
+			});
 		for (size_t simulationId = 0; simulationId < simulations.size(); ++simulationId) {
 			auto* simulation = simulations[simulationId];
 			if (active && !(*active)[simulationId]) {
@@ -172,7 +235,6 @@ namespace EngineBatch {
 				batch.simulations.push_back(retired);
 				continue;
 			}
-			if (!active && simulation->simParams.em_variant) SeparateCoincidentParticles(*simulation->box, simulation->simParams.bc_select);
 			const auto& box = *simulation->box;
 			EngineSimulationData sim;
 			sim.simulation = simulation;

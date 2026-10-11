@@ -5,7 +5,7 @@
 
 #include <algorithm>
 #include <bit>
-#include <map>
+#include <unordered_map>
 #include <type_traits>
 
 // Groups have at most 64 atoms. Four 6-bit atom ids and an 8-bit parameter id
@@ -62,7 +62,17 @@ public:
 		using Key = std::array<uint32_t, sizeof(Parameters) / sizeof(uint32_t)>;
 		static_assert(sizeof(Key) == sizeof(Parameters));
 		static_assert(std::has_unique_object_representations_v<Key>);
-		std::map<Key, uint32_t> parameterMap;
+		// A hash map: a std::map of a million bonds was a large part of starting a big batch. Ids are still assigned
+		// in first-seen order, so the table does not depend on the map type
+		struct KeyHash {
+			size_t operator()(const Key& key) const {
+				uint64_t hash = 14695981039346656037ull;	// FNV-1a over the words
+				for (const uint32_t word : key) { hash ^= word; hash *= 1099511628211ull; }
+				return static_cast<size_t>(hash);
+			}
+		};
+		std::unordered_map<Key, uint32_t, KeyHash> parameterMap;
+		parameterMap.reserve(256);
 		std::vector<Parameters> parameterTable;
 		std::vector<uint32_t> indices;
 		std::vector<std::array<uint8_t, Bond::nAtoms>> ids;

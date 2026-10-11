@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdio>
 #include <format>
 
 
@@ -51,26 +52,21 @@ namespace {
 	}
 }
 
-std::string composeGroLine(const GroRecord& record) {
-	std::ostringstream oss;
-
-	// Format and write each part of the GroRecord
-	oss << std::setw(5) << std::left << record.residue_number
-		<< std::setw(5) << std::left << record.residueName.View()
-		<< std::setw(5) << std::left << record.atomName.View()
-		<< std::setw(5) << std::right << record.gro_id
-		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.x
-		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.y
-		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.z;
-
-	// Append velocity if present
-	if (record.velocity) {
-		oss << std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->x
-			<< std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->y
-			<< std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->z;
-	}
-
-	return oss.str();
+// Fixed width columns, as ParseGroLine reads them. snprintf instead of an ostringstream per line, which made
+// writing a 200k-atom file take over a second
+static void AppendGroLine(std::string& out, const GroRecord& record) {
+	const std::string_view residueName = record.residueName.View();
+	const std::string_view atomName = record.atomName.View();
+	char line[160];
+	int length = std::snprintf(line, sizeof(line), "%-5d%-5.*s%-5.*s%5d%8.3f%8.3f%8.3f",
+		record.residue_number, static_cast<int>(residueName.size()), residueName.data(),
+		static_cast<int>(atomName.size()), atomName.data(), record.gro_id,
+		record.position.x, record.position.y, record.position.z);
+	if (record.velocity)
+		length += std::snprintf(line + length, sizeof(line) - length, "%8.4f%8.4f%8.4f",
+			record.velocity->x, record.velocity->y, record.velocity->z);
+	out.append(line, length);
+	out.push_back('\n');
 }
 
 
@@ -144,11 +140,11 @@ void GroFile::printToFile(const std::filesystem::path& path) const {
 	file << title << "\n";
 	file << atoms.size() << "\n";
 
-	// Iterate over atoms and print them
-	for (const auto& atom : atoms) {
-		// You need to define how GroRecord is formatted
-		file << composeGroLine(atom) << "\n";
-	}
+	std::string lines;
+	lines.reserve(atoms.size() * 69);
+	for (const auto& atom : atoms)
+		AppendGroLine(lines, atom);
+	file.write(lines.data(), static_cast<std::streamsize>(lines.size()));
 
 	// Print the box size
 	file << box_size.x << " " << box_size.y << " " << box_size.z << "\n";

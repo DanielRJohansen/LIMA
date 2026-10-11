@@ -135,7 +135,10 @@ const RunStatus& Engine::GetRunStatus(size_t simulationId) const {
 }
 
 void Engine::StopSimulation(size_t simulationId) {
-	FinalizeSimulation(batch->simulations.at(simulationId));
+	auto& sim = batch->simulations.at(simulationId);
+	if (sim.finalized) return;
+	FinalizeSimulation(sim);
+	rebuildPending = true;
 }
 
 bool Engine::IsFinished() const {
@@ -252,6 +255,7 @@ void Engine::RebuildActiveBatch() {
 
 	auto oldBatch = std::move(batch);
 	batch = std::move(rebuilt);
+	rebuildPending = false;
 	if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 	batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
 	batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
@@ -373,7 +377,8 @@ bool Engine::hostMaster() {
 			retired = true;
 		}
 	}
-	if (retired && !IsFinished()) {
+	rebuildPending |= retired;
+	if (rebuildPending && !IsFinished() && batch->step % batch->params.stepsPerNlistupdate == 0) {
 		RebuildActiveBatch(); // Uploads the integration data itself
 		return true;
 	}

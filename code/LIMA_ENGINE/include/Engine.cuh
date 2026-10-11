@@ -127,6 +127,9 @@ private:
 	bool UsesEnergyMinimization() const;
 	void UploadEnergyMinimizationPreconditioner();
 	void RebuildActiveBatch();
+	// Retired members are finalized at once but stay in the batch until the next nlist update step, where the survivors
+	// are re-clustered anyway. Rebuilding on any other step changes their neighbor lists and so their trajectories.
+	bool rebuildPending = false;
 	void InitializePME();
 	void FinalizeSimulation(EngineSimulationData& simData);
 

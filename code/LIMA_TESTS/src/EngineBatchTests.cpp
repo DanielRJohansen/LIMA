@@ -6,6 +6,9 @@
 #include <stdexcept>
 #include "Lipids.h"
 #include "Workflow.h"
+#include "MDFiles.h"
+#include "BoxImageBuilder.h"
+#include "BoxBuilder.cuh"
 
 namespace EngineBatchTests {
 	void Require(bool value, const char* message) {
@@ -91,7 +94,59 @@ namespace EngineBatchTests {
 		Require(a.temperature_buffer == b.temperature_buffer, "Batch mixed temperature reductions");
 	}
 
+	// The synthetic systems above are smaller than the cutoff and barely move, so re-clustering never changes their
+	// neighbor lists. A real solvated system is needed to see a rebuild that perturbs the survivors.
+	std::unique_ptr<Simulation> MakeMetsol(int steps, bool em) {
+		const auto fixtures = FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures";
+		SimParams params = em ? SimParams::BasicEMSimParams(0.f) : SimParams{};
+		params.n_steps = steps;
+		params.data_logging_interval = 20;
+		params.steps_per_temperature_measurement = 50;
+		params.apply_thermostat = !em;
+		GroFile gro{ fixtures / "metsol.gro" };
+		TopologyFile top{ fixtures / "metsol.top" };
+		auto image = LIMA_MOLECULEBUILD::buildMolecules(gro, top, params);
+		auto sim = std::make_unique<Simulation>(params, BoxBuilder::BuildBox(params, *image, EnvMode::Headless));
+		sim->PrepareDataBuffers();
+		if (em) Engine::PrepareEnergyMinimization(*sim);
+		return sim;
+	}
+
+	// A member retiring on a step that is not an nlist update step (n_steps, StopSimulation as used for maxRunTime)
+	// must leave the survivor bitwise identical to a standalone run
+	void RetirementOffNlistStep() {
+		constexpr int survivorSteps = 300;
+		constexpr int retireStep = 137; // Not a multiple of stepsPerNlistupdate
+		for (bool em : {false, true}) {
+			for (bool stop : {false, true}) {
+				const auto label = Lima::Format("EM {} {}", em, stop ? "StopSimulation" : "n_steps");
+				auto retiring = MakeMetsol(stop ? survivorSteps : retireStep, em);
+				auto survivor = MakeMetsol(survivorSteps, em);
+				auto referenceRetiring = MakeMetsol(retireStep, em);
+				auto referenceSurvivor = MakeMetsol(survivorSteps, em);
+				Require(retireStep % survivor->simParams.stepsPerNlistupdate != 0, "Retirement step is an nlist update step");
+				Run(*referenceRetiring);
+				Run(*referenceSurvivor);
+				Engine engine({ retiring.get(), survivor.get() });
+				while (!engine.IsFinished()) {
+					engine.step();
+					if (stop && retiring->getStep() == retireStep && !engine.GetRunStatus(0).simulation_finished)
+						engine.StopSimulation(0);
+				}
+				engine.terminateSimulation();
+				try { Compare(*survivor, *referenceSurvivor); }
+				catch (const std::exception& error) { throw std::runtime_error(Lima::Format("{} survivor: {}", label, error.what())); }
+				Require(retiring->getStep() == retireStep, "Retired member ran past its retirement step");
+				for (size_t pc = 0; pc < retiring->box->persistentClusters.size(); ++pc)
+					for (int lane = 0; lane < 4; ++lane)
+						if (retiring->box->persistentClusters[pc].pqd[lane].position != referenceRetiring->box->persistentClusters[pc].pqd[lane].position)
+							throw std::runtime_error(Lima::Format("{} retired member: final coordinates differ", label));
+			}
+		}
+	}
+
 	void RunAll() {
+		RetirementOffNlistStep();
 		{
 			auto simulation = MakeSimulation(5, 1, 0.00001f, false);
 			RenderDataPipe renderDataPipe;

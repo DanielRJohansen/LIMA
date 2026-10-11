@@ -673,6 +673,12 @@ int Cli::RunSelfTest(const Context& ctx, int argc, char** argv) {
     return 0;
 }
 
+int Cli::RunWait(const Context& ctx, int argc, char** argv) {
+    ArgParser parser{ std::string{ WaitHelp } };
+    parser.Parse(argc, argv);
+    return Daemon::RunWait(ctx, std::vector<std::string>(argv, argv + argc));
+}
+
 int Cli::RunDaemon(const Context& ctx, int argc, char** argv) {
     const std::vector<std::string> args(argv, argv + argc);
     if (args.size() == 3 && (args[2] == "--help" || args[2] == "-h" || args[2] == "-help"))
@@ -703,6 +709,7 @@ constexpr std::array CommandHandlers{
     CommandHandlerEntry{ "em", Cli::RunEnergyMinimization },
     CommandHandlerEntry{ "togmx", Cli::RunToGmx },
     CommandHandlerEntry{ "daemon", Cli::RunDaemon },
+    CommandHandlerEntry{ "wait", Cli::RunWait },
 };
 static_assert(CommandHandlers.size() == Cli::Commands.size() && std::ranges::all_of(Cli::Commands, [](const auto& command) {
         return std::ranges::find(CommandHandlers, command.name, &CommandHandlerEntry::name) != CommandHandlers.end();
@@ -806,6 +813,26 @@ int main(int argc, char** argv) {
 
     const bool noDaemon = args.size() >= 2 && args[1] == "--no-daemon";
     if (noDaemon) args.erase(args.begin() + 1);
+
+    // --async is not an option of mdrun, em or buildmembrane; their handlers never see it. It tells main how to run
+    // the command: submit it to the daemon and return at once, instead of waiting for it to finish
+    if (const auto async = std::ranges::find(args.begin() + std::min<size_t>(args.size(), 2), args.end(), "--async"); async != args.end()) {
+        args.erase(async);
+        if (noDaemon || !Cli::Daemon::ShouldUse(args)) {
+            std::cerr << "lima: --async runs the command on the lima daemon: only mdrun, em and buildmembrane, without -d,\n"
+                         "and not with --no-daemon or LIMA_NO_DAEMON\nTry 'lima --help' for more information.\n";
+            return 2;
+        }
+        try {
+            if (const auto exitCode = Cli::Daemon::RunRemote(args, true)) return *exitCode;
+        }
+        catch (const std::exception& error) {
+            std::cerr << "lima: the lima daemon is unavailable (" << error.what() << ")\n";
+        }
+        std::cerr << "lima: --async needs the lima daemon\n";
+        return 1;
+    }
+
     if (!noDaemon && Cli::Daemon::ShouldUse(args)) {
         try {
             if (const auto exitCode = Cli::Daemon::RunRemote(args)) return *exitCode;

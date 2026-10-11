@@ -13,6 +13,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -376,7 +377,7 @@ bool ReceiveFrame(Socket& socket, char& type, std::string& payload) {
 // ------------------------------------------------ Client ------------------------------------------------ //
 
 // Connects to the running daemon, or starts one. nullopt if no daemon could be reached
-std::optional<Socket> ConnectOrSpawn(const DaemonPaths& paths) {
+std::optional<Socket> ConnectOrSpawn(const DaemonPaths& paths, std::string_view fallback) {
 	if (auto socket = TryConnect(paths.socket)) return socket;
 	FileLock lock{ paths.lock };
 	if (auto socket = TryConnect(paths.socket)) return socket;	// Another client started it while we waited
@@ -388,7 +389,7 @@ std::optional<Socket> ConnectOrSpawn(const DaemonPaths& paths) {
 		if (auto socket = TryConnect(paths.socket)) return socket;
 		std::this_thread::sleep_for(25ms);
 	}
-	std::cerr << "lima: the lima daemon did not start, see " << paths.log.string() << ", running in this process instead\n";
+	std::cerr << "lima: the lima daemon did not start, see " << paths.log.string() << fallback << "\n";
 	return std::nullopt;
 }
 
@@ -509,7 +510,13 @@ public:
 			}
 			const std::lock_guard lock(mutex);
 			if (stopRequested) { Log("stopping on request"); break; }
-			if (active == 0 && Clock::now() - lastActivity >= idleTimeout) { Log("stopping after idle timeout"); break; }
+			// Results nobody has collected with 'lima wait' keep the daemon alive longer, so a late wait still
+			// sees a failure
+			const bool uncollected = std::ranges::any_of(jobs, [](const auto& entry) { return entry.second.done; });
+			if (active == 0 && Clock::now() - lastActivity >= (uncollected ? std::max(idleTimeout, std::chrono::seconds(3600)) : idleTimeout)) {
+				Log("stopping after idle timeout");
+				break;
+			}
 		}
 
 		// Unlink before closing: once closed, a client may start a new daemon that binds the same path, and a
@@ -521,25 +528,33 @@ public:
 
 		std::unique_lock lock(mutex);
 		if (active > 0) Log(Lima::Format("waiting for {} running commands", active));
-		finished.wait(lock, [this] { return active == 0; });
+		changed.wait(lock, [this] { return active == 0; });
 		Log("exited");
 		return 0;
 	}
 
 private:
+	struct Job {
+		std::string command;
+		bool async = false;
+		bool done = false;
+		int exitCode = 0;
+		fs::path log;	// Output of an async job
+	};
+
 	void Handle(Socket socket) {
 		uint64_t id = 0;
 		try {
 			Connection connection{ std::move(socket) };
 			std::vector<std::string> request;
 			if (!ReceiveStrings(connection.socket, request) || request.size() < 3) {
-				Finish(id);
+				Finish();
 				return;
 			}
 			if (request[0] != protocolVersion) {
 				connection.Send('E', "lima: the client and the daemon are different versions\n");
 				connection.Send('X', "1");
-				Finish(id);
+				Finish();
 				return;
 			}
 			const std::string kind = request[1];
@@ -548,11 +563,7 @@ private:
 			connection.Send('A', "");
 
 			if (kind == "run") {
-				{
-					const std::lock_guard lock(mutex);
-					id = ++nextId;
-					running[id] = JoinArgs(args);
-				}
+				id = AddJob(args, false, {});
 				Log(Lima::Format("[{}] start in {}: {}", id, cwd.string(), JoinArgs(args)));
 				// A client that goes away (eg. Ctrl+C) does not stop its command; it still completes and writes its output
 				int exitCode = 1;
@@ -562,6 +573,32 @@ private:
 					exitCode = runner(Cli::Context{ cwd, out, err }, args);
 				}
 				Log(Lima::Format("[{}] exit {}{}", id, exitCode, connection.alive ? "" : " (client disconnected)"));
+				RemoveJob(id);
+				connection.Send('X', std::to_string(exitCode));
+			}
+			else if (kind == "submit") {
+				const uint64_t jobId = NextId();
+				const fs::path log = cwd / Lima::Format("lima-{}.log", jobId);
+				AddJob(args, true, log, jobId);
+				Log(Lima::Format("[{}] submitted in {}: {}", jobId, cwd.string(), JoinArgs(args)));
+				connection.Send('O', Lima::Format("Submitted job {}, output in {}\n", jobId, log.string()));
+				connection.Send('X', "0");
+				connection.socket.Close();	// The client returns now
+
+				int exitCode = 1;
+				std::ofstream file(log);
+				if (file) {
+					exitCode = runner(Cli::Context{ cwd, file, file }, args);
+					file << Lima::Format("\nlima: exit code {}\n", exitCode);
+				}
+				else
+					Log(Lima::Format("[{}] cannot write {}", jobId, log.string()));
+				Log(Lima::Format("[{}] exit {}", jobId, exitCode));
+				CompleteJob(jobId, exitCode);
+			}
+			else if (kind == "wait") {
+				const auto [text, exitCode] = WaitForAsyncJobs();
+				connection.Send('O', text);
 				connection.Send('X', std::to_string(exitCode));
 			}
 			else if (kind == "status") {
@@ -585,23 +622,74 @@ private:
 		catch (const std::exception& error) {
 			Log(Lima::Format("[{}] error: {}", id, error.what()));
 		}
-		Finish(id);
+		Finish();
 	}
 
-	void Finish(uint64_t id) {
+	uint64_t NextId() {
 		const std::lock_guard lock(mutex);
-		running.erase(id);
-		--active;
-		lastActivity = Clock::now();
-		finished.notify_all();
+		return ++nextId;
+	}
+
+	uint64_t AddJob(const std::vector<std::string>& args, bool async, fs::path log, uint64_t id = 0) {
+		const std::lock_guard lock(mutex);
+		if (id == 0) id = ++nextId;
+		jobs[id] = Job{ JoinArgs(args), async, false, 0, std::move(log) };
+		return id;
+	}
+
+	void RemoveJob(uint64_t id) {
+		const std::lock_guard lock(mutex);
+		jobs.erase(id);
+	}
+
+	void CompleteJob(uint64_t id, int exitCode) {
+		{
+			const std::lock_guard lock(mutex);
+			jobs[id].done = true;
+			jobs[id].exitCode = exitCode;
+		}
+		changed.notify_all();
+	}
+
+	// Waits for every async job, then reports and forgets the finished ones. Exit code 1 if any failed
+	std::pair<std::string, int> WaitForAsyncJobs() {
+		std::unique_lock lock(mutex);
+		changed.wait(lock, [this] {
+			return std::ranges::all_of(jobs, [](const auto& entry) { return !entry.second.async || entry.second.done; });
+		});
+		std::string text;
+		int failed = 0;
+		for (auto it = jobs.begin(); it != jobs.end();) {
+			const Job& job = it->second;
+			if (!job.async) { ++it; continue; }
+			text += Lima::Format("[{}] {}  {}\n", it->first, job.exitCode == 0 ? "done  " : Lima::Format("FAILED (exit {})", job.exitCode), job.command);
+			if (job.exitCode != 0) {
+				++failed;
+				text += Lima::Format("      see {}\n", job.log.string());
+			}
+			it = jobs.erase(it);
+		}
+		if (text.empty()) text = "No jobs to wait for\n";
+		else if (failed > 0) text += Lima::Format("{} job{} failed\n", failed, failed == 1 ? "" : "s");
+		return { text, failed > 0 ? 1 : 0 };
+	}
+
+	void Finish() {
+		{
+			const std::lock_guard lock(mutex);
+			--active;
+			lastActivity = Clock::now();
+		}
+		changed.notify_all();
 	}
 
 	std::string StatusText() {
 		const std::lock_guard lock(mutex);
-		std::string text = Lima::Format("lima daemon, pid {}, {} running command{}\n", CurrentProcessId(), running.size(),
-			running.size() == 1 ? "" : "s");
-		for (const auto& [id, command] : running)
-			text += Lima::Format("  [{}] {}\n", id, command);
+		const auto running = std::ranges::count_if(jobs, [](const auto& entry) { return !entry.second.done; });
+		std::string text = Lima::Format("lima daemon, pid {}, {} running command{}\n", CurrentProcessId(), running,
+			running == 1 ? "" : "s");
+		for (const auto& [id, job] : jobs)
+			text += Lima::Format("  [{}] {}{}\n", id, job.done ? Lima::Format("finished (exit {}), not yet collected by 'lima wait': ", job.exitCode) : "", job.command);
 		return text;
 	}
 
@@ -615,10 +703,10 @@ private:
 	const Cli::Daemon::CommandRunner& runner;
 
 	std::mutex mutex;
-	std::condition_variable finished;
+	std::condition_variable changed;	// A connection or a job finished
 	size_t active = 0;
 	uint64_t nextId = 0;
-	std::map<uint64_t, std::string> running;
+	std::map<uint64_t, Job> jobs;	// Running commands, and async results not yet collected by 'lima wait'
 	Clock::time_point lastActivity = Clock::now();
 	bool stopRequested = false;
 	std::mutex logMutex;
@@ -642,19 +730,20 @@ bool Cli::Daemon::ShouldUse(const std::vector<std::string>& args) {
 	});
 }
 
-std::optional<int> Cli::Daemon::RunRemote(const std::vector<std::string>& args) {
+std::optional<int> Cli::Daemon::RunRemote(const std::vector<std::string>& args, bool async) {
 	std::vector<std::string> request;
 	try {
-		request = MakeRequest("run", fs::current_path(), args);
+		request = MakeRequest(async ? "submit" : "run", fs::current_path(), args);
 	}
 	catch (const std::exception&) {
 		// Eg. a working directory outside the system code page. Running in-process reports the real error
 		return std::nullopt;
 	}
 	const DaemonPaths paths = CurrentPaths();
+	const std::string_view fallback = async ? "" : ", running in this process instead";
 	// A second attempt covers a daemon that was shutting down after its idle timeout as we connected
 	for (int attempt = 0; attempt < 2; ++attempt) {
-		auto socket = ConnectOrSpawn(paths);
+		auto socket = ConnectOrSpawn(paths, fallback);
 		if (!socket) return std::nullopt;
 		int exitCode = 1;
 		switch (Exchange(*socket, request, &std::cout, &std::cerr, exitCode)) {
@@ -665,8 +754,22 @@ std::optional<int> Cli::Daemon::RunRemote(const std::vector<std::string>& args) 
 		case Delivery::NotAccepted: break;
 		}
 	}
-	std::cerr << "lima: the lima daemon did not accept the command, running in this process instead\n";
+	std::cerr << "lima: the lima daemon did not accept the command" << fallback << "\n";
 	return std::nullopt;
+}
+
+int Cli::Daemon::RunWait(const Context& ctx, const std::vector<std::string>&) {
+	auto socket = TryConnect(CurrentPaths().socket);
+	if (!socket) {
+		ctx.out << "No lima daemon is running, so there are no jobs to wait for\n";
+		return 0;
+	}
+	int exitCode = 1;
+	if (Exchange(*socket, MakeRequest("wait", ctx.cwd, {}), &ctx.out, &ctx.err, exitCode) != Delivery::Completed) {
+		ctx.err << "lima: lost the connection to the lima daemon\n";
+		return 1;
+	}
+	return exitCode;
 }
 
 int Cli::Daemon::RunDaemonCommand(const Context& ctx, const std::vector<std::string>& args) {

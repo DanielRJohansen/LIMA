@@ -21,7 +21,12 @@ bool ShouldUse(const std::vector<std::string>& args);
 
 // Runs the command on the daemon, starting one if none is running, and relays its output. Returns the exit code,
 // or nullopt if no daemon could take the command, in which case it has not run and may run in-process instead.
-std::optional<int> RunRemote(const std::vector<std::string>& args);
+// An async command returns once the daemon has accepted it; its output goes to a log in its working directory,
+// and 'lima wait' collects its result
+std::optional<int> RunRemote(const std::vector<std::string>& args, bool async = false);
+
+// 'lima wait': blocks until the daemon's async commands have finished, and reports their results
+int RunWait(const Context& ctx, const std::vector<std::string>& args);
 
 // 'lima daemon status|stop'
 int RunDaemonCommand(const Context& ctx, const std::vector<std::string>& args);

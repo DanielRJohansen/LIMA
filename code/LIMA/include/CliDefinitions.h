@@ -30,6 +30,7 @@ int RunEditConf(const Context& ctx, int argc, char** argv);
 int RunEnergyMinimization(const Context& ctx, int argc, char** argv);
 int RunToGmx(const Context& ctx, int argc, char** argv);
 int RunDaemon(const Context& ctx, int argc, char** argv);
+int RunWait(const Context& ctx, int argc, char** argv);
 
 inline constexpr std::string_view MdrunHelp = R"(Usage: lima mdrun [OPTION]...
 
@@ -42,6 +43,7 @@ Options:
       --conf-out PATH          Output coordinates (default: ./out.gro)
       --trajectory PATH        Output trajectory; disabled by default
   -d, --display                Display the running simulation
+      --async                  Run on the lima daemon and return at once; see 'lima wait'
       --uff                    Export trajectory.uff for ML training
   -h, --help                   Display this help and exit
 )";
@@ -64,6 +66,7 @@ Options:
       --seed INTEGER           Reproducible membrane construction seed (default: 0)
       --working-dir PATH       Output directory (default: current directory)
   -d, --display                Display the simulation
+      --async                  Run on the lima daemon and return at once; see 'lima wait'
   -h, --help                   Display this help and exit
 
 Example:
@@ -188,6 +191,7 @@ Options:
       --conf-out PATH          Output coordinates (default: ./conf.gro)
       --em-tolerance VALUE     Force tolerance (default: 100 kJ/mol/nm)
   -d, --display                Display the simulation
+      --async                  Run on the lima daemon and return at once; see 'lima wait'
   -h, --help                   Display this help and exit
 )";
 
@@ -196,7 +200,9 @@ inline constexpr std::string_view DaemonHelp = R"(Usage: lima daemon status|stop
 GPU commands (mdrun, em and buildmembrane) run in a background lima process, the
 daemon, so commands started at the same time share the GPU efficiently:
 
-  for d in run1 run2 run3; do (cd $d && lima mdrun) & done; wait
+  for d in run1 run2 run3; do lima mdrun --async -c $d/conf.gro -t $d/topol.top \
+    --conf-out $d/out.gro; done
+  lima wait
 
 The daemon starts by itself and exits after 2 minutes without work. Commands
 that display (-d) run in their own process.
@@ -209,6 +215,21 @@ Environment:
   LIMA_NO_DAEMON=1             Run every command in its own process
   LIMA_DAEMON_IDLE=SECONDS     Idle time before the daemon exits (default: 120)
   LIMA_DAEMON_DIR=PATH         Where the daemon keeps its socket and log
+)";
+
+inline constexpr std::string_view WaitHelp = R"(Usage: lima wait
+
+Wait until every command started with --async has finished, then list each with
+its result. Exits 1 if any of them failed; its output is in the lima-JOB.log
+file in the directory it was started from.
+
+Example:
+  for d in run1 run2 run3; do lima mdrun --async -c $d/conf.gro -t $d/topol.top \
+    --conf-out $d/out.gro; done
+  lima wait
+
+Options:
+  -h, --help                   Display this help and exit
 )";
 
 inline constexpr std::string_view ToGmxHelp = R"(Usage: lima togmx [OPTION]...
@@ -239,6 +260,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp },
     CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 files.", ToGmxHelp },
     CommandDefinition{ "daemon", "Show or stop the background GPU process.", DaemonHelp },
+    CommandDefinition{ "wait", "Wait for commands started with --async.", WaitHelp },
 };
 
 } // namespace Cli

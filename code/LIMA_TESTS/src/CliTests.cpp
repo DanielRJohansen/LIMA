@@ -999,6 +999,46 @@ TestRoutine TestDaemon(fs::path workDir) {
 	co_return LimaUnittestResult{ true, Lima::Format("{} of {} concurrent runs shared a batch, identical results, idle exit", batched, nConcurrent), false };
 }
 
+// Commands started with --async return at once; 'lima wait' collects their results
+TestRoutine TestWait(fs::path workDir) {
+	Banner("lima wait");
+	RunOptions quiet{ .timeout = 600s, .captureStdout = true, .echo = false };
+	for (const char* file : { "Protein_chain_A.itp", "SOL.itp", "metsol.gro", "metsol.top" })
+		fs::copy_file(config.fixtures / file, workDir / file, fs::copy_options::overwrite_existing);
+	std::ofstream(workDir / "sim_params.txt") << "n_steps=2000\ndt=2\ndata_logging_interval=200\n";
+
+	auto nothing = Run(workDir, { "wait" }, quiet);
+	RequireSuccess(nothing);
+
+	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--conf-out", "reference.gro" }, quiet));
+	constexpr int nJobs = 3;
+	const auto submitStarted = std::chrono::steady_clock::now();
+	for (int i = 0; i < nJobs; i++) {
+		auto submit = Run(workDir, { "mdrun", "--async", "-c", "metsol.gro", "-t", "metsol.top", "--conf-out", Lima::Format("async{}.gro", i) }, quiet);
+		RequireSuccess(submit);
+		ASSERT(submit.output.find("Submitted job") != std::string::npos, Lima::Format("'{}' did not report a job. Output:\n{}", submit.commandline, Tail(submit.output)));
+	}
+	const std::chrono::duration<double> submitTime = std::chrono::steady_clock::now() - submitStarted;
+	auto wait = Run(workDir, { "wait" }, quiet);
+	RequireSuccess(wait);
+	for (int i = 0; i < nJobs; i++)
+		ASSERT(ReadBytes(workDir / Lima::Format("async{}.gro", i)) == ReadBytes(workDir / "reference.gro"),
+			Lima::Format("Async job {} gave different coordinates than the same run without the daemon", i));
+
+	// A failed job makes wait fail, and points to its log
+	RequireSuccess(Run(workDir, { "mdrun", "--async", "-c", "missing.gro", "-t", "metsol.top" }, quiet));
+	auto failed = Run(workDir, { "wait" }, quiet);
+	RequireExitCode(failed, 1);
+	ASSERT(failed.output.find(".log") != std::string::npos, Lima::Format("'lima wait' did not point to the failed job's log. Output:\n{}", Tail(failed.output)));
+
+	// --async only applies to commands that run on the daemon
+	RequireExitCode(Run(workDir, { "makebox", "--async", "--box-size", "5" }, quiet), 2);
+	RequireExitCode(Run(workDir, { "--no-daemon", "mdrun", "--async" }, quiet), 2);
+	RequireSuccess(Run(workDir, { "daemon", "stop" }, quiet));
+
+	co_return LimaUnittestResult{ true, Lima::Format("{} jobs submitted in {:.2f} s, identical results, failure reported", nJobs, submitTime.count()), false };
+}
+
 struct CliTest {
 	std::string command;	// The lima command this test covers, or "dispatcher"
 	TestRoutine(*function)(fs::path);
@@ -1020,6 +1060,7 @@ const std::vector<CliTest> cliTests{
 	{ "render", TestRender },
 	{ "selftest", TestSelfTest },
 	{ "daemon", TestDaemon },
+	{ "wait", TestWait },
 };
 
 // ------------------------------------------------ Setup ------------------------------------------------ //

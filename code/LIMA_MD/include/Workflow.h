@@ -25,7 +25,7 @@ namespace Programs {
 		bool initializeAtReferenceTemperature = false;
 	};
 
-	std::vector<WorkflowInput> MakeMembraneInputs(const std::vector<Lipids::Selection>& compositions,
+	std::vector<WorkflowInput> MakeMembraneInputs(const std::vector<Lipids::Composition>& compositions,
 		const std::vector<int>& seeds, Float3 boxSize, MembraneGeometry::Figure geometry,
 		bool solvate = false);
 

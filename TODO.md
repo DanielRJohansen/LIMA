@@ -3,8 +3,6 @@
 ## For Windows (and linux) installs, it'd be nice to add lima to path. This would mean an installer for windows atleast, no?
 
 
-## lima CLI loads its .gro/.top files itself, before submitting to Environment. Environment should load them (on its preprocessing workers), so a CLI command submits immediately. Today a daemon command that is still parsing its files when another command's job finishes preparing misses that batch: 3 concurrent 'lima mdrun' sometimes run as 2+1 instead of 3. Batching is otherwise left opportunistic (no collection window in Environment).
-
 ## Investigate startup latency for small systems (say t4 in 7^3nm^3 box). Defined as time from command to first step.
 
 ## The tests: Test T4 (MD performance) and LoadT4 (setup performance) are always noisy. Find a better way to isolate them from other tests.

@@ -39,6 +39,20 @@ std::string Lipids::NameSelection(const Selection& selection) {
 	return oss.str();
 }
 
+Lipids::Selection Lipids::Composition::Load() const {
+	Selection selection;
+	for (const Lipid& lipid : lipids)
+		selection.emplace_back(lipid.name, workDir, lipid.percentage);
+	return selection;
+}
+
+std::string Lipids::Composition::Name() const {
+	std::ostringstream oss;
+	for (const Lipid& lipid : lipids)
+		oss << lipid.name << "(" << Lima::Format("{:.1f}", lipid.percentage) << "%)_";
+	return oss.str();
+}
+
 
 
 Float3 LipidheadCenterOfMassEstimate(const GroFile& grofile) {

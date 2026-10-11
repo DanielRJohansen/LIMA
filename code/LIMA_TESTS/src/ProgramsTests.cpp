@@ -44,19 +44,11 @@ namespace ProgramsTests {
 
 	LimaUnittestResult TestBuildMembrane(EnvMode envmode) {
 		const fs::path workDir = HeavyTestsDir() / "etc";
-		Lipids::Selection lipids{
-			Lipids::Select{ "DPPC", workDir, 60.0 },
-			Lipids::Select{ "DOPC", workDir, 40.0 }
-		};
-		GroFile grofile;
-		grofile.box_size = Float3{ 12.f, 10.f, 8.f };
-		grofile.title = "Membrane";
-		TopologyFile topfile;
-		topfile.SetSystem("Membrane");
-		SimulationBuilder::CreateMembrane(grofile, topfile, lipids, 3.f);
-		auto emResult = Environment::Get().Submit(SimulationJob{
-			workDir, grofile, topfile, SimParams::BasicEMSimParams(50.f), envmode }).Get();
-		emResult.WriteCoordinatesTo(grofile);
+		auto job = Programs::MakeMembraneJob(workDir, Lipids::Composition{ { { "DPPC", 60.0 }, { "DOPC", 40.0 } }, workDir },
+			Float3{ 12.f, 10.f, 8.f }, MembraneGeometry::Plane{ 3.f }, 0, SimParams::BasicEMSimParams(50.f), envmode);
+		job.grofile->Get().title = "Membrane";
+		job.topfile->Get().SetSystem("Membrane");
+		Environment::Get().Submit(std::move(job)).Get();
 
 		return LimaUnittestResult{ true, "Success", envmode == Full };
 	}

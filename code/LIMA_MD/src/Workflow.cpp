@@ -55,12 +55,12 @@ namespace {
 }
 
 std::vector<Programs::WorkflowInput> Programs::MakeMembraneInputs(
-	const std::vector<Lipids::Selection>& compositions, const std::vector<int>& seeds,
+	const std::vector<Lipids::Composition>& compositions, const std::vector<int>& seeds,
 	Float3 boxSize, MembraneGeometry::Figure geometry, bool solvate) {
 	std::vector<WorkflowInput> inputs;
 	inputs.reserve(compositions.size() * seeds.size());
-	for (const Lipids::Selection& composition : compositions) {
-		const std::string compositionName = Lipids::NameSelection(composition);
+	for (const Lipids::Composition& composition : compositions) {
+		const std::string compositionName = composition.Name();
 		for (const int seed : seeds) {
 			const std::string name = compositionName + Lima::Format("_seed{}", seed);
 			inputs.push_back({

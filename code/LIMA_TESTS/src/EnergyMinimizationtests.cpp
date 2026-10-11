@@ -98,8 +98,8 @@ namespace EnergyMinimizationTests {
 
 			SimulationJob job{
 				testCase.directory,
-				GroFile{ testCase.coordinates },
-				TopologyFile{ testCase.topology },
+				testCase.coordinates,
+				testCase.topology,
 				params,
 				EnvMode::Headless
 			};

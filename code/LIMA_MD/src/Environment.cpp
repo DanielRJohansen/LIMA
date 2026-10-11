@@ -386,9 +386,9 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 		if (next.job.outputs.contains(OutputSelect::Topology) && !next.job.topfile)
 			throw std::runtime_error("Topology output requires molecular-file input");
 		if (next.job.outputs.contains(OutputSelect::InitialCoordinates))
-			next.job.grofile->printToFile(next.job.workDir / "initial.gro");
+			next.job.grofile->Get().printToFile(next.job.workDir / "initial.gro");
 		if (next.job.outputs.contains(OutputSelect::Topology))
-			next.job.topfile->printToFile(next.job.workDir / "topol.top");
+			next.job.topfile->Get().printToFile(next.job.workDir / "topol.top");
 		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
 		if (!next.job.name.empty())
@@ -436,7 +436,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 			std::optional<MolecularSystem> sourceSystem;
 			if (member.job.grofile && member.job.topfile)
 				sourceSystem.emplace(
-					std::move(*member.job.grofile), std::move(*member.job.topfile));
+					std::move(member.job.grofile->Get()), std::move(member.job.topfile->Get()));
 			SimulationResult result{
 				std::move(session.simulation),
 				std::move(sourceSystem),
@@ -531,6 +531,9 @@ void Environment::PrintDevPerformanceReport() {
 std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {
 	if (!job.simParams)
 		job.simParams.emplace(job.workDir / "sim_params.txt");
+	// Files given as paths are parsed here, on the preparation worker, also when they are only carried to the result
+	if (job.grofile) job.grofile->Load();
+	if (job.topfile) job.topfile->Load();
 
 	if (job.initialSimulation) {
 		auto simulation = std::make_unique<Simulation>(*job.simParams);
@@ -540,8 +543,10 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		return simulation;
 	}
 
-	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ job.workDir / "molecule/conf.gro" };
-	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ job.workDir / "molecule/topol.top" };
+	if (!job.grofile) job.grofile.emplace(job.workDir / "molecule/conf.gro");
+	if (!job.topfile) job.topfile.emplace(job.workDir / "molecule/topol.top");
+	GroFile& grofile = job.grofile->Load();
+	TopologyFile& topolfile = job.topfile->Load();
 	if (job.preprocess)
 		job.preprocess(grofile, topolfile, *job.simParams);
 	const SimParams& simParams = *job.simParams;
@@ -551,8 +556,6 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage, job.mode));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
 	simulation->name = grofile.title;
-	job.grofile.emplace(std::move(grofile));
-	job.topfile.emplace(std::move(topolfile));
 	return simulation; // here sim->boximage->topology->moleculetypes[0].name is valid
 }
 

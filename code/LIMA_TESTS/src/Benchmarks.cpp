@@ -40,12 +40,13 @@ namespace Benchmarks {
 		SimulationJob job;
 		job.workDir = workDir;
 
+		// Parsed here rather than by the Environment, to time the files separately from the build
 		TimeIt groTimer;
-		job.grofile.emplace(workDir / "conf.gro");
+		const GroFile& gro = job.grofile.emplace(workDir / "conf.gro").Load();
 		const std::chrono::duration<double> groTime = groTimer.stop();
 
 		TimeIt topTimer;
-		job.topfile.emplace(workDir / "topol.top");
+		const TopologyFile& top = job.topfile.emplace(workDir / "topol.top").Load();
 		const std::chrono::duration<double> topTime = topTimer.stop();
 
 		job.simParams.emplace();
@@ -53,11 +54,10 @@ namespace Benchmarks {
 		job.mustRunAlone = true;
 		job.run = false;		
 				
-		const auto& top = *job.topfile;
 		const size_t nTopAtoms = std::ranges::distance(top.GetAllElements<TopologyFile::AtomsEntry>());
 
-		if (nTopAtoms != job.grofile->atoms.size())
-			co_return LimaUnittestResult{ false, Lima::Format("3j3q atom count mismatch between gro({}) and top({})", job.grofile->atoms.size(), nTopAtoms), envmode == Full};
+		if (nTopAtoms != gro.atoms.size())
+			co_return LimaUnittestResult{ false, Lima::Format("3j3q atom count mismatch between gro({}) and top({})", gro.atoms.size(), nTopAtoms), envmode == Full};
 
 		auto completed = co_await environment.Submit(std::move(job));		
 		if (!completed.simulation)
@@ -75,19 +75,16 @@ namespace Benchmarks {
 			envmode == Full };
 	}
 
-	// Profiles preparing a small system end to end: gro/top parsing, then BoxImage + Box building,
-	// Engine construction and the first step inside the Environment
+	// Profiles preparing a small system end to end inside the Environment: gro/top parsing, BoxImage + Box building,
+	// Engine construction and the first step
 	TestRoutine LoadT4(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "benchmarking/t4";
 
-		TimeIt fileTimer;
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile.emplace(workDir / "conf.gro");
 		job.topfile.emplace(workDir / "topol.top");
 		job.simParams.emplace(workDir / "../sim_params.txt");
-		const std::chrono::duration<double> fileTime = fileTimer.stop();
-
 		job.mode = EnvMode::Headless;
 		job.mustRunAlone = true;
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; };
@@ -98,13 +95,11 @@ namespace Benchmarks {
 
 		// environmentTime excludes time spent queued behind other jobs
 		const std::chrono::duration<double> setupTime = completed.environmentTime;
-		const std::chrono::duration<double> totalTime = fileTime + setupTime;
 		const std::chrono::duration<double> allowedTime{ 0.5 };
 
-		co_return LimaUnittestResult{ totalTime < allowedTime,
-			Lima::Format("files {:.0f} + setup {:.0f} (1st step {:.1f}) = {:.0f}/{:.0f} [ms]",
-				fileTime.count() * 1000., setupTime.count() * 1000., completed.engineTime.count() * 1000.,
-				totalTime.count() * 1000., allowedTime.count() * 1000.),
+		co_return LimaUnittestResult{ setupTime < allowedTime,
+			Lima::Format("setup incl. files {:.0f} (1st step {:.1f}) / {:.0f} [ms]",
+				setupTime.count() * 1000., completed.engineTime.count() * 1000., allowedTime.count() * 1000.),
 			envmode == Full };
 	}
 

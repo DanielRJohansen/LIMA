@@ -134,9 +134,9 @@ void ShowcaseSTMV(int nSteps = 50000) {
 // Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
 void ShowcaseMultisim() {
 	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
-	std::vector<Lipids::Selection> lipidSelections{
-		{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
-		{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
+	std::vector<Lipids::Composition> lipidSelections{
+		{ { { "DPPC", 70. }, { "DOPC", 30. } }, workDir },
+		{ { { "DPPC", 40. }, { "DOPC", 60. } }, workDir }
 	};
 
 	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };

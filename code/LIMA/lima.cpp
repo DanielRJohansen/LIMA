@@ -74,30 +74,31 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     Environment& env = Environment::Get();
 
     const SimParams ip(simpar);
-    GroFile grofile{ conf };
-    TopologyFile topfile{ topol };
 
-    if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
-        const int newSize = static_cast<int>(std::ceil((std::max)({
-            grofile.box_size.x, grofile.box_size.y, grofile.box_size.z })));
-        ctx.out << Lima::Format("Boxsize was not an integer, or was not cubic. Setting new boxsize to {}\n", newSize);
-        grofile.box_size = Float3(newSize, newSize, newSize);
-    }
-
+    // The files are parsed by the Environment, so this command joins a batch as early as possible
     SimulationJob job;
     job.workDir = workDir;
-    job.grofile = grofile;
-    job.topfile.emplace(topfile);
+    job.grofile.emplace(conf);
+    job.topfile.emplace(topol);
     job.simParams = ip;
     job.mode = envmode;
+    std::optional<int> resizedBox;
+    job.preprocess = [&resizedBox](GroFile& grofile, TopologyFile&, SimParams&) {
+        if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
+            resizedBox = static_cast<int>(std::ceil((std::max)({
+                grofile.box_size.x, grofile.box_size.y, grofile.box_size.z })));
+            grofile.box_size = Float3(*resizedBox, *resizedBox, *resizedBox);
+        }
+    };
     auto result = env.Submit(std::move(job)).Get();
+    if (resizedBox)
+        ctx.out << Lima::Format("Boxsize was not an integer, or was not cubic. Setting new boxsize to {}\n", *resizedBox);
 
     const std::chrono::duration<double> enginetime = result.engineTime; // [s]
     ctx.out << Lima::Format("Engine time {:f}\n", enginetime.count());
     if (result.execution.batchSize > 1)
         ctx.out << Lima::Format("Ran in a batch of {} simulations\n", result.execution.batchSize);
-    result.WriteCoordinatesTo(grofile);
-    grofile.printToFile(conf_out);
+    result.FinalSystem().coordinates.printToFile(conf_out);
 
     if (!trajOut.empty()) {
         Trajectory traj = result.MakeTrajectory();
@@ -188,26 +189,23 @@ int Cli::RunBuildMembrane(const Context& ctx, int argc, char** argv) {
 	if (ellipsoid && (ellipsoid->radii.x <= 0.f || ellipsoid->radii.y <= 0.f || ellipsoid->radii.z <= 0.f))
 		throw CliError("option '--ellipsoid' requires positive radii");
 
-	Lipids::Selection lipidselection;
-	for (const auto& lipid : lipids) {
-		lipidselection.emplace_back(Lipids::Select{ lipid.first, workDir, lipid.second });
-	}
+	Lipids::Composition composition{ {}, workDir };
+	for (const auto& [name, percentage] : lipids)
+		composition.lipids.push_back({ name, percentage });
 
-    GroFile grofile;
-    grofile.box_size = boxsize;
-    grofile.title = "Membrane";
-    TopologyFile topfile;
-    topfile.SetSystem("Membrane");
     MembraneGeometry::Figure geometry = MembraneGeometry::Plane{ membraneCenterZ.value_or(boxsize.z / 2.f) };
     if (sphere) geometry = *sphere;
     else if (ellipsoid) geometry = *ellipsoid;
-    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry, randomSeed);
-    auto emResult = Environment::Get().Submit(SimulationJob{
-        workDir, grofile, topfile, SimParams::BasicEMSimParams(emtol), envmode }).Get();
-    emResult.WriteCoordinatesTo(grofile);
+    // The lipids are loaded and the membrane built by the Environment, so this command joins a batch as early as possible
+    auto job = Programs::MakeMembraneJob(workDir, std::move(composition), boxsize, geometry, randomSeed,
+        SimParams::BasicEMSimParams(emtol), envmode);
+    job.grofile->Get().title = "Membrane";
+    job.topfile->Get().SetSystem("Membrane");
+    auto emResult = Environment::Get().Submit(std::move(job)).Get();
 
-    grofile.printToFile(workDir / "membrane.gro");
-    topfile.printToFile(workDir / "membrane.top");
+    const MolecularSystem membrane = emResult.FinalSystem();
+    membrane.coordinates.printToFile(workDir / "membrane.gro");
+    membrane.topology.printToFile(workDir / "membrane.top");
 
     auto [step, force] = *std::min_element(emResult.simulation->maxForceBuffer.begin(), emResult.simulation->maxForceBuffer.end(),
         [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
@@ -586,14 +584,9 @@ int Cli::RunEnergyMinimization(const Context& ctx, int argc, char** argv) {
     parser.AddFlag({ "--display", "-d", "-display" }, [&render](){render=true;});
     parser.Parse(argc, argv);
 
-    GroFile grofile{ fs::canonical(ctx.Resolve(confPath)) };
-    TopologyFile topfile{ fs::canonical(ctx.Resolve(topPath)) };
-
-    auto emResult = Environment::Get().Submit(SimulationJob{
-        ctx.cwd, grofile, topfile, SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
-    emResult.WriteCoordinatesTo(grofile);
-
-    grofile.printToFile(ctx.Resolve(confPathOut));
+    auto emResult = Environment::Get().Submit(SimulationJob{ ctx.cwd, fs::canonical(ctx.Resolve(confPath)),
+        fs::canonical(ctx.Resolve(topPath)), SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
+    emResult.FinalSystem().coordinates.printToFile(ctx.Resolve(confPathOut));
 
     return 0;
 }
@@ -652,19 +645,15 @@ void SelfTest(const Cli::Context& ctx) {
 		}
 	}
 
-	Lipids::Selection lipidselection;
-	for (const auto& lipidname : targets) {
-		lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, 100. / static_cast<double>(targets.size()) });
-	}
+	Lipids::Composition composition{ {}, workDir };
+	for (const auto& lipidname : targets)
+		composition.lipids.push_back({ lipidname, 100. / static_cast<double>(targets.size()) });
 
-	GroFile gro;
-	gro.box_size = Float3{ 10.f };
-	gro.title = "Membrane";
-	TopologyFile top;
-	top.SetSystem("Membrane");
-	SimulationBuilder::CreateMembrane(gro, top, lipidselection, 5.f);
-	Environment::Get().Submit(SimulationJob{
-		workDir, std::move(gro), std::move(top), SimParams::BasicEMSimParams(5000.f), Full }).Get();
+	auto job = Programs::MakeMembraneJob(workDir, std::move(composition), Float3{ 10.f }, MembraneGeometry::Plane{ 5.f },
+		0, SimParams::BasicEMSimParams(5000.f), Full);
+	job.grofile->Get().title = "Membrane";
+	job.topfile->Get().SetSystem("Membrane");
+	Environment::Get().Submit(std::move(job)).Get();
 
 	ctx.out << "Selftest successful\n"; // Otherwise we'd have thrown by now
 }

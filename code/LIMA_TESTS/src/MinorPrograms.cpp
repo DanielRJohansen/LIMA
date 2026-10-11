@@ -51,12 +51,9 @@ namespace TestMinorPrograms {
 
 
 
-		GroFile grofile(workDir / "t4_many.gro");
-		TopologyFile topfile(workDir / "t4_many.top");		
 		auto emResult = Environment::Get().Submit(SimulationJob{
-			workDir, grofile, topfile, SimParams::BasicEMSimParams(2000.f), envmode }).Get();
-		emResult.WriteCoordinatesTo(grofile);
-		grofile.printToFile(workDir / "t4_many_em.gro");
+			workDir, workDir / "t4_many.gro", workDir / "t4_many.top", SimParams::BasicEMSimParams(2000.f), envmode }).Get();
+		emResult.FinalSystem().coordinates.printToFile(workDir / "t4_many_em.gro");
 
 		return LimaUnittestResult{ true , "No error", envmode == Full };
 	}

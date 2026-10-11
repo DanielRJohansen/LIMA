@@ -29,7 +29,8 @@ namespace Programs {
 
 	void StaticbodyEnergyMinimize(GroFile&, const TopologyFile&, bool render);
 
-	SimulationJob MakeMembraneJob(fs::path workDir, Lipids::Selection composition,
+	// The lipids are loaded and the membrane built in the job's preprocess, on Environment's preparation workers
+	SimulationJob MakeMembraneJob(fs::path workDir, Lipids::Composition composition,
 		Float3 boxSize, MembraneGeometry::Figure geometry, int seed,
 		SimParams params, EnvMode mode = EnvMode::Headless, bool solvate = false);
 

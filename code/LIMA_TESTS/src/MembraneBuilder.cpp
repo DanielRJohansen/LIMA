@@ -206,21 +206,22 @@ namespace TestMembraneBuilder {
 		const fs::path mol_dir = workDir / "molecule";
 		TestUtils::CleanDirIfNotContains(mol_dir, "reference");
 
-		Lipids::Selection lipidselection;
+		Lipids::Composition composition{ {}, workDir };
 		const std::array<std::string, 6> lipids = { "POPC", "POPE", "DDPC", "DMPC", "cholesterol", "DOPC" };
 		for (const auto& lipidname : lipids) {
-			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, lipidname == "POPC" ? 50. : 10.});	// 10% of each lipid, except 50% POPC
+			composition.lipids.push_back({ lipidname, lipidname == "POPC" ? 50. : 10. });	// 10% of each lipid, except 50% POPC
 		}
 
-		// Build the membrane, and write it to disk
-		GroFile gro;
-		gro.box_size = Float3{ 7.f };
-		gro.title = "Membrane";
-		TopologyFile top;
-		top.SetSystem("Membrane");
-		SimulationBuilder::CreateMembrane(gro, top, lipidselection, 3.5f);
-		gro.printToFile(mol_dir / "membrane.gro");
-		top.printToFile(mol_dir / "membrane.top");
+		// The Environment builds the membrane, writes it to disk, then minimizes it
+		const float emtol = 200.f;
+		auto job = Programs::MakeMembraneJob(mol_dir, std::move(composition), Float3{ 7.f }, MembraneGeometry::Plane{ 3.5f },
+			0, SimParams::BasicEMSimParams(emtol), envmode);
+		job.grofile->Get().title = "Membrane";
+		job.topfile->Get().SetSystem("Membrane");
+		job.outputs = { OutputSelect::InitialCoordinates, OutputSelect::Topology };
+		auto emResult = co_await environment.Submit(std::move(job));
+		fs::rename(mol_dir / "initial.gro", mol_dir / "membrane.gro");
+		fs::rename(mol_dir / "topol.top", mol_dir / "membrane.top");
 
 		// Test the topology is identical to reference
 		TopologyFile newTop{ mol_dir / "membrane.top" };
@@ -260,11 +261,7 @@ namespace TestMembraneBuilder {
 		ASSERT(Statistics::StdDev(topLeafletHeights) < 0.30f && Statistics::StdDev(bottomLeafletHeights) < 0.30f,
 			"Planar membrane height roughness was unreasonably large");
 
-		// Finally test if we can stabilize the simulation
-		const float emtol = 200.f;
-		auto emResult = co_await environment.Submit(SimulationJob{
-			workDir, gro, top, SimParams::BasicEMSimParams(emtol), envmode });
-		emResult.WriteCoordinatesTo(gro);
+		// Finally test if we could stabilize the simulation
 		float finalMaxForce = emResult.simulation->maxForceBuffer.back().second;
 
 		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, Lima::Format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
@@ -278,50 +275,27 @@ namespace TestMembraneBuilder {
 		fs::remove_all(mol_dir);
 		fs::create_directory(mol_dir);
 
-		Lipids::Selection lipidselection;
-		const std::vector<std::pair<std::string, double>> lipids = { {"POPC", 70.}, {"CUST" , 30.} };
-		for (const auto& [lipidname, percentage] : lipids) {
-			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, percentage });	// 10% of each lipid, except 50% POPC
-		}
+		auto emJob = Programs::MakeMembraneJob(workDir, Lipids::Composition{ { {"POPC", 70.}, {"CUST" , 30.} }, workDir },
+			Float3{ 7.f }, MembraneGeometry::Plane{ 3.5f }, 0, SimParams::BasicEMSimParams(300000.f), envmode);
+		emJob.grofile->Get().title = "Membrane";
+		emJob.topfile->Get().SetSystem("Membrane");
+		const MolecularSystem membrane = (co_await environment.Submit(std::move(emJob))).FinalSystem();
+		membrane.coordinates.printToFile(mol_dir / "membrane.gro");
+		membrane.topology.printToFile(mol_dir / "membrane.top");
 
-		GroFile gro;
-		gro.box_size = Float3{ 7.f };
-		gro.title = "Membrane";
-		TopologyFile top;
-		top.SetSystem("Membrane");
-		SimulationBuilder::CreateMembrane(gro, top, lipidselection, 3.5f);
-		auto emResult = co_await environment.Submit(SimulationJob{
-			workDir, gro, top, SimParams::BasicEMSimParams(300000.f), envmode });
-		emResult.WriteCoordinatesTo(gro);
-
-		gro.printToFile(mol_dir / "membrane.gro");
-		top.printToFile(mol_dir / "membrane.top");
-
-		TopologyFile newTop{ mol_dir / "membrane.top" };
-		GroFile newGro{ mol_dir / "membrane.gro" };
-
-		//std::ostringstream oss;
-		//const auto& newAtoms = newTop.GetAllElements<TopologyFile::AtomsEntry>();
-		//const auto& refAtoms = top.GetAllElements<TopologyFile::AtomsEntry>();
-		//if (auto [a, b] = std::ranges::mismatch(newAtoms, refAtoms);
-		//	a != newAtoms.end() || b != refAtoms.end()) {
-		//	a->composeString(oss); b->composeString(oss);
-		//	std::string str = oss.str();
-		//	printf(Lima::Format("Mismatch at {}:\n{}\n ", std::distance(newAtoms.begin(), a), str).c_str());
-		//}
-		ASSERT(std::ranges::equal(newTop.GetAllElements<TopologyFile::AtomsEntry>(), top.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
-
-
+		// The written files must load into a new simulation
 		SimParams params{};
 		params.em_variant = true;
 		SimulationJob job;
 		job.workDir = workDir;
-		job.grofile = std::move(newGro);
-		job.topfile.emplace(std::move(newTop));
+		job.grofile.emplace(mol_dir / "membrane.gro");
+		job.topfile.emplace(mol_dir / "membrane.top");
 		job.simParams = params;
 		job.mode = envmode;
 		job.run = false;
-		co_await environment.Submit(std::move(job));
+		const auto reloaded = co_await environment.Submit(std::move(job));
+		ASSERT(std::ranges::equal(reloaded.sourceSystem->topology.GetAllElements<TopologyFile::AtomsEntry>(),
+			membrane.topology.GetAllElements<TopologyFile::AtomsEntry>()), "Topology Atom Mismatch");
 
 		co_return LimaUnittestResult{ true , "No error", envmode == Full };
 	}
@@ -341,26 +315,18 @@ namespace TestMembraneBuilder {
 			}
 		}
 
-		Lipids::Selection lipidselection;
+		Lipids::Composition composition{ {}, workDir };
 		for (const auto& lipidname : targets) {
-			lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, 100. / static_cast<double>(targets.size())});	// 10% of each lipid, except 50% POPC
+			composition.lipids.push_back({ lipidname, 100. / static_cast<double>(targets.size()) });
 		}
 
-		// The first test is pretty much just to see if this function throws
-		GroFile grofile;
-		grofile.box_size = Float3{ 10.f };
-		grofile.title = "Membrane";
-		TopologyFile topfile;
-		topfile.SetSystem("Membrane");
-		SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, 5.f);
-		/*for (const auto& molecule : topfile.GetSystem().molecules) {
-			ASSERT(molecule.moleculetype->readFromCache, "This lipid top should have been read from a cached file");
-		}*/
-
-		// The third test is to see if this function throws
+		// Building the membrane and minimizing it must not throw
 		const float emtol = 1000.f;
-		auto emResult = co_await environment.Submit(SimulationJob{
-			workDir, std::move(grofile), std::move(topfile), SimParams::BasicEMSimParams(emtol), envmode });
+		auto job = Programs::MakeMembraneJob(workDir, std::move(composition), Float3{ 10.f }, MembraneGeometry::Plane{ 5.f },
+			0, SimParams::BasicEMSimParams(emtol), envmode);
+		job.grofile->Get().title = "Membrane";
+		job.topfile->Get().SetSystem("Membrane");
+		auto emResult = co_await environment.Submit(std::move(job));
 
 		ASSERT(emResult.simulation->maxForceBuffer.back().second < emtol, "Failed to EM membrane");
 

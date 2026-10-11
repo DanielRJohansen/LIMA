@@ -241,6 +241,35 @@ namespace BatchingTests {
 				Require(failed == (i == 1 || i == 2), "Callback failure affected the wrong job");
 			}
 		}
+		// Files given as paths are parsed by the Environment and behave exactly like the same files given in memory:
+		// preprocess edits them, they come back in the result, and the two jobs still batch together
+		{
+			const fs::path fixtures = FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures";
+			FileInput<GroFile> unparsed{ fixtures / "metsol.gro" };
+			bool rejected = false;
+			try { unparsed.Get(); } catch (const std::logic_error&) { rejected = true; }
+			Require(rejected, "An unparsed file input was readable");
+
+			const auto MakeJob = [&](FileInput<GroFile> gro, FileInput<TopologyFile> top) {
+				SimParams params;
+				params.n_steps = 10;
+				SimulationJob job{ fixtures, std::move(gro), std::move(top), params, Headless };
+				job.preprocess = [](GroFile& coordinates, TopologyFile&, SimParams&) { coordinates.title = "edited"; };
+				return job;
+			};
+			std::vector<SimulationJob> jobs;
+			jobs.push_back(MakeJob(fixtures / "metsol.gro", fixtures / "metsol.top"));
+			jobs.push_back(MakeJob(GroFile{ fixtures / "metsol.gro" }, TopologyFile{ fixtures / "metsol.top" }));
+			auto handles = SubmitTogether(environment, std::move(jobs));
+			auto fromPaths = handles[0].Get();
+			auto inMemory = handles[1].Get();
+			Require(fromPaths.execution.batchSize == 2 && fromPaths.execution.batchId == inMemory.execution.batchId,
+				"Jobs given as paths and in memory did not batch together");
+			Require(HasIdenticalCoordinates(*fromPaths.simulation, *inMemory.simulation), "Files given as paths simulated differently");
+			const MolecularSystem system = fromPaths.FinalSystem();
+			Require(system.coordinates.title == "edited" && system.coordinates.atoms.size() == inMemory.FinalSystem().coordinates.atoms.size(),
+				"Files given as paths were not returned with the result");
+		}
 		const auto t4 = TestFourT4BatchMatchReference(environment, Headless).RunToCompletion();
 		Require(t4.success, t4.error_description.c_str());
 		std::cout << "Environment batching tests passed\n";

@@ -5,7 +5,7 @@
 add_executable(lima
     lima.cpp
     Daemon.cpp
-  "include/SetWindowsRegistry.h")
+  "include/WindowsIntegration.h")
 
 target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}

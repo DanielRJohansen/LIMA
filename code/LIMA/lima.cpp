@@ -19,7 +19,7 @@
 #include "MDFiles.h"
 #include "MoleculeUtils.h"
 #include "Programs.h"
-#include "SetWindowsRegistry.h"
+#include "WindowsIntegration.h"
 #include "SimulationBuilder.h"
 #include "argparser.h"
 
@@ -753,6 +753,9 @@ void PrintGeneralHelp(std::ostream& out) {
     for (const auto& command : Cli::Commands)
         out << Lima::Format("  {:<20} {}\n", command.name, command.summary);
     out << "\nRun 'lima help COMMAND' or 'lima COMMAND --help' for command help.\n";
+#ifdef _WIN32
+    out << "Run 'lima setup' to put lima on your PATH and open .gro files with it, and 'lima setup --undo' to revert that.\n";
+#endif
 }
 
 int Dispatch(const Cli::Context& ctx, int argc, char** argv) {
@@ -783,8 +786,18 @@ int Dispatch(const Cli::Context& ctx, int argc, char** argv) {
     }
     if (argument == "setregistry") {
         if (argc != 2) throw CliError("'setregistry' does not accept options");
-        RegisterGrofileAssociation();
+        WindowsIntegration::RegisterGrofileAssociation();
         return 0;
+    }
+    if (argument == "setup") {
+#ifdef _WIN32
+        const bool undo = argc == 3 && std::string_view{ argv[2] } == "--undo";
+        if (argc > 3 || (argc == 3 && !undo)) throw CliError("usage: lima setup [--undo]");
+        WindowsIntegration::Setup(ctx.out, undo);
+        return 0;
+#else
+        throw CliError("'setup' is only for Windows. The Linux packages put lima on the PATH");
+#endif
     }
 
     const auto* command = FindCommand(argument);
@@ -834,6 +847,17 @@ int main(int argc, char** argv) {
 
     const bool noDaemon = args.size() >= 2 && args[1] == "--no-daemon";
     if (noDaemon) args.erase(args.begin() + 1);
+
+    if (args.size() < 2 || (args[1] != "setup" && args[1] != "setregistry"))
+        WindowsIntegration::FirstRunSetup();
+    // Double-clicked in Explorer: keep the window open, or the help would vanish with it
+    if (args.size() == 1 && WindowsIntegration::OwnsConsoleWindow()) {
+        const int exitCode = RunCommand(Cli::Context{ fs::current_path(), std::cout, std::cerr }, args);
+        std::cout << "\nPress Enter to close." << std::flush;
+        std::string line;
+        std::getline(std::cin, line);
+        return exitCode;
+    }
 
     // --async is not an option of mdrun, em or buildmembrane; their handlers never see it. It tells main how to run
     // the command: submit it to the daemon and return at once, instead of waiting for it to finish

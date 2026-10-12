@@ -30,8 +30,15 @@ namespace SimulationBuilder {
 		GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, Float3 targetCenter);
 
 	void InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
-		GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, 
+		GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert,
 		bool rotateRandomly);
+
+	// Copies the molecules of a whole system, centered at targetCenter, keeping the molecule types that keep() accepts.
+	// The source forcefield's parameters are appended to the target's. Both keep the target's [ defaults ], so a source
+	// with different 1-4 scaling gets the target's (see TODO.md)
+	void InsertSystem(GroFile& targetGrofile, TopologyFile& targetTopol, const GroFile& sourceGrofile,
+		const TopologyFile& sourceTopol, Float3 targetCenter,
+		const std::function<bool(const TopologyFile::Moleculetype&)>& keep);
 	
 	void InsertSubmoleculesOnSphere(
 		GroFile& targetGrofile,

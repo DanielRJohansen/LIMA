@@ -21,6 +21,11 @@ namespace {
 		for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < count; i += size_t(gridDim.x) * blockDim.x)
 			data[i] = value;
 	}
+	__global__ void GatherIntsKernel(const int* const src, const int* const indices, int count, int* const dst) {
+		const int i = blockIdx.x * blockDim.x + threadIdx.x;
+		if (i < count)
+			dst[i] = src[indices ? indices[i] : i];
+	}
 	__global__ void SqrtKernel(float* data, size_t count) {
 		for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < count; i += size_t(gridDim.x) * blockDim.x)
 			data[i] = sqrtf(data[i]);
@@ -44,14 +49,20 @@ namespace {
 	}
 }
 
-void CubWrappers::ExclusiveScan(const int* first, const int* last, int* result, cudaStream_t stream) {
+void CubWrappers::ExclusiveScan(const int* first, const int* last, int* result, CudaBuffer<char>& tempStorage, cudaStream_t stream) {
 	const auto count = static_cast<int>(last - first);
 	if (count <= 0) return;
 	size_t tempBytes = 0;
 	Check(cub::DeviceScan::ExclusiveSum(nullptr, tempBytes, first, result, count, stream), "ExclusiveScan");
-	void* temp = TempStorage(tempBytes, "ExclusiveScan");
-	Check(cub::DeviceScan::ExclusiveSum(temp, tempBytes, first, result, count, stream), "ExclusiveScan");
-	SyncAndCheck(stream, "ExclusiveScan");
+	tempStorage.Expand(tempBytes, 1.2);
+	Check(cub::DeviceScan::ExclusiveSum(tempStorage.Get(), tempBytes, first, result, count, stream), "ExclusiveScan");
+	Check(cudaGetLastError(), "ExclusiveScan");
+}
+
+void CubWrappers::GatherInts(const int* src, const int* indices, int count, int* dst, cudaStream_t stream) {
+	if (count <= 0) return;
+	GatherIntsKernel<<<(count + 63) / 64, 64, 0, stream>>>(src, indices, count, dst);
+	Check(cudaGetLastError(), "GatherInts");
 }
 
 void CubWrappers::FillN(int* first, size_t count, int value, cudaStream_t stream) {

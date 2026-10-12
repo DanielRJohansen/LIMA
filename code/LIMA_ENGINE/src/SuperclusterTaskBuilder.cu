@@ -498,7 +498,7 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 		tb.contents.pclustersBondedToPcluster,
 		tb.neighbors.Get(), tb.nNeighbors.Get(), tb.entryCounts.Get(), tb.overflow.Get(),
 		n, boxSize, rangeLo, rangeHi, listRadius, allQuarters, boxSizeF, boxSizeF.Inv());
-	LIMA_UTILS::genericErrorCheck(stream, "FindNeighborsKernel");
+	LIMA_UTILS::genericErrorCheckNoSync("FindNeighborsKernel");
 }
 
 namespace {
@@ -516,24 +516,30 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 
 	tb.entryStarts.Expand(n + 1, 1.2);
 	batch->quarterEntryTasksDevice.Expand(n, 1.2);
+
+	cudaMemsetAsync(tb.entryCounts.Get() + n, 0, sizeof(int), stream);
+	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), batch->scanTempStorage, stream);
+	auto& readback = batch->rebuildReadback;
+	readback.Reserve(2);
+	CubWrappers::GatherInts(tb.overflow.Get(), nullptr, 1, readback.Device(), stream);
+	CubWrappers::GatherInts(tb.entryStarts.Get() + n, nullptr, 1, readback.Device() + 1, stream);
+	readback.Written(stream);
+
+	// Queued before waiting for the counts, see RunClustering.
 	// Integration clears the atomic planes. Primary bonded planes are overwritten by their owning groups.
 	// Clear both on rebuild, since supercluster slots change and particles without bonds have no writer.
 	batch->forceAccumulatorDevice.Expand(size_t(n) * SuperCluster::maxParticles * 8, 1.2);
 	cudaMemsetAsync(batch->forceAccumulatorDevice.Get(), 0, sizeof(unsigned long long) * n * SuperCluster::maxParticles * 8, stream);
-
-	cudaMemsetAsync(tb.entryCounts.Get() + n, 0, sizeof(int), stream);
-	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), stream);
-	int overflow = 0;
-	cudaMemcpyAsync(&overflow, tb.overflow.Get(), sizeof(int), cudaMemcpyDeviceToHost, stream);
-	cudaMemcpyAsync(&batch->nQuarterEntries, tb.entryStarts.Get() + n, sizeof(int), cudaMemcpyDeviceToHost, stream);
-	cudaStreamSynchronize(stream);
-	ThrowIfNeighborOverflow(overflow);
+	readback.Wait(stream);
+	ThrowIfNeighborOverflow(readback.Host()[0]);
+	batch->nQuarterEntries = readback.Host()[1];
 	batch->quarterEntriesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
 
 	EmitQuarterEntriesKernel<false><<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
 		tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(),
 		tb.contents, nullptr);
-	LIMA_UTILS::genericErrorCheck(stream, "EmitQuarterEntriesKernel");
+	LIMA_UTILS::genericErrorCheckNoSync("EmitQuarterEntriesKernel");
+	cudaStreamQuery(stream); // Submits the work queued after the sync at once, see RunClustering
 }
 
 // EM uses the same entries as MD, but stores its forces in SCResults rather than summing them with fixed point atomics, see
@@ -550,22 +556,26 @@ void Engine::MakeNbTasksEM(cudaStream_t stream) {
 	tb.Reset(stream); // Synchronizes the stream
 	ThrowIfNeighborOverflow(neighborOverflow);
 	DistributeEmInteractionsKernel<<<n, 32, 0, stream>>>(tb.neighbors.Get(), tb.nNeighbors.Get(), tb.contents, tb.overflow.Get());
-	LIMA_UTILS::genericErrorCheck(stream, "DistributeEmInteractionsKernel");
+	LIMA_UTILS::genericErrorCheckNoSync("DistributeEmInteractionsKernel");
 	SortEmInteractionsKernel<<<n, TaskBuilderControlContents::maxTasksPerSc, 0, stream>>>(tb.contents);
-	LIMA_UTILS::genericErrorCheck(stream, "SortEmInteractionsKernel");
+	LIMA_UTILS::genericErrorCheckNoSync("SortEmInteractionsKernel");
 
 	tb.entryStarts.Expand(n + 1, 1.2);
 	batch->quarterEntryTasksDevice.Expand(n, 1.2);
 	cudaMemsetAsync(tb.contents.nResults + n, 0, sizeof(int), stream);
 	cudaMemsetAsync(tb.entryCounts.Get() + n, 0, sizeof(int), stream);
-	CubWrappers::ExclusiveScan(tb.contents.nResults, tb.contents.nResults + n + 1, tb.contents.nResultsPrefixsum, stream);
-	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), stream);
+	CubWrappers::ExclusiveScan(tb.contents.nResults, tb.contents.nResults + n + 1, tb.contents.nResultsPrefixsum, batch->scanTempStorage, stream);
+	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), batch->scanTempStorage, stream);
 
-	int overflow = 0;
-	cudaMemcpyAsync(&overflow, tb.overflow.Get(), sizeof(int), cudaMemcpyDeviceToHost, stream);
-	cudaMemcpyAsync(&batch->nResults, tb.contents.nResultsPrefixsum + n, sizeof(int), cudaMemcpyDeviceToHost, stream);
-	cudaMemcpyAsync(&batch->nQuarterEntries, tb.entryStarts.Get() + n, sizeof(int), cudaMemcpyDeviceToHost, stream);
+	auto& readback = batch->rebuildReadback;
+	readback.Reserve(3);
+	CubWrappers::GatherInts(tb.overflow.Get(), nullptr, 1, readback.Device(), stream);
+	CubWrappers::GatherInts(tb.contents.nResultsPrefixsum + n, nullptr, 1, readback.Device() + 1, stream);
+	CubWrappers::GatherInts(tb.entryStarts.Get() + n, nullptr, 1, readback.Device() + 2, stream);
 	cudaStreamSynchronize(stream);
+	const int overflow = readback.Host()[0];
+	batch->nResults = readback.Host()[1];
+	batch->nQuarterEntries = readback.Host()[2];
 	if (overflow > 0)
 		throw std::runtime_error("A supercluster is the neighbor of " + std::to_string(overflow) + " superclusters, more than the capacity of "
 			+ std::to_string(TaskBuilderControlContents::maxTasksPerSc));
@@ -576,7 +586,7 @@ void Engine::MakeNbTasksEM(cudaStream_t stream) {
 	EmitQuarterEntriesKernel<true><<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
 		tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(),
 		tb.contents, batch->quarterEntryResultIndicesDevice.Get());
-	LIMA_UTILS::genericErrorCheck(stream, "EmitQuarterEntriesKernel");
+	LIMA_UTILS::genericErrorCheckNoSync("EmitQuarterEntriesKernel");
 }
 
 bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {

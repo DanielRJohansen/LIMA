@@ -165,6 +165,8 @@ struct EngineBatchData {
 	bool integrationStatesLoaded = false;					// integrationStates hold the current state, which pcluster states may lag
 	bool forceMagnitudesInStates = false;					// The last step left forcesMagnitudeSquareDevice to StoreIntegrationStates
 	CudaBuffer<IntegrationSimulationData> integrationSimulationDataDevice;
+	CudaBuffer<char> scanTempStorage;						// For the stream ordered CubWrappers::ExclusiveScan on cudaStreams[0]
+	MappedHostBuffer rebuildReadback;						// Counts the host needs during a nlist rebuild, read in as few round trips as possible
 
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;

@@ -18,7 +18,6 @@
 ## FindNeighborsKernel: now ~2.7 ms per STMV rebuild (was 3.9). Done: own-particle vs candidate-sphere prefilter (196 -> 140 pair-tested candidates/SC, 90 become neighbors), branch-free pair test, __launch_bounds__(128, 8) for 64 regs. The kernel is issue-bound (~68% issue active), so latency tricks don't help: 2 candidates per warp iteration and a candidate-particles vs own-sphere filter were both slower. Left: cell enumeration (~74 cells/SC, ~7 of 32 lanes active) and the bonded check (~8%).
 ## nstlist vs list-buffer tuning: a bigger buffer and fewer rebuilds may be cheaper overall. Parameter/accuracy call for you.
 ## NB kernel flattened entries: known ~4% SIMT gain left over from densetasks.
-## Rebuild-step host syncs: ~1.1 ms GPU idle per nlist rebuild (~55 us/step on STMV). genericErrorCheck(stream) after FindNeighbors/Emit syncs, CubWrappers::ExclusiveScan always syncs (its shared TempStorage relies on it), and count readbacks (nSuperclusters, boundaries, nQuarterEntries, overflow) each force a round trip. Use NoSync checks, a stream-ordered scan, and fewer/merged readbacks (or capacity-sized buffers so counts stay on GPU).
 
 
 # Kernel graphs (prototyped, see stash "Tried cuda graph..."): T4 -11%, STMV +2.5%. Recipe:

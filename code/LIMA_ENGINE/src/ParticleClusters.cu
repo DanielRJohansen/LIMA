@@ -712,55 +712,61 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 		GenericCopyToHost(idsUnsorted, nBlocks * PClusterTransfermodule::maxClustersPerBlock)
 	);*/
 
-	// Compute prefixsum buffer on nScPerBlock
+	// Compute prefixsum buffer on nScPerBlock, and read back the total and the simulations' ranges in one round trip.
+	// Clusters are compressed in bin order, so each simulation remains a range.
 	{
 		const int nElements = nBlocks + 1; // Extra element for total sum at end
 		//DebugUtils::VerifyIdentical(batch->superclusterStagingControl->nClustersPerBlock, nElements, "nClustersPerBlock", batch->step);
 		CubWrappers::ExclusiveScan(batch->superclusterStagingControl->nClustersPerBlock,
-			batch->superclusterStagingControl->nClustersPerBlock + nElements, batch->superclusterStagingControl->nClustersPrefixSum, stream);
-		LIMA_UTILS::genericErrorCheckNoSync("Error after Prefixsum");
-		cudaMemcpyAsync(&batch->nSuperclusters, batch->superclusterStagingControl->nClustersPrefixSum + nElements - 1,
-			sizeof(int), cudaMemcpyDeviceToHost, stream);
+			batch->superclusterStagingControl->nClustersPerBlock + nElements, batch->superclusterStagingControl->nClustersPrefixSum,
+			batch->scanTempStorage, stream);
+
+		// Layout: nIndices prefixsum indices, the values at them, then the two capacity statuses
+		const int nSims = static_cast<int>(batch->simulations.size());
+		const int nIndices = 1 + 2 * nSims;
+		auto& readback = batch->rebuildReadback;
+		readback.Reserve(2 * nIndices + 2 * CapacityOverflow::nValues);
+		int* const indices = readback.Host();
+		indices[0] = nElements - 1;
+		for (int id = 0; id < nSims; ++id) {
+			const auto& sim = batch->simulations[id];
+			indices[1 + 2 * id] = sim.device.active ? sim.device.gridnodes.offset : 0;
+			indices[2 + 2 * id] = sim.device.active ? sim.device.gridnodes.offset + sim.device.gridnodes.count : 0;
+		}
+		CubWrappers::GatherInts(batch->superclusterStagingControl->nClustersPrefixSum, readback.Device(), nIndices, readback.Device() + nIndices, stream);
 		// Capacity status rides on this existing sync. PME runs on its own stream, so its status may lag
 		// by a step; FinalizeSimulation does a fully synchronized check.
-		int overflow[2][CapacityOverflow::nValues]{};
-		cudaMemcpyAsync(overflow[0], batch->pclusterTransfermodule->overflow.status, sizeof(overflow[0]), cudaMemcpyDeviceToHost, stream);
+		int* const overflowDevice = readback.Device() + 2 * nIndices;
+		CubWrappers::GatherInts(batch->pclusterTransfermodule->overflow.status, nullptr, CapacityOverflow::nValues, overflowDevice, stream);
 		const CapacityOverflow* pmeOverflow = batch->pmeController ? batch->pmeController->Overflow() : nullptr;
 		if (pmeOverflow)
-			cudaMemcpyAsync(overflow[1], pmeOverflow->status, sizeof(overflow[1]), cudaMemcpyDeviceToHost, stream);
-		cudaStreamSynchronize(stream);
-		CapacityOverflow::ThrowIfSet(overflow[0]);
-		CapacityOverflow::ThrowIfSet(overflow[1]);
+			CubWrappers::GatherInts(pmeOverflow->status, nullptr, CapacityOverflow::nValues, overflowDevice + CapacityOverflow::nValues, stream);
+		readback.Written(stream);
+
+		// Work that does not need the counts, queued before waiting so the GPU stays busy until the host has queued the rest
+		CompressSuperclusters<<<nBlocks, 32, 0, stream>>>(*batch->superClustersControl, *batch->superclusterStagingControl);
+		batch->pclusterTransfermodule->Reset(batch->nGridnodes, stream);
+		batch->pclusterParticleSlots.Expand(size_t(nPclusters) * PersistentCluster::maxParticles);
+		cudaMemsetAsync(batch->pclusterParticleSlots.Get(), 0xFF, sizeof(int) * nPclusters * PersistentCluster::maxParticles, stream);
+		readback.Wait(stream);
+
+		const int* const values = readback.Host() + nIndices;
+		CapacityOverflow::ThrowIfSet(values + nIndices);
+		if (pmeOverflow)
+			CapacityOverflow::ThrowIfSet(values + nIndices + CapacityOverflow::nValues);
+		batch->nSuperclusters = values[0];
+		for (int id = 0; id < nSims; ++id) {
+			if (!batch->simulations[id].device.active) continue;
+			batch->simulations[id].superclusters = { values[1 + 2 * id], values[2 + 2 * id] - values[1 + 2 * id] };
+		}
 	}
 
-	// Clusters are compressed in bin order, so each simulation remains a range.
-	std::vector<int> boundaries(batch->simulations.size() * 2);
-	for (size_t id = 0; id < batch->simulations.size(); ++id) {
-		const auto& sim = batch->simulations[id];
-		if (!sim.device.active) continue;
-		cudaMemcpyAsync(&boundaries[2 * id], batch->superclusterStagingControl->nClustersPrefixSum + sim.device.gridnodes.offset,
-			sizeof(int), cudaMemcpyDeviceToHost, stream);
-		cudaMemcpyAsync(&boundaries[2 * id + 1], batch->superclusterStagingControl->nClustersPrefixSum + sim.device.gridnodes.offset + sim.device.gridnodes.count,
-			sizeof(int), cudaMemcpyDeviceToHost, stream);
-	}
-	cudaStreamSynchronize(stream);
-	for (size_t id = 0; id < batch->simulations.size(); ++id) {
-		if (!batch->simulations[id].device.active) continue;
-		batch->simulations[id].superclusters = {boundaries[2 * id], boundaries[2 * id + 1] - boundaries[2 * id]};
-	}
-
-	CompressSuperclusters<<<nBlocks, 32, 0, stream>>>(*batch->superClustersControl, *batch->superclusterStagingControl);
 	for (int id = 0; id < batch->simulations.size(); ++id) {
 		const auto range = batch->simulations[id].superclusters;
 		if (range.count > 0)
 			SetSuperclusterSimulationId<<<(range.count + 127) / 128, 128, 0, stream>>>(
 				batch->superClustersControl->scMeta, range.offset, range.count, id);
 	}
-
-	batch->pclusterTransfermodule->Reset(batch->nGridnodes, stream);
-
-	batch->pclusterParticleSlots.Expand(size_t(nPclusters) * PersistentCluster::maxParticles);
-	cudaMemsetAsync(batch->pclusterParticleSlots.Get(), 0xFF, sizeof(int) * nPclusters * PersistentCluster::maxParticles, stream);
 	if (batch->nSuperclusters > 0)
 		MapPclusterParticlesToSlots<<<(batch->nSuperclusters + 3) / 4, dim3(SuperCluster::maxParticles, 4, 1), 0, stream>>>(
 			batch->superClustersControl->scMeta, batch->nSuperclusters, batch->pclusterParticleSlots.Get());
@@ -770,6 +776,8 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 		MapBondgroupParticlesToSlots<<<(nBondgroupParticles + 127) / 128, 128, 0, stream>>>(batch->bondgroupParticles.Get(), nBondgroupParticles,
 			batch->pclusterParticleSlots.Get(), batch->bondgroupParticleSlots.Get());
 	LoadIntegrationStates(stream);
+	// WDDM holds the work queued after the wait above back for up to ~200 us. Querying the stream submits it at once
+	cudaStreamQuery(stream);
 
 
 	//DebugUtils::VerifyIdentical(batch->superClustersControl->scData, batch->nSuperclusters, "RunClustering_SCData_Compressed", batch->step);

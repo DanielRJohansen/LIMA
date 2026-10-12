@@ -224,7 +224,7 @@ struct NonbondedInteractionParams {
 
 
 struct ForceField_NB {
-	static const int MAX_TYPES = 64;
+	static const int MAX_TYPES = 256;	// Atomtype ids are uint8_t
 
 	struct ParticleParameters {	//Nonbonded
 		//float mass = -1;		//[kg/mol]	or 

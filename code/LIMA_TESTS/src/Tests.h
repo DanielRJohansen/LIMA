@@ -76,6 +76,8 @@ namespace EngineBatchTests {
 	void Compare(Simulation& a, Simulation& b);
 	void RunAll();
 	void ShowcaseMultisim();
+	void PrepareLargeEM();
+	void ShowcaseLargeEM();
 }
 
 // FileTests.cpp

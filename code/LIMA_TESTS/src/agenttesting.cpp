@@ -135,7 +135,9 @@ namespace {
 			<< "  --display-tiles-preview\n"
 			<< "  --environment-batch-tests\n"
 			<< "  --engine-batch-tests\n"
-			<< "  --showcase-multisim\n";
+			<< "  --showcase-multisim\n"
+			<< "  --prepare-large-em\n"
+			<< "  --showcase-large-em\n";
 	}
 }
 
@@ -167,6 +169,14 @@ int main(int argc, char** argv) {
 		}
 		if (argc == 2 && std::string_view(argv[1]) == "--engine-batch-tests") {
 			EngineBatchTests::RunAll();
+			return 0;
+		}
+		if (argc == 2 && std::string_view(argv[1]) == "--prepare-large-em") {
+			EngineBatchTests::PrepareLargeEM();
+			return 0;
+		}
+		if (argc == 2 && std::string_view(argv[1]) == "--showcase-large-em") {
+			EngineBatchTests::ShowcaseLargeEM();
 			return 0;
 		}
 		if (argc == 2 && std::string_view(argv[1]) == "--showcase-multisim") {

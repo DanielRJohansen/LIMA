@@ -5,6 +5,8 @@
 
 ## Investigate startup latency for small systems (say t4 in 7^3nm^3 box). Defined as time from command to first step.
 
+## Forcefields with different 1-4 scaling can't be mixed. A topology has one [ defaults ] (gen-pairs, fudgeLJ, fudgeQQ), applied to the whole system, so merging eg. a CHARMM-style protein (fudge 1.0/1.0, as in STMV) with Slipids lipids (0.5/0.8333) gives one of them the wrong 1-4 interactions. SimulationBuilder::InsertSystem merges forcefields anyway (used by the large-EM showcase). A fix would be per-moleculetype 1-4 scaling, or explicit [ pairs ] parameters with the scaling baked in.
+
 ## Density profile analysis on the CLI (SimAnalysis::DensityProfile / CompareDensityProfiles are only reachable through Workflow). Undecided shape: a gmx-style `lima density -c conf.gro -f traj.trr` from files, an `mdrun --density` flag, and how to compare/average groups of runs (eg. LABEL=GLOB arguments). The analyses behind ShowcaseMultisim (SimAnalysis::WaterSelfDiffusion) need the same, before the showcase can be reproduced with lima commands.
 
 ## Solvate by tiling a pre-equilibrated water box (like gmx solvate with spc216.gro) instead of a jittered cubic lattice (SimulationBuilder::SolvateGrofile). Faster, the water starts with a realistic structure, and needs less EM/equilibration. The lattice still shows faintly as a sawtooth in water density profiles of short runs.

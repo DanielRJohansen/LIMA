@@ -503,6 +503,61 @@ void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, To
 	AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);
 }
 
+void SimulationBuilder::InsertSystem(GroFile& targetGrofile, TopologyFile& targetTopol, const GroFile& sourceGrofile,
+	const TopologyFile& sourceTopol, Float3 targetCenter,
+	const std::function<bool(const TopologyFile::Moleculetype&)>& keep)
+{
+	// The source atoms of the kept molecules, in topology order
+	struct Range { size_t begin, end; };
+	std::vector<Range> kept;
+	std::vector<const TopologyFile::MoleculeEntry*> keptEntries;
+	size_t atom = 0;
+	Float3 centerSum{};
+	size_t nKeptAtoms = 0;
+	for (const auto& entry : sourceTopol.GetSystem().molecules) {
+		const size_t nAtoms = entry.moleculetype->atoms.size() * entry.count;
+		if (atom + nAtoms > sourceGrofile.atoms.size())
+			throw std::runtime_error("InsertSystem: the source topology has more atoms than its coordinates");
+		if (keep(*entry.moleculetype)) {
+			kept.push_back({ atom, atom + nAtoms });
+			keptEntries.push_back(&entry);
+			for (size_t i = atom; i < atom + nAtoms; i++) centerSum += sourceGrofile.atoms[i].position;
+			nKeptAtoms += nAtoms;
+		}
+		atom += nAtoms;
+	}
+	if (nKeptAtoms == 0)
+		throw std::invalid_argument("InsertSystem: no molecules to insert");
+	const Float3 offset = targetCenter - centerSum / static_cast<float>(nKeptAtoms);
+
+	const int atomsOffset = static_cast<int>(targetGrofile.atoms.size());
+	const int residueOffset = targetGrofile.atoms.empty() ? 0 : targetGrofile.atoms.back().residue_number;
+	for (const Range& range : kept)
+		for (size_t i = range.begin; i < range.end; i++)
+			addAtomToFile(targetGrofile, sourceGrofile.atoms[i], atomsOffset, residueOffset, [&](Float3& position) { position += offset; });
+
+	for (const auto* entry : keptEntries) {
+		if (const auto existing = targetTopol.moleculetypes.find(entry->name); existing == targetTopol.moleculetypes.end())
+			targetTopol.moleculetypes.insert({ entry->name, std::make_shared<TopologyFile::Moleculetype>(*entry->moleculetype) });
+		else if (existing->second->atoms.size() != entry->moleculetype->atoms.size())
+			throw std::runtime_error(Lima::Format("InsertSystem: both systems have a different moleculetype named {}", entry->name));
+		for (int i = 0; i < entry->count; i++)
+			targetTopol.AppendMolecule(entry->name);
+	}
+
+	if (sourceTopol.forcefieldInclude) {
+		if (!targetTopol.forcefieldInclude)
+			targetTopol.forcefieldInclude = sourceTopol.forcefieldInclude;
+		else {
+			for (const TopologySection section : { atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, cmaptypes })
+				for (const std::string& line : sourceTopol.forcefieldInclude->contents.GetSection(section))
+					targetTopol.forcefieldInclude->AddEntry(section, line);
+			// No longer a stock forcefield, so printing the topology must write its contents rather than include the stock file
+			targetTopol.forcefieldInclude->filename = "forcefield.itp";
+		}
+	}
+}
+
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
 	GroFile& submolGro, const std::shared_ptr<TopologyFile>& submolTop, int nMoleculesToInsert, bool rotateRandomly) 
 {

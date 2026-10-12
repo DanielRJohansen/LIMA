@@ -367,4 +367,62 @@ namespace EngineBatchTests {
 		if (std::system(Lima::Format("python \"{}\" \"{}\" --show", script.string(), csvPath.string()).c_str()) != 0)
 			throw std::runtime_error("Matplotlib failed to plot the self-diffusion");
 	}
+
+	static std::filesystem::path LargeEmDir() { return TestUtils::HeavyTestsDir() / "etc" / "showcase_large_em"; }
+
+	// Builds the system of ShowcaseLargeEM: a satellite tobacco mosaic virus (STMV) above a POPC membrane, solvated in a
+	// 30 nm box, written to conf.gro and topol.top. The virus keeps its CHARMM parameters, but gets the lipids' 1-4 scaling
+	// (see TODO.md), so the system is for showing speed only
+	void PrepareLargeEM() {
+		const std::filesystem::path workDir = LargeEmDir();
+		const std::filesystem::path stmvDir = TestUtils::HeavyTestsDir() / "benchmarking" / "stmv";
+		constexpr float boxSize = 30.f;	// [nm]
+
+		MolecularSystem system;
+		system.coordinates.box_size = Float3{ boxSize };
+		SimulationBuilder::CreateMembrane(system.coordinates, system.topology,
+			Lipids::Composition{ { { "POPC", 100. } }, workDir }.Load(), MembraneGeometry::Plane{ 6.f }, 1);
+		// The virus without its water and ions, above the membrane
+		const GroFile stmvCoordinates{ stmvDir / "conf.gro" };
+		const TopologyFile stmvTopology{ stmvDir / "topol.top" };
+		SimulationBuilder::InsertSystem(system.coordinates, system.topology, stmvCoordinates, stmvTopology,
+			Float3{ boxSize / 2.f, boxSize / 2.f, 18.5f }, [](const TopologyFile::Moleculetype& moleculetype) {
+				return std::ranges::any_of(moleculetype.atoms, [](const TopologyFile::AtomsEntry& atom) {
+					return atom.residue != "TIP3" && atom.residue != "MG" && atom.residue != "CLA"; });
+			});
+		SimulationBuilder::SolvateGrofile(system.coordinates, system.topology);
+		system.coordinates.printToFile(workDir / "conf.gro");
+		system.topology.printToFile(workDir / "topol.top");
+		std::cout << Lima::Format("Prepared {} atoms in {}\n", system.coordinates.atoms.size(), workDir.string());
+	}
+
+	// Energy minimization with PME of the few million atoms prepared by PrepareLargeEM, shown live
+	void ShowcaseLargeEM() {
+		const std::filesystem::path workDir = LargeEmDir();
+		if (!std::filesystem::exists(workDir / "topol.top"))
+			throw std::runtime_error("Run agenttesting --prepare-large-em first");
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace(workDir / "conf.gro");
+		job.topfile.emplace(workDir / "topol.top");
+		SimParams params = SimParams::BasicEMSimParams(1000.f);
+		params.enable_electrostatics = true;
+		job.simParams = params;
+		job.mode = EnvMode::Full;
+		job.mustRunAlone = true;
+
+		const auto start = std::chrono::steady_clock::now();
+		auto result = Environment::Get().Submit(std::move(job)).Get();
+		const double totalSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+		if (!result.simulation)
+			throw std::runtime_error("The large EM showcase produced no simulation");
+
+		const auto& maxForces = result.simulation->maxForceBuffer;
+		const double engineSeconds = result.engineTime.count();
+		std::cout << Lima::Format("\n{} atoms minimized in {} steps: max force {:.0f} -> {:.0f} kJ/mol/nm\n",
+			result.simulation->boxImage->grofile.atoms.size(), result.simulation->getStep(),
+			maxForces.empty() ? 0.f : maxForces.front().second, maxForces.empty() ? 0.f : maxForces.back().second);
+		std::cout << Lima::Format("Engine {:.1f} s ({:.1f} ms/step), total {:.1f} s including setup\n",
+			engineSeconds, 1000.0 * engineSeconds / (std::max)(int64_t{ 1 }, result.simulation->getStep()), totalSeconds);
+	}
 }

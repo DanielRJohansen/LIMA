@@ -168,7 +168,9 @@ namespace EM {
 				values.velocityDotVelocity = velocity.dot(velocity);
 				values.gDotVelocity = g.dot(velocity);
 				values.gDotG = g.dot(g);
-				values.maxForceSq = force.lenSquared();
+				// fmaxf drops NaN, which would let a broken force look converged. Report it as infinite instead
+				const float forceSq = force.lenSquared();
+				values.maxForceSq = isfinite(forceSq) ? forceSq : __int_as_float(0x7f800000); // +inf
 				values.nParticles = 1;
 			}
 		}
@@ -211,7 +213,7 @@ namespace EM {
 	__global__ void UpdateKernel(const Config config, const SimState* const states, SuperCluster* const superClusters, const SuperClusterMeta* const scMeta,
 		PersistentCluster* const pclusters, const Float3* const preconditionedForce, ParticleState* const particles, int nSuperclusters, Float3 boxSize) {
 		constexpr int nScsPerBlock = 4;
-		const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? blockIdx.x * nScsPerBlock + threadIdx.y : -1;
+		const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? static_cast<int>(blockIdx.x * nScsPerBlock + threadIdx.y) : -1;
 
 		__shared__ Float3 p0s[nScsPerBlock];
 		if (threadIdx.x == 0) {
@@ -247,9 +249,7 @@ namespace EM {
 		pos = pos + velocity * dt;
 
 		particles[slot].velocity = velocity;
-		superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
-		superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;
-		superClusters[scIdGlobal].posZ[threadIdx.x] = pos.z;
+		superClusters[scIdGlobal].SetPosition(threadIdx.x, pos);
 		pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;
 	}
 }

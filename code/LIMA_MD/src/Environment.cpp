@@ -1,10 +1,13 @@
 #include <chrono>
+#include "Format.h"
 #include <cmath>
 #include <filesystem>
 #include <string>
 #include <optional>
 #include <numeric>
 #include <iterator>
+#include <random>
+#include <fstream>
 #include "Environment.h"
 #include "MDFiles.h"
 #include "BoxImageBuilder.h"
@@ -16,7 +19,10 @@
 #include "UpgradeableFileFormat.h"
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
+#include "Workflow.h"
 #include <cuda_profiler_api.h>
+#include <cuda_runtime.h>
+#include <cstdlib>
 
 namespace lfs = FileUtils;
 namespace fs = std::filesystem;
@@ -92,7 +98,7 @@ void SimulationResult::WriteCoordinatesTo(GroFile& grofile, std::optional<int64_
 		}
 	}
 	if (AllAtom && particlesUpdated != grofile.atoms.size())
-		throw std::runtime_error(std::format(
+		throw std::runtime_error(Lima::Format(
 			"Only {} out of {} particles were updated", particlesUpdated, grofile.atoms.size()));
 }
 
@@ -180,6 +186,18 @@ void Environment::SetLiveEditSimulation(
 }
 
 Environment::Environment() {
+	// Creating the CUDA context costs ~120 ms of driver time on Windows. Doing it in the background
+	// overlaps it with file parsing and box building; CUDA calls from other threads wait for it.
+	cudaWarmup = std::async(std::launch::async, [] {
+#ifdef _WIN32
+		// Load every kernel module now, while it is off the critical path, instead of on each
+		// kernel's first launch. Must be set before the driver initializes; respect a user override.
+		if (!std::getenv("CUDA_MODULE_LOADING"))
+			_putenv_s("CUDA_MODULE_LOADING", "EAGER");
+#endif
+		cudaFree(nullptr);
+		cudaGetLastError(); // A missing GPU is reported by the first real CUDA call instead
+	});
 	StartScheduling();
 }
 
@@ -190,6 +208,7 @@ Environment& Environment::Get() {
 
 Environment::~Environment() {
 	StopScheduling();
+	cudaWarmup.wait();
 }
 
 size_t Environment::WorkerSlots::Reserve() {
@@ -237,6 +256,32 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 	return SimulationHandle{ std::move(state) };
 }
 
+size_t Environment::MaxBatchSize(const Simulation& first) {
+	// From limaprofile --batch-scaling: the combined throughput of batched T4 lysozyme runs (7 nm box) stops growing
+	// at ~8 members, so ~3000 nm^3 of boxes fill the GPU. Larger batches only delay the results and use more memory.
+	// The limit is the largest batch measured
+	constexpr double saturatingVolume = 3000.0;	// [nm^3]
+	constexpr size_t limit = 32;
+	const Float3 box = first.box->boxparams.BoxSizeFloat();
+	const double volume = static_cast<double>(box.x) * box.y * box.z;
+	if (!(volume > 0.0))
+		return 1;
+	return std::clamp(static_cast<size_t>(std::ceil(saturatingVolume / volume)), size_t{ 1 }, limit);
+}
+
+void Environment::CloseDisplayIfIdle() {
+	std::lock_guard lock(schedulingMutex);
+	if (runningSimulation || unpreparedSimulations > 0 || !preparedSimulations.empty())
+		return;
+	display.reset();
+}
+
+size_t Environment::MaxPreparedSimulations() const {
+	// Room for a full batch and the next one, sized by the oldest prepared job. Before any job is prepared, the bound
+	// only has to let preparation start
+	return 2 * (preparedSimulations.empty() ? 6 : MaxBatchSize(*preparedSimulations.front().simulation));
+}
+
 bool Environment::MustRunAlone(const PreparedSimulation& next) {
 	return next.job.mustRunAlone || !next.job.run /*|| next.job.mode == Full*/
 		|| next.simulation->simParams.stepwise;
@@ -251,7 +296,7 @@ bool Environment::IsDrained() const {
 bool Environment::CanPrepare() const {
 	// Simulations being prepared count against the bound, as they will all become prepared
 	return preprocessWorkers.HasFree() && !pendingSimulations.empty()
-		&& preparedSimulations.size() + preprocessWorkers.Running() < maxPreparedSimulations;
+		&& preparedSimulations.size() + preprocessWorkers.Running() < MaxPreparedSimulations();
 }
 
 bool Environment::CanPostprocess() const {
@@ -261,16 +306,17 @@ bool Environment::CanPostprocess() const {
 bool Environment::CanStartBatch() const {
 	if (runningSimulation || preparedSimulations.empty())
 		return false;
-	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == maxBatchSize)
+	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == MaxBatchSize(*preparedSimulations.front().simulation))
 		return true;
 	// All already-submitted jobs must finish preparation before a partial batch
 	// starts. At capacity we must dispatch to free preparation space.
-	return unpreparedSimulations == 0 || preparedSimulations.size() == maxPreparedSimulations;
+	return unpreparedSimulations == 0 || preparedSimulations.size() >= MaxPreparedSimulations();
 }
 
 size_t Environment::GetReadyBatchSize() const {
 	if (preparedSimulations.empty() || MustRunAlone(preparedSimulations.front()))
 		return preparedSimulations.empty() ? 0 : 1;
+	const size_t maxBatchSize = MaxBatchSize(*preparedSimulations.front().simulation);
 	size_t count = 1;
 	for (auto it = std::next(preparedSimulations.begin()); it != preparedSimulations.end()
 		&& count < maxBatchSize; ++it) {
@@ -284,6 +330,7 @@ size_t Environment::GetReadyBatchSize() const {
 
 std::vector<Environment::PreparedSimulation> Environment::TakeReadyBatch() {
 	std::vector<PreparedSimulation> batch;
+	const size_t maxBatchSize = MaxBatchSize(*preparedSimulations.front().simulation);
 	batch.reserve(maxBatchSize);
 	batch.push_back(std::move(preparedSimulations.front()));
 	preparedSimulations.pop_front();
@@ -370,9 +417,11 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 		if (next.job.outputs.contains(OutputSelect::Topology) && !next.job.topfile)
 			throw std::runtime_error("Topology output requires molecular-file input");
 		if (next.job.outputs.contains(OutputSelect::InitialCoordinates))
-			next.job.grofile->printToFile(next.job.workDir / "initial.gro");
+			next.job.grofile->Get().printToFile(next.job.workDir / "initial.gro");
 		if (next.job.outputs.contains(OutputSelect::Topology))
-			next.job.topfile->printToFile(next.job.workDir / "topol.top");
+			next.job.topfile->Get().printToFile(next.job.workDir / "topol.top");
+		if (simulation->simParams.initial_temperature > 0.f && !simulation->simParams.em_variant)
+			Programs::InitializeVelocities(*simulation, simulation->simParams.initial_temperature, std::random_device{}());
 		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
 		if (!next.job.name.empty())
@@ -420,7 +469,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 			std::optional<MolecularSystem> sourceSystem;
 			if (member.job.grofile && member.job.topfile)
 				sourceSystem.emplace(
-					std::move(*member.job.grofile), std::move(*member.job.topfile));
+					std::move(member.job.grofile->Get()), std::move(member.job.topfile->Get()));
 			SimulationResult result{
 				std::move(session.simulation),
 				std::move(sourceSystem),
@@ -443,6 +492,23 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 	schedulerWakeup.notify_one();
 }
 
+// The analyses selected in the simulation's SimParams, each written to its own file in the directory
+static void RunAnalyses(const Simulation& simulation, const fs::path& directory) {
+	const SimParams& params = simulation.simParams;
+	if (params.em_variant || (!params.self_diffusion && !params.density_profile))
+		return;
+	fs::create_directories(directory);
+	if (params.self_diffusion) {
+		const double runPs = simulation.getStep() * static_cast<double>(params.dt) * NANO_TO_PICO;
+		const auto diffusion = SimAnalysis::SelfDiffusionCoefficient(simulation,
+			[](const GroRecord& atom) { return atom.atomName == "OW"; }, 0.2 * runPs);
+		std::ofstream file(directory / "self_diffusion.csv");
+		file << "ref_t_K,temperature_K,D_m2s\n" << params.ref_t.value << ',' << diffusion.temperature << ',' << diffusion.coefficient << '\n';
+	}
+	if (params.density_profile)
+		SimAnalysis::DensityProfile(simulation, directory / "density_profile.csv");
+}
+
 void Environment::Postprocess(ProcessedSimulation next, size_t worker) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
@@ -452,8 +518,7 @@ void Environment::Postprocess(ProcessedSimulation next, size_t worker) {
 			next.result.WriteCoordinatesTo(next.result.sourceSystem->coordinates);
 			next.result.sourceSystem->coordinates.printToFile(next.job.workDir / "out.gro");
 		}
-		if (next.job.outputs.contains(OutputSelect::DensityProfile))
-			SimAnalysis::DensityProfile(*next.result.simulation, next.job.workDir / "density_profile.csv");
+		RunAnalyses(*next.result.simulation, next.job.workDir);
 		if (next.job.postprocess)
 			next.job.postprocess(next.result);
 		next.result.environmentTime += std::chrono::steady_clock::now() - started;
@@ -515,6 +580,9 @@ void Environment::PrintDevPerformanceReport() {
 std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) const {
 	if (!job.simParams)
 		job.simParams.emplace(job.workDir / "sim_params.txt");
+	// Files given as paths are parsed here, on the preparation worker, also when they are only carried to the result
+	if (job.grofile) job.grofile->Load();
+	if (job.topfile) job.topfile->Load();
 
 	if (job.initialSimulation) {
 		auto simulation = std::make_unique<Simulation>(*job.simParams);
@@ -524,21 +592,19 @@ std::unique_ptr<Simulation> Environment::BuildSimulation(SimulationJob& job) con
 		return simulation;
 	}
 
-	GroFile grofile = job.grofile ? std::move(*job.grofile) : GroFile{ job.workDir / "molecule/conf.gro" };
-	TopologyFile topolfile = job.topfile ? std::move(*job.topfile) : TopologyFile{ job.workDir / "molecule/topol.top" };
+	if (!job.grofile) job.grofile.emplace(job.workDir / "molecule/conf.gro");
+	if (!job.topfile) job.topfile.emplace(job.workDir / "molecule/topol.top");
+	GroFile& grofile = job.grofile->Load();
+	TopologyFile& topolfile = job.topfile->Load();
 	if (job.preprocess)
 		job.preprocess(grofile, topolfile, *job.simParams);
 	const SimParams& simParams = *job.simParams;
 
 	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
-		grofile, topolfile, V1,
-		std::make_unique<LimaLogger>(LimaLogger::normal, job.mode, "moleculebuilder", job.workDir),
-		IGNORE_HYDROGEN, simParams);
+		grofile, topolfile, simParams);
 	auto simulation = std::make_unique<Simulation>(simParams, BoxBuilder::BuildBox(simParams, *boxImage, job.mode));
 	simulation->boxImage = std::shared_ptr<BoxImage>(std::move(boxImage)); 
 	simulation->name = grofile.title;
-	job.grofile.emplace(std::move(grofile));
-	job.topfile.emplace(std::move(topolfile));
 	return simulation; // here sim->boximage->topology->moleculetypes[0].name is valid
 }
 
@@ -550,9 +616,6 @@ void Environment::InitializeLiveEditSimulation(
 	auto boxImage = LIMA_MOLECULEBUILD::buildMolecules(
 		grofile,
 		topolfile,
-		V1,
-		std::make_unique<LimaLogger>(LimaLogger::normal, mode, "moleculebuilder", workDir),
-		IGNORE_HYDROGEN,
 		params
 		);
 
@@ -748,7 +811,7 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		}
 
 		time0 = std::chrono::steady_clock::now();
-		avgStepTimes.emplace_back(avgSteptime);
+		avgStepTimes.emplace_back(static_cast<float>(avgSteptime));
 
 
 
@@ -758,8 +821,8 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
 		const double completionFraction = (double)step / (double)simulation->simParams.n_steps;
-		const std::optional<std::chrono::duration<double>> expectedTimeToFinish = step > 0 && simulation->simParams.n_steps > 0 && simulationTimer.has_value()
-			? std::optional<std::chrono::duration<double>> {simulationTimer->Elapsed()* (1. / completionFraction * (1.-completionFraction))}
+		const std::optional<double> expectedTimeToFinish = step > 0 && simulation->simParams.n_steps > 0 && simulationTimer.has_value()
+			? std::optional<double>{ simulationTimer->Elapsed().count() * (1. / completionFraction * (1.-completionFraction)) }
 			: std::nullopt;
 
 		SimStatus newStatus{};
@@ -769,7 +832,7 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		if (simulation->simParams.em_variant) {
 		}
 		else {
-			newStatus.simulationPerformance = ns_per_day;
+			newStatus.simulationPerformance = static_cast<float>(ns_per_day);
 		}
 
 		simStatus = newStatus;

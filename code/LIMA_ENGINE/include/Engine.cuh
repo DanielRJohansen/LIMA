@@ -5,21 +5,16 @@
 #include "CudaBuffer.h"
 
 #include "Constants.h"
-#include "Utilities.h"
 
-#include <iostream>
 #include <memory>
-#include <thread>
 #include <optional>
 
 
 
 class Thermostat;
-class CompoundGridNode;
-struct CompoundQuickData;
 struct ForceEnergyInterims;
-class TinymolTransferModule;
 struct SuperClustersControl;
+struct ForceAccumulator;
 struct PClusterTransfermodule;
 struct PersistentCluster;
 class SuperclusterStagingControl;
@@ -48,6 +43,9 @@ struct RunStatus {
 
 enum class EngineRunMode { Simulation, Interactive };
 
+// Direct kernel fixtures used by the isolated limit tests. Never call DeviceFailure in a live engine process.
+enum class EngineLimitProbe { ClusterTransfer, ClusterOccupancy, ChargeBlock, DeviceFailure };
+
 class Engine {
 public:
 	// Simulations are nonowning and must outlive this engine. Interactive mode
@@ -65,6 +63,7 @@ public:
 	void terminateSimulation();
 
 	static bool TestAlgorithms();
+	static void TestLimit(EngineLimitProbe probe, int count = 0);
 
 	// Optional. Makes the energy-minimization preconditioner of an EM simulation before an Engine is constructed for it,
 	// so this host work does not delay the GPU. The simulation must not be modified before it is run
@@ -97,13 +96,20 @@ private:
 	void _deviceMaster();
 
 	template <typename BoundaryCondition, bool emvariant>
-	void SnfHandler(cudaStream_t& stream);
+	void SnfHandler(cudaStream_t& stream, const ForceAccumulator& forceAcc);
 
 	// -------------------------------------- CPU LOAD -------------------------------------- //
 	void verifyEngine();
 
 	// streams every n steps
 	void OffloadLoggingData(EngineSimulationData& simData);
+	// Logging data is drained without stalling the steps: the ring is snapshotted on the GPU, copied to pinned memory on
+	// logCopyStream while the simulation continues, and unpacked into the host buffers by a thread. One drain per simulation index
+	struct LogDrain;
+	std::vector<std::unique_ptr<LogDrain>> logDrains;
+	cudaStream_t logCopyStream = nullptr;
+	// Waits until every drained log entry is in the host buffers
+	void JoinLogDrains();
 	void PublishRenderData();
 	void PublishRenderData(size_t simulationIndex);
 
@@ -121,12 +127,23 @@ private:
 	bool UsesEnergyMinimization() const;
 	void UploadEnergyMinimizationPreconditioner();
 	void RebuildActiveBatch();
+	// Retired members are finalized at once but stay in the batch until the next nlist update step, where the survivors
+	// are re-clustered anyway. Rebuilding on any other step changes their neighbor lists and so their trajectories.
+	bool rebuildPending = false;
 	void InitializePME();
 	void FinalizeSimulation(EngineSimulationData& simData);
 
 
 	std::array<cudaStream_t, 5> cudaStreams{};
 	cudaStream_t pmeStream = nullptr;
+	// Used to make cudaStreams[0] wait for the other streams on the GPU, without a host roundtrip. [0] is for pmeStream, [i] for cudaStreams[i]
+	std::array<cudaEvent_t, 5> streamJoinEvents{};
+	void JoinStreamsIntoMainStream();
+	// Recorded on cudaStreams[0] at the start of each step, so the other streams wait for the previous step on the GPU
+	cudaEvent_t stepStartEvent = nullptr;
+	void ForkStreamsFromMainStream();
+	// Must be called after changing any field that IntegrationSimulationData is built from
+	void UploadIntegrationSimulationData();
 	EngineRunMode mode;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 
@@ -137,8 +154,15 @@ private:
 
 	// Temp
 	bool MakeSuperClusterTasksGPU(cudaStream_t stream);
+	void FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bool allQuarters);
+	void MakeNbTasksMD(cudaStream_t stream);
+	void MakeNbTasksEM(cudaStream_t stream);
+	bool tasksBuiltForEm = false; // The MD and EM nonbonded kernels use different tasks
 	void RunClustering(cudaStream_t stream, bool runPclustering = true);
 	void BootstrapClustering(cudaStream_t stream);
+	// MD keeps the integration states in supercluster slots, see ParticleIntegrationState
+	void LoadIntegrationStates(cudaStream_t stream);
+	void StoreIntegrationStates(cudaStream_t stream);
 };
 
  

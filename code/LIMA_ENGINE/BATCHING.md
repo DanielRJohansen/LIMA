@@ -1,12 +1,14 @@
 # Engine batches
 
 `Engine({ simulation.get(), otherSimulation.get() })` accepts nonowning pointers
-that must outlive the engine. `Environment` groups prepared jobs into batches of
-up to four simulations and keeps their owners alive until the engine is destroyed.
+that must outlive the engine. `Environment` groups prepared jobs into batches and
+keeps their owners alive until the engine is destroyed. The max batch size is computed
+from the box of the batch's first simulation (`Environment::MaxBatchSize`): enough
+members to fill the GPU, ~3000 nm^3 of boxes in total, at most 32.
 
 The scheduler compares the actual simulations after preprocessing and configuration.
 It starts with the oldest prepared job and selects compatible jobs from a bounded
-eight-job preparation lookahead. The scheduler counts submitted jobs until their
+preparation lookahead of two max-size batches. The scheduler counts submitted jobs until their
 preprocessing finishes. When compatible candidates do not fill a batch, it waits
 for that count to reach zero or for the bounded preparation buffer to fill.
 `mustRunAlone`, displayed, stepwise and preparation-only jobs form standalone
@@ -37,7 +39,7 @@ the small amount of simulation-specific state used by kernels.
 - Logging uses concatenated per-simulation ring buffers, each with its own stride.
 
 All members must start at step zero, have equal box dimensions and agree on
-`SimParams` except `dt`, `n_steps`, and thermostat `ref_t`. Particle counts, topology, degrees of freedom
+`SimParams` except `dt`, `n_steps`, thermostat `ref_t`, `initial_temperature` and the analysis switches. Particle counts, topology, degrees of freedom
 and PME self-energy corrections are simulation-specific. The engine and scheduler
 use the same compatibility check in `BatchCompatibility.h`.
 

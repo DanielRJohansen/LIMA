@@ -3,7 +3,9 @@
 #include "LimaTypes.cuh"
 #include "Simulation.cuh"
 #include "Utilities.h"
+#include "MDFiles.h"
 #include <filesystem>
+#include <functional>
 #include <vector>
 #include <string>
 
@@ -39,6 +41,15 @@ namespace SimAnalysis {
 	};
 	void CompareDensityProfiles(const std::vector<DensityProfileGroup>& groups, const std::filesystem::path& outputPath, bool show = true);
 	std::vector<Float3> GetForces(const Simulation& simulation, int64_t step);
+
+	struct SelfDiffusion {
+		double coefficient = 0.0;	// [m^2/s]
+		double temperature = 0.0;	// [K] mean over the analyzed part of the run
+	};
+	// Self-diffusion of the selected atoms from their mean squared displacement, MSD(t) = 6Dt, ignoring the first
+	// skipPs of the trajectory. No finite-size correction, so D is somewhat lower than in an infinite system
+	SelfDiffusion SelfDiffusionCoefficient(const Simulation& simulation,
+		const std::function<bool(const GroRecord&)>& selection, double skipPs);
 
 
 	void PlotPotentialEnergyDistribution(const Simulation& sim, const std::filesystem::path& dir, const std::vector<int>& stepsToPlot);

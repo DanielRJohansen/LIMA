@@ -15,7 +15,7 @@
 #include <glm.hpp>
 
 class DrawTrianglesShader;
-class GLFWwindow;
+struct GLFWwindow;
 
 class FPS {
 	std::array<std::chrono::high_resolution_clock::time_point, 32> prevTimepoints;

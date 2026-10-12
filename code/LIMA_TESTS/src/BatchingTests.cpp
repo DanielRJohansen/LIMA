@@ -1,7 +1,7 @@
-#pragma once
 
 #include "TestUtils.h"
-#include "EngineBatchTests.h"
+#include "Format.h"
+#include "Tests.h"
 
 #include <array>
 #include <latch>
@@ -9,7 +9,7 @@
 namespace BatchingTests {
 	using namespace TestUtils;
 
-	static SimulationJob MakeT4Job(EnvMode envmode, bool mustRunAlone) {
+	SimulationJob MakeT4Job(EnvMode envmode, bool mustRunAlone) {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
 		SimulationJob job;
 		job.workDir = workDir;
@@ -22,7 +22,7 @@ namespace BatchingTests {
 		return job;
 	}
 
-	static bool HasIdenticalCoordinates(const Simulation& lhs, const Simulation& rhs) {
+	bool HasIdenticalCoordinates(const Simulation& lhs, const Simulation& rhs) {
 		const auto& lhsPclusters = lhs.box->persistentClusters;
 		const auto& rhsPclusters = rhs.box->persistentClusters;
 		if (lhsPclusters.size() != rhsPclusters.size())
@@ -37,7 +37,7 @@ namespace BatchingTests {
 		return true;
 	}
 
-	static TestRoutine TestFourT4BatchMatchReference(Environment& environment, EnvMode envmode) {
+	TestRoutine TestFourT4BatchMatchReference(Environment& environment, EnvMode envmode) {
 		auto referenceHandle = environment.Submit(MakeT4Job(envmode, true));
 
 		std::array<SimulationHandle, 4> handles;
@@ -65,7 +65,7 @@ namespace BatchingTests {
 				|| !HasIdenticalCoordinates(*reference.simulation, *result.simulation)) {
 				co_return LimaUnittestResult{
 					false,
-					std::format("Batched T4 run {} did not execute as the expected batch", index),
+					Lima::Format("Batched T4 run {} did not execute as the expected batch", index),
 					envmode == Full
 				};
 			}
@@ -80,13 +80,13 @@ namespace BatchingTests {
 		const double batchNsPerDay = batchSimulatedNs / batchWallTime * 86400.;
 		const double throughputRatio = batchNsPerDay / soloNsPerDay;
 		const bool throughputImproved = std::isfinite(throughputRatio) && throughputRatio >= desiredRatio;
-		const std::string result = std::format(
+		const std::string result = Lima::Format(
 			"Batch perf.: {:.2f}x ({:.2f} vs {:.2f} [ns/day])",
 			throughputRatio, batchNsPerDay, soloNsPerDay);
 
 		co_return LimaUnittestResult{
 			throughputImproved,
-			throughputImproved ? result : result + std::format("; expected at least {:.2f}x", desiredRatio),
+			throughputImproved ? result : result + Lima::Format("; expected at least {:.2f}x", desiredRatio),
 			envmode == Full
 		};
 	}
@@ -111,7 +111,7 @@ namespace BatchingTests {
 	//		if (!result.simulation || result.execution.batchSize != 4
 	//			|| (batchId && result.execution.batchId != *batchId)
 	//			|| !HasIdenticalCoordinates(*reference.simulation, *result.simulation)) {
-	//			LimaUnittestResult{ false, std::format("Batched T4 run {} did not execute as the expected batch", index), envmode == Full };
+	//			LimaUnittestResult{ false, Lima::Format("Batched T4 run {} did not execute as the expected batch", index), envmode == Full };
 	//		}
 	//		batchId = result.execution.batchId;
 	//		batchSimulatedNs += result.simulation->getStep() * result.simulation->simParams.dt;
@@ -130,13 +130,13 @@ namespace BatchingTests {
 	//	const double batchNsPerDay = batchSimulatedNs / batchWallTime * 86400.;
 	//	const double throughputRatio = batchNsPerDay / soloNsPerDay;
 	//	const bool throughputImproved = std::isfinite(throughputRatio) && throughputRatio >= 2.;
-	//	const std::string result = std::format(
+	//	const std::string result = Lima::Format(
 	//		"4 T4 batch matched ref.; throughput {:.2f}x ({:.2f} vs {:.2f} [ns/day])",
 	//		throughputRatio, batchNsPerDay, soloNsPerDay);
 	//	LimaUnittestResult{ throughputImproved, throughputImproved ? result : result + "; expected at least 2x", envmode == Full };
 	//}
 
-	inline SimulationJob MakeSmallJob(int particles, int steps, float dt, bool electrostatics) {
+	SimulationJob MakeSmallJob(int particles, int steps, float dt, bool electrostatics) {
 		auto job = MakeT4Job(Headless, false);
 		job.configureSimulation = [=](Simulation& simulation) {
 			auto small = EngineBatchTests::MakeSimulation(particles, steps, dt, electrostatics);
@@ -146,7 +146,7 @@ namespace BatchingTests {
 		return job;
 	}
 
-	inline std::vector<SimulationHandle> SubmitTogether(Environment& environment, std::vector<SimulationJob> jobs) {
+	std::vector<SimulationHandle> SubmitTogether(Environment& environment, std::vector<SimulationJob> jobs) {
 		// Ensure all submissions are visible before preprocessing finishes, without
 		// relying on sleeps or the relative speed of the scheduler and test thread.
 		auto submitted = std::make_shared<std::latch>(1);
@@ -164,7 +164,7 @@ namespace BatchingTests {
 		return handles;
 	}
 
-	inline void RunSchedulerTests(Environment& environment) {
+	void RunSchedulerTests(Environment& environment) {
 		using EngineBatchTests::Require;
 		for (bool electrostatics : {false, true}) {
 			std::vector<SimulationJob> jobs;
@@ -207,9 +207,8 @@ namespace BatchingTests {
 				Require(results[i].simulation->simParams.ref_t == (i % 2 ? 310.f : 300.f),
 					"Batch changed a member thermostat target");
 			}
-			Require(results[0].execution.batchSize == 4 && results[0].execution.batchId == results[1].execution.batchId
-				&& results[1].execution.batchId == results[2].execution.batchId
-				&& results[2].execution.batchId == results[3].execution.batchId,
+			Require(std::ranges::all_of(results, [&](const SimulationResult& result) {
+				return result.execution.batchSize == 6 && result.execution.batchId == results[0].execution.batchId; }),
 				"Scheduler did not batch simulations with different thermostat targets");
 		}
 		{
@@ -240,6 +239,35 @@ namespace BatchingTests {
 				catch (const std::runtime_error&) { failed = true; }
 				Require(failed == (i == 1 || i == 2), "Callback failure affected the wrong job");
 			}
+		}
+		// Files given as paths are parsed by the Environment and behave exactly like the same files given in memory:
+		// preprocess edits them, they come back in the result, and the two jobs still batch together
+		{
+			const fs::path fixtures = FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures";
+			FileInput<GroFile> unparsed{ fixtures / "metsol.gro" };
+			bool rejected = false;
+			try { unparsed.Get(); } catch (const std::logic_error&) { rejected = true; }
+			Require(rejected, "An unparsed file input was readable");
+
+			const auto MakeJob = [&](FileInput<GroFile> gro, FileInput<TopologyFile> top) {
+				SimParams params;
+				params.n_steps = 10;
+				SimulationJob job{ fixtures, std::move(gro), std::move(top), params, Headless };
+				job.preprocess = [](GroFile& coordinates, TopologyFile&, SimParams&) { coordinates.title = "edited"; };
+				return job;
+			};
+			std::vector<SimulationJob> jobs;
+			jobs.push_back(MakeJob(fixtures / "metsol.gro", fixtures / "metsol.top"));
+			jobs.push_back(MakeJob(GroFile{ fixtures / "metsol.gro" }, TopologyFile{ fixtures / "metsol.top" }));
+			auto handles = SubmitTogether(environment, std::move(jobs));
+			auto fromPaths = handles[0].Get();
+			auto inMemory = handles[1].Get();
+			Require(fromPaths.execution.batchSize == 2 && fromPaths.execution.batchId == inMemory.execution.batchId,
+				"Jobs given as paths and in memory did not batch together");
+			Require(HasIdenticalCoordinates(*fromPaths.simulation, *inMemory.simulation), "Files given as paths simulated differently");
+			const MolecularSystem system = fromPaths.FinalSystem();
+			Require(system.coordinates.title == "edited" && system.coordinates.atoms.size() == inMemory.FinalSystem().coordinates.atoms.size(),
+				"Files given as paths were not returned with the result");
 		}
 		const auto t4 = TestFourT4BatchMatchReference(environment, Headless).RunToCompletion();
 		Require(t4.success, t4.error_description.c_str());

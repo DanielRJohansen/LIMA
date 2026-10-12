@@ -224,7 +224,7 @@ struct NonbondedInteractionParams {
 
 
 struct ForceField_NB {
-	static const int MAX_TYPES = 64;
+	static const int MAX_TYPES = 256;	// Atomtype ids are uint8_t
 
 	struct ParticleParameters {	//Nonbonded
 		//float mass = -1;		//[kg/mol]	or 
@@ -309,6 +309,10 @@ public:
 			if (value != noVal) value += offset;
 	}
 
+	// The index-th value, or a value IsValue rejects past the last one
+	constexpr int Get(int index) const { return data[index]; }
+	static constexpr bool IsValue(int value) { return value != noVal; }
+
 	constexpr bool Contains(int value) const {
 		for (int i = 0; i < size; i++) {
 			if (data[i] == value)
@@ -359,95 +363,40 @@ using PclustersBondedToPcluster = StaticSet<32>;
 
 
 
-class BoolMatrix16x16 {
-	uint16_t data[16]; // rowmajor
-
-public:
-	constexpr BoolMatrix16x16() {}
-	constexpr void Clear() {
-		for (int i = 0; i < 16; i++)
-			data[i] = 0;
-	}
-
-	constexpr static bool Get(const uint16_t& row, int col) {
-		return (row >> col) & 1;
-	}
-	template <typename T> constexpr static bool Get(const T& row, int col) = delete;
-
-	constexpr uint16_t GetRow(int row) const {
-		return data[row];
-	}
-
-	constexpr uint16_t SetRow(int row, uint16_t val) {
-		return data[row] = val;
-	}
-
-	constexpr uint16_t GetColumn(int col) const {
-		uint16_t out = 0;
-		for (int row = 0; row < 16; ++row)
-			out |= static_cast<uint16_t>(((data[row] >> col) & 1u) << row);
-		return out;
-	}
-
-	// TODO: Optim this with a SetRow
-	constexpr void Set(int row, int col, bool val) {
-		unsigned bit = 1u << col;
-		unsigned mask = -static_cast<unsigned>(val);  // 0xFFFFFFFF if val==1, else 0
-		unsigned old = data[row];
-
-		data[row] = (old & ~bit) | (mask & bit);
-		/*if (val)
-			data[row] |= (1 << col);
-		else
-			data[row] &= ~(1 << col);		*/
-	}
-
-	constexpr static void SetValueInRow(int col, uint16_t& rowData) {
-		rowData |= (1 << col);
-	}
-
-	__host__ void Print() const {
-		for (int r = 0; r < 16; r++) {
-			for (int c = 0; c < 16; c++) {
-				printf("%d ", Get(data[r], c) ? 1 : 0);
-			}
-			printf("\n");
-		}
-		printf("\n");
-	}
-};
-class NoMat {};// Needed as a nonlocal variant of the one above.
 
 
 struct SuperCluster {
 	//static const int maxPclusters = 4;
 	static const int maxParticles = 16;
 
-	//Float3 positions[maxParticles];
-	float posX[maxParticles];
-	float posY[maxParticles];
-	float posZ[maxParticles];
-	float sigmaHalf[maxParticles];		// [nm]
-	float epsilonSqrt[maxParticles];		// [J/mol/nm]
-	float charge[maxParticles];
+	// AoS per particle, so the nonbonded kernels load any 4 consecutive particles in 3 sectors
+	float4 posCharge[maxParticles];			// x, y, z [nm], charge [kC/mol]
+	float2 sigmaEpsilon[maxParticles];		// sigmaHalf [nm], epsilonSqrt [J/mol/nm]. epsilonSqrt is -1 for padding
 
-	__device__ void SetPdata(const PData& pdata, int index) {
-		posX[index] = pdata.position.x;
-		posY[index] = pdata.position.y;
-		posZ[index] = pdata.position.z;
-		sigmaHalf[index] = pdata.params.sigmaHalf;
-		epsilonSqrt[index] = pdata.params.epsilonSqrt;
-		charge[index] = pdata.params.charge;
+	__host__ __device__ void SetPdata(const PData& pdata, int index) {
+		posCharge[index] = float4{ pdata.position.x, pdata.position.y, pdata.position.z, pdata.params.charge };
+		sigmaEpsilon[index] = float2{ pdata.params.sigmaHalf, pdata.params.epsilonSqrt };
 	}
 	__device__ void LoadPdata(PData& pdata, int index) const {
-		pdata.position = Float3(posX[index], posY[index], posZ[index]);
-		pdata.params.sigmaHalf = sigmaHalf[index];
-		pdata.params.epsilonSqrt = epsilonSqrt[index];
-		pdata.params.charge = charge[index];
+		const float4 pq = posCharge[index];
+		const float2 se = sigmaEpsilon[index];
+		pdata.position = Float3(pq.x, pq.y, pq.z);
+		pdata.params.sigmaHalf = se.x;
+		pdata.params.epsilonSqrt = se.y;
+		pdata.params.charge = pq.w;
 	}
-	__device__ Float3 Position(int index) const {
-		return Float3(posX[index], posY[index], posZ[index]);
+	__host__ __device__ Float3 Position(int index) const {
+		return Float3(posCharge[index].x, posCharge[index].y, posCharge[index].z);
 	}
+	__device__ void SetPosition(int index, const Float3& position) {
+		posCharge[index].x = position.x;
+		posCharge[index].y = position.y;
+		posCharge[index].z = position.z;
+	}
+	__host__ __device__ float SigmaHalf(int index) const { return sigmaEpsilon[index].x; }
+	__host__ __device__ float EpsilonSqrt(int index) const { return sigmaEpsilon[index].y; }
+	__host__ __device__ float Charge(int index) const { return posCharge[index].w; }
+	__host__ __device__ bool Valid(int index) const { return sigmaEpsilon[index].y != -1.f; }
 	//PData pData[maxParticles];
 
 	//__host__ bool operator!= (const SuperCluster& other) const {
@@ -525,20 +474,22 @@ struct SCResult {
 	}
 };
 
-//struct ScScTask {
-//	static constexpr int nInteractions = 4;
-//
-//	int sc0Id;
-//	int queryScIds[nInteractions];
-//	int sc0ResultIndex;
-//	int queryResultIndices[nInteractions];
-//	int nointeractionMatrixIndex[nInteractions];
-//};
+// Nonbonded work, see NbNonlocalKernel. Superclusters are split in quarters of 4 particles, and pairs are only computed
+// for the 4x4 blocks of quarters that had a pair within the list radius when the tasks were built.
+// An entry is quarter jQuarter of supercluster jScId, with the blocks it forms with the quarters of the task's own supercluster
+struct QuarterEntry {
+	int jScId;
+	uint16_t noInteractions[4];	// Per own quarter: bit iLocal*4+jLocal set if the pair must not be computed (bonded, padding, or computed in the other order)
+	uint8_t jQuarter;
+	uint8_t ownQuarterMask;		// Bit i set if own quarter i has a pair within the list radius
+	uint16_t _unused = 0;
+};
+static_assert(sizeof(QuarterEntry) == 16);
 
-struct ScScTask {
-//	int sc0Id; // implicitly the index of this task	
-	int startIndexInQueriesBuffers = 0;
-	int nQueryScs = 0;
+// The entries of one supercluster
+struct QuarterEntryTask {
+	int firstEntry = 0;
+	int nEntries = 0;
 };
 
 

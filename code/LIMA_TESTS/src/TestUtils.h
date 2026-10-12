@@ -1,4 +1,5 @@
 #pragma once
+#include "Format.h"
 
 #include "Environment.h"
 #include "Printer.h"
@@ -6,6 +7,7 @@
 #include "LimaTypes.cuh"
 #include "Filehandling.h"
 
+#include <chrono>
 #include <iostream>
 #include <string>
 #include <algorithm>
@@ -25,10 +27,10 @@
 namespace TestUtils {
 	// Analysis accesses CUDA-backed simulation data; keep it inside the GPU lease
 	// and return an owning copy so callers can aggregate results without the lock.
-	fs::path AutomatedTestsDir() { return FileUtils::GetLimaDir() / "tests" / "automatedtests"; }
-	fs::path HeavyTestsDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
+	inline fs::path AutomatedTestsDir() { return FileUtils::GetLimaDir() / "tests" / "automatedtests"; }
+	inline fs::path HeavyTestsDir() { return FileUtils::GetLimaDir().parent_path() / "LIMA_data"; }
 
-	fs::path getMostSuitableGroFile(const fs::path& workdir) {
+	inline fs::path getMostSuitableGroFile(const fs::path& workdir) {
 		const fs::path em = workdir / "molecule/em.gro";
 		const fs::path conf = workdir / "molecule/conf.gro";
 		if (std::filesystem::exists(em)) {
@@ -39,7 +41,7 @@ namespace TestUtils {
 		}
 	}
 
-	bool MayModifyDir(const fs::path& path) {
+	inline bool MayModifyDir(const fs::path& path) {
 		if (path.string().find("LIMA_data") == std::string::npos && path.string().find("automatedtests") == std::string::npos) {
 			throw std::runtime_error("LIMA is not allowed to clean this directory");
 			return false;
@@ -47,7 +49,7 @@ namespace TestUtils {
 		return true;
 	}
 
-	void TryDeleteFile(const fs::path& path) {
+	inline void TryDeleteFile(const fs::path& path) {
 		MayModifyDir(path);
 		try {
 			fs::remove(path);
@@ -57,7 +59,7 @@ namespace TestUtils {
 		}
 	}
 
-	void CleanDirectory(const fs::path& dir) {
+	inline void CleanDirectory(const fs::path& dir) {
 		if (dir.string().find("LIMA_data") == std::string::npos) {
 			throw std::runtime_error("LIMA is not allowed to clean this directory");
 		}
@@ -74,7 +76,7 @@ namespace TestUtils {
 		}
 	}
 
-	void CleanDirIfNotContains(const fs::path& dir, const std::string& except) {
+	inline void CleanDirIfNotContains(const fs::path& dir, const std::string& except) {
 		// must contain LIMA_data or automatedtests
 		if (dir.string().find("LIMA_data") == std::string::npos && dir.string().find("automatedtests") == std::string::npos) {
 			throw std::runtime_error("LIMA is not allowed to clean this directory");
@@ -117,7 +119,7 @@ namespace TestUtils {
 	}
 
 	// assumes that all the values are positive
-	bool isOutsideAllowedRange(float value, float target, float maxError=0.1) {
+	inline bool isOutsideAllowedRange(float value, float target, float maxError=0.1) {
 		if (isnan(value)) 
 			return true;
 
@@ -125,7 +127,7 @@ namespace TestUtils {
 		return error > maxError;
 	}
 
-	bool isAboveVcThreshold(float value, float target) {
+	inline bool isAboveVcThreshold(float value, float target) {
 		return value > target;
 	}
 
@@ -134,25 +136,25 @@ namespace TestUtils {
 		float max_gradient;
 	};
 
-	const fs::path VarianceCoefficientTargetsPath() {
+	inline const fs::path VarianceCoefficientTargetsPath() {
 		return AutomatedTestsDir() / "vc_targets.csv";
 	}
 
-	const fs::path VarianceCoefficientActualsPath() {
+	inline const fs::path VarianceCoefficientActualsPath() {
 		return AutomatedTestsDir() / "vc_results.csv";
 	}
 
-	std::map<std::string, VarianceCoefficientThresholds>& ActualVarianceCoefficientResults() {
+	inline std::map<std::string, VarianceCoefficientThresholds>& ActualVarianceCoefficientResults() {
 		static std::map<std::string, VarianceCoefficientThresholds> results;
 		return results;
 	}
 
-	std::map<std::string, VarianceCoefficientThresholds>*& ActiveVarianceCoefficientResults() {
+	inline std::map<std::string, VarianceCoefficientThresholds>*& ActiveVarianceCoefficientResults() {
 		thread_local std::map<std::string, VarianceCoefficientThresholds>* results = nullptr;
 		return results;
 	}
 
-	void WriteActualVarianceCoefficientResults() {
+	inline void WriteActualVarianceCoefficientResults() {
 		std::ofstream output{ VarianceCoefficientActualsPath(), std::ios::trunc };
 		if (!output) {
 			throw std::runtime_error("Could not write " + VarianceCoefficientActualsPath().string());
@@ -164,11 +166,11 @@ namespace TestUtils {
 		}
 	}
 
-	void ResetVarianceCoefficientResults() {
+	inline void ResetVarianceCoefficientResults() {
 		ActualVarianceCoefficientResults().clear();
 	}
 
-	void MergeVarianceCoefficientResult(
+	inline void MergeVarianceCoefficientResult(
 		std::map<std::string, VarianceCoefficientThresholds>& results,
 		const std::string& testName,
 		float maxVc,
@@ -181,7 +183,7 @@ namespace TestUtils {
 		}
 	}
 
-	void PublishVarianceCoefficientResults(
+	inline void PublishVarianceCoefficientResults(
 		const std::map<std::string, VarianceCoefficientThresholds>& results) {
 		for (const auto& [testName, result] : results) {
 			MergeVarianceCoefficientResult(
@@ -189,7 +191,7 @@ namespace TestUtils {
 		}
 	}
 
-	void RecordActualVarianceCoefficientResult(
+	inline void RecordActualVarianceCoefficientResult(
 		const std::string& test_name,
 		const std::vector<float>& VCs,
 		const std::vector<float>& energy_gradients
@@ -214,7 +216,7 @@ namespace TestUtils {
 			ActualVarianceCoefficientResults(), test_name, max_vc, max_gradient);
 	}
 
-	const std::map<std::string, VarianceCoefficientThresholds>& VarianceCoefficientTargets() {
+	inline const std::map<std::string, VarianceCoefficientThresholds>& VarianceCoefficientTargets() {
 		static const auto targets = []() {
 			std::ifstream input{ VarianceCoefficientTargetsPath() };
 			if (!input) {
@@ -253,7 +255,7 @@ namespace TestUtils {
 	}
 
 
-	bool CompareVecWithFile(const std::vector<Float3>& vec, const fs::path& path, float errorThreshold, bool overwriteFile) {
+	inline bool CompareVecWithFile(const std::vector<Float3>& vec, const fs::path& path, float errorThreshold, bool overwriteFile) {
 		if (overwriteFile) {
 			FileUtils::WriteVectorToBinaryFile(path, vec);
 			return true;
@@ -275,7 +277,7 @@ namespace TestUtils {
 
 	/// <summary></summary>	
 	/// <returns>{success, error_string(empty if successful)}</returns>
-	std::pair<bool, std::string> evaluateTest(
+	inline std::pair<bool, std::string> evaluateTest(
 		const std::string& test_name,
 		std::vector<float> VCs,
 		std::vector<float> energy_gradients)
@@ -301,18 +303,18 @@ namespace TestUtils {
 
 		for (auto& vc : VCs) {
 			if (evaluateVC(vc)) {
-				return { false, std::format("Var. Coeff. of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
+				return { false, Lima::Format("Var. Coeff. of {:.3e} was too far from the target {:.3e}", vc, target_vc) };
 			}
 		}
 
 		for (auto& gradient : energy_gradients) {
 			if (isnan(gradient) || abs(gradient) > max_energygradient_abs) {
-				return { false, std::format("Energygradient of {:.3e} superceeded the max of {:.3e}", gradient, max_energygradient_abs) };
+				return { false, Lima::Format("Energygradient of {:.3e} superceeded the max of {:.3e}", gradient, max_energygradient_abs) };
 			}
 		}
 
 		float highest_vc = *std::max_element(VCs.begin(), VCs.end());
-		return { true, std::format("VC {:.3e} / {:.3e}", highest_vc, target_vc)};
+		return { true, Lima::Format("VC {:.3e} / {:.3e}", highest_vc, target_vc)};
 	}
 
 	static void setConsoleTextColorRed() { std::cout << "\033[31m"; }
@@ -523,7 +525,7 @@ namespace TestUtils {
 			std::cout << "Test " << name << " ";
 			int length = 6 + static_cast<int>(name.length());
 			while (length++ < 61) std::cout << ' ';
-			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed, 1, 2) + ")");
+			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed.count(), 1, 2) + ")");
 			std::cout << std::flush;
 		}
 
@@ -576,6 +578,15 @@ namespace TestUtils {
 			PumpReadyTests();
 		}
 
+		// For timing-sensitive tests: waits until every earlier test has finished, then runs this
+		// test to completion before later tests are added, so no other work competes for CPU or GPU
+		template<typename Factory>
+		void AddSerialTest(std::string name, Factory&& factory) {
+			RunUntilAllComplete();
+			AddTest(std::move(name), std::forward<Factory>(factory));
+			RunUntilAllComplete();
+		}
+
 	private:
 		bool PumpReadyTests() {
 			bool madeProgress = false;
@@ -607,6 +618,10 @@ namespace TestUtils {
 		void Run() {
 			if (hasRun) return;
 			hasRun = true;
+			RunUntilAllComplete();
+		}
+
+		void RunUntilAllComplete() {
 			// Drive every ready test forward by one or more sequential Submit() calls.
 			// Results may complete in any order, but nextToPrint preserves registration order.
 			while (completedCount < tests.size()) {
@@ -644,7 +659,7 @@ namespace TestUtils {
 			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
 		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
 			co_return LimaUnittestResult{ false,
-				std::format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
+				Lima::Format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
 				envmode == Full };
 		}
 		if (!completed.analysis)
@@ -655,25 +670,25 @@ namespace TestUtils {
 		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
 	}
 
-	void stressTest(std::function<void()> func, size_t reps) {
+	inline void stressTest(std::function<void()> func, size_t reps) {
 		for (size_t i = 0; i < reps; i++) {
 			func();
 		}
 	}
 
-	string compareFilesBitwise(const std::filesystem::path& path1, const std::filesystem::path& path2) {
+	inline string compareFilesBitwise(const std::filesystem::path& path1, const std::filesystem::path& path2) {
 		// Open the files
 		std::ifstream file1(path1, std::ifstream::ate);
 		std::ifstream file2(path2, std::ifstream::ate);
 
 		// Check if both files are open
 		if (!file1.is_open() || !file2.is_open()) {
-			return std::format("Failed to open either or both files \n\t\t{} \n\t\t{}", path1.string(), path2.string());
+			return Lima::Format("Failed to open either or both files \n\t\t{} \n\t\t{}", path1.string(), path2.string());
 		}
 
 		// Validate the files. If they are not even 50 bytes long, something is surely wrong
 		if (file1.tellg() < 50 || file2.tellg() < 50) {
-			return std::format("Expected files to be atleast 50 bytes long \n\t\t{} \n\t\t{}", path1.string(), path2.string());
+			return Lima::Format("Expected files to be atleast 50 bytes long \n\t\t{} \n\t\t{}", path1.string(), path2.string());
 		}
 		//// Compare file sizes
 		//file1.seekg(0, std::ifstream::end);
@@ -689,13 +704,13 @@ namespace TestUtils {
 
 		// Compare the contents
 		if (!std::equal(std::istreambuf_iterator<char>(file1.rdbuf()), std::istreambuf_iterator<char>(), std::istreambuf_iterator<char>(file2.rdbuf()))) {
-			return std::format("Files did not match bit for bit \n\t\t{} \n\t\t{}", path1.string(), path2.string());
+			return Lima::Format("Files did not match bit for bit \n\t\t{} \n\t\t{}", path1.string(), path2.string());
 		};
 		return "";
 	}
 
 
-	void CompareForces1To1(const fs::path& workDir, const Simulation& simulation, bool overwriteRef) {
+	inline void CompareForces1To1(const fs::path& workDir, const Simulation& simulation, bool overwriteRef) {
 		const ParticleDataBuffer<Float3>* forcebuffer = simulation.forceBuffer.get();
 		std::vector<Float3> forces(forcebuffer->GetBufferAtStep(0), forcebuffer->GetBufferAtStep(0) + forcebuffer->n_particles_upperbound);
 
@@ -715,7 +730,7 @@ namespace TestUtils {
 		std::system(command.c_str());
 	}
 
-	LimaUnittestResult TestIsDeterministic(std::function<LimaUnittestResult()> testFunc, int repetitions, EnvMode envmode) {
+	inline LimaUnittestResult TestIsDeterministic(std::function<LimaUnittestResult()> testFunc, int repetitions, EnvMode envmode) {
 		std::vector<std::string> results;
 		for (int i = 0; i < repetitions; i++) {
 			LimaUnittestResult result = testFunc();
@@ -727,7 +742,7 @@ namespace TestUtils {
 		if (!allSame) {
 			std::string errorMsg = "Test produced different results in different runs:\n";
 			for (size_t i = 0; i < results.size(); i++) {
-				errorMsg += std::format("Run {}: {}\n", i + 1, results[i]);
+				errorMsg += Lima::Format("Run {}: {}\n", i + 1, results[i]);
 			}
 			return LimaUnittestResult{ false, errorMsg, envmode != Headless };
 		}
@@ -736,7 +751,7 @@ namespace TestUtils {
 		}
 	}
 
-	LimaUnittestResult CompareTopologyFiles(const TopologyFile& newTop, const TopologyFile& refTop, EnvMode envmode) {
+	inline LimaUnittestResult CompareTopologyFiles(const TopologyFile& newTop, const TopologyFile& refTop, EnvMode envmode) {
 
 		auto EqualUnordered = []<std::ranges::input_range R1, std::ranges::input_range R2>(R1&& a, R2&& b) {
 			using T = std::ranges::range_value_t<R1>;
@@ -777,7 +792,7 @@ namespace TestUtils {
 		return LimaUnittestResult{ true, "Success", false };
 	}
 
-	LimaUnittestResult CompareGroFiles(const GroFile& newGro, const GroFile& refGro, EnvMode envmode,
+	inline LimaUnittestResult CompareGroFiles(const GroFile& newGro, const GroFile& refGro, EnvMode envmode,
 		float maxCoordinateError=0.0015, float maxBoxError=0.f,
 		std::optional<float> maxCoordinateRmsd=std::nullopt) {
 		ASSERT(std::abs(newGro.box_size.x - refGro.box_size.x) <= maxBoxError
@@ -802,7 +817,7 @@ namespace TestUtils {
 			const double dz = newAtom.position.z - refAtom.position.z;
 			squaredCoordinateError += dx * dx + dy * dy + dz * dz;
 			if (errX || errY || errZ) {
-				std::string errorMsg = std::format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
+				std::string errorMsg = Lima::Format("Atom {} coordinate mismatch: new ({:.6f}, {:.6f}, {:.6f}) vs ref ({:.6f}, {:.6f}, {:.6f})",
 					newAtom.gro_id,
 					newAtom.position.x, newAtom.position.y, newAtom.position.z,
 					refAtom.position.x, refAtom.position.y, refAtom.position.z);
@@ -813,7 +828,7 @@ namespace TestUtils {
 		if (maxCoordinateRmsd) {
 			const double rmsd = std::sqrt(squaredCoordinateError / static_cast<double>(newGro.atoms.size()));
 			ASSERT(rmsd <= *maxCoordinateRmsd,
-				std::format("Coordinate RMSD {:.6f} exceeds allowed {:.6f}", rmsd, *maxCoordinateRmsd));
+				Lima::Format("Coordinate RMSD {:.6f} exceeds allowed {:.6f}", rmsd, *maxCoordinateRmsd));
 		}
 		return LimaUnittestResult{ true, "Success", false };
 	}

@@ -32,7 +32,8 @@ set(CUDA_SEPARABLE_COMPILATION ON)
 
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_89,code=sm_89")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo") # --ptxas-options=-v")
+# 20012: glm defaulted-ctor __host__/__device__ annotations (third-party); 20054: dynamic init of __shared__ variables (intended)
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -lineinfo -diag-suppress=20012,20054") # --ptxas-options=-v")
 
 
 if (UNIX)
@@ -64,15 +65,60 @@ endif()
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/applications")
  
 add_compile_definitions(GLEW_STATIC)
+# Thrust/CUB otherwise emit NVTX profiler ranges, which drags windows.h into every file using them (~23% of Engine.cu's parsing)
+add_compile_definitions(CCCL_DISABLE_NVTX)
 
-add_subdirectory(code/LIMA_DEPENDS)
-add_subdirectory(code/LIMA_BASE)
+# Lets a target's objects compile without waiting for the static libraries it links to
+set(CMAKE_OPTIMIZE_DEPENDENCIES ON)
+
+# Precompiled header for the host (C++) code of a target. CUDA files are left alone, nvcc handles PCH poorly.
+# MSVC lowercases the .pch path, which fails if the build tree is inside a case-sensitive directory
+# (fsutil file queryCaseSensitiveInfo <dir>). Configure with -DLIMA_PCH=OFF there
+option(LIMA_PCH "Use a precompiled header for host code" ON)
+function(lima_pch target)
+	if (LIMA_PCH)
+		if (target STREQUAL "LIMA_BASE")
+			target_precompile_headers(LIMA_BASE PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/code/LIMA_BASE/include/lima_pch.h>")
+		else()
+			# One PCH for the whole project, instead of ~7 s to build one per target
+			target_precompile_headers(${target} REUSE_FROM LIMA_BASE)
+		endif()
+	endif()
+endfunction()
+
+# Unity build: a target's C++ sources are compiled in batches, which saves parsing the same headers and compiling the
+# same template instantiations once per file. The CUDA targets are excluded, their sources must stay separate.
+# A batch should not take much longer than Engine.cu, the longest step of the build
+option(LIMA_UNITY "Compile the C++ sources of a target in batches" ON)
+function(lima_unity target batchSize)
+	if (LIMA_UNITY)
+		set_target_properties(${target} PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${batchSize})
+	endif()
+endfunction()
+
+# Ninja starts jobs in the order targets are defined, so the CUDA libraries go first: Engine.cu is the slowest
+# compile, and every other target can be built alongside it
 add_subdirectory(code/LIMA_ENGINE)
 add_subdirectory(code/LIMA_CONVEXHULLENGINE)
+add_subdirectory(code/LIMA_DEPENDS)
+add_subdirectory(code/LIMA_BASE)
 add_subdirectory(code/LIMA_TOOLS)
 add_subdirectory(code/LIMA_MD)
 add_subdirectory(code/LIMA_TESTS)
 add_subdirectory(code/LIMA)
+
+# These include <windows.h> on Windows, whose macros would leak into the sources batched after them
+if (WIN32)
+	set_source_files_properties(code/LIMA_BASE/src/Filehandling.cpp DIRECTORY code/LIMA_BASE PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+	set_source_files_properties(code/LIMA_MD/src/Analyzer.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
+# The longest C++ sources compile on their own, so no batch gets much longer than them
+set_source_files_properties(code/LIMA_MD/src/Pdb2gmx.cpp code/LIMA_MD/src/Display.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+lima_unity(LIMA_BASE 8)
+lima_unity(LIMA_TOOLS 8)
+lima_unity(LIMA_MD 5)
+lima_unity(LIMA_TESTCASES 5)
+lima_unity(agenttesting 8)
 
 if (UNIX)
 	# Copy the resources to the appropriate directory

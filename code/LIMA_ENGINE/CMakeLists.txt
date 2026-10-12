@@ -1,10 +1,16 @@
 #LIMA_ENGINE
 
-# Do NOT add any other .cu files, the engine should be a single compilation unit
-# in order to access __constant__ memory
+# The engine is split in several .cu files so they compile in parallel, as Engine.cu is the longest step of the build.
+# This requires that no __constant__ or other __device__ variables are shared between them, as there is no
+# relocatable device code. Each kernel must be defined in one .cu file only.
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
+    src/PME.cu
+    src/ParticleClusters.cu
+    src/SuperclusterTaskBuilder.cu
+    src/CubWrappers.cu
     src/SimulationData.cpp
+    src/EngineBatch.cpp
     src/EnergyMinimizationHost.cpp
   "src/ParticleClusteringCPU.cpp"
 )

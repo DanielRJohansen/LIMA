@@ -1,33 +1,19 @@
-#include "ForceCorrectness.h"
-#include "MDStability.h"
-#include "MembraneBuilder.h"
-#include "MinorPrograms.h"
-#include "ElectrostaticsTests.h"
-#include "Benchmarks.h"
-#include "FileTests.h"
-#include "ForcefieldTests.h"
-#include "SetupTests.h"
+#include "Tests.h"
 #include "Display.h"
-#include "ForceComparisons.h"
-#include "ProgramsTests.h"
 #include "Workflow.h"
-#include "AlgorithmTests.h"
-#include "BatchingTests.h"
-#include "EngineBatchTests.h"
-#include "DisplayTests.h"
+#include "LimitTesting.h"
 
 
 using namespace TestUtils;
 using namespace ForceCorrectness;
 using namespace TestMDStability;
-using namespace StressTesting;
 using namespace TestMembraneBuilder;
 using namespace TestMinorPrograms;
 using namespace ElectrostaticsTests;
 using namespace VerletintegrationTesting;
 using namespace BatchingTests;
 
-void RunAllUnitTests();
+int RunAllUnitTests();
 
 void TestDisplayT4() {
 	const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
@@ -143,42 +129,23 @@ void ShowcaseSTMV(int nSteps = 50000) {
 	std::cout << "STMV showcase completed: " << nSteps << " steps\n";
 }
 
-// Demonstrates LIMA's parallel simulation workflow.
-// Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
-// Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
-void ShowcaseMultisim() {
-	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
-	std::vector<Lipids::Selection> lipidSelections{
-		{Lipids::Select{ "DPPC", workDir, 70. }, Lipids::Select{ "DOPC", workDir, 30. }},
-		{Lipids::Select{ "DPPC", workDir, 40. }, Lipids::Select{ "DOPC", workDir, 60. }}
-	};
-
-	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
-	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
-		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
-	SimParams minimization = SimParams::BasicEMSimParams(800.f);
-	minimization.n_steps = 5000;
-	workflow.AddStage({ "minimize", minimization, {},
-		{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
-
-	SimParams production;
-	production.n_steps = 1000;
-	production.apply_thermostat = true;
-	production.save_energy = true;
-	workflow.AddStage({ "production", production, {
-		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
-		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
-	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
-	workflow.CompareDensityProfiles("composition", "temperature");
-	workflow.Run();
-
-	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
-}
-
-
-
 int main(int argc, char** argv) {
 	try {
+		// Dispatch before creating Environment: fatal GPU probes belong only to the child process.
+		if (argc == 3 && std::string_view(argv[1]) == "--limit-case") {
+			const int result = LimitTesting::RunChild(argv[2]);
+			// RunChild has destroyed every fixture and explicitly tested Engine cleanup. Skip global
+			// CUDA/CRT teardown, which can hang after a deliberately poisoned device context.
+			std::cout.flush();
+			std::cerr.flush();
+			std::_Exit(result);
+		}
+		if (argc >= 2 && std::string_view(argv[1]) == "--limit-tests") {
+			if (argc > 3) throw std::invalid_argument("Usage: limatest --limit-tests [NAME-SUBSTRING]");
+			LimaUnittestManager testman(false);
+			LimitTesting::AddTests(testman, argc == 3 ? argv[2] : "");
+			return testman.Finish() == 0 ? 0 : 1;
+		}
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
 		//TestDisplayT4();
@@ -187,7 +154,7 @@ int main(int argc, char** argv) {
 		//BuildCellTest();
 		//Benchmarks::ToGmxLargeCif(envmode);
 
-		//ShowcaseMultisim();
+		
 		//ShowcaseSTMV();
 
 		//Lipids::_MakeLipid("cholesterol");
@@ -208,10 +175,12 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark("manyt4", "manyt4sol");
 		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
 		//Benchmarks::STMV(env, envmode, 1000);
-
+		
+		EngineBatchTests::ShowcaseLargeEM();
+		//EngineBatchTests::ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
-		RunAllUnitTests();
+		//return RunAllUnitTests() == 0 ? 0 : 1;
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;
@@ -223,7 +192,7 @@ int main(int argc, char** argv) {
 		std::cerr << "\nCaught unnamed exception";
 	}
 
-	return 0;
+	return 1;
 }
 
 
@@ -234,15 +203,21 @@ int main(int argc, char** argv) {
 		return test_function(environment, envmode __VA_OPT__(,) __VA_ARGS__); \
 	})
 
+// Runs with no other test in flight, for tests that time CPU or GPU work
 #define ADD_SERIAL_TEST(description, test_function, ...) \
-	ADD_TEST(description, test_function __VA_OPT__(,) __VA_ARGS__)
+	testman.AddSerialTest(description, [&] { \
+		return test_function(environment, envmode __VA_OPT__(,) __VA_ARGS__); \
+	})
 
 // Runs all unit tests with the fastest/crucial ones first
-void RunAllUnitTests() {
+int RunAllUnitTests() {
 	TimeIt timer("RunAllUnitTests", true);
 	Environment& environment = Environment::Get();
 	LimaUnittestManager testman;
 	constexpr auto envmode = EnvMode::Headless;
+
+	// Run before enqueueing ordinary simulations so isolated GPU probes do not compete with them.
+	//LimitTesting::AddTests(testman);
 
 	if (!ALL_PHYSICS_ENABLED) {
 		TestUtils::setConsoleTextColorRed();
@@ -285,7 +260,7 @@ void RunAllUnitTests() {
 
 	// Electrostatics
 	ADD_TEST("CoulombForceSanityCheck", CoulombForceSanityCheck);
-	ADD_TEST("TestLongrangeEsNoLJTwoParticles", TestLongrangeEsNoLJTwoParticles);
+	ADD_TEST("TestPmeMatchesEwaldSum", TestPmeMatchesEwaldSum);
 	ADD_TEST("TestLongrangeEsNoLJManyParticles", TestLongrangeEsNoLJManyParticles);
 	//ADD_TEST("TestElectrostaticsManyParticles", TestElectrostaticsManyParticles(envmode));
 	ADD_TEST("TestChargedParticlesVelocityInUniformElectricField", TestChargedParticlesVelocityInUniformElectricField);
@@ -317,13 +292,14 @@ void RunAllUnitTests() {
 	// Performance test
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
 	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
-	ADD_TEST("T4", Benchmarks::T4, 200, Benchmarks::automatedTestRuns);
-	ADD_TEST("stmv sim performance", Benchmarks::STMV, 200, Benchmarks::automatedTestRuns);
+	ADD_SERIAL_TEST("LoadT4", Benchmarks::LoadT4);
+	ADD_SERIAL_TEST("T4", Benchmarks::T4, 500, Benchmarks::automatedTestRuns);
+	ADD_TEST("stmv sim performance", Benchmarks::STMV, 500, Benchmarks::automatedTestRuns);
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);
 
 
 
-	// Total test status will print as testman is destructed
+	return testman.Finish();
 }

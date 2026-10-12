@@ -1,4 +1,5 @@
 #include "LiveEditCommands.h"
+#include "Format.h"
 #include "argparser.h"
 
 #include <cfloat>
@@ -62,7 +63,7 @@ namespace LiveEdit {
 						lipidPercentage = std::stod(args[i + 1]);
 					}
 					catch (...) {
-						throw std::runtime_error(std::format("Invalid lipid percentage: '{}'. Expected a floating-point value.", args[i]));
+						throw std::runtime_error(Lima::Format("Invalid lipid percentage: '{}'. Expected a floating-point value.", args[i]));
 						exit(1);
 					}
 					lipids.emplace_back(lipidname, lipidPercentage);

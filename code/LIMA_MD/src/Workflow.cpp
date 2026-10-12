@@ -1,10 +1,11 @@
 #include "Workflow.h"
+#include "Format.h"
 
 #include "PhysicsUtils.cuh"
 
 #include <random>
 
-namespace {
+namespace Programs {
 	void InitializeVelocities(Simulation& simulation, float temperature, uint32_t seed) {
 		if (temperature <= 0.f)
 			throw std::invalid_argument("Initial temperature must be positive");
@@ -54,14 +55,14 @@ namespace {
 }
 
 std::vector<Programs::WorkflowInput> Programs::MakeMembraneInputs(
-	const std::vector<Lipids::Selection>& compositions, const std::vector<int>& seeds,
+	const std::vector<Lipids::Composition>& compositions, const std::vector<int>& seeds,
 	Float3 boxSize, MembraneGeometry::Figure geometry, bool solvate) {
 	std::vector<WorkflowInput> inputs;
 	inputs.reserve(compositions.size() * seeds.size());
-	for (const Lipids::Selection& composition : compositions) {
-		const std::string compositionName = Lipids::NameSelection(composition);
+	for (const Lipids::Composition& composition : compositions) {
+		const std::string compositionName = composition.Name();
 		for (const int seed : seeds) {
-			const std::string name = compositionName + std::format("_seed{}", seed);
+			const std::string name = compositionName + Lima::Format("_seed{}", seed);
 			inputs.push_back({
 				.name = name,
 				.tags = { { "composition", compositionName }, { "seed", std::to_string(seed) } },
@@ -155,8 +156,8 @@ void Programs::SimulationWorkflow::Run(Environment& environment) {
 
 	for (PendingRun& run : pending) run.handle.Get();
 	if (!densityProfileComparison) return;
-	if (!stages.back().outputs.contains(OutputSelect::DensityProfile))
-		throw std::invalid_argument("Density-profile comparison requires density-profile output");
+	if (!stages.back().params.density_profile)
+		throw std::invalid_argument("Density-profile comparison requires density_profile in the last stage's SimParams");
 
 	std::map<std::pair<std::string, std::string>, std::vector<fs::path>> groupedProfiles;
 	for (const PendingRun& run : pending) {

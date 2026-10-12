@@ -20,3 +20,5 @@ target_link_libraries(LIMA_TOOLS LIMA_BASE)
 if (UNIX)
     target_compile_options(LIMA_TOOLS PRIVATE -use_fast_math -O3)
 endif()
+
+lima_pch(LIMA_TOOLS)

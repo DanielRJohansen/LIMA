@@ -4,7 +4,8 @@
 # Now compile rest
 add_executable(lima
     lima.cpp
-  "include/SetWindowsRegistry.h")
+    Daemon.cpp
+  "include/WindowsIntegration.h")
 
 target_include_directories(lima PRIVATE
     ${CUDA_INCLUDE_DIRS}
@@ -12,6 +13,13 @@ target_include_directories(lima PRIVATE
 )
 
 target_link_libraries(lima LIMA_MD)
+if (WIN32)
+    target_link_libraries(lima ws2_32)
+    # A running lima daemon locks lima.exe, so stop it before the linker overwrites the file
+    add_custom_command(TARGET lima PRE_LINK
+        COMMAND ${CMAKE_COMMAND} -DLIMA_EXE=$<TARGET_FILE:lima> -P ${CMAKE_CURRENT_SOURCE_DIR}/StopDaemon.cmake
+        VERBATIM)
+endif()
 target_compile_definitions(lima PRIVATE LIMA_VERSION="${PROJECT_VERSION}")
 
 
@@ -26,3 +34,5 @@ else()
 
     target_sources(lima PRIVATE ${CMAKE_SOURCE_DIR}/resources/logo/logoicon.rc)
 endif()
+
+lima_pch(lima)

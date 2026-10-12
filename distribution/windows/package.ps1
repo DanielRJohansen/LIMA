@@ -69,11 +69,11 @@ Requirements
 
 Getting started
   Unzip anywhere and keep the files together; lima.exe finds the resources
-  folder next to it. To run lima from any terminal, add this folder to your PATH.
+  folder next to it. Then double-click lima.exe: the first time, it offers to
+  add this folder to your PATH, so 'lima' works in any terminal, and to open
+  .gro files with LIMA. Both only affect the current user and need no admin
+  rights. 'lima setup' does both without asking, 'lima setup --undo' reverts them.
   Run 'lima --help' for the available commands.
-
-  Optional: run 'lima setregistry' once to open .gro files with LIMA by
-  double-clicking. This only affects the current user and needs no admin rights.
 
 License
   Free for small companies, noncommercial use and academia, and free to evaluate

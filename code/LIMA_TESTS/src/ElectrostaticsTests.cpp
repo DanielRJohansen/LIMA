@@ -1,4 +1,5 @@
-#pragma once
+#include "Tests.h"
+#include "Format.h"
 
 #include "TestUtils.h"
 #include "Environment.h"
@@ -16,12 +17,12 @@ namespace ElectrostaticsTests {
 	using namespace TestUtils;
 
 
-	static TestRoutine CoulombForceSanityCheck(Environment&, EnvMode envmode) {
+	TestRoutine CoulombForceSanityCheck(Environment&, EnvMode envmode) {
 		const float calcedForce = PhysicsUtils::CalcCoulumbForce(1.f*elementaryChargeToKiloCoulombPerMole, 1.f*elementaryChargeToKiloCoulombPerMole, Float3{ 1.f, 0.f, 0.f }).len(); // [1/l N / mol]
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
 		if (std::abs(calcedForce - expectedForce) / expectedForce >= 0.0001f)
-			co_return LimaUnittestResult{ false, std::format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
+			co_return LimaUnittestResult{ false, Lima::Format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
 		// TODO: add potE to this also
 		co_return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
@@ -94,12 +95,12 @@ namespace ElectrostaticsTests {
 
 		const float actualVC = result.analysis->variance_coefficient;
 		const float maxVC = 1e-3;
-		ASSERT(actualVC < maxVC, std::format("VC {:.3e} / {:.3e}", actualVC, maxVC));
+		ASSERT(actualVC < maxVC, Lima::Format("VC {:.3e} / {:.3e}", actualVC, maxVC));
 
 		return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
-	static void MakeChargeParticlesSim(
+	void MakeChargeParticlesSim(
 		GroFile& grofile, TopologyFile& topfile, const fs::path& workDir,
 		const float boxLen, const AtomsSelection& atomsSelection, float particlesPerNm3) {
 		grofile.m_path = workDir / "conf.gro";
@@ -126,7 +127,7 @@ namespace ElectrostaticsTests {
 		topfile.printToFile();
 	}
 
-	static TestRoutine TestChargedParticlesVelocityInUniformElectricField(
+	TestRoutine TestChargedParticlesVelocityInUniformElectricField(
 		Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "ElectrostaticField";
 		AtomsSelection atoms{
@@ -201,11 +202,11 @@ namespace ElectrostaticsTests {
 		const auto [slope, intercept] = Statistics::linearFit(x, y);
 
 		if (slope >= 0.f) {
-			std::string errorMsg = std::format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
+			std::string errorMsg = Lima::Format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
 			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 		if (std::abs(intercept) > 50.f) {
-			std::string errorMsg = std::format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
+			std::string errorMsg = Lima::Format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
 			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
@@ -214,11 +215,11 @@ namespace ElectrostaticsTests {
 			co_return LimaUnittestResult{ false, "R2 value is nan", envmode == Full };
 		if (r2 < 0.5f) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
-			std::string errorMsg = std::format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
+			std::string errorMsg = Lima::Format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
 			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
 		}
 
-		co_return LimaUnittestResult{ true, std::format("R2 Value: {:.2f}", r2), envmode == Full};
+		co_return LimaUnittestResult{ true, Lima::Format("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
 	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -288,8 +289,8 @@ namespace ElectrostaticsTests {
 	//		const float forceError = std::abs((compoundInterimSelf.forces_prev[0] - forceSum).len()) / forceSum.len();
 	//		maxForceError = std::max(maxForceError, forceError);
 
-	//		//ASSERT(potEError < 1e-4, std::format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));
-	//		//ASSERT(forceError < 1e-4, std::format("Actual Force {:.7e} Expected force {:.7e} Error {:.7e}", compoundSelf.forces_interim[0].len(), forceSum.len(), forceError));
+	//		//ASSERT(potEError < 1e-4, Lima::Format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));
+	//		//ASSERT(forceError < 1e-4, Lima::Format("Actual Force {:.7e} Expected force {:.7e} Error {:.7e}", compoundSelf.forces_interim[0].len(), forceSum.len(), forceError));
 	//	}
 
 	//	// Now do the normal VC check
@@ -297,111 +298,126 @@ namespace ElectrostaticsTests {
 	//	auto analytics = SimAnalysis::analyzeEnergy(sim.get());
 
 
-	//	ASSERT(analytics.variance_coefficient < targetVarCoeff, std::format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
+	//	ASSERT(analytics.variance_coefficient < targetVarCoeff, Lima::Format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
 
 	//	return LimaUnittestResult{ 
 	//		true, 
-	//		std::format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
+	//		Lima::Format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
 	//		envmode == Full };
 	//}
 
 
-	TestRoutine TestLongrangeEsNoLJTwoParticles(
-		Environment& environment, EnvMode envmode) {
-		const fs::path work_folder = AutomatedTestsDir() / "Pool/";
-
-		struct TestSetup {
-			Float3 p0, p1;
-			std::string name{};
-			Float3 mirrorDir{ -1,0, 0 };
+	// The electrostatic forces and energy of random +-1e ions (no LJ) against an exact Ewald sum in double precision: the realspace sum within
+	// the cutoff, and the reciprocal sum over every wavevector where it is not negligible. SPME matches it to ~0.1% RMS.
+	// Many charges and an RMS error, rather than pair forces: SPME gives each charge a small force from its own spread charge
+	// (~0.7 kJ/mol/nm for 1e at 0.125 nm spacing), which dominates the error of a lone pair but averages out in a system
+	TestRoutine TestPmeMatchesEwaldSum(Environment& environment, EnvMode envmode) {
+		const float boxLen = 5.f;
+		const fs::path workDir = HeavyTestsDir() / "PmeMatchesEwaldSum";
+		const AtomsSelection atoms{
+			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lp", 0, 1.f, 12.011f}, 50},
+			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "ln", 0, -1.f, 12.011f}, 50},
 		};
-
-		// First check with 2 particles exactly on the nodeindices, such that the longrange approximation is perfect
-		std::vector<TestSetup> testSetups{
-			 {Float3{ 6.025f, 10.025f, 10.f }, Float3{ 8.025f, 10.025f, 10.025f }, "x-dim only 2 nm"}
-			,{Float3{ 4.f, 10.f, 10.f }, Float3{ 10.07f, 10.025f, 10.025f },  "x-dim only 8 nm"}
-			,{Float3{ 4.025f, 11.025f, 9.025f }, Float3{ 10.025f, 10.025f, 10.025f }, "3d force"}
-			,{Float3{ 9.6f, 10.f, 10.f }, Float3{ 10.f, 10.f, 10.f}, "Within SR range"}
-			,{Float3{ .1f, 10.f, 10.f }, Float3{ 5.6f, 10.f, 10.f }, "Close to boundary"}
-			,{Float3{ .1f, 10.f, 10.f }, Float3{ 28.f, 10.f, 10.f }, "With hyperpos closest", {0.f,0.f, 0.f}}
-		};
-
-
-
-
 
 		SimParams params{};
 		params.n_steps = 1;
 		params.data_logging_interval = 1;
-		const float c0 = -1.f * elementaryChargeToKiloCoulombPerMole;
-		const float c1 = 1.f * elementaryChargeToKiloCoulombPerMole;
-		std::vector<SimulationHandle> handles;
-		handles.reserve(testSetups.size());
-		for (const auto& setup : testSetups) {
-			SimulationJob job;
-			job.workDir = work_folder;
-			job.simParams = params;
-			job.mode = envmode;
-			job.preprocess = [setup](GroFile& grofile, TopologyFile&, SimParams&) {
-				grofile.box_size = Float3{ 30.f };
-				grofile.atoms[0].position = setup.p0;
-				grofile.atoms[1].position = setup.p1;
-			};
-			job.configureSimulation = [c0, c1](Simulation& simulation) {
-				simulation.box->persistentClusters[0].pqd[0].params.charge = c0;
-				simulation.box->persistentClusters[1].pqd[0].params.charge = c1;
-			};
-			handles.push_back(environment.Submit(std::move(job)));
-		}
+		SimulationJob job;
+		job.workDir = workDir;
+		job.grofile.emplace();
+		job.topfile.emplace();
+		job.simParams = params;
+		job.mode = envmode;
+		auto generatedGrofile = std::make_shared<GroFile>();
+		job.preprocess = [workDir, boxLen, atoms, generatedGrofile](GroFile& grofile, TopologyFile& topfile, SimParams&) {
+			fs::create_directories(workDir);
+			MakeChargeParticlesSim(grofile, topfile, workDir, boxLen, atoms, 1.f);
+			*generatedGrofile = grofile;
+		};
+		auto completed = co_await environment.Submit(std::move(job));
+		const GroFile& grofile = *generatedGrofile;
+		const int n = static_cast<int>(grofile.atoms.size());
 
-		for (size_t testIndex = 0; testIndex < testSetups.size(); testIndex++) {
-			const auto& setup = testSetups[testIndex];
-			Float3 hyperposOther = setup.p1;
-			BoundaryConditionPublic::applyHyperposNM(setup.p0, hyperposOther, Float3{ 30.f }, PBC);
-			
-			const Float3 diff = setup.p0 - hyperposOther;
+		const double kappa = PhysicsUtils::CalcEwaldkappa(params.cutoff_nm);	// [nm^-1]
+		const double cutoff = params.cutoff_nm;									// [nm]
+		const double coulomb = PhysicsUtils::modifiedCoulombConstant;
+		const double volume = double(boxLen) * boxLen * boxLen;
+		std::vector<double> charges(n);
+		for (int i = 0; i < n; i++)
+			charges[i] = (grofile.atoms[i].atomName == "lp" ? 1. : -1.) * elementaryChargeToKiloCoulombPerMole;
+		auto position = [&](int i, int dim) { return double(grofile.atoms[i].position[dim]); };
+		std::vector<std::array<double, 3>> expected(n, std::array<double, 3>{});
+		double expectedEnergy = 0.;
 
-			const Float3 diffFromMirror = setup.p0 - (setup.p1 + (Float3{ 30.f } * setup.mirrorDir));
-			const Float3 mirrorForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diffFromMirror);
-			const float mirrorPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diffFromMirror.len()) * 0.5f;
-
-
-			const float expectedPotential = PhysicsUtils::CalcCoulumbPotential(c0, c1, diff.len()) * 0.5f + mirrorPotential;
-			const Float3 expectedForce = PhysicsUtils::CalcCoulumbForce(c0, c1, diff) + mirrorForce;
-
-
-			auto completed = co_await std::move(handles[testIndex]);
-			auto sim = std::move(completed.simulation);
-
-			const Float3 actualForce = sim->forceBuffer->GetDatapoint(0, 0, 0);
-			const float actualPotential = sim->potE_buffer->GetDatapoint(0, 0, 0);
-			const float potEError = std::abs((actualPotential - expectedPotential) / expectedPotential);
-			const float forceError = (actualForce - expectedForce).len() / expectedForce.len();
-
-			
-			//ghostforce.print('G');
-			if (envmode == Full) {
-				printf("Exp Force %.3e %.3e %.3e\n", expectedForce.x, expectedForce.y, expectedForce.z);
-				//printf("CPU Force %.3e %.3e %.3e\n", forceEnergy[0].force.x, forceEnergy[0].force.y, forceEnergy[0].force.z);
-				printf("GPU force %.3e %.3e %.3e\n", actualForce.x, actualForce.y, actualForce.z);
-				printf("Mir force %.3e %.3e %.3e\n", mirrorForce.x, mirrorForce.y, mirrorForce.z);
-				printf("Expected pot %.3e GPU %.3e mirror %.3e\n", expectedPotential, actualPotential, mirrorPotential);
+		// Realspace part, minimum image (cutoff < boxLen / 2)
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				if (i == j) continue;
+				double diff[3];
+				for (int d = 0; d < 3; d++) {
+					diff[d] = position(i, d) - position(j, d);
+					diff[d] -= boxLen * std::round(diff[d] / boxLen);
+				}
+				const double dist = std::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
+				if (dist >= cutoff) continue;
+				expectedEnergy += 0.5 * coulomb * charges[i] * charges[j] * std::erfc(kappa * dist) / dist;
+				const double magnitude = coulomb * charges[i] * charges[j]
+					* (std::erfc(kappa * dist) / (dist * dist) + 2. * kappa / std::sqrt(PI) * std::exp(-kappa * kappa * dist * dist) / dist);
+				for (int d = 0; d < 3; d++)
+					expected[i][d] += magnitude * diff[d] / dist;
 			}
-
-			if (forceError >= 0.07f)
-				co_return LimaUnittestResult{ false, std::format("{}\n\tActual Force {:.3e} {:.3e} {:.3e} Expected force {:.3e} {:.3e} {:.3e} Error {:.3f}", setup.name, actualForce.x, actualForce.y, actualForce.z, expectedForce.x, expectedForce.y, expectedForce.z, forceError), envmode == Full };
-			// Potential is hopeless to match realspace and kspace
-			if (potEError >= 3.f)
-				co_return LimaUnittestResult{ false, std::format("{}\n\tActual PotE {:.5e} Expected potE: {:.5e} Error {:.3}", setup.name, actualPotential, expectedPotential, potEError), envmode == Full };
-
-			const Float3 actualForceP1 = sim->forceBuffer->GetDatapoint(1, 0, 0);
-			if ((actualForce + actualForceP1).len() / actualForce.len() >= 0.001f)
-				co_return LimaUnittestResult{ false,
-					std::format("{}\n\tExpected forces to be equal and opposite. P0 {:.3e} {:.3e} {:.3e} P1 {:.3e} {:.3e} {:.3e}", setup.name,
-						actualForce.x, actualForce.y, actualForce.z, actualForceP1.x, actualForceP1.y, actualForceP1.z), envmode == Full };
 		}
 
-		co_return LimaUnittestResult{ true, "Success", envmode == Full };
+		// Reciprocal part: wavevectors up to where exp(-k^2 / 4 kappa^2) < 1e-12
+		const double kMax = 2. * kappa * std::sqrt(12. * std::log(10.));
+		const int nMax = static_cast<int>(std::ceil(kMax * boxLen / (2. * PI)));
+		for (int nx = -nMax; nx <= nMax; nx++) {
+			for (int ny = -nMax; ny <= nMax; ny++) {
+				for (int nz = -nMax; nz <= nMax; nz++) {
+					if (nx == 0 && ny == 0 && nz == 0) continue;
+					const double k[3]{ 2. * PI * nx / boxLen, 2. * PI * ny / boxLen, 2. * PI * nz / boxLen };
+					const double kSquared = k[0] * k[0] + k[1] * k[1] + k[2] * k[2];
+					if (kSquared > kMax * kMax) continue;
+					const double greens = 4. * PI / kSquared * std::exp(-kSquared / (4. * kappa * kappa));
+
+					// Structure factor S(k) = sum_j q_j exp(-i k.r_j)
+					double structureRe = 0., structureIm = 0.;
+					for (int j = 0; j < n; j++) {
+						const double phase = k[0] * position(j, 0) + k[1] * position(j, 1) + k[2] * position(j, 2);
+						structureRe += charges[j] * std::cos(phase);
+						structureIm -= charges[j] * std::sin(phase);
+					}
+					expectedEnergy += coulomb / (2. * volume) * greens * (structureRe * structureRe + structureIm * structureIm);
+					for (int i = 0; i < n; i++) {
+						const double phase = k[0] * position(i, 0) + k[1] * position(i, 1) + k[2] * position(i, 2);
+						// Im(exp(i k.r_i) S(k)) = sum_j q_j sin(k.(r_i - r_j))
+						const double im = std::sin(phase) * structureRe + std::cos(phase) * structureIm;
+						for (int d = 0; d < 3; d++)
+							expected[i][d] += coulomb / volume * charges[i] * greens * im * k[d];
+					}
+				}
+			}
+		}
+
+		// Self-energy: the reciprocal sum includes each charge's interaction with its own Gaussian
+		for (int i = 0; i < n; i++)
+			expectedEnergy -= kappa / std::sqrt(PI) * coulomb * charges[i] * charges[i];
+
+		double errorSquaredSum = 0., forceSquaredSum = 0., actualEnergy = 0.;
+		for (int i = 0; i < n; i++) {
+			const Float3 actual = completed.simulation->forceBuffer->GetDatapoint(i, 0, 0);
+			actualEnergy += completed.simulation->potE_buffer->GetDatapoint(i, 0, 0);
+			double errorSquared = 0.;
+			for (int d = 0; d < 3; d++) {
+				errorSquared += (actual[d] - expected[i][d]) * (actual[d] - expected[i][d]);
+				forceSquaredSum += expected[i][d] * expected[i][d];
+			}
+			errorSquaredSum += errorSquared;
+		}
+		const double relativeRmsError = std::sqrt(errorSquaredSum / forceSquaredSum);
+		const double relativeEnergyError = std::abs(actualEnergy - expectedEnergy) / std::abs(expectedEnergy);
+		co_return LimaUnittestResult{ relativeRmsError < 0.005 && relativeEnergyError < 0.005,
+			Lima::Format("Force err {:.2f}% Energy err {:.2f}%", relativeRmsError * 100., relativeEnergyError * 100.), envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
@@ -539,7 +555,7 @@ namespace ElectrostaticsTests {
 		const float chargeExtern = 1.f;
 		const float charge = chargeExtern * elementaryChargeToKiloCoulombPerMole;
 		AtomsSelection atoms{
-				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
+				{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, chargeExtern, 12.011f}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
 			};
 
 		const fs::path work_folder = HeavyTestsDir() / "ShortrangeElectrostaticsCompoundOnly/";
@@ -615,14 +631,14 @@ namespace ElectrostaticsTests {
 
 		/*const float maxPotError = *std::max_element(potErrors.begin(), potErrors.end());
 		const float meanPotError = Statistics::Mean(potErrors);
-		ASSERT(meanPotError < 5e-2, std::format("Mean PotE Error {:.3e}", meanPotError));
-		ASSERT(maxPotError < 1, std::format("Max PotE Error {:.3e}", maxPotError));*/
+		ASSERT(meanPotError < 5e-2, Lima::Format("Mean PotE Error {:.3e}", meanPotError));
+		ASSERT(maxPotError < 1, Lima::Format("Max PotE Error {:.3e}", maxPotError));*/
 		
 		const float maxForceError = *std::max_element(forceErrors.begin(), forceErrors.end());
 		const float meanForceError = Statistics::Mean(forceErrors);
 		if (meanForceError >= 0.18f)
-			co_return LimaUnittestResult{ false, std::format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
-		//ASSERT(maxForceError < 0.8f, std::format("Max Force Error {:.3e}", maxForceError));
+			co_return LimaUnittestResult{ false, Lima::Format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
+		//ASSERT(maxForceError < 0.8f, Lima::Format("Max Force Error {:.3e}", maxForceError));
 
 		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}

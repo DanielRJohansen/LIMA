@@ -45,7 +45,7 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 
 	SimParams params;
 	params.em_variant = true;
-	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, V1, {}, false, params);
+	auto boximage = LIMA_MOLECULEBUILD::buildMolecules(grofile,	topfile, params);
 
 	std::vector<std::string> atomNames;
 	for (auto atom : topfile.GetAllElements<TopologyFile::AtomsEntry>()) {
@@ -174,19 +174,20 @@ void Programs::StaticbodyEnergyMinimize(GroFile& grofile, const TopologyFile& to
 	MoveMoleculesUntillNoOverlap(mhCol, grofile.box_size, render);
 }
 
-SimulationJob Programs::MakeMembraneJob(fs::path workDir, Lipids::Selection composition,
+SimulationJob Programs::MakeMembraneJob(fs::path workDir, Lipids::Composition composition,
 	Float3 boxSize, MembraneGeometry::Figure geometry, int seed, SimParams params, EnvMode mode,
 	bool solvate) {
 	SimulationJob job;
 	job.workDir = std::move(workDir);
-	job.grofile.emplace();
-	job.grofile->box_size = boxSize;
+	GroFile coordinates;
+	coordinates.box_size = boxSize;
+	job.grofile = std::move(coordinates);
 	job.topfile.emplace();
 	job.simParams = std::move(params);
 	job.mode = mode;
 	job.preprocess = [composition = std::move(composition), geometry = std::move(geometry), seed, solvate](
 		GroFile& coordinates, TopologyFile& topology, SimParams&) {
-		SimulationBuilder::CreateMembrane(coordinates, topology, composition, geometry, seed);
+		SimulationBuilder::CreateMembrane(coordinates, topology, composition.Load(), geometry, seed);
 		if (solvate) SimulationBuilder::SolvateGrofile(coordinates, topology);
 	};
 	return job;

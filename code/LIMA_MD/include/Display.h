@@ -31,7 +31,7 @@ class DrawBackgroundGradientShader;
 class RenderTargetControl;
 class Camera;
 class FPS;
-class GLFWwindow;
+struct GLFWwindow;
 class Overlay;
 struct RenderSettings;
 class SSBO;

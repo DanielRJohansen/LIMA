@@ -41,7 +41,7 @@ struct InterpretedResidue {
 using InterpretedChain = std::vector<InterpretedResidue>;
 using InterpretedChains = std::vector<InterpretedChain>;
 
-glm::vec3 ToVec3(const Float3& value)
+glm::vec3 ToGlmVec3(const Float3& value)
 {
 	return { value.x, value.y, value.z };
 }
@@ -167,12 +167,12 @@ std::optional<InterpretedResidue> MakeResidue(
 		|| residue.cAtom == InterpretedResidue::noAtom || residue.oAtom == InterpretedResidue::noAtom)
 		return std::nullopt;
 
-	residue.n = ToVec3(grofile.atoms[residue.nAtom].position);
-	residue.ca = ToVec3(grofile.atoms[residue.caAtom].position);
-	residue.c = ToVec3(grofile.atoms[residue.cAtom].position);
-	residue.o = ToVec3(grofile.atoms[residue.oAtom].position);
+	residue.n = ToGlmVec3(grofile.atoms[residue.nAtom].position);
+	residue.ca = ToGlmVec3(grofile.atoms[residue.caAtom].position);
+	residue.c = ToGlmVec3(grofile.atoms[residue.cAtom].position);
+	residue.o = ToGlmVec3(grofile.atoms[residue.oAtom].position);
 	if (residue.hAtom != InterpretedResidue::noAtom)
-		residue.h = ToVec3(grofile.atoms[residue.hAtom].position);
+		residue.h = ToGlmVec3(grofile.atoms[residue.hAtom].position);
 	return residue;
 }
 

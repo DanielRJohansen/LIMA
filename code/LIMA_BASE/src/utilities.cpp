@@ -1,7 +1,50 @@
 #include "Utilities.h"
+#include "LimaLogger.h"
+#include "Format.h"
 #include <filesystem>
+#include <chrono>
 #include <iostream>
 #include "Printer.h"
+
+void LIMA_UTILS::genericErrorCheck(const char* text) {
+	cudaDeviceSynchronize();
+
+	cudaError_t cuda_status = cudaGetLastError();
+	if (cuda_status != cudaSuccess) {
+		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+		fprintf(stderr, text);
+		throw std::runtime_error("genericErrorCheck failed");
+	}
+}
+
+void LIMA_UTILS::genericErrorCheck(cudaStream_t stream, const char* text) {
+	const cudaError_t syncStatus = cudaStreamSynchronize(stream);
+	const cudaError_t cudaStatus = syncStatus == cudaSuccess ? cudaGetLastError() : syncStatus;
+	if (cudaStatus != cudaSuccess) {
+		std::cout << "\nCuda error code: " << cudaStatus << " - " << cudaGetErrorString(cudaStatus) << std::endl;
+		fprintf(stderr, text);
+		throw std::runtime_error("genericErrorCheck failed");
+	}
+}
+
+void LIMA_UTILS::genericErrorCheckNoSync(const char* text) {
+	if constexpr (SYNC_ALL_KERNELS)
+		cudaDeviceSynchronize();
+
+	cudaError_t cuda_status = cudaGetLastError();
+	if (cuda_status != cudaSuccess) {
+		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+		fprintf(stderr, text);
+		throw std::runtime_error("genericErrorCheck failed");
+	}
+}
+
+void LIMA_UTILS::genericErrorCheck(const cudaError_t cuda_status) {
+	if (cuda_status != cudaSuccess) {
+		std::cout << "\nCuda error code: " << cuda_status << " - " << cudaGetErrorString(cuda_status) << std::endl;
+		throw std::runtime_error("genericErrorCheck failed");
+	}
+}
 
 using namespace LIMA_Print;
 namespace fs = std::filesystem;
@@ -98,10 +141,11 @@ void LimaLogger::clearLine() {
 
 
 std::string StringUtils::FormatTime(
-    std::chrono::duration<double> duration,
+    double seconds,
     int decimalPlacesBeforePoint,
     int decimalPlacesAfterPoint
 ) {
+    const std::chrono::duration<double> duration{ seconds };
     using Seconds = std::chrono::duration<double>;
 
     struct Unit {
@@ -158,7 +202,7 @@ std::string StringUtils::FormatTime(
         }
     }
 
-    return std::format("{} [{}]", formatted, selectedUnit->suffix);
+    return Lima::Format("{} [{}]", formatted, selectedUnit->suffix);
 }
 
 std::vector<std::string> StringUtils::SplitWords(std::string_view line) {

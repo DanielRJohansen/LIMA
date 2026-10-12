@@ -1,8 +1,8 @@
-#include "BatchingTests.h"
+#include "Tests.h"
+#include "Format.h"
 #include "Display.h"
 #include "DisplayTests.h"
 #include "EnergyMinimizationtests.h"
-#include "EngineBatchTests.h"
 #include "Environment.h"
 #include "Programs.h"
 #include "TestUtils.h"
@@ -98,7 +98,7 @@ namespace {
 		PlaceInPaddedBox(conversion.grofile, 1.f);
 		size_t moleculeIndex = 0;
 		for (auto& [_, molecule] : conversion.topology.moleculetypes)
-			molecule->includePath = std::format("molecule_{:04}.itp", moleculeIndex++);
+			molecule->includePath = Lima::Format("molecule_{:04}.itp", moleculeIndex++);
 		WriteTestSystem(testRoot / "3j3q_solvated", std::move(conversion.grofile),
 			std::move(conversion.topology), true, 1);
 		std::cout << "Prepared non-minimized systems in " << testRoot << '\n';
@@ -113,7 +113,7 @@ namespace {
 			task->simStatus.step = 24000 + i * 1000;
 			task->simStatus.temperature = 300.12f + i;
 			task->simStatus.maxForce = 1.23e3f;
-			task->simStatus.expectedTimeToFinish = std::chrono::duration<double>{ 154. };
+			task->simStatus.expectedTimeToFinish = 154.;
 			task->simStatus.avgStepTime = .842f;
 			task->simStatus.simulationPerformance = 205.23f;
 			display.Submit(i, std::move(task), false, nullptr, "Preview " + std::to_string(i + 1));
@@ -135,7 +135,9 @@ namespace {
 			<< "  --display-tiles-preview\n"
 			<< "  --environment-batch-tests\n"
 			<< "  --engine-batch-tests\n"
-			<< "  --showcase-multisim\n";
+			<< "  --showcase-multisim\n"
+			<< "  --prepare-large-em\n"
+			<< "  --showcase-large-em\n";
 	}
 }
 
@@ -167,6 +169,14 @@ int main(int argc, char** argv) {
 		}
 		if (argc == 2 && std::string_view(argv[1]) == "--engine-batch-tests") {
 			EngineBatchTests::RunAll();
+			return 0;
+		}
+		if (argc == 2 && std::string_view(argv[1]) == "--prepare-large-em") {
+			EngineBatchTests::PrepareLargeEM();
+			return 0;
+		}
+		if (argc == 2 && std::string_view(argv[1]) == "--showcase-large-em") {
+			EngineBatchTests::ShowcaseLargeEM();
 			return 0;
 		}
 		if (argc == 2 && std::string_view(argv[1]) == "--showcase-multisim") {

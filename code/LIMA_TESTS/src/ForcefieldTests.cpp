@@ -1,3 +1,5 @@
+#include "Tests.h"
+#include "Format.h"
 #include "Programs.h"
 #include "TestUtils.h"
 
@@ -20,8 +22,7 @@ using namespace TestUtils;
 
 
 void ParseForcefieldFromTpr(const std::string& filePath, std::vector<SingleBond::Parameters>& bonds, std::vector<AngleUreyBradleyBond::Parameters>& angles,
-    std::vector<DihedralBond::Parameters>& dihedrals, std::vector<ImproperDihedralBond::Parameters>& improperDihedrals, std::vector<std::array<int, 4>>& dihIds) 
-{
+    std::vector<DihedralBond::Parameters>& dihedrals, std::vector<ImproperDihedralBond::Parameters>& improperDihedrals, std::vector<std::array<int, 4>>& dihIds) {
     std::vector<std::variant<SingleBond::Parameters, AngleUreyBradleyBond::Parameters, DihedralBond::Parameters, ImproperDihedralBond::Parameters>> functypes;
 
     std::ifstream file(filePath);
@@ -114,8 +115,7 @@ void ParseForcefieldFromItp(
     std::vector<std::array<std::string, 2>>& atomnamesSinglebonds,
     std::vector<std::array<std::string, 3>>& atomnamesAnglebonds,
     std::vector<std::array<std::string, 4>>& atomnamesDihedralbonds,
-    std::vector<std::array<std::string, 4>>& atomnamesImproperDihedralbonds)
-{
+    std::vector<std::array<std::string, 4>>& atomnamesImproperDihedralbonds) {
     const GenericItpFile file{ filePath };
     
     int ignoredCount = 0;
@@ -185,8 +185,7 @@ void ParseForcefieldFromItp(
 }
 
 
-TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envmode)
-{
+TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envmode) {
 	Programs::GetForcefieldParams(GroFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/conf.gro" },
 		TopologyFile{ TestUtils::AutomatedTestsDir() / "T4Lysozyme/molecule/topol.top" },
 		TestUtils::AutomatedTestsDir() / "Forcefieldtests");
@@ -225,13 +224,13 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
         const auto g = bondparamsGromacs[i];
         const auto l = bondparamsLima[i];
 
-        const std::string errMsg = std::format("Singlebond mismatch at index {}\n\t {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}", 
+        const std::string errMsg = Lima::Format("Singlebond mismatch at index {}\n\t {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}", 
             i, atomnamesSinglebonds[i][0], atomnamesSinglebonds[i][1], g.b0, g.kb, l.b0, l.kb);
 
         ASSERT(std::abs(l.b0 - g.b0) < 0.001f && std::abs((l.kb - g.kb)/std::max(g.kb, 1.f)) < maxError, errMsg);
     }
     if (envmode == Full) {
-        printf("%d Singlebond parameters verified\n", bondparamsGromacs.size());
+        printf("%zu Singlebond parameters verified\n", bondparamsGromacs.size());
     }
 
     // Eh, we only have the compounds data in the gromacs files, so can only compare those..
@@ -241,7 +240,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
 		const auto g = angleparamsGromacs[i];
 		const auto l = angleparamsLima[i];
 
-		const std::string errMsg = std::format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e} {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e} {:.4e} {:.4e}",
+		const std::string errMsg = Lima::Format("Anglebond mismatch at index {}\n\t {} {} {}\n\t GMX params: {:.4e} {:.4e} {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e} {:.4e} {:.4e}",
 			i, atomnamesAnglebonds[i][0], atomnamesAnglebonds[i][1], atomnamesAnglebonds[i][2], g.theta0, g.kTheta, g.ub0, g.kUB, l.theta0, l.kTheta, l.ub0, l.kUB);
 
 		ASSERT(
@@ -252,7 +251,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
             , errMsg);
 	}
     if (envmode == Full) {
-		printf("%u Anglebond parameters verified\n", angleparamsGromacs.size());
+		printf("%zu Anglebond parameters verified\n", angleparamsGromacs.size());
 	}
 
 
@@ -262,7 +261,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
 		const auto g = dihedralparamsGromacs[i];
 		const auto l = dihedralparamsLima[i];
 
-		const std::string errMsg = std::format("Dihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e} {}\n\tLIMA params: {:.4e} {:.4e} {}",
+		const std::string errMsg = Lima::Format("Dihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e} {}\n\tLIMA params: {:.4e} {:.4e} {}",
 			i, atomnamesDihedralbonds[i][0], atomnamesDihedralbonds[i][1], atomnamesDihedralbonds[i][2], atomnamesDihedralbonds[i][3], 
             (float)g.phi_0, (float)g.k_phi, (float)g.n, (float)l.phi_0, (float)l.k_phi, (float)l.n);
 
@@ -272,7 +271,7 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
             , errMsg);
 	}
     if (envmode == Full) {
-        printf("%d Dihedralbond parameters verified\n", dihedralparamsGromacs.size());
+        printf("%zu Dihedralbond parameters verified\n", dihedralparamsGromacs.size());
     }
 
 
@@ -282,13 +281,13 @@ TestRoutine TestLimaChosesSameBondparametersAsGromacs(Environment&, EnvMode envm
         const auto g = improperDihedralparamsGromacs[i];
         const auto l = improperDihedralparamsLima[i];
 
-        const std::string errMsg = std::format("ImproperDihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
+        const std::string errMsg = Lima::Format("ImproperDihedralbond mismatch at index {}\n\t {} {} {} {}\n\t GMX params: {:.4e} {:.4e}\n\tLIMA params: {:.4e} {:.4e}",
 			i, atomnamesImproperDihedralbonds[i][0], atomnamesImproperDihedralbonds[i][1], atomnamesImproperDihedralbonds[i][2], atomnamesImproperDihedralbonds[i][3], g.psi_0, g.k_psi, l.psi_0, l.k_psi);
 
         ASSERT(std::abs(l.psi_0 - g.psi_0) < 0.001f && std::abs((l.k_psi - g.k_psi) / std::max(g.k_psi, 1.f)) < maxError, errMsg);
 	}
     if (envmode == Full) {
-		printf("%u ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
+		printf("%zu ImproperDihedralbond parameters verified\n", improperDihedralparamsGromacs.size());
 	}
 
     co_return LimaUnittestResult{ true, "No Error", envmode == Full };

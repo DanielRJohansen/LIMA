@@ -6,19 +6,14 @@
 #include "EngineUtils.cuh"
 
 #include "BoundaryCondition.cuh"
-#include "SolventBlockTransfers.cuh"
 #include "DeviceAlgorithms.cuh"
+#include "Utilities.h"
 
 //#include <cuda/pipeline>
 #include "LennardJonesInteractions.cuh"
-#include "ParticleClusters.cuh"
+#include "ForceAccumulator.cuh"
 
-#pragma warning(push)
-#pragma warning(disable:E0020)
-#pragma warning(push)
-#pragma warning(disable: 20054)
 
-#pragma diag_suppress 20054
 
 
 
@@ -39,8 +34,29 @@
 // ------------------------------------------------------------------------------------------- KERNELS -------------------------------------------------------------------------------------------//
 
 
+// Finds pcluster particles in the superclusters, which hold the current positions
+struct ParticleSlots {
+	const SuperCluster* superClusters = nullptr;
+	const int* pclusterParticleSlots = nullptr;
+
+	__device__ int Slot(int pcId, int pid) const { return pclusterParticleSlots[pcId * PersistentCluster::maxParticles + pid]; }
+	__device__ Float3 Position(int slot) const { return superClusters[slot / SuperCluster::maxParticles].Position(slot % SuperCluster::maxParticles); }
+};
+
+// Where the SNF kernels put a particle's force: added to forceAcc in MD, stored in the pcluster layout snf buffer in EM
+struct SnfForceOutput {
+	ForceEnergy* snf = nullptr;					// EM only
+	ForceAccumulator forceAcc{};				// MD only
+
+	__device__ void Put(const ParticleSlots& slots, int pcId, int pid, const ForceEnergy& fe) const {
+		if (snf) snf[pcId * PersistentCluster::maxParticles + pid] = fe;
+		else forceAcc.Add(slots.Slot(pcId, pid), fe);
+	}
+};
+
 template <typename BoundaryCondition, bool energyMinimize>
-__global__ void PclusterSnfKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, UniformElectricField electricField, ForceEnergy* const forceEnergy, int pclusterOffset, int nPclusters) {
+__global__ void PclusterSnfKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, UniformElectricField electricField, const SnfForceOutput output,
+	const ParticleSlots particleSlots, int pclusterOffset, int nPclusters) {
 
 	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (workId >= nPclusters) return;
@@ -55,11 +71,12 @@ __global__ void PclusterSnfKernel(const PersistentCluster* const pc, const Persi
 		float charge = pc[pcId].pqd[pid].params.charge;
 		Float3 force = electricField.GetForce(charge);
 
-		forceEnergy[pcId * PersistentCluster::maxParticles + pid] = ForceEnergy{ force, 0.f };
+		output.Put(particleSlots, pcId, pid, ForceEnergy{ force, 0.f });
 	}
 }
 
-__global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, const PersistentClusterMeta* const pcMeta, const Float3* const elasticPositions, ForceEnergy* const forceEnergy, int pclusterOffset, int nPclusters, Float3 boxSize) {
+__global__ void ElasticPositionsForceKernel(const PersistentClusterMeta* const pcMeta, const Float3* const elasticPositions, const SnfForceOutput output,
+	const ParticleSlots particleSlots, int pclusterOffset, int nPclusters, Float3 boxSize) {
 	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (workId >= nPclusters) return;
 	const int pcId = pclusterOffset + workId;
@@ -71,7 +88,7 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 			continue;
 
 		const float mass = pcMeta[pcId].mass[pid];
-		const Float3 position = pc[pcId].pqd[pid].position;
+		const Float3 position = particleSlots.Position(particleSlots.Slot(pcId, pid));
 		const Float3 ep = elasticPositions[pidGlobal];
 
 		Float3 elasticPosition{
@@ -95,7 +112,7 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 
 		const float potentialEnergy = logf(eTerm + 1.0f) * coefficient;
 
-		forceEnergy[pcId * PersistentCluster::maxParticles + pid] = ForceEnergy{ forceDirection * forceMagnitude, potentialEnergy };
+		output.Put(particleSlots, pcId, pid, ForceEnergy{ forceDirection * forceMagnitude, potentialEnergy });
 	}
 }
 
@@ -103,436 +120,495 @@ __global__ void ElasticPositionsForceKernel(const PersistentCluster* const pc, c
 
 
 
-static const int THREADS_PER_BONDSGROUPSKERNEL = 64;
-template <typename BoundaryCondition, bool emVariant>
-__global__ void BondgroupsKernel(const BondGroupsDevice bondGroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut, const PersistentCluster* const pclusters, Float3 boxSize, Float3 boxSizeInv) {
-	__shared__ Float3 positions[THREADS_PER_BONDSGROUPSKERNEL];
+static const int THREADS_PER_BONDSGROUPSKERNEL = 128;
+static constexpr int BONDGROUPS_PER_BLOCK = THREADS_PER_BONDSGROUPSKERNEL / 32;
+static constexpr int BONDGROUP_MAX_PARTICLES = 64;
+static_assert(BONDGROUP_MAX_PARTICLES <= 64, "Compact bond records reserve 6 bits per atom id");
+static_assert(LimaForcecalc::FixedPointBondAccumulator::scale == ForceAccumulator::scale, "Integration combines bonded and nonbonded sums in the same fixed point");
+template <typename BoundaryCondition, bool emVariant, bool computePotE>
+__global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int nBondgroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut /*EM only*/,
+	const ForceAccumulator primaryBondForces, ulonglong4* const extraBondForces, const int* const extraResultIndices /*MD only*/, const SuperCluster* const superClusters, const int* const particleSlots, Float3 boxSize, Float3 boxSizeInv) {
+	const int groupInBlock = threadIdx.x / 32;
+	const int groupId = blockIdx.x * BONDGROUPS_PER_BLOCK + groupInBlock;
+	if (groupId >= nBondgroups) return; // Uniform per warp; no block barriers below
+	const int lane = threadIdx.x & 31;
+	__shared__ Float3 positionsBuffer[BONDGROUPS_PER_BLOCK][BONDGROUP_MAX_PARTICLES];
+	Float3* const positions = positionsBuffer[groupInBlock];
 
-	__shared__ float4 forceEnergyInterrims[THREADS_PER_BONDSGROUPSKERNEL];
+	// MD accumulates in parallel with deterministic fixed point atomics, EM serially in float, since its forces may exceed the fixed point range
+	using Accumulator = std::conditional_t<emVariant, LimaForcecalc::SerialBondAccumulator, LimaForcecalc::FixedPointBondAccumulatorT<computePotE>>;
+	__shared__ __align__(16) unsigned long long accumulatorBuffers[BONDGROUPS_PER_BLOCK][(emVariant ? 2 : computePotE ? 4 : 3) * BONDGROUP_MAX_PARTICLES];
+	auto* accumulatorBuffer = accumulatorBuffers[groupInBlock];
+	Accumulator acc;
+	if constexpr (emVariant) acc = Accumulator{ reinterpret_cast<float4*>(accumulatorBuffer) };
+	else acc = Accumulator{ reinterpret_cast<unsigned int*>(accumulatorBuffer), BONDGROUP_MAX_PARTICLES };
 
-	static const int batchSize = THREADS_PER_BONDSGROUPSKERNEL;
+	static const int batchSize = 32;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
-	__shared__ char _bondsBuffer[largestBondBytesize * batchSize];	
+	__shared__ __align__(16) char bondsBuffers[BONDGROUPS_PER_BLOCK][largestBondBytesize * batchSize];
+	char* const _bondsBuffer = bondsBuffers[groupInBlock];
 
-	const BondGroup* const bondGroup = &bondGroups.groups[blockIdx.x];
+	const BondGroup* const bondGroup = &bondGroups.groups[groupId];
 
-	forceEnergyInterrims[threadIdx.x] = float4{0,0,0,0};
-
-	// Fetch positions. Periodic boundaries are applied per bond, since a group may contain several molecules far apart
-	if (threadIdx.x < bondGroup->nParticles) {
-		const BondGroup::ParticleRef pRef = bondGroups.particles[bondGroup->indexOfFirstParticle + threadIdx.x];
-		positions[threadIdx.x] = pclusters[pRef.pcid].pqd[pRef.pid].position;  //boxState.compoundsRelposNm[pRef.compoundId * MAX_COMPOUND_PARTICLES + pRef.localIdInCompound] + relShift;
+	int slots[2]{ -1, -1 };
+#pragma unroll
+	for (int i = 0; i < 2; i++) {
+		const int pid = lane + i * 32;
+		acc.Init(pid);
+		if (pid < bondGroup->nParticles) {
+			const int slot = particleSlots[bondGroup->indexOfFirstParticle + pid];
+			slots[i] = slot;
+			const float4 pq = __ldg(&superClusters[slot / SuperCluster::maxParticles].posCharge[slot % SuperCluster::maxParticles]);
+			positions[pid] = Float3{ pq.x, pq.y, pq.z };
+		}
 	}
-	__syncthreads();
+	acc.Sync();
 
 	
 	{
-		__syncthreads();
+		acc.Sync();
 		SingleBond* bondsBuffer = reinterpret_cast<SingleBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nSinglebonds; batchStart += blockDim.x) {
-			if (batchStart + threadIdx.x < bondGroup->nSinglebonds) {
-				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroups.singlebonds[bondGroup->indexOfFirstSinglebond + bondIndex];
+		for (int batchStart = 0; batchStart < bondGroup->nSinglebonds; batchStart += batchSize) {
+			if (batchStart + lane < bondGroup->nSinglebonds) {
+				const int bondIndex = batchStart + lane;
+				bondGroups.singlebonds.Load(bondGroup->indexOfFirstSinglebond + bondIndex, bondsBuffer[lane]);
 			}
-			__syncthreads();
+			acc.Sync();
 
-			LimaForcecalc::computeSinglebondForces<BoundaryCondition, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, forceEnergyInterrims, 0, boxSize, boxSizeInv);
+			LimaForcecalc::computeSinglebondForces<BoundaryCondition, Accumulator, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nSinglebonds - batchStart), positions, acc, 0, boxSize, boxSizeInv);
 		}
 	}
 
 	{
-		__syncthreads();
+		acc.Sync();
 		AngleUreyBradleyBond* bondsBuffer = reinterpret_cast<AngleUreyBradleyBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nAnglebonds; batchStart += blockDim.x) {
-			if (batchStart + threadIdx.x < bondGroup->nAnglebonds) {
-				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroups.anglebonds[bondGroup->indexOfFirstAnglebond + bondIndex];
+		for (int batchStart = 0; batchStart < bondGroup->nAnglebonds; batchStart += batchSize) {
+			if (batchStart + lane < bondGroup->nAnglebonds) {
+				const int bondIndex = batchStart + lane;
+				bondGroups.anglebonds.Load(bondGroup->indexOfFirstAnglebond + bondIndex, bondsBuffer[lane]);
 			}
-			__syncthreads();
+			acc.Sync();
 
-			LimaForcecalc::computeAnglebondForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeAnglebondForces<BoundaryCondition, Accumulator, emVariant>(bondsBuffer, std::min(batchSize, bondGroup->nAnglebonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
 	{
-		__syncthreads();
+		acc.Sync();
 		DihedralBond* bondsBuffer = reinterpret_cast<DihedralBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nDihedralbonds; batchStart += blockDim.x) {
-			if (batchStart + threadIdx.x < bondGroup->nDihedralbonds) {
-				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroups.dihedralbonds[bondGroup->indexOfFirstDihedralbond + bondIndex];
+		for (int batchStart = 0; batchStart < bondGroup->nDihedralbonds; batchStart += batchSize) {
+			if (batchStart + lane < bondGroup->nDihedralbonds) {
+				const int bondIndex = batchStart + lane;
+				bondGroups.dihedralbonds.Load(bondGroup->indexOfFirstDihedralbond + bondIndex, bondsBuffer[lane]);
 			}
-			__syncthreads();
+			acc.Sync();
 
-			LimaForcecalc::computeDihedralForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeDihedralForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nDihedralbonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
 	{
-		__syncthreads();
+		acc.Sync();
 		ImproperDihedralBond* bondsBuffer = reinterpret_cast<ImproperDihedralBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nImproperdihedralbonds; batchStart += blockDim.x) {
-			if (batchStart + threadIdx.x < bondGroup->nImproperdihedralbonds) {
-				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroups.improperdihedralbonds[bondGroup->indexOfFirstImproperdihedralbond + bondIndex];
+		for (int batchStart = 0; batchStart < bondGroup->nImproperdihedralbonds; batchStart += batchSize) {
+			if (batchStart + lane < bondGroup->nImproperdihedralbonds) {
+				const int bondIndex = batchStart + lane;
+				bondGroups.improperdihedralbonds.Load(bondGroup->indexOfFirstImproperdihedralbond + bondIndex, bondsBuffer[lane]);
 			}
-			__syncthreads();
+			acc.Sync();
 
-			LimaForcecalc::computeImproperdihedralForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computeImproperdihedralForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
 
 	{
-		__syncthreads();
+		acc.Sync();
 		// TODO: i have no clue if pairbonds should also compute SR electrostatics?
 		PairBond* bondsBuffer = reinterpret_cast<PairBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += blockDim.x) {
-			if (batchStart + threadIdx.x < bondGroup->nPairbonds) {
-				const int bondIndex = batchStart + threadIdx.x;
-				bondsBuffer[threadIdx.x] = bondGroups.pairbonds[bondGroup->indexOfFirstPairbond + bondIndex];
+		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += batchSize) {
+			if (batchStart + lane < bondGroup->nPairbonds) {
+				const int bondIndex = batchStart + lane;
+				bondGroups.pairbonds.Load(bondGroup->indexOfFirstPairbond + bondIndex, bondsBuffer[lane]);
 			}
-			__syncthreads();
+			acc.Sync();
 
-			LimaForcecalc::computePairbondForces<BoundaryCondition>(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, forceEnergyInterrims, boxSize, boxSizeInv);
+			LimaForcecalc::computePairbondForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, acc, boxSize, boxSizeInv);
 		}
 	}
 
-	Float3 force{ forceEnergyInterrims[threadIdx.x].x, forceEnergyInterrims[threadIdx.x].y, forceEnergyInterrims[threadIdx.x].z };
-	float potE = forceEnergyInterrims[threadIdx.x].w;
-
-	if (threadIdx.x < bondGroup->nParticles)
-		forceEnergiesOut[bondGroup->indexOfFirstParticle + threadIdx.x] = ForceEnergy{ force, potE };
-}
-
-// gridDim = (nPclusters, 1, 1)
-// blockDim = (32, 1, 1) // TODO OPTIM: Use y=4, and have 1 particle in pc per y-thread
-__global__ void PclusterBondgroupsGather(const PersistentClusterMeta* const pclusterMeta, int nPclusters, const ForceEnergyInterims forceEnergies) {
-	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
-	if (workId >= nPclusters) return;
-	const int pcId = workId;
-
-	for (int pid = 0; pid < 4; pid++) {
-		int pidGlobal = pclusterMeta[pcId].particleIdsGlobal[pid];
-		if (pidGlobal == -1)
-			continue;
-
-		BondgroupRefManager beRefs = pclusterMeta[pcId].bondgroupReferences[pid];
-		ForceEnergy fe{};
-		for (int i = 0; i < beRefs.nBondgroupApperances; i++) {
-			BondgroupRef bondgroupRef = beRefs.bondgroupApperances[i];
-			fe += forceEnergies.forceEnergiesBondgroups[bondgroupRef.indexInForceEnergiesBondgroups];
+#pragma unroll
+	for (int i = 0; i < 2; i++) {
+		const int pid = lane + i * 32;
+		if (pid < bondGroup->nParticles) {
+			if constexpr (emVariant)
+				forceEnergiesOut[bondGroup->indexOfFirstParticle + pid] = acc.Get(pid);
+			else {
+				const int extra = extraResultIndices[bondGroup->indexOfFirstParticle + pid];
+				if (extra < 0) acc.StorePrimary(primaryBondForces, pid, slots[i]);
+				else acc.StoreTo(extraBondForces, pid, extra);
+			}
 		}
-
-		forceEnergies.bonded[pcId * PersistentCluster::maxParticles + pid] = fe;
-		//printf("Gatherout pid %d fx %f\n", pidGlobal, fe.force.x);
 	}
 }
 
 
 
-// Deterministic accumulation of NB forces, replacing SCResult for MD: each partial force is converted to 64-bit fixed point
-// and summed with integer atomics. Unlike float atomics, integer addition is associative, so the sum is bitwise
-// independent of the order the atomics arrive in. The accumulator is small enough to stay L2 resident.
-// Not used in EM, where forces can exceed the fixed point range.
-struct NbForceAccumulator {
-	static constexpr float scale = 16777216.f;		// 2^24 -> resolution 6e-8 J/mol/nm, range +-5.5e11 J/mol/nm
-	static constexpr float scaleInv = 1.f / scale;	// Power of 2, so ToFloat is exactly the rounded sum
+namespace NbNonlocal {
+	// This lane's row of an entry's noInteractions with an own quarter, rotated so bit k is j particle (lane+k)&3. All set if
+	// the entry does not interact with the quarter
+	__device__ inline uint32_t RotatedNoInteractions(uint32_t noInteractions, uint32_t ownQuarterMask, int ownQuarter, int lane) {
+		const uint32_t row = (noInteractions >> (lane * 4)) & 0xFu;
+		return ((ownQuarterMask >> ownQuarter) & 1) ? ((row | (row << 4)) >> lane) & 0xFu : 0xFu;
+	}
 
-	// SoA, indexed by scId * SuperCluster::maxParticles + particleIndex. potE is only zeroed/used on logging steps
-	unsigned long long* fx = nullptr;
-	unsigned long long* fy = nullptr;
-	unsigned long long* fz = nullptr;
-	unsigned long long* potE = nullptr;
-
-	__device__ static unsigned long long ToFixed(float v) { return static_cast<unsigned long long>(llrintf(v * scale)); }
-	__device__ static float ToFloat(unsigned long long v) { return static_cast<float>(static_cast<long long>(v)) * scaleInv; }
+	// entry.noInteractions[ownQuarter], for a runtime ownQuarter. Indexing the array would put entry in local memory
+	__device__ inline uint32_t NoInteractionsOfQuarter(const QuarterEntry& entry, int ownQuarter) {
+		const uint64_t all = uint64_t(entry.noInteractions[0]) | uint64_t(entry.noInteractions[1]) << 16
+			| uint64_t(entry.noInteractions[2]) << 32 | uint64_t(entry.noInteractions[3]) << 48;
+		return static_cast<uint32_t>(all >> (ownQuarter * 16)) & 0xFFFFu;
+	}
 
 	template <bool withPotE>
-	__device__ void Add(int index, const ForceEnergy& fe) const {
-		atomicAdd(&fx[index], ToFixed(fe.force.x));
-		atomicAdd(&fy[index], ToFixed(fe.force.y));
-		atomicAdd(&fz[index], ToFixed(fe.force.z));
+	__device__ inline ForceEnergy ShuffleForceEnergy(const ForceEnergy& fe, int srcLane) {
+		ForceEnergy out{};
+		out.force.x = __shfl_sync(0xFFFFFFFFu, fe.force.x, srcLane, 4);
+		out.force.y = __shfl_sync(0xFFFFFFFFu, fe.force.y, srcLane, 4);
+		out.force.z = __shfl_sync(0xFFFFFFFFu, fe.force.z, srcLane, 4);
 		if constexpr (withPotE)
-			atomicAdd(&potE[index], ToFixed(fe.potE));
+			out.potE = __shfl_sync(0xFFFFFFFFu, fe.potE, srcLane, 4);
+		return out;
 	}
 
+	// accOwn[quarter] += fe, with selects, as a runtime index would move accOwn to local memory
 	template <bool withPotE>
-	__device__ ForceEnergy Load(int index) const {
-		return ForceEnergy{ Float3{ ToFloat(fx[index]), ToFloat(fy[index]), ToFloat(fz[index]) }, withPotE ? ToFloat(potE[index]) : 0.f };
+	__device__ inline void AddToQuarter(ForceEnergy (&accOwn)[4], int quarter, const ForceEnergy& fe) {
+#pragma unroll
+		for (int q = 0; q < 4; q++) {
+			const bool hit = q == quarter;
+			accOwn[q].force.x += hit ? fe.force.x : 0.f;
+			accOwn[q].force.y += hit ? fe.force.y : 0.f;
+			accOwn[q].force.z += hit ? fe.force.z : 0.f;
+			if constexpr (withPotE)
+				accOwn[q].potE += hit ? fe.potE : 0.f;
+		}
+	}
+}
+
+// Nonbonded forces. Each warp computes the QuarterEntries of one supercluster, see EmitQuarterEntriesKernel.
+// blockDim = 64, 2 superclusters per block. computePotE must match logData of the following SuperclusterIntegrateKernel.
+//
+// The warp's 8 groups of 4 lanes each take one entry: lane l stages particle l of the entry's j quarter in shared memory,
+// then for every own quarter in the entry's mask, holds own particle l of that quarter, and in iteration k pairs it with
+// j particle (l+k)&3. Own forces thus accumulate in the lane that owns the particle for the whole task, and in MD the j forces
+// in accJ[k] only need routing to their lanes once per entry. Loading the j quarter and flushing its forces once per entry
+// rather than once per 4x4 block matters: the kernel is close to L2 bound.
+// Entries are sorted by ownQuarterMask, so the groups of a warp mostly share a mask, and the warp loops over their union.
+// Pairs beyond the cutoff are masked, so the forces do not depend on how the task builder grouped the pairs.
+//
+// MD sums the forces with ForceAccumulator. EM forces can exceed its range, so EM stores each entry's j forces in the entry's
+// quarter of the SCResult of its (own, j) supercluster pair, and the own forces in the own supercluster's first SCResult.
+// SuperclusterIntegrateKernel sums them in a fixed order. In EM every quarter of such a pair has an entry, also quarters without
+// pairs in range, so every result is written each step. Entries of the own supercluster add their j forces to the own forces.
+//
+// __launch_bounds__: 64 registers avoid spills (16 blocks per SM), the potE variants need 80 (12 blocks per SM).
+// After larger changes, check ncu for local memory traffic and revisit the bounds.
+template <typename BoundaryCondition, bool energyMinimize, bool computePotE>
+__global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(const SuperCluster* const superClusters,
+	const QuarterEntryTask* const tasks, const QuarterEntry* const entries,
+	const ForceAccumulator forceAcc /*MD only*/, SCResult* const results /*EM only*/, const int* const entryResultIndices /*EM only*/,
+	const SuperClusterMeta* const scMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa, float cutoffSq, int nSuperclusters)
+{
+	using namespace NbNonlocal;
+	constexpr int nGroups = 8;
+	const int warpInBlock = threadIdx.x >> 5;
+	const int scId = blockIdx.x * 2 + warpInBlock;
+	if (scId >= nSuperclusters)
+		return; // Only warp level syncs below
+	const int laneInWarp = threadIdx.x & 31;
+	const int group = laneInWarp >> 2;
+	const int lane = laneInWarp & 3;
+
+	// In MD, charge and epsilon are pre-scaled, see LJ::PrescaleNBParams
+	__shared__ float4 ownPosCharge[2][SuperCluster::maxParticles];
+	__shared__ float2 ownSigmaEpsilon[2][SuperCluster::maxParticles];
+	__shared__ float4 jPosCharge[2][nGroups][4];
+	__shared__ float2 jSigmaEpsilon[2][nGroups][4];
+
+	if (laneInWarp < SuperCluster::maxParticles) {
+		float4 pq = superClusters[scId].posCharge[laneInWarp];
+		float2 se = superClusters[scId].sigmaEpsilon[laneInWarp];
+		if constexpr (!energyMinimize)
+			LJ::PrescaleNBParams(se.y, pq.w);
+		ownPosCharge[warpInBlock][laneInWarp] = pq;
+		ownSigmaEpsilon[warpInBlock][laneInWarp] = se;
+	}
+	const QuarterEntryTask task = tasks[scId];
+	__syncwarp();
+
+	const Float3 reference{ ownPosCharge[warpInBlock][0].x, ownPosCharge[warpInBlock][0].y, ownPosCharge[warpInBlock][0].z };
+	ForceEnergy accOwn[4]{};
+
+	const int end = task.firstEntry + task.nEntries;
+	for (int base = task.firstEntry; base < end; base += nGroups) {
+		const int e = base + group;
+		const bool activeGroup = e < end;
+		const QuarterEntry entry = entries[activeGroup ? e : base];
+		const uint32_t ownQuarterMask = activeGroup ? entry.ownQuarterMask : 0u;
+
+		const int jIndex = entry.jQuarter * 4 + lane;
+		float4 pqJ = superClusters[entry.jScId].posCharge[jIndex];
+		float2 seJ = superClusters[entry.jScId].sigmaEpsilon[jIndex];
+		const bool validJ = seJ.y != -1.f;
+		if constexpr (!energyMinimize)
+			LJ::PrescaleNBParams(seJ.y, pqJ.w);
+		BoundaryCondition::ApplyHyperpos(reference, pqJ.x, pqJ.y, pqJ.z, boxSize, boxSizeInv);
+		jPosCharge[warpInBlock][group][lane] = pqJ;
+		jSigmaEpsilon[warpInBlock][group][lane] = seJ;
+		__syncwarp();
+
+		const uint32_t unionMask = __reduce_or_sync(0xFFFFFFFFu, ownQuarterMask);
+		ForceEnergy jForce{}; // On j particle jIndex
+
+		if constexpr (!energyMinimize) {
+			ForceEnergy accJ[4]{};
+#pragma unroll
+			for (int ownQuarter = 0; ownQuarter < 4; ownQuarter++) {
+				if (!((unionMask >> ownQuarter) & 1))
+					continue;
+				const uint32_t noInteractions = RotatedNoInteractions(entry.noInteractions[ownQuarter], ownQuarterMask, ownQuarter, lane);
+				const float4 pqI = ownPosCharge[warpInBlock][ownQuarter * 4 + lane];
+				const float2 seI = ownSigmaEpsilon[warpInBlock][ownQuarter * 4 + lane];
+#pragma unroll
+				for (int k = 0; k < 4; k++) {
+					const int jLocal = (lane + k) & 3;
+					const float4 pqJ = jPosCharge[warpInBlock][group][jLocal];
+					const float2 seJ = jSigmaEpsilon[warpInBlock][group][jLocal];
+					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
+					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
+					ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewaldKappa);
+					accJ[k] += fe;
+					accOwn[ownQuarter] += fe.InvertForce();
+				}
+			}
+
+			// Lane m collects accJ[k] from lane (m-k)&3, which computed j particle m in iteration k
+			jForce = accJ[0];
+#pragma unroll
+			for (int k = 1; k < 4; k++)
+				jForce += ShuffleForceEnergy<computePotE>(accJ[k], (lane - k) & 3);
+		}
+		else {
+			// The EM pair interaction is much larger, so the loops are not unrolled, keeping one copy of it and the registers it needs.
+			// The j forces are therefore routed every iteration, and the own forces added to their quarter with selects
+#pragma unroll 1
+			for (int ownQuarter = 0; ownQuarter < 4; ownQuarter++) {
+				if (!((unionMask >> ownQuarter) & 1))
+					continue;
+				const uint32_t noInteractions = RotatedNoInteractions(NoInteractionsOfQuarter(entry, ownQuarter), ownQuarterMask, ownQuarter, lane);
+				const float4 pqI = ownPosCharge[warpInBlock][ownQuarter * 4 + lane];
+				const float2 seI = ownSigmaEpsilon[warpInBlock][ownQuarter * 4 + lane];
+				ForceEnergy ownForce{};
+#pragma unroll 1
+				for (int k = 0; k < 4; k++) {
+					const int jLocal = (lane + k) & 3;
+					const float4 pqJ = jPosCharge[warpInBlock][group][jLocal];
+					const float2 seJ = jSigmaEpsilon[warpInBlock][group][jLocal];
+					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
+					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
+					ForceEnergy fe = masked ? ForceEnergy{}
+						: LJ::ComputePairNBEm<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, ewaldKappa);
+					ownForce += fe.InvertForce();
+					// Lane m collects the force lane (m-k)&3 computed on j particle m
+					jForce += ShuffleForceEnergy<computePotE>(fe, (lane - k) & 3);
+				}
+				AddToQuarter<computePotE>(accOwn, ownQuarter, ownForce);
+			}
+		}
+
+		if constexpr (energyMinimize) {
+			if (activeGroup) {
+				if (entry.jScId == scId) {
+					AddToQuarter<computePotE>(accOwn, entry.jQuarter, jForce);
+				}
+				else {
+					results[entryResultIndices[e]].Store<computePotE>(jIndex, jForce);
+				}
+			}
+		}
+		else {
+			if (activeGroup && validJ)
+				forceAcc.Add<computePotE>(entry.jScId * SuperCluster::maxParticles + jIndex, jForce);
+		}
+		__syncwarp(); // Before the j quarter is restaged
+	}
+
+	// Sum the own forces over the groups. A butterfly gives all groups the bitwise identical sum
+#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		for (int offset = 4; offset < 32; offset <<= 1) {
+			accOwn[q].force.x += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.x, offset);
+			accOwn[q].force.y += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.y, offset);
+			accOwn[q].force.z += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.z, offset);
+			if constexpr (computePotE)
+				accOwn[q].potE += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].potE, offset);
+		}
+	}
+	// Group q writes own quarter q
+#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		if (group != q)
+			continue;
+		if constexpr (energyMinimize)
+			results[scMeta[scId].resultsStartIndex].Store<computePotE>(q * 4 + lane, accOwn[q]);
+		else if (superClusters[scId].Valid(q * 4 + lane))
+			forceAcc.Add<computePotE>(scId * SuperCluster::maxParticles + q * 4 + lane, accOwn[q]);
+	}
+}
+
+// Particles edited live, indexed by global particle id. Each is nullptr unless in use
+struct LiveEditBuffers {
+	const Float3* fixedParticleMovement = nullptr;
+	const Float3* forceMask = nullptr;
+	const Rotation* fixedParticleRotation = nullptr;
+
+	__host__ __device__ bool Any() const { return fixedParticleMovement || forceMask || fixedParticleRotation; }
+};
+
+struct LogBuffers {
+	Float3* traj = nullptr;
+	float* potE = nullptr;
+	float* velocity = nullptr;
+	Float3* force = nullptr;
+	int loggingInterval = 0;
+	int64_t step = 0;
+
+	__device__ void Log(const IntegrationSimulationData& simulation, int pcId, int indexInPc, Float3 position, const ForceEnergy& fe, float speed) const {
+		EngineUtils::LogPclusterData(pcId - simulation.pclusters.offset, indexInPc, step, loggingInterval, position, fe.potE, fe.force, speed,
+			simulation.pclusters.count * PersistentCluster::maxParticles, traj + simulation.logOffset, potE + simulation.logOffset,
+			velocity + simulation.logOffset, force + simulation.logOffset);
 	}
 };
 
-// blockdim=16,4,1
-// computePotE must match logData of the following SuperclusterIntegrateKernel, as results only contain potE when computePotE
-//
-// __launch_bounds__(64, 20): max 64 threads per block, and we want at least 20 blocks resident per SM.
-// This kernel is bound by instruction issue, so it needs many resident warps to always have one ready to issue.
-// Residency is limited by the SM's 64K register file: 65536 / (20 blocks * 64 threads) = 51 -> 48 registers per thread.
-// Without the bound the compiler happily picks ~59 registers (rounded to 64), which only fits 16 blocks and was measurably slower.
-// - The kernel must never be launched with more than 64 threads per block, or the launch fails
-// - If future changes need more than 48 registers, the compiler spills to (slow) local memory instead of growing,
-//   so after larger changes check ncu for local memory traffic, and revisit the bound
-template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool useNointeractionMatrix>
-__global__ void __launch_bounds__(64, 20) NbNonlocalKernel(const SuperCluster* const superClusters, const ScScTask* const tasks,
-	SCResult* const results /*Only used in EM*/, const NbForceAccumulator nbForceAcc /*Only used in MD*/,
-	const int* const idsOfQuerySuperclusters, const int* const resultIndices, const BoolMatrix16x16* const nointeractionMatrices,
-	const SuperClusterMeta* const superClusterMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa) {
-	const int scId = blockIdx.x;
-	static_assert(SuperCluster::maxParticles == 16, "This kernel relies on SuperCluster::nParticles being 16");
-	__shared__ SuperCluster scSelf;
-	__shared__ ScScTask task; // TODO: We dont access this much, no need to store in shared mem...
-	//__shared__ ForceEnergy forceenergySelfShared[SuperCluster::maxParticles * 4]; // Blockdim must be 4!
-	//__shared__ ForceEnergy feAcc[SuperCluster::maxParticles];
-
-	auto tb = cooperative_groups::this_thread_block();
-	cooperative_groups::memcpy_async(tb, &scSelf, &superClusters[scId], sizeof(SuperCluster));
-	if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
-		task = tasks[scId];
-	}	
-	//feAcc[threadIdx.x] = ForceEnergy{};
-	cooperative_groups::wait(tb);
-	__syncthreads();
-
-	if constexpr (!energyMinimize) {
-		if (threadIdx.y == 0)
-			LJ::PrescaleNBParams(scSelf.epsilonSqrt[threadIdx.x], scSelf.charge[threadIdx.x]);
-		__syncthreads();
-	}
-
-
-	ForceEnergy feInScSelf{};
-
-	const int nBatches = (task.nQueryScs + blockDim.y-1) / blockDim.y;
-	for (int batch = 0; batch < nBatches; batch++) {
-		const int relativeInteractionIndex = batch * blockDim.y + threadIdx.y;
-		const int indexInQueriesBuffer = task.startIndexInQueriesBuffers + relativeInteractionIndex;
-		const bool validQuery = relativeInteractionIndex < task.nQueryScs;
-		const int queryScId = validQuery ? idsOfQuerySuperclusters[indexInQueriesBuffer] : 0; // For invalid queries we simply load whatever data is at index 0, and continue as normal. This only happens in the final batch, and we dont wanna slow down all other batches with checks
-
-		//cooperative_groups::memcpy_async(tb, &nointeractionsMatrix, &nointeractionMatrices[task.nointeractionMatrixIndex[indexInQueriesBuffer]], sizeof(BoolMatrix16x16));
-		PData pdataQueryAtom{};
-		superClusters[queryScId].LoadPdata(pdataQueryAtom, threadIdx.x);
-		if constexpr (!energyMinimize)
-			LJ::PrescaleNBParams(pdataQueryAtom.params.epsilonSqrt, pdataQueryAtom.params.charge);
-		BoundaryCondition::ApplyHyperpos(Float3{ scSelf.posX[0], scSelf.posY[0], scSelf.posZ[0] }, pdataQueryAtom.position, boxSize, boxSizeInv);
-		const uint16_t noInteractions = validQuery
-			? nointeractionMatrices[indexInQueriesBuffer].GetRow(threadIdx.x)
-			: 0xFFFF;
-
-		//ForceEnergy myForceEnergy{};
-		ForceEnergy feInQuerySc{};
-
-		for (int i = 0; i < 16; i++) {
-			const int indexInScSelf = (threadIdx.x + i) & 15; //% SuperCluster::maxParticles;
-			const bool masked = BoolMatrix16x16::Get(noInteractions, indexInScSelf);
-
-			ForceEnergy fe = LJ::ComputeParticleParticleNB<computePotE, energyMinimize>(pdataQueryAtom, scSelf, indexInScSelf, masked, ewaldKappa);
-			feInQuerySc += fe;
-
-			const int sourceLane = (threadIdx.x - i) & 15;
-
-			fe.force.x = __shfl_sync(0xFFFFFFFFu, fe.force.x, sourceLane, 16);
-			fe.force.y = __shfl_sync(0xFFFFFFFFu, fe.force.y, sourceLane, 16);
-			fe.force.z = __shfl_sync(0xFFFFFFFFu, fe.force.z, sourceLane, 16);
-			if constexpr (computePotE)
-				fe.potE = __shfl_sync(0xFFFFFFFFu, fe.potE, sourceLane, 16);
-
-			feInScSelf += fe.InvertForce();
-
-			//forceenergySelfShared[threadIdx.y * SuperCluster::maxParticles + indexInScSelf] += fe.InvertForce();
-			//__syncwarp();
-		}
-
-		if (validQuery) {
-			if constexpr (energyMinimize)
-				results[resultIndices[indexInQueriesBuffer]].Store<computePotE>(threadIdx.x, feInQuerySc);
-			// The self-task's query forces are dropped: its pairs are evaluated in both orders, so the reaction forces in feInScSelf
-			// already hold the full force. (In the EM path this result is overwritten by the self reduction below)
-			else if (queryScId != scId)
-				nbForceAcc.Add<computePotE>(queryScId * SuperCluster::maxParticles + threadIdx.x, feInQuerySc);
-		}
-		//__syncthreads(); // Im not sure this is necessary..
-	}
-
-	if constexpr (!energyMinimize) {
-		// No need to reduce the rows first, the fixed point sum is order independent
-		nbForceAcc.Add<computePotE>(scId * SuperCluster::maxParticles + threadIdx.x, feInScSelf);
+// Velocity Verlet step of each particle, with the forces all force kernels summed in forceAcc. A particle's position and integration
+// state are in its supercluster slot, see ParticleIntegrationState. One supercluster per 16 threads, blockDim = (16, 4, 1)
+template<typename BoundaryCondition, bool logData>
+__global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
+	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
+	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log)
+{
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	if (scId >= nSuperclusters)
 		return;
+	const int slot = scId * SuperCluster::maxParticles + threadIdx.x;
+	ParticleIntegrationState state = states[slot];
+	if (state.mass == 0.f) // Unused slot
+		return;
+
+	const IntegrationSimulationData& simulation = simulationData[scMeta[scId].simulationId];
+	const int pcId = state.pclusterParticle / PersistentCluster::maxParticles;
+	const int indexInPc = state.pclusterParticle % PersistentCluster::maxParticles;
+	const int pidGlobal = liveEdit.Any() ? scMeta[scId].globalParticleIds[threadIdx.x] : -1; // Only needed for live edits
+
+	// The supercluster is kept in the periodic image of its first particle
+	Float3 p0 = superClusters[scId].Position(0);
+	BoundaryCondition::applyBCNM(p0, boxSize);
+	Float3 pos = superClusters[scId].Position(threadIdx.x);
+	BoundaryCondition::applyHyperposNM(p0, pos, boxSize);
+
+	ForceEnergy fe = forceAcc.Take<logData>(slot, primaryBondForces, extraBondForces, bondReferences, nSuperclusters * SuperCluster::maxParticles);
+	KernelHelpersWarnings::ForceCheck(fe.force);
+	// Monitoring reads the force magnitudes. Engine::StoreIntegrationStates computes them from forcePrev, unless live edits may change it
+	if (liveEdit.Any())
+		forcesMagnitudeSquared[pidGlobal] = fe.force.lenSquared();
+
+	if (liveEdit.forceMask)
+		fe.force = fe.force * liveEdit.forceMask[pidGlobal];
+
+	Float3 velocity = EngineUtils::integrateVelocityVVS(state.velocity, state.forcePrev, fe.force, simulation.dt, state.mass);
+	Float3 posNext = EngineUtils::IntegratePositionVVS(pos, velocity, fe.force, state.mass, simulation.dt);
+
+	if constexpr (FORCE_CHECKS) {
+		if ((posNext - pos).len() > 0.5f)
+			printf("Warning: Particle %d in PC %d moved %f nm in one step.\n", indexInPc, pcId, (posNext - pos).len());
 	}
 
-	__syncthreads();
-
-
-	// Reduce self forces
-	ForceEnergy* feAcc = (ForceEnergy*)((void*)&scSelf);
-	if (threadIdx.y == 0) {
-		feAcc[threadIdx.x] = feInScSelf;
-	}
-
-	for (int i = 1; i < 4; i++) {
-		if (threadIdx.y == i) {
-			feAcc[threadIdx.x] += feInScSelf;
+	if (liveEdit.fixedParticleMovement) {
+		const Float3 fixedMovement = liveEdit.fixedParticleMovement[pidGlobal];
+		if (fixedMovement.lenSquared() > 0) {
+			fe.force = Float3{};
+			velocity = Float3{};
+			posNext = pos + fixedMovement;
 		}
-		__syncthreads();
-	}	
-	if (threadIdx.y == 0) {
-		const int resultIndex = resultIndices[task.startIndexInQueriesBuffers];
-		results[resultIndex].Store<computePotE>(threadIdx.x, feAcc[threadIdx.x]);
-	}	
+	}
+	if (liveEdit.fixedParticleRotation) {
+		fe.force = Float3{};
+		velocity = Float3{};
+		const Rotation& rotation = liveEdit.fixedParticleRotation[pidGlobal];
+		BoundaryCondition::applyHyperposNM(rotation.center, posNext, boxSize);
+		LAL::RotatePoint(posNext, rotation.center, rotation.rotation);
+		BoundaryCondition::applyHyperposNM(p0, posNext, boxSize);
+	}
+
+	state.velocity = velocity * simulation.thermostatScalar;
+	state.forcePrev = fe.force;
+	states[slot] = state;
+
+	if constexpr (logData)
+		log.Log(simulation, pcId, indexInPc, posNext, fe, state.velocity.len());
+
+	superClusters[scId].SetPosition(threadIdx.x, posNext);
 }
- 
-// blockDim=(16, 4, 1)
-template<typename BoundaryCondition, bool emvariant, bool logData>
-__global__ void SuperclusterIntegrateKernel(const ForceEnergyInterims forceEnergies, Float3* const emForces /*Only available in EM*/, int data_logging_interval, 
-	const SCResult* const scResults /*Only used in EM*/, const NbForceAccumulator nbForceAcc /*Only used in MD*/,
-	SuperCluster* superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta, PersistentclusterInterimState* const pcStates, 
-	int64_t step, const IntegrationSimulationData* simulationData, int nSuperclusters, float* forcesMagnitudeSquaredBuffer, /*Only available in EM*/
-	Float3 boxSize, Float3* fixedParticleMovementBuffer, Float3* forceMaskBuffer, const Rotation* fixedParticleRotationBuffer,
-	Float3* trajBuffer, float* potEBuffer, float* velocityBuffer, Float3* forceBuffer /*Only available in LIVEEDIT*/  /*,
-const ForceEnergy* const nbForceenergy*/) {
 
-	const int nScsPerBlock = 4;
-
-	const int scIdLocal = threadIdx.y;
-	const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? blockIdx.x * nScsPerBlock + threadIdx.y : -1;
-
-
-	//__shared__ Float3 positions[SuperCluster::nParticles * nScsPerBlock];
-	__shared__ Float3 p0s[nScsPerBlock];
-	__shared__ int resultsStartIndex[nScsPerBlock];
-	__shared__ int nResults[nScsPerBlock];
-	__shared__ IntegrationSimulationData simulations[nScsPerBlock];
-
-
-	if (threadIdx.x == 0) {
-		resultsStartIndex[threadIdx.y] = scIdGlobal == -1 ? -1 : scMeta[scIdGlobal].resultsStartIndex;
-		nResults[threadIdx.y] = scIdGlobal == -1 ? 0 : scMeta[scIdGlobal].nResults;
-		simulations[threadIdx.y] = scIdGlobal == -1 ? IntegrationSimulationData{} : simulationData[scMeta[scIdGlobal].simulationId];
-		p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].Position(0);
-
-		// By applying BC here, we dont need to wait for thread0 later in the kernel
-		BoundaryCondition::applyBCNM(p0s[threadIdx.y], boxSize);// TODO: We should use either SC CoM, or a particle close to the middle..
-	}
-	__syncthreads();
-
-	//const int pidInPcluster = threadIdx.x % 4;									// Always safe
-	const int pidInPcluster = scIdGlobal == -1 ? -1 : scMeta[scIdGlobal].indexInPcluster[threadIdx.x];	// May be -1
-	const int pcIdGlobal = scIdGlobal == -1 ? -1 :  scMeta[scIdGlobal]._pclusterIds[threadIdx.x];		// May be -1
-	const int pidGlobal = scIdGlobal == -1 ? -1 : scMeta[scIdGlobal].globalParticleIds[threadIdx.x];	// May be -1
-	//const int pidGlobal = pcIdGlobal == -1 ? -1 : pcMeta[pcIdGlobal].particleIdsGlobal[pidInPcluster];
-
+// EM: sums each particle's forces from the force kernels into emForces, for EM::UpdateKernel to move the particles once the
+// step is decided for the whole simulation. One supercluster per 16 threads, blockDim = (16, 4, 1)
+template<typename BoundaryCondition, bool logData>
+__global__ void EmCollectForcesKernel(const ForceEnergyInterims forceEnergies, const SCResult* const scResults, Float3* const emForces,
+	SuperCluster* const superClusters, const SuperClusterMeta* const scMeta, PersistentCluster* const pclusters, const PersistentClusterMeta* const pcMeta,
+	const IntegrationSimulationData* const simulationData, int nSuperclusters, Float3 boxSize, float* const forcesMagnitudeSquared, const LogBuffers log)
+{
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	if (scId >= nSuperclusters)
+		return;
+	const int pcId = scMeta[scId]._pclusterIds[threadIdx.x];
+	const int indexInPc = scMeta[scId].indexInPcluster[threadIdx.x];
+	const int pidGlobal = scMeta[scId].globalParticleIds[threadIdx.x];
 	if (pidGlobal == -1)
-		return;// NO SYNCS AFTER THIS!
+		return;
 
-	if constexpr (INDEXING_CHECKS) {
-		if (pidInPcluster == -1 || pcIdGlobal == -1 || pidGlobal == -1) {
-			printf("Indexing check failed in SuperclusterIntegrateKernel! scIdGlobal %d, pidInPcluster %d, pcIdGlobal %d, pidGlobal %d\n", scIdGlobal, pidInPcluster, pcIdGlobal, pidGlobal);
-		}
-	}
+	// The supercluster is kept in the periodic image of its first particle
+	Float3 p0 = superClusters[scId].Position(0);
+	BoundaryCondition::applyBCNM(p0, boxSize);
+	Float3 pos = superClusters[scId].Position(threadIdx.x);
+	BoundaryCondition::applyHyperposNM(p0, pos, boxSize);
 
-	Float3 pos = superClusters[scIdGlobal].Position(threadIdx.x);
-	BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos, boxSize);
-	const auto& simulation = simulations[scIdLocal];
-
-	// Collect ForceEnergy from all sources
 	ForceEnergy fe{};
 	// Gather from NB kernels
-	if constexpr (emvariant) {
-		for (int i = resultsStartIndex[scIdLocal]; i < resultsStartIndex[scIdLocal] + nResults[scIdLocal]; i++) {
-			const ForceEnergy result = scResults[i].Load<logData>(threadIdx.x);
-			KernelHelpersWarnings::ForceCheck(result.force);
-			fe += result;
-		}
-	}
-	else {
-		const ForceEnergy result = nbForceAcc.Load<logData>(scIdGlobal * SuperCluster::maxParticles + threadIdx.x);
+	const int resultsStart = scMeta[scId].resultsStartIndex;
+	for (int i = resultsStart; i < resultsStart + scMeta[scId].nResults; i++) {
+		const ForceEnergy result = scResults[i].Load<logData>(threadIdx.x);
 		KernelHelpersWarnings::ForceCheck(result.force);
 		fe += result;
 	}
-//	fe += nbForceenergy[scIdGlobal * SuperCluster::nParticles + threadIdx.x];
-	fe += forceEnergies.bonded[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster];
-	fe += forceEnergies.snf[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster]; // TODO: Should this be compiletime, or maybe launch param decided to ignore? Since most simulations would ignore...
-	fe += forceEnergies.pme[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster]; // TODO: OPTIM: These should follow SC layout, not PC
+	// Gather from the bondgroups this particle appears in
+	const BondgroupRefManager& beRefs = pcMeta[pcId].bondgroupReferences[indexInPc];
+	for (int i = 0; i < beRefs.nBondgroupApperances; i++)
+		fe += forceEnergies.forceEnergiesBondgroups[beRefs.bondgroupApperances[i].indexInForceEnergiesBondgroups];
+	fe += forceEnergies.snf[pcId * PersistentCluster::maxParticles + indexInPc];
+	fe += forceEnergies.pme[pcId * PersistentCluster::maxParticles + indexInPc];
 
+	forcesMagnitudeSquared[pidGlobal] = fe.force.lenSquared();
 
-	// Write the force to global buffer, only needed to monitor simulations
-	forcesMagnitudeSquaredBuffer[pidGlobal] = fe.force.lenSquared();
+	// Overlapping particles in unminimized structures can produce infinite forces. Push them apart in a pseudorandom
+	// direction, with a force large enough to still dominate the max force
+	const bool finite = isfinite(fe.force.lenSquared());
+	emForces[pcId * PersistentCluster::maxParticles + indexInPc] = finite ? fe.force : EngineUtils::GenerateRandomForce(pidGlobal) * 1e9f;
 
-	// ------------------------------------------------------------ Integration --------------------------------------------------------------- //	
-	float speed = 0.f;
+	if constexpr (logData)
+		log.Log(simulationData[scMeta[scId].simulationId], pcId, indexInPc, pos, fe, 0.f);
 
-	const float mass = pcMeta[pcIdGlobal].mass[pidInPcluster];
-
-	// Energy minimize. The particles are moved by EM::UpdateKernel once the step is decided for the whole simulation
-	if constexpr (emvariant) {
-		// Overlapping particles in unminimized structures can produce infinite forces. Push them apart in a pseudorandom
-		// direction, with a force large enough to still dominate the max force
-		const bool finite = isfinite(fe.force.lenSquared());
-		emForces[pcIdGlobal * PersistentCluster::maxParticles + pidInPcluster] = finite ? fe.force : EngineUtils::GenerateRandomForce(pidGlobal) * 1e9f;
-	}
-	else {
-
-		if (forceMaskBuffer) {
-			fe.force = fe.force * forceMaskBuffer[pidGlobal];
-		}
-
-		const Float3 forcePrev = pcStates[pcIdGlobal].forces_prev[pidInPcluster];
-		const Float3 velPrev = pcStates[pcIdGlobal].vels_prev[pidInPcluster];
-		Float3 vel_now = EngineUtils::integrateVelocityVVS(velPrev, forcePrev, fe.force, simulation.dt, mass);
-		Float3 pos_now = EngineUtils::IntegratePositionVVS(pos, vel_now, fe.force, mass, simulation.dt);
-
-		if constexpr (FORCE_CHECKS) {
-			if ((pos_now - pos).len() > 0.5f) {
-				printf("Warning: Particle %d in PC %d moved %f nm in one step.\n", pidInPcluster, pcIdGlobal, (pos_now - pos).len());
-			}
-		}
-
-		// TODO: This should be happening in the EM variant, but i cant get that working properly
-		if (fixedParticleMovementBuffer != nullptr) {
-			Float3 fixedMovement = fixedParticleMovementBuffer[pidGlobal];
-			if (fixedMovement.lenSquared() > 0) {
-				fe.force = Float3{};
-				vel_now = Float3{};
-				pos_now = pos + fixedMovement;
-			}				
-		}
-
-		if (fixedParticleRotationBuffer != nullptr) {
-			fe.force = Float3{};
-			vel_now = Float3{}; 			
-			const Rotation& rotation = fixedParticleRotationBuffer[pidGlobal];
-			BoundaryCondition::applyHyperposNM(rotation.center, pos_now, boxSize);
-			LAL::RotatePoint(pos_now, rotation.center, rotation.rotation);
-			BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos_now, boxSize);
-			//LAL::RotatePoint(pos_now, Float3{}, Float3{ 0.001f, 0.f, 0.f });
-		}
-	
-		pos = pos_now;// Save pos locally, but only push to box as this kernel ends
-
-		Float3 velScaled;
-		velScaled = vel_now * simulation.thermostatScalar;
-
-		pcStates[pcIdGlobal].forces_prev[pidInPcluster] = fe.force;
-		pcStates[pcIdGlobal].vels_prev[pidInPcluster] = velScaled;
-
-		speed = velScaled.len();
-	}
-
-	// ------------------------------------------------------------ Boundary Condition --------------------------------------------------------------- //	
-
-	//BoundaryCondition::applyHyperposNM(p0s[threadIdx.y], pos);
-
-	EngineUtils::LogPclusterData(pcIdGlobal - simulation.pclusters.offset, pidInPcluster, step, data_logging_interval, pos, fe.potE, fe.force, speed,
-		simulation.pclusters.count * PersistentCluster::maxParticles, trajBuffer + simulation.logOffset, potEBuffer + simulation.logOffset,
-		velocityBuffer + simulation.logOffset, forceBuffer + simulation.logOffset);
-
-	superClusters[scIdGlobal].posX[threadIdx.x] = pos.x;
-	superClusters[scIdGlobal].posY[threadIdx.x] = pos.y;
-	superClusters[scIdGlobal].posZ[threadIdx.x] = pos.z;
-	pclusters[pcIdGlobal].pqd[pidInPcluster].position = pos;
+	superClusters[scId].SetPosition(threadIdx.x, pos);
+	pclusters[pcId].pqd[indexInPc].position = pos;
 }
 
 
-#pragma warning (pop)
-#pragma warning (pop)

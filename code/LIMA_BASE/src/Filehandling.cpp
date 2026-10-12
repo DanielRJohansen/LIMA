@@ -1,4 +1,5 @@
 #include "Filehandling.h"
+#include "Format.h"
 
 #include <assert.h>
 #include <algorithm>
@@ -52,7 +53,7 @@ bool FileUtils::firstNonspaceCharIs(const std::string_view& str, char query) {
 std::unordered_map<std::string, std::string> FileUtils::parseINIFile(const std::string& path, bool forceLowercase) {
 	std::ifstream file(path);
 	if (!file.is_open()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path));
+		throw std::runtime_error(Lima::Format("Failed to open file {}\n", path));
 	}
 
 	auto ToLowercase = [](std::string& str) {
@@ -135,7 +136,7 @@ namespace {
 		if (fs::exists("/usr/share/LIMA/resources"))
 			return "/usr/share/LIMA";
 #endif
-		throw std::runtime_error(std::format(
+		throw std::runtime_error(Lima::Format(
 			"Could not find LIMA's resources directory. Searched next to the executable ({}), in ../share/LIMA, and in the parent directories",
 			executableDir.string()));
 	}
@@ -166,7 +167,7 @@ std::vector<std::array<fs::path, 2>> FileUtils::GetAllGroItpFilepairsInDir(const
 std::string FileUtils::ReadFileToString(const fs::path& path) {
 	std::ifstream file(path, std::ios::binary | std::ios::ate);
 	if (!file)
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()));
+		throw std::runtime_error(Lima::Format("Failed to open file {}\n", path.string()));
 
 	const std::streamsize size = file.tellg();
 	std::string contents(static_cast<size_t>(size), '\0');
@@ -175,7 +176,7 @@ std::string FileUtils::ReadFileToString(const fs::path& path) {
 	file.read(contents.data(), size);
 
 	if (!file)
-		throw std::runtime_error(std::format("Failed to read file {}\n", path.string()));
+		throw std::runtime_error(Lima::Format("Failed to read file {}\n", path.string()));
 
 	return contents;
 }
@@ -221,7 +222,7 @@ std::vector<Float3> FileUtils::ReadCsvAsVectorOfFloat3(const fs::path& path) {
 //		}
 //	}
 //
-//	throw std::runtime_error(std::format("Failed to find #endif in file\n"));
+//	throw std::runtime_error(Lima::Format("Failed to find #endif in file\n"));
 //}
 //
 //

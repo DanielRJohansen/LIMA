@@ -86,5 +86,4 @@ constexpr bool AllAtom = true;
 // ------------------------------------------ Optimization Parameters ------------------------------------------- //
 const bool HARD_CUTOFF = true;
 const bool ENABLE_POTE = true;
-const bool IGNORE_HYDROGEN = false;
 const int GRIDNODE_QUERY_RANGE = 2;

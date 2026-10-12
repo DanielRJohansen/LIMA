@@ -1,26 +1,30 @@
-# Multi-simulation batching
-Goal: Improve GPU utilization and aggregate simulation throughput for small systems (<20³ nm³) by processing multiple independent simulations in lockstep within the same kernel launches.
-Approach: Treat multiple simulations as one batch. Rather than separate CUDA streams or launches, the Engine flatten equivalent work across simulations into shared workloads:
--  Concatenate pclusters, superclusters, bond groups, NB tasks, results, etc. across simulations. 
--  Prefer batch-global indices/offsets rather than adding a literal [batchIndex] dimension to every buffer. 
--  Launch kernels over the total work across all simulations, e.g. NbNonlocalKernel<<<totalNTasks,...>>>. 
--  Work items that require simulation-specific state carry/derive a simulationId. 
--  Keep simulations synchronized at the same pipeline/timestep stage. 
-PME: Group simulations with compatible PME grid dimensions and use batched cuFFT transforms. Reciprocal-space calculations and normalization remain independent per simulation.
-Expected benefits: Better SM utilization for small simulations, fewer total kernel launches, reduced launch/synchronization overhead, and potentially much better utilization of small FFTs. 
-Key constraints: Preserve deterministic results independently for every simulation. No interactions or reductions may cross simulation boundaries. Handle different particle/task counts efficiently without padding everything to the largest simulation. 
-Instead of initializing Engine with 1 simulation, it will be initialized with a batch of simulations. These simulations may not terminate at the same time, at which point engine should remove nb-tasks related to a terminated simulation, and should no longer compute forces or integrate that simulation.
-
-Batching rules:
-For sim's to be batched they must share the following criteria:
-boxsize, emvariant, stepspernlistupdate, steps_per_temperature_measurement, bcselect, enableEs, cutoffNM, applythermostat, ref_t, save_energy and more.
-In other words, the only params that'll really be different for each sims are the particles, topology, dt and nSteps. All but nSteps should be trivial to implement, whereas nSteps means some sim's needs to stop before other.
-
-First milestone: Get engine up and running with this new paradigm. Dont focus on the batching logic in environment, start by just making batches of size1.
+ï»¿## Compiling takes forever. Can we optimize a bit?
 
 
-## Add simulation tabs to Display. Tabs automatically appear/disappear as rendercontexts are made/freed. 
+## Investigate startup latency for small systems (say t4 in 7^3nm^3 box). Defined as time from command to first step.
 
-## Compiling exposes hundres of warnings, could we fix?
+## Forcefields with different 1-4 scaling can't be mixed. A topology has one [ defaults ] (gen-pairs, fudgeLJ, fudgeQQ), applied to the whole system, so merging eg. a CHARMM-style protein (fudge 1.0/1.0, as in STMV) with Slipids lipids (0.5/0.8333) gives one of them the wrong 1-4 interactions. SimulationBuilder::InsertSystem merges forcefields anyway (used by the large-EM showcase). A fix would be per-moleculetype 1-4 scaling, or explicit [ pairs ] parameters with the scaling baked in.
 
-## Compiling takes forever. Can we optimize a bit?
+## Density profile analysis on the CLI (SimAnalysis::DensityProfile / CompareDensityProfiles are only reachable through Workflow). Undecided shape: a gmx-style `lima density -c conf.gro -f traj.trr` from files, an `mdrun --density` flag, and how to compare/average groups of runs (eg. LABEL=GLOB arguments). The analyses behind ShowcaseMultisim (SimAnalysis::WaterSelfDiffusion) need the same, before the showcase can be reproduced with lima commands.
+
+## Solvate by tiling a pre-equilibrated water box (like gmx solvate with spc216.gro) instead of a jittered cubic lattice (SimulationBuilder::SolvateGrofile). Faster, the water starts with a realistic structure, and needs less EM/equilibration. The lattice still shows faintly as a sawtooth in water density profiles of short runs.
+
+## The tests: Test T4 (MD performance) and LoadT4 (setup performance) are always noisy. Find a better way to isolate them from other tests.
+
+# Performance ideas. These are not set in stone todo's, rather concepts that are interesting to explore to see if they give any speed. Some makes the most sense together
+## Instead of Env having a thread dedicated to RunSimulation, Engine instead get's it's own thread, so when engine starts an mdrun it literally only steps & updates the renderpipelin/simstatus. Another benefit is that Engine would persist, meaning slightly lower latency for setup. It's import that Engine free's its memory when it has no work, such that we are hogging 10 GB VRAM, while env is just doing preprocessing.
+## Look into all structs/classes used used in Kernels, and see if they could be improved. Especially with advanced stuff such as alignment, __restrict__, or simply ordering/datatypes of members
+## EmitQuarterEntriesKernel: now ~0.77 ms per STMV rebuild (was 1.37). The cost was the bonded-pair exclusions (~1 active lane, dependent global loads): own particle ids now in shared memory, query ids loaded once per quarter, one pass over each bonded set for all 4 query particles. Rejected: int4 reads of the set (slower). What's left is mostly writing ~300 MB of QuarterEntries; shrinking that means changing NB's entry format.
+## FindNeighborsKernel: now ~2.7 ms per STMV rebuild (was 3.9). Done: own-particle vs candidate-sphere prefilter (196 -> 140 pair-tested candidates/SC, 90 become neighbors), branch-free pair test, __launch_bounds__(128, 8) for 64 regs. The kernel is issue-bound (~68% issue active), so latency tricks don't help: 2 candidates per warp iteration and a candidate-particles vs own-sphere filter were both slower. Left: cell enumeration (~74 cells/SC, ~7 of 32 lanes active) and the bonded check (~8%).
+## nstlist vs list-buffer tuning: a bigger buffer and fewer rebuilds may be cheaper overall. Parameter/accuracy call for you.
+## NB kernel flattened entries: known ~4% SIMT gain left over from densetasks.
+
+
+# Kernel graphs (prototyped, see stash "Tried cuda graph..."): T4 -11%, STMV +2.5%. Recipe:
+- Engine.cuh: `std::array<cudaGraphExec_t, 2> stepGraphs{}` (indexed by logData) + `void LaunchStepGraph(cudaGraph_t, bool logData)`. Destroy the execs in ~Engine.
+- _deviceMaster: after the `MakeSuperClusterTasksGPU` check and before `ForkStreamsFromMainStream()`, if `!emvariant && nSuperclusters > 0 && snf_select.empty()` (EM syncs mid-step, SNF unchecked): `cudaStreamBeginCapture(cudaStreams[0], cudaStreamCaptureModeThreadLocal)`. ThreadLocal so the log-drain thread's CUDA calls don't break the capture.
+- The existing fork/join events pull the side streams (PME, bonds) into the capture; cuFFT exec captures fine. After the integrate launch: `cudaStreamEndCapture(cudaStreams[0], &graph)` -> LaunchStepGraph.
+- LaunchStepGraph: if an exec exists try `cudaGraphExecUpdate(exec, graph, &info)`; on failure (topology changed after a task rebuild) `cudaGetLastError()`, destroy and re-instantiate. Then `cudaGraphLaunch(exec, cudaStreams[0])`, `cudaGraphDestroy(graph)`. Capturing every step means changed args (step, buffer pointers after Expand, live edits) need no tracking; ~10 us host/step, only ~4 re-instantiations per 2000 T4 steps.
+- Measuring: nsys needs `--cuda-graph-trace=node` to show graph kernels, but node tracing perturbs scheduling (STMV looked faster under nsys, was slower in wall-clock). Trust wall-clock A/B (`--t4 2000 1`, `--stmv 300`) of the same binary.
+- Findings: launch overhead is not the issue (host runs 0.25-41 ms ahead). Graphs fix WDDM submit batching that idled T4 normal steps 24/90 us -> 54 us steps. STMV loses because NB, PME spreading and bonds truly overlap and slow NB, which already fills the GPU (CUDA_DEVICE_MAX_CONNECTIONS=1: graph == no graph). Reordering launches (NB before PME) without graphs changed nothing.
+- Next: encode the order (NB waits for an event after PME's ChargeblockDistributeToGrid, bonds wait for NB) so STMV is neutral and T4 keeps most of the gain; or graphs only below a system size.

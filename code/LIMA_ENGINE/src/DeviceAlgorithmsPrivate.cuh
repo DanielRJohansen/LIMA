@@ -3,9 +3,11 @@
 #include "DeviceAlgorithms.cuh"
 #include "PhysicsUtils.cuh"
 
+#include <algorithm>
+
 namespace LAL {
 	//static_assert(USE_PRECOMPUTED_BSPLINES == false, "Precomputed B-spline LUT is disabled. Please set USE_PRECOMPUTED_BSPLINES to false.");
-	__device__ void CalcBspline(float f, float* w) {
+	__device__ inline void CalcBspline(float f, float* w) {
 		/*
 		// Disabled precomputed B-spline LUT. Keep this implementation for potential future use.
 		if constexpr (USE_PRECOMPUTED_BSPLINES) {
@@ -30,6 +32,14 @@ namespace LAL {
 		w[1] = (4.f - 6.f * f * f + 3.f * f * f * f) / 6.f;
 		w[2] = (1.f + 3.f * f + 3.f * f * f - 3.f * f * f * f) / 6.f;
 		w[3] = (f * f * f) / 6.f;
+	}
+
+	// Derivatives of CalcBspline's weights with respect to f
+	__device__ inline void CalcBsplineDerivative(float f, float* dw) {
+		dw[0] = -0.5f * (1.f - f) * (1.f - f);
+		dw[1] = -2.f * f + 1.5f * f * f;
+		dw[2] = 0.5f + f - 1.5f * f * f;
+		dw[3] = 0.5f * f * f;
 	}
 
 	template<int order>

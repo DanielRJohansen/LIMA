@@ -1,9 +1,9 @@
 #include <algorithm>
+#include "Format.h"
 #include <cctype>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
-#include <format>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -12,19 +12,20 @@
 #include <vector>
 
 #include "CliDefinitions.h"
+#include "Daemon.h"
 #include "CommandlineUtils.h"
 #include "Display.h"
 #include "Environment.h"
 #include "MDFiles.h"
 #include "MoleculeUtils.h"
 #include "Programs.h"
-#include "SetWindowsRegistry.h"
+#include "WindowsIntegration.h"
 #include "SimulationBuilder.h"
 #include "argparser.h"
 
 namespace fs = std::filesystem;
 
-void PrintTiming(const std::chrono::duration<double> enginetime, double totalNsSimulated) {
+void PrintTiming(std::ostream& out, const std::chrono::duration<double> enginetime, double totalNsSimulated) {
     const double wall_time_sec = enginetime.count();
 
     // Calculate performance metrics
@@ -32,27 +33,28 @@ void PrintTiming(const std::chrono::duration<double> enginetime, double totalNsS
     const double hr_per_ns = (wall_time_sec / totalNsSimulated) / 3600.0;    // convert to hours per ns
 
     // Print time and performance info in the GROMACS-like format
-    printf("\n");
-    printf("               Wall t (s)\n");
-    printf("       Time:    %10.3f\n", wall_time_sec);
-    printf("                 (ns/day)    (hour/ns)\n");
-    printf("Performance:    %10.3f     %10.3f\n", ns_per_day, hr_per_ns);
+    out << "\n";
+    out << "               Wall t (s)\n";
+    out << Lima::Format("       Time:    {:10.3f}\n", wall_time_sec);
+    out << "                 (ns/day)    (hour/ns)\n";
+    out << Lima::Format("Performance:    {:10.3f}     {:10.3f}\n", ns_per_day, hr_per_ns);
 }
 
-int Cli::RunMdrun(int argc, char** argv) {
+int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::MdrunHelp };
 
     ArgParser parser(helpText);
 
-    fs::path workDir;
-    fs::path conf = workDir / "conf.gro";
-    fs::path topol = workDir / "topol.top";
-    fs::path simpar = workDir / "sim_params.txt";
-    fs::path conf_out = workDir / "out.gro";
+    const fs::path& workDir = ctx.cwd;
+    fs::path conf = "conf.gro";
+    fs::path topol = "topol.top";
+    fs::path simpar = "sim_params.txt";
+    fs::path conf_out = "out.gro";
     fs::path trajOut{};
 
     bool render = false;
 	bool uff = false;
+    std::vector<std::pair<std::string, std::string>> overrides;	// --set KEY=VALUE
 
     parser.AddOption({ "--conf", "-c", "-conf" }, false, conf);
 	parser.AddOption({ "--topology", "-t", "-topology", "-top" }, false, topol);
@@ -61,35 +63,54 @@ int Cli::RunMdrun(int argc, char** argv) {
 	parser.AddOption({ "--trajectory", "-trr", "-traj" }, false, trajOut);
 	parser.AddFlag({ "--display", "-d", "-display" }, [&render]() { render = true; });
     parser.AddFlag({ "--uff", "-uff" }, [&uff]() {uff = true; });
+    parser.AddOption({ "--set" }, false, [&overrides](const std::vector<std::string>& args) {
+        for (const std::string& arg : args) {
+            const size_t equals = arg.find('=');
+            if (equals == std::string::npos || equals == 0)
+                throw CliError(Lima::Format("option '--set' expects KEY=VALUE, got '{}'", arg));
+            overrides.emplace_back(arg.substr(0, equals), arg.substr(equals + 1));
+        }
+    });
     parser.Parse(argc, argv);
+    conf = ctx.Resolve(conf);
+    topol = ctx.Resolve(topol);
+    simpar = ctx.Resolve(simpar);
+    conf_out = ctx.Resolve(conf_out);
+    trajOut = ctx.Resolve(trajOut);
 
     EnvMode envmode = render ? Full : ConsoleOnly;
 
     Environment& env = Environment::Get();
 
-    const SimParams ip(simpar);
-    GroFile grofile{ conf };
-    TopologyFile topfile{ topol };
+    SimParams ip(simpar);
+    for (const auto& [key, value] : overrides)
+        ip.Set(key, value);
 
-    if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
-        const int newSize = static_cast<int>(std::ceil((std::max)({
-            grofile.box_size.x, grofile.box_size.y, grofile.box_size.z })));
-        printf("Boxsize was not an integer, or was not cubic. Setting new boxsize to %d", newSize);
-        grofile.box_size = Float3(newSize, newSize, newSize);
-    }
-
+    // The files are parsed by the Environment, so this command joins a batch as early as possible
     SimulationJob job;
-    job.workDir = workDir;
-    job.grofile = grofile;
-    job.topfile.emplace(topfile);
+    // Analysis results (sim_params [Analysis]) go next to the output coordinates, so runs sharing a cwd don't collide
+    job.workDir = conf_out.has_parent_path() ? conf_out.parent_path() : workDir;
+    job.grofile.emplace(conf);
+    job.topfile.emplace(topol);
     job.simParams = ip;
     job.mode = envmode;
+    std::optional<int> resizedBox;
+    job.preprocess = [&resizedBox](GroFile& grofile, TopologyFile&, SimParams&) {
+        if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
+            resizedBox = static_cast<int>(std::ceil((std::max)({
+                grofile.box_size.x, grofile.box_size.y, grofile.box_size.z })));
+            grofile.box_size = Float3(*resizedBox, *resizedBox, *resizedBox);
+        }
+    };
     auto result = env.Submit(std::move(job)).Get();
+    if (resizedBox)
+        ctx.out << Lima::Format("Boxsize was not an integer, or was not cubic. Setting new boxsize to {}\n", *resizedBox);
 
     const std::chrono::duration<double> enginetime = result.engineTime; // [s]
-    printf("Engine time %f\n", enginetime.count());
-    result.WriteCoordinatesTo(grofile);
-    grofile.printToFile(conf_out);
+    ctx.out << Lima::Format("Engine time {:f}\n", enginetime.count());
+    if (result.execution.batchSize > 1)
+        ctx.out << Lima::Format("Ran in a batch of {} simulations\n", result.execution.batchSize);
+    result.FinalSystem().coordinates.printToFile(conf_out);
 
     if (!trajOut.empty()) {
         Trajectory traj = result.MakeTrajectory();
@@ -102,17 +123,17 @@ int Cli::RunMdrun(int argc, char** argv) {
     }
 
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
-	PrintTiming(enginetime, total_ns_simulated);
+	PrintTiming(ctx.out, enginetime, total_ns_simulated);
 
     return 0;
 }
 
-int Cli::RunBuildMembrane(int argc, char** argv) {
+int Cli::RunBuildMembrane(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::BuildMembraneHelp };
 
 
     EnvMode envmode = ConsoleOnly;
-    fs::path workDir{ std::filesystem::current_path() };
+    fs::path workDir{ ctx.cwd };
 
     std::vector<std::pair<std::string, double>> lipids; // {name, percentage}
     std::optional<float> membraneCenterZ = std::nullopt;
@@ -136,7 +157,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
                 lipidPercentage = std::stod(args[i+1]);
             }
             catch (...) {
-				throw CliError(std::format("invalid percentage '{}' for lipid '{}'", args[i + 1], args[i]));
+				throw CliError(Lima::Format("invalid percentage '{}' for lipid '{}'", args[i + 1], args[i]));
             }
 			lipids.emplace_back(lipidname, lipidPercentage);
 		}
@@ -169,6 +190,7 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
 	argparser.AddFlag({ "--display", "-d", "-display" }, [&envmode]() { envmode = Full; });
 
     argparser.Parse(argc, argv);
+    workDir = ctx.Resolve(workDir);
 
 	const int geometryCount = static_cast<int>(membraneCenterZ.has_value())
 		+ static_cast<int>(sphere.has_value()) + static_cast<int>(ellipsoid.has_value());
@@ -179,33 +201,30 @@ int Cli::RunBuildMembrane(int argc, char** argv) {
 	if (ellipsoid && (ellipsoid->radii.x <= 0.f || ellipsoid->radii.y <= 0.f || ellipsoid->radii.z <= 0.f))
 		throw CliError("option '--ellipsoid' requires positive radii");
 
-	Lipids::Selection lipidselection;
-	for (const auto& lipid : lipids) {
-		lipidselection.emplace_back(Lipids::Select{ lipid.first, workDir, lipid.second });
-	}
+	Lipids::Composition composition{ {}, workDir };
+	for (const auto& [name, percentage] : lipids)
+		composition.lipids.push_back({ name, percentage });
 
-    GroFile grofile;
-    grofile.box_size = boxsize;
-    grofile.title = "Membrane";
-    TopologyFile topfile;
-    topfile.SetSystem("Membrane");
     MembraneGeometry::Figure geometry = MembraneGeometry::Plane{ membraneCenterZ.value_or(boxsize.z / 2.f) };
     if (sphere) geometry = *sphere;
     else if (ellipsoid) geometry = *ellipsoid;
-    SimulationBuilder::CreateMembrane(grofile, topfile, lipidselection, geometry, randomSeed);
-    auto emResult = Environment::Get().Submit(SimulationJob{
-        workDir, grofile, topfile, SimParams::BasicEMSimParams(emtol), envmode }).Get();
-    emResult.WriteCoordinatesTo(grofile);
+    // The lipids are loaded and the membrane built by the Environment, so this command joins a batch as early as possible
+    auto job = Programs::MakeMembraneJob(workDir, std::move(composition), boxsize, geometry, randomSeed,
+        SimParams::BasicEMSimParams(emtol), envmode);
+    job.grofile->Get().title = "Membrane";
+    job.topfile->Get().SetSystem("Membrane");
+    auto emResult = Environment::Get().Submit(std::move(job)).Get();
 
-    grofile.printToFile(workDir / "membrane.gro");
-    topfile.printToFile(workDir / "membrane.top");
+    const MolecularSystem membrane = emResult.FinalSystem();
+    membrane.coordinates.printToFile(workDir / "membrane.gro");
+    membrane.topology.printToFile(workDir / "membrane.top");
 
     auto [step, force] = *std::min_element(emResult.simulation->maxForceBuffer.begin(), emResult.simulation->maxForceBuffer.end(),
         [](const std::pair<int64_t, float>& a, const std::pair<int64_t, float>& b) {
             return a.second < b.second;
         }
     );
-    std::cout << std::format("buildmembrane finished with a min max-force of {:.3f}\n", force);
+    ctx.out << Lima::Format("buildmembrane finished with a min max-force of {:.3f}\n", force);
 
 	return 0;
 }
@@ -220,7 +239,7 @@ namespace RenderCli {
 }
 
 
-int Cli::RunRender(int argc, char** argv) {
+int Cli::RunRender(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::RenderHelp };
 
 
@@ -240,6 +259,8 @@ int Cli::RunRender(int argc, char** argv) {
 	parser.AddFlag({ "--hide-water", "-hidewater", "-hw" }, [&hidewater]() { hidewater = true; });
 	parser.AddOption({ "--highlight", "-highlight", "-hl" }, false, highlightAtomsInput);
     parser.Parse(argc, argv);
+    conf = ctx.Resolve(conf);
+    topol = ctx.Resolve(topol);
 
 	std::optional<Programs::GmxConversionResult> conversion;
 	const std::string extension = RenderCli::Lowercase(conf.extension().string());
@@ -247,7 +268,7 @@ int Cli::RunRender(int argc, char** argv) {
 		conversion.emplace(Programs::ToGmx(conf, Programs::ParseWaterModel(water)));
 	}
 	else if (extension != ".gro") {
-		throw std::runtime_error(std::format(
+		throw std::runtime_error(Lima::Format(
 			"lima render expects a .gro, .pdb, or .cif input file, got {}", conf.string()));
 	}
 
@@ -326,7 +347,7 @@ int Cli::RunRender(int argc, char** argv) {
     return 0;
 }
 
-int Cli::RunMakeBox(int argc, char** argv) {
+int Cli::RunMakeBox(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::MakeBoxHelp };
 
 
@@ -341,8 +362,8 @@ int Cli::RunMakeBox(int argc, char** argv) {
 
     parser.Parse(argc, argv);
 
-	const fs::path confPath = fs::absolute(!name.empty() ? fs::path(name + ".gro") : "conf.gro");
-	const fs::path topPath  = fs::absolute(!name.empty() ? fs::path(name + ".top") : "topol.top");
+	const fs::path confPath = ctx.Resolve(!name.empty() ? fs::path(name + ".gro") : "conf.gro");
+	const fs::path topPath  = ctx.Resolve(!name.empty() ? fs::path(name + ".top") : "topol.top");
 
     //printf("Creating files: \n\t%s\n\t%s\n", confPath.string(), topPath.string());
 
@@ -360,7 +381,7 @@ int Cli::RunMakeBox(int argc, char** argv) {
     return 0;
 }
 
-int Cli::RunSolvate(int argc, char** argv) {
+int Cli::RunSolvate(const Context& ctx, int argc, char** argv) {
     ArgParser parser{ std::string{ SolvateHelp } };
 
     fs::path confPath = "conf.gro";
@@ -375,16 +396,18 @@ int Cli::RunSolvate(int argc, char** argv) {
     parser.AddOption({ "--topology-out", "-to", "-topOutput" }, false, topologyOutputPath);
     parser.AddOption({ "--density", "-p", "-pressure" }, false, density);
     parser.Parse(argc, argv);
+    confPath = ctx.Resolve(confPath);
+    topologyPath = ctx.Resolve(topologyPath);
+    confOutputPath = ctx.Resolve(confOutputPath);
+    topologyOutputPath = ctx.Resolve(topologyOutputPath);
 
     if (!fs::exists(confPath))
-        throw CliError(std::format("input coordinates not found: {}", confPath.string()));
+        throw CliError(Lima::Format("input coordinates not found: {}", confPath.string()));
     if (!fs::exists(topologyPath))
-        throw CliError(std::format("input topology not found: {}", topologyPath.string()));
+        throw CliError(Lima::Format("input topology not found: {}", topologyPath.string()));
     if (density <= 0)
         throw CliError("option '--density' must be positive");
 
-    confPath = fs::absolute(confPath);
-    topologyPath = fs::absolute(topologyPath);
     if (confOutputPath.empty())
         confOutputPath = confPath.parent_path() / (confPath.stem().string() + "_solvated.gro");
     if (topologyOutputPath.empty())
@@ -394,12 +417,12 @@ int Cli::RunSolvate(int argc, char** argv) {
     TopologyFile topfile{ topologyPath };
     if (!topfile.HasSystem()) topfile.SetSystem("Solvated system");
     SimulationBuilder::SolvateGrofile(grofile, topfile, density);
-    grofile.printToFile(fs::absolute(confOutputPath));
-    topfile.printToFile(fs::absolute(topologyOutputPath));
+    grofile.printToFile(confOutputPath);
+    topfile.printToFile(topologyOutputPath);
     return 0;
 }
 
-int Cli::RunInsertMolecule(int argc, char** argv) {
+int Cli::RunInsertMolecule(const Context& ctx, int argc, char** argv) {
     namespace fs = std::filesystem;
     const std::string helpText{ Cli::InsertMoleculeHelp };
 
@@ -419,9 +442,10 @@ int Cli::RunInsertMolecule(int argc, char** argv) {
     parser.AddOption({ "--top-target", "-top_target", "-tt" }, false, topTgtPath);
     parser.AddOption({ "--position", "-p", "-position" }, false, position);
     parser.Parse(argc, argv);
-
-    confTgtPath = fs::absolute(confTgtPath);
-    topTgtPath = fs::absolute(topTgtPath);
+    confSrcPath = ctx.Resolve(confSrcPath);
+    topSrcPath = ctx.Resolve(topSrcPath);
+    confTgtPath = ctx.Resolve(confTgtPath);
+    topTgtPath = ctx.Resolve(topTgtPath);
 
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);
@@ -442,7 +466,7 @@ int Cli::RunInsertMolecule(int argc, char** argv) {
     return 0;
 }
 
-int Cli::RunInsertMolecules(int argc, char** argv) {
+int Cli::RunInsertMolecules(const Context& ctx, int argc, char** argv) {
     namespace fs = std::filesystem;
     const std::string helpText{ Cli::InsertMoleculesHelp };
 
@@ -466,14 +490,15 @@ int Cli::RunInsertMolecules(int argc, char** argv) {
     parser.AddFlag({ "--rotate-randomly", "-rotate_randomly", "-rr" }, [&rotateRandomly]() {rotateRandomly = true; });
     parser.AddFlag({ "--display", "-d", "-display" }, [&display]() {display = true; });
     parser.Parse(argc, argv);
+    confSrcPath = ctx.Resolve(confSrcPath);
+    topSrcPath = ctx.Resolve(topSrcPath);
+    confTgtPath = ctx.Resolve(confTgtPath);
+    topTgtPath = ctx.Resolve(topTgtPath);
 
-    if (!fs::exists(confSrcPath)) throw std::runtime_error(std::format("source coordinates not found: {}", confSrcPath.string()));
-    if (!fs::exists(topSrcPath)) throw std::runtime_error(std::format("source topology not found: {}", topSrcPath.string()));
-    if (!fs::exists(confTgtPath)) throw std::runtime_error(std::format("target coordinates not found: {}", confTgtPath.string()));
-	if (!fs::exists(topTgtPath)) throw std::runtime_error(std::format("target topology not found: {}", topTgtPath.string()));
-
-	confTgtPath = fs::absolute(confTgtPath);
-	topTgtPath = fs::absolute(topTgtPath);
+    if (!fs::exists(confSrcPath)) throw std::runtime_error(Lima::Format("source coordinates not found: {}", confSrcPath.string()));
+    if (!fs::exists(topSrcPath)) throw std::runtime_error(Lima::Format("source topology not found: {}", topSrcPath.string()));
+    if (!fs::exists(confTgtPath)) throw std::runtime_error(Lima::Format("target coordinates not found: {}", confTgtPath.string()));
+	if (!fs::exists(topTgtPath)) throw std::runtime_error(Lima::Format("target topology not found: {}", topTgtPath.string()));
 
     GroFile groSrc{ confSrcPath };
     auto topSrc = std::make_shared<TopologyFile>(topSrcPath);
@@ -487,7 +512,7 @@ int Cli::RunInsertMolecules(int argc, char** argv) {
     // Always headless: a Full-mode job leaves the Environment's Display alive, and StaticbodyEnergyMinimize opens
     // its own. Two Displays drive GLFW from two threads at once, which crashes
     auto emResult = Environment::Get().Submit(SimulationJob{
-        fs::current_path(), groSrc, *topSrc, SimParams::BasicEMSimParams(), Headless }).Get();
+        ctx.cwd, groSrc, *topSrc, SimParams::BasicEMSimParams(), Headless }).Get();
     emResult.WriteCoordinatesTo(groSrc);
 
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
@@ -498,7 +523,7 @@ int Cli::RunInsertMolecules(int argc, char** argv) {
     return 0;
 }
 
-int Cli::RunEditConf(int argc, char** argv) {
+int Cli::RunEditConf(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::EditConfHelp };
 
 
@@ -519,6 +544,9 @@ int Cli::RunEditConf(int argc, char** argv) {
     parser.AddOption({ "--set-center", "-set_center", "-sc" }, false, setCenter);
     parser.AddOption({ "--rotate", "-r", "-rotate" }, false, rotate);
     parser.Parse(argc, argv);
+    confInputPath = ctx.Resolve(confInputPath);
+    topInputPath = ctx.Resolve(topInputPath);
+    confOutputPath = ctx.Resolve(confOutputPath);
 
     if (confOutputPath.empty())
         confOutputPath = confInputPath;
@@ -547,7 +575,7 @@ int Cli::RunEditConf(int argc, char** argv) {
     return 0;
 }
 
-int Cli::RunEnergyMinimization(int argc, char** argv) {
+int Cli::RunEnergyMinimization(const Context& ctx, int argc, char** argv) {
     namespace fs = std::filesystem;
     const std::string helpText{ Cli::EnergyMinimizationHelp };
 
@@ -568,19 +596,23 @@ int Cli::RunEnergyMinimization(int argc, char** argv) {
     parser.AddFlag({ "--display", "-d", "-display" }, [&render](){render=true;});
     parser.Parse(argc, argv);
 
-    GroFile grofile{ fs::canonical(confPath) };
-    TopologyFile topfile{ fs::canonical(topPath) };
+    auto emResult = Environment::Get().Submit(SimulationJob{ ctx.cwd, fs::canonical(ctx.Resolve(confPath)),
+        fs::canonical(ctx.Resolve(topPath)), SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
+    emResult.FinalSystem().coordinates.printToFile(ctx.Resolve(confPathOut));
 
-    auto emResult = Environment::Get().Submit(SimulationJob{
-        fs::current_path(), grofile, topfile, SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
-    emResult.WriteCoordinatesTo(grofile);
-
-    grofile.printToFile(fs::absolute(confPathOut));
+    const auto& maxForces = emResult.simulation->maxForceBuffer;
+    if (!maxForces.empty()) {
+        const float force = maxForces.back().second;
+        ctx.out << Lima::Format("em finished after {} steps with a max force of {:.1f} kJ/mol/nm{}\n", emResult.simulation->getStep(),
+            force, force > emtol ? Lima::Format(", above the tolerance of {:.1f}", emtol) : "");
+    }
+    if (emResult.execution.batchSize > 1)
+        ctx.out << Lima::Format("Ran in a batch of {} simulations\n", emResult.execution.batchSize);
 
     return 0;
 }
 
-int Cli::RunToGmx(int argc, char** argv) {
+int Cli::RunToGmx(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::ToGmxHelp };
 
     ArgParser parser(helpText);
@@ -591,13 +623,14 @@ int Cli::RunToGmx(int argc, char** argv) {
     parser.AddOption({ "--name", "-n", "-name" }, false, name);
     parser.AddOption({ "--water-model", "-water-model", "-water" }, false, water);
     parser.Parse(argc, argv);
+    structurePath = ctx.Resolve(structurePath);
 
     if (!name.empty() && fs::path{ name }.has_parent_path()) {
         throw std::runtime_error("togmx output name must be a basename");
     }
 
     auto conversion = Programs::ToGmx(structurePath, Programs::ParseWaterModel(water));
-    const fs::path directory = structurePath.parent_path().empty() ? fs::current_path() : structurePath.parent_path();
+    const fs::path directory = structurePath.parent_path();
     const fs::path groPath = directory / (name.empty() ? "conf.gro" : name + ".gro");
     const fs::path topPath = directory / (name.empty() ? "topol.top" : name + ".top");
 
@@ -619,8 +652,8 @@ int Cli::RunToGmx(int argc, char** argv) {
     return 0;
 }
 
-void SelfTest() {
-	const std::filesystem::path workDir = std::filesystem::current_path() / "selftest";
+void SelfTest(const Cli::Context& ctx) {
+	const std::filesystem::path workDir = ctx.cwd / "selftest";
 
 	const fs::path slipidsPath = FileUtils::GetLimaDir() / "resources/Slipids";
 	std::vector<std::string> targets;
@@ -633,36 +666,47 @@ void SelfTest() {
 		}
 	}
 
-	Lipids::Selection lipidselection;
-	for (const auto& lipidname : targets) {
-		lipidselection.emplace_back(Lipids::Select{ lipidname, workDir, 100. / static_cast<double>(targets.size()) });
-	}
+	Lipids::Composition composition{ {}, workDir };
+	for (const auto& lipidname : targets)
+		composition.lipids.push_back({ lipidname, 100. / static_cast<double>(targets.size()) });
 
-	GroFile gro;
-	gro.box_size = Float3{ 10.f };
-	gro.title = "Membrane";
-	TopologyFile top;
-	top.SetSystem("Membrane");
-	SimulationBuilder::CreateMembrane(gro, top, lipidselection, 5.f);
-	Environment::Get().Submit(SimulationJob{
-		workDir, std::move(gro), std::move(top), SimParams::BasicEMSimParams(5000.f), Full }).Get();
+	auto job = Programs::MakeMembraneJob(workDir, std::move(composition), Float3{ 10.f }, MembraneGeometry::Plane{ 5.f },
+		0, SimParams::BasicEMSimParams(5000.f), Full);
+	job.grofile->Get().title = "Membrane";
+	job.topfile->Get().SetSystem("Membrane");
+	Environment::Get().Submit(std::move(job)).Get();
 
-	printf("Selftest successful"); // Otherwise we'd have thrown by now
+	ctx.out << "Selftest successful\n"; // Otherwise we'd have thrown by now
 }
 
-int Cli::RunMakeSimParams(int argc, char** argv) {
+int Cli::RunMakeSimParams(const Context& ctx, int argc, char** argv) {
     ArgParser parser{ std::string{ MakeSimParamsHelp } };
     parser.Parse(argc, argv);
     SimParams params{};
-    params.DumpToFile();
+    params.DumpToFile(ctx.cwd / "sim_params.txt");
     return 0;
 }
 
-int Cli::RunSelfTest(int argc, char** argv) {
+int Cli::RunSelfTest(const Context& ctx, int argc, char** argv) {
     ArgParser parser{ std::string{ SelfTestHelp } };
     parser.Parse(argc, argv);
-    SelfTest();
+    SelfTest(ctx);
     return 0;
+}
+
+int Cli::RunWait(const Context& ctx, int argc, char** argv) {
+    ArgParser parser{ std::string{ WaitHelp } };
+    parser.Parse(argc, argv);
+    return Daemon::RunWait(ctx, std::vector<std::string>(argv, argv + argc));
+}
+
+int Cli::RunDaemon(const Context& ctx, int argc, char** argv) {
+    const std::vector<std::string> args(argv, argv + argc);
+    if (args.size() == 3 && (args[2] == "--help" || args[2] == "-h" || args[2] == "-help"))
+        throw HelpRequested{ std::string{ DaemonHelp } };
+    if (args.size() != 3 || (args[2] != "status" && args[2] != "stop"))
+        throw CliError("usage: lima daemon status|stop");
+    return Daemon::RunDaemonCommand(ctx, args);
 }
 
 namespace {
@@ -685,6 +729,8 @@ constexpr std::array CommandHandlers{
     CommandHandlerEntry{ "editconf", Cli::RunEditConf },
     CommandHandlerEntry{ "em", Cli::RunEnergyMinimization },
     CommandHandlerEntry{ "togmx", Cli::RunToGmx },
+    CommandHandlerEntry{ "daemon", Cli::RunDaemon },
+    CommandHandlerEntry{ "wait", Cli::RunWait },
 };
 static_assert(CommandHandlers.size() == Cli::Commands.size() && std::ranges::all_of(Cli::Commands, [](const auto& command) {
         return std::ranges::find(CommandHandlers, command.name, &CommandHandlerEntry::name) != CommandHandlers.end();
@@ -699,73 +745,146 @@ Cli::CommandHandler HandlerOf(const Cli::CommandDefinition& command) {
     return std::ranges::find(CommandHandlers, command.name, &CommandHandlerEntry::name)->handler;
 }
 
-void PrintGeneralHelp() {
-    std::cout << "Usage: lima COMMAND [OPTION]...\n"
-                 "       lima [--help] [--version]\n\n"
-                 "LIMA is a suite of molecular-dynamics and membrane-simulation tools.\n\n"
-                 "Commands:\n";
+void PrintGeneralHelp(std::ostream& out) {
+    out << "Usage: lima [--no-daemon] COMMAND [OPTION]...\n"
+           "       lima [--help] [--version]\n\n"
+           "LIMA is a suite of molecular-dynamics and membrane-simulation tools.\n\n"
+           "Commands:\n";
     for (const auto& command : Cli::Commands)
-        std::cout << std::format("  {:<20} {}\n", command.name, command.summary);
-    std::cout << "\nRun 'lima help COMMAND' or 'lima COMMAND --help' for command help.\n";
+        out << Lima::Format("  {:<20} {}\n", command.name, command.summary);
+    out << "\nRun 'lima help COMMAND' or 'lima COMMAND --help' for command help.\n";
+#ifdef _WIN32
+    out << "Run 'lima setup' to put lima on your PATH and open .gro files with it, and 'lima setup --undo' to revert that.\n";
+#endif
 }
 
-int Dispatch(int argc, char** argv) {
+int Dispatch(const Cli::Context& ctx, int argc, char** argv) {
     if (argc == 1) {
-        PrintGeneralHelp();
+        PrintGeneralHelp(ctx.out);
         return 0;
     }
 
     const std::string_view argument{ argv[1] };
     if (argument == "--help" || argument == "-h" || argument == "-help") {
-        PrintGeneralHelp();
+        PrintGeneralHelp(ctx.out);
         return 0;
     }
     if (argument == "--version") {
-        std::cout << "lima " LIMA_VERSION "\n";
+        ctx.out << "lima " LIMA_VERSION "\n";
         return 0;
     }
     if (argument == "help") {
         if (argc == 2) {
-            PrintGeneralHelp();
+            PrintGeneralHelp(ctx.out);
             return 0;
         }
         if (argc != 3) throw CliError("usage: lima help COMMAND");
         const auto* command = FindCommand(argv[2]);
-        if (!command) throw CliError(std::format("unrecognized command '{}'", argv[2]));
-        std::cout << command->helpText;
+        if (!command) throw CliError(Lima::Format("unrecognized command '{}'", argv[2]));
+        ctx.out << command->helpText;
         return 0;
     }
     if (argument == "setregistry") {
         if (argc != 2) throw CliError("'setregistry' does not accept options");
-        RegisterGrofileAssociation();
+        WindowsIntegration::RegisterGrofileAssociation();
         return 0;
+    }
+    if (argument == "setup") {
+#ifdef _WIN32
+        const bool undo = argc == 3 && std::string_view{ argv[2] } == "--undo";
+        if (argc > 3 || (argc == 3 && !undo)) throw CliError("usage: lima setup [--undo]");
+        WindowsIntegration::Setup(ctx.out, undo);
+        return 0;
+#else
+        throw CliError("'setup' is only for Windows. The Linux packages put lima on the PATH");
+#endif
     }
 
     const auto* command = FindCommand(argument);
-    if (!command) throw CliError(std::format("unrecognized command '{}'", argument));
-    return HandlerOf(*command)(argc, argv);
+    if (!command) throw CliError(Lima::Format("unrecognized command '{}'", argument));
+    return HandlerOf(*command)(ctx, argc, argv);
+}
+
+// Runs a command line in this thread, either in the user's lima process or on a daemon thread
+int RunCommand(const Cli::Context& ctx, const std::vector<std::string>& args) {
+    std::vector<std::string> storage = args;
+    std::vector<char*> argv;
+    for (auto& arg : storage) argv.push_back(arg.data());
+    try {
+        return Dispatch(ctx, static_cast<int>(argv.size()), argv.data());
+    }
+    catch (const HelpRequested& help) {
+        ctx.out << help.helpText;
+        return 0;
+    }
+    catch (const CliError& error) {
+        ctx.err << "lima: " << error.what() << "\nTry 'lima --help' for more information.\n";
+        return 2;
+    }
+    catch (const std::exception& error) {
+        ctx.err << "lima: " << error.what() << '\n';
+        return 1;
+    }
+    catch (...) {
+        ctx.err << "lima: unknown error\n";
+        return 1;
+    }
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    try {
-        return Dispatch(argc, argv);
+    std::vector<std::string> args(argv, argv + argc);
+    if (args.size() >= 2 && args[1] == Cli::Daemon::internalServeCommand) {
+        try {
+            return Cli::Daemon::Serve(args, RunCommand);
+        }
+        catch (const std::exception& error) {
+            std::cerr << "lima daemon: " << error.what() << '\n';
+            return 1;
+        }
     }
-    catch (const HelpRequested& help) {
-        std::cout << help.helpText;
-        return 0;
+
+    const bool noDaemon = args.size() >= 2 && args[1] == "--no-daemon";
+    if (noDaemon) args.erase(args.begin() + 1);
+
+    if (args.size() < 2 || (args[1] != "setup" && args[1] != "setregistry"))
+        WindowsIntegration::FirstRunSetup();
+    // Double-clicked in Explorer: keep the window open, or the help would vanish with it
+    if (args.size() == 1 && WindowsIntegration::OwnsConsoleWindow()) {
+        const int exitCode = RunCommand(Cli::Context{ fs::current_path(), std::cout, std::cerr }, args);
+        std::cout << "\nPress Enter to close." << std::flush;
+        std::string line;
+        std::getline(std::cin, line);
+        return exitCode;
     }
-    catch (const CliError& error) {
-        std::cerr << "lima: " << error.what() << "\nTry 'lima --help' for more information.\n";
-        return 2;
-    }
-    catch (const std::exception& error) {
-        std::cerr << "lima: " << error.what() << '\n';
+
+    // --async is not an option of mdrun, em or buildmembrane; their handlers never see it. It tells main how to run
+    // the command: submit it to the daemon and return at once, instead of waiting for it to finish
+    if (const auto async = std::ranges::find(args.begin() + std::min<size_t>(args.size(), 2), args.end(), "--async"); async != args.end()) {
+        args.erase(async);
+        if (noDaemon || !Cli::Daemon::ShouldUse(args)) {
+            std::cerr << "lima: --async only works with mdrun, em and buildmembrane, and not with --no-daemon or LIMA_NO_DAEMON\n"
+                         "Try 'lima --help' for more information.\n";
+            return 2;
+        }
+        try {
+            if (const auto exitCode = Cli::Daemon::RunRemote(args, true)) return *exitCode;
+        }
+        catch (const std::exception& error) {
+            std::cerr << "lima: the lima daemon is unavailable (" << error.what() << ")\n";
+        }
+        std::cerr << "lima: --async needs the lima daemon\n";
         return 1;
     }
-    catch (...) {
-        std::cerr << "lima: unknown error\n";
-        return 1;
+
+    if (!noDaemon && Cli::Daemon::ShouldUse(args)) {
+        try {
+            if (const auto exitCode = Cli::Daemon::RunRemote(args)) return *exitCode;
+        }
+        catch (const std::exception& error) {
+            std::cerr << "lima: the lima daemon is unavailable (" << error.what() << "), running in this process instead\n";
+        }
     }
+    return RunCommand(Cli::Context{ fs::current_path(), std::cout, std::cerr }, args);
 }

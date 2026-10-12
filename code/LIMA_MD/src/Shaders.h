@@ -1,4 +1,4 @@
-// No pragma, once include in Display.cpp
+#pragma once
 #include <GL/glew.h>
 
 #include "MoleculeHull.cuh"

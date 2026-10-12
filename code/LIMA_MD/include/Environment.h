@@ -14,9 +14,13 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <set>
 #include <thread>
+#include <variant>
+#include <stdexcept>
+#include <utility>
 #include <cstdint>
 
 class Display;
@@ -35,15 +39,43 @@ struct MolecularSystem {
 enum class OutputSelect {
 	InitialCoordinates,
 	FinalCoordinates,
-	Topology,
-	DensityProfile
+	Topology
 };
 
 namespace fs = std::filesystem;
 
+// A molecular file given either in memory or as a path. Environment parses paths on its preparation workers, so
+// Submit returns at once and parsing never holds a job back from a batch it could have joined. To change a file
+// given as a path before it is simulated, use SimulationJob::preprocess; the parsed file comes back in
+// SimulationResult::sourceSystem.
+template <typename File>
+class FileInput {
+public:
+	FileInput() = default; // An empty file
+	FileInput(File file) : source(std::move(file)) {}
+	FileInput(fs::path path) : source(std::move(path)) {}
+
+	// Parses the file if it is given as a path
+	File& Load() {
+		if (const fs::path* path = std::get_if<fs::path>(&source))
+			source = File{ *path };
+		return std::get<File>(source);
+	}
+	// Throws if the file is still an unparsed path
+	File& Get() { return const_cast<File&>(std::as_const(*this).Get()); }
+	const File& Get() const {
+		if (const fs::path* path = std::get_if<fs::path>(&source))
+			throw std::logic_error("File has not been loaded: " + path->string());
+		return std::get<File>(source);
+	}
+
+private:
+	std::variant<File, fs::path> source;
+};
+
 struct SimulationJob {
 	SimulationJob() = default;
-	SimulationJob(fs::path workDir, GroFile grofile, TopologyFile topfile, SimParams simParams, EnvMode mode)
+	SimulationJob(fs::path workDir, FileInput<GroFile> grofile, FileInput<TopologyFile> topfile, SimParams simParams, EnvMode mode)
 		: workDir(std::move(workDir)), simParams(std::move(simParams)), grofile(std::move(grofile)),
 		topfile(std::move(topfile)), mode(mode) {}
 
@@ -51,8 +83,9 @@ struct SimulationJob {
 	std::string name;
 	std::set<OutputSelect> outputs;
 	std::optional<SimParams> simParams;
-	std::optional<GroFile> grofile;
-	std::optional<TopologyFile> topfile;
+	// Default to workDir/molecule/conf.gro and workDir/molecule/topol.top
+	std::optional<FileInput<GroFile>> grofile;
+	std::optional<FileInput<TopologyFile>> topfile;
 	std::unique_ptr<Simulation> initialSimulation;
 	EnvMode mode = EnvMode::Headless;
 	// Callbacks of different jobs may run concurrently on Environment's worker threads,
@@ -149,6 +182,13 @@ public:
 	// Queues a lightweight simulation description. All expensive construction and
 	// GPU work is performed by Environment's bounded worker pipeline.
 	[[nodiscard]] SimulationHandle Submit(SimulationJob job);
+
+	// The most simulations in a batch that this simulation is the first member of: enough to fill the GPU
+	static size_t MaxBatchSize(const Simulation& first);
+
+	// Closes the display window, unless a job is queued or running. For a long-lived process such as the lima
+	// daemon, where the window would otherwise outlive the simulations it showed
+	void CloseDisplayIfIdle();
 
 	////////////////// LIVE EDIT //////////////////
 
@@ -261,11 +301,12 @@ private:
 	std::unique_ptr<SimulationSession> liveEditSession;
 
 	std::mutex schedulingMutex;
+	// Creates the CUDA context while the caller parses files and builds the box. Destroyed last.
+	std::future<void> cudaWarmup;
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
 	size_t unpreparedSimulations = 0; // Submitted jobs not yet finished by Preprocess.
-	static constexpr size_t maxBatchSize = 6;
-	static constexpr size_t maxPreparedSimulations = maxBatchSize * 2;
+	size_t MaxPreparedSimulations() const;
 	
 	int nextBatchId = 1;
 	SimulationId nextSimulationId = 1;

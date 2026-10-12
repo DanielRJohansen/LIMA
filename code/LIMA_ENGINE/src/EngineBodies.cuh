@@ -2,6 +2,7 @@
 
 #include "Bodies.cuh"
 #include "BoxGrid.cuh"
+#include "CapacityOverflow.cuh"
 
 #include <cuda_runtime.h>
 //#include <cuda_fp8.h>
@@ -18,12 +19,22 @@ namespace BoxGrid {
 };
 
 
+// MD integration state of a particle, kept in its supercluster slot (scId * 16 + index) so SuperclusterIntegrateKernel reads
+// and writes it coalesced, like the position in SuperCluster. The pcluster states (PersistentclusterInterimState) and positions
+// are the persistent copy, which is synced at each clustering and before anything else reads it, see Engine::StoreIntegrationStates
+struct alignas(16) ParticleIntegrationState {
+	Float3 velocity;
+	float mass;					// [kg/mol], 0 in unused slots
+	Float3 forcePrev;			// [J/mol/nm]
+	int pclusterParticle = -1;	// pcId * PersistentCluster::maxParticles + index in the pcluster
+};
+
 // Todo move this impl to ParticleClusters.cuh
 class PClusterTransfermodule {
 public:
-	static const int maxClustersPerBlock = 64;
+	static const int maxClustersPerBlock = 128;
 	static const int blockLen = 1;	
-	static const int maxOutgoingClusters = 8;
+	static const int maxOutgoingClusters = 16;
 
 	// Set by GetPclusterPositions kernel
 	Float3* meanPositionOfPClustersPerBlock = nullptr; // 1 value per pCluster per block
@@ -34,6 +45,8 @@ public:
 	int* idsOfIncomingClusters = nullptr;
 	Float3* meanpositionsOfIncomingClusters = nullptr;
 
+	CapacityOverflow overflow;
+
 	__host__ static PClusterTransfermodule Create(int nBlocksTotal) {
 		PClusterTransfermodule transferModule;
 		cudaMalloc(&transferModule.meanPositionOfPClustersPerBlock, sizeof(Float3) * maxClustersPerBlock * nBlocksTotal);		
@@ -43,6 +56,7 @@ public:
 		cudaMalloc(&transferModule.nIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.idsOfIncomingClusters, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
 		cudaMalloc(&transferModule.meanpositionsOfIncomingClusters, sizeof(Float3) * 6 * maxOutgoingClusters * nBlocksTotal);
+		transferModule.overflow = CapacityOverflow::Create();
 		transferModule.Reset(nBlocksTotal);
 
 		cudaMemset(transferModule.idsOfIncomingClusters, 0, sizeof(int) * 6 * maxOutgoingClusters * nBlocksTotal);
@@ -61,6 +75,7 @@ public:
 		cudaFree(nIncomingClusters);
 		cudaFree(idsOfIncomingClusters);
 		cudaFree(meanpositionsOfIncomingClusters);
+		overflow.Free();
 	}
 };
 	

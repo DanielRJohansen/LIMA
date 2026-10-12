@@ -1,4 +1,5 @@
 #include "Analyzer.h"
+#include "Format.h"
 
 #include "Environment.h"
 #include "PhysicsUtils.cuh"
@@ -34,7 +35,7 @@ namespace {
 		CloseHandle(processInfo.hThread);
 		CloseHandle(processInfo.hProcess);
 #else
-		std::string command = std::format("python \"{}\" --comparison \"{}\"{} >/dev/null 2>&1 &",
+		std::string command = Lima::Format("python \"{}\" --comparison \"{}\"{} >/dev/null 2>&1 &",
 			script.string(), input.string(), show ? " --show" : "");
 		if (std::system(command.c_str()) != 0)
 			throw std::runtime_error("Failed to launch density-profile comparison");
@@ -170,14 +171,14 @@ void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesy
 		std::filesystem::create_directories(outputPath.parent_path());
 	std::ofstream file(outputPath);
 	if (!file.is_open())
-		throw std::runtime_error(std::format("Failed to write density profile {}", outputPath.string()));
+		throw std::runtime_error(Lima::Format("Failed to write density profile {}", outputPath.string()));
 	file << "z_nm,water_fraction,head_fraction,tail_fraction\n";
 	for (int bin = 0; bin < nBins; ++bin)
 		file << (bin + .5f) * binWidth << ',' << densities[0][bin] << ',' << densities[1][bin] << ',' << densities[2][bin] << '\n';
 	file.close();
 
 	const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "DensityProfile.py";
-	std::string command = std::format("python \"{}\" \"{}\"", script.string(), outputPath.string());
+	std::string command = Lima::Format("python \"{}\" \"{}\"", script.string(), outputPath.string());
 	if (show) command += " --show";
 	if (std::system(command.c_str()) != 0)
 		throw std::runtime_error("Matplotlib failed to render density profile");
@@ -190,7 +191,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 		std::filesystem::create_directories(outputPath.parent_path());
 	std::ofstream output(outputPath);
 	if (!output.is_open())
-		throw std::runtime_error(std::format("Failed to write density profile comparison {}", outputPath.string()));
+		throw std::runtime_error(Lima::Format("Failed to write density profile comparison {}", outputPath.string()));
 	output << "composition,temperature,z_nm,water_fraction,head_fraction,tail_fraction\n";
 
 	for (const auto& group : groups) {
@@ -200,7 +201,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 		for (const auto& profilePath : group.profiles) {
 			std::ifstream input(profilePath);
 			if (!input.is_open())
-				throw std::runtime_error(std::format("Failed to read density profile {}", profilePath.string()));
+				throw std::runtime_error(Lima::Format("Failed to read density profile {}", profilePath.string()));
 			std::string line;
 			std::getline(input, line);
 			for (size_t bin = 0; std::getline(input, line); ++bin) {
@@ -208,7 +209,7 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 				std::istringstream row(line);
 				char comma;
 				if (!(row >> values[0] >> comma >> values[1] >> comma >> values[2] >> comma >> values[3]))
-					throw std::runtime_error(std::format("Invalid density profile row in {}", profilePath.string()));
+					throw std::runtime_error(Lima::Format("Invalid density profile row in {}", profilePath.string()));
 				if (averages.size() <= bin) averages.emplace_back();
 				for (size_t column = 0; column < values.size(); ++column)
 					averages[bin][column] += values[column];
@@ -226,6 +227,82 @@ void SimAnalysis::CompareDensityProfiles(const std::vector<DensityProfileGroup>&
 
 	const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "DensityProfile.py";
 	LaunchDetachedPython(script, outputPath, show);
+}
+
+SimAnalysis::SelfDiffusion SimAnalysis::SelfDiffusionCoefficient(const Simulation& simulation,
+	const std::function<bool(const GroRecord&)>& selection, double skipPs) {
+	if (!simulation.traj_buffer || !simulation.boxImage)
+		throw std::invalid_argument("Self-diffusion requires trajectory data and atom metadata");
+	const int loggingInterval = simulation.simParams.data_logging_interval;
+	if (loggingInterval <= 0)
+		throw std::invalid_argument("Self-diffusion requires trajectory logging");
+	const double framePs = loggingInterval * static_cast<double>(simulation.simParams.dt) * NANO_TO_PICO;
+	const int64_t nFrames = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation.getStep(), loggingInterval);
+	const int64_t firstFrame = static_cast<int64_t>(std::ceil(skipPs / framePs));
+	const int64_t nUsed = nFrames - firstFrame;
+	if (nUsed < 10)
+		throw std::invalid_argument(Lima::Format("Self-diffusion needs at least 10 frames after {} ps, got {}", skipPs, nUsed));
+
+	std::vector<std::pair<int, int>> selected;	// {cluster, particle}
+	const auto& atoms = simulation.boxImage->grofile.atoms;
+	for (size_t clusterId = 0; clusterId < simulation.box->persistentClustersMetadata.size(); ++clusterId) {
+		const auto& metadata = simulation.box->persistentClustersMetadata[clusterId];
+		for (int particleId = 0; particleId < PersistentCluster::maxParticles; ++particleId) {
+			const int globalId = metadata.particleIdsGlobal[particleId];
+			if (globalId >= 0 && globalId < static_cast<int>(atoms.size()) && selection(atoms[globalId]))
+				selected.emplace_back(static_cast<int>(clusterId), particleId);
+		}
+	}
+	if (selected.empty())
+		throw std::invalid_argument("Self-diffusion selection matched no atoms");
+
+	// The logged positions are wrapped into the box. An atom moves far less than half a box between frames, so
+	// summing minimum-image displacements gives its unwrapped path
+	const Float3 box = simulation.box->boxparams.BoxSizeFloat();
+	std::vector<Float3> unwrapped(selected.size() * nUsed);	// [frame][atom]
+	for (size_t o = 0; o < selected.size(); ++o) {
+		const auto [clusterId, particleId] = selected[o];
+		Float3 previous = simulation.traj_buffer->GetDatapoint(clusterId, particleId, firstFrame);
+		unwrapped[o] = previous;
+		for (int64_t frame = 1; frame < nUsed; ++frame) {
+			const Float3 position = simulation.traj_buffer->GetDatapoint(clusterId, particleId, firstFrame + frame);
+			Float3 step = position - previous;
+			step.x -= box.x * std::round(step.x / box.x);
+			step.y -= box.y * std::round(step.y / box.y);
+			step.z -= box.z * std::round(step.z / box.z);
+			unwrapped[frame * selected.size() + o] = unwrapped[(frame - 1) * selected.size() + o] + step;
+			previous = position;
+		}
+	}
+
+	// MSD over lags up to half the window, averaged over every time origin. Fit the slope over the upper 80% of
+	// those lags, leaving out the ballistic start
+	const int64_t maxLag = nUsed / 2;
+	std::vector<double> msd(maxLag + 1, 0.0);	// [nm^2]
+	for (int64_t lag = 1; lag <= maxLag; ++lag) {
+		double sum = 0.0;
+		for (int64_t origin = 0; origin + lag < nUsed; ++origin)
+			for (size_t o = 0; o < selected.size(); ++o)
+				sum += (unwrapped[(origin + lag) * selected.size() + o] - unwrapped[origin * selected.size() + o]).lenSquared();
+		msd[lag] = sum / (static_cast<double>(nUsed - lag) * selected.size());
+	}
+	const int64_t fitStart = (std::max)(int64_t{ 1 }, maxLag / 5);
+	double sumT = 0.0, sumM = 0.0, sumTT = 0.0, sumTM = 0.0;
+	const double n = static_cast<double>(maxLag - fitStart + 1);
+	for (int64_t lag = fitStart; lag <= maxLag; ++lag) {
+		const double t = lag * framePs;
+		sumT += t; sumM += msd[lag]; sumTT += t * t; sumTM += t * msd[lag];
+	}
+	const double slope = (n * sumTM - sumT * sumM) / (n * sumTT - sumT * sumT);	// [nm^2/ps]
+
+	// Temperatures are measured at a steady cadence, so the analyzed window is the same trailing fraction of them
+	const auto& temperatures = simulation.temperature_buffer;
+	const size_t skipTemperatures = static_cast<size_t>(temperatures.size() * static_cast<double>(firstFrame) / nFrames);
+	const double temperature = skipTemperatures < temperatures.size()
+		? std::reduce(temperatures.begin() + skipTemperatures, temperatures.end(), 0.0) / (temperatures.size() - skipTemperatures)
+		: 0.0;
+
+	return { slope / 6.0 * 1e-6, temperature };	// 1 nm^2/ps = 1e-6 m^2/s
 }
 
 namespace {

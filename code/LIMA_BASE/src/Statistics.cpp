@@ -55,14 +55,15 @@ float Statistics::calculateR2(const std::vector<float>& x, const std::vector<flo
 //}
 
 Float3 Statistics::Mean(const std::span<const Float3>& values) {
-    // Use Double3 for more precision in the accumulation
-    Double3 sum = std::reduce(std::execution::par, values.begin(), values.end(), Double3{ 0, 0, 0 },
-        [](const Double3& a, const Double3& b) -> Double3 {
-            return { a.x + b.x, a.y + b.y, a.z + b.z };
-        });
-
-    // Convert back to Float3 for the final result
-    return (sum / static_cast<double>(values.size()) ).toFloat3();
+    // Accumulate in double for precision
+    double x = 0, y = 0, z = 0;
+    for (const Float3& value : values) {
+        x += value.x;
+        y += value.y;
+        z += value.z;
+    }
+    const double n = static_cast<double>(values.size());
+    return Float3{ static_cast<float>(x / n), static_cast<float>(y / n), static_cast<float>(z / n) };
 }
 
 Float3 Statistics::CalculateMinimaxPoint(const std::span<const Float3>& points) {

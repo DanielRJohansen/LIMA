@@ -1,10 +1,12 @@
 #include "MDFiles.h"
+#include "Format.h"
 #include "Filehandling.h"
 #include "MDFilesSerialization.h"
 #include "ParallelFor.h"
 
 #include <algorithm>
 #include <charconv>
+#include <cstdio>
 #include <format>
 
 
@@ -25,7 +27,7 @@ namespace {
 		T value{};
 		const auto result = std::from_chars(field.data(), field.data() + field.size(), value);
 		if (field.empty() || result.ec != std::errc{})
-			throw std::runtime_error(std::format("Failed to parse .gro line: \"{}\"", line));
+			throw std::runtime_error(Lima::Format("Failed to parse .gro line: \"{}\"", line));
 		return value;
 	}
 
@@ -33,7 +35,7 @@ namespace {
 	GroRecord ParseGroLine(std::string_view line) {
 		constexpr size_t minChars = 5 + 5 + 5 + 5 + 8 + 8 + 8;
 		if (line.size() < minChars)
-			throw std::runtime_error(std::format("Too short .gro line: \"{}\"", line));
+			throw std::runtime_error(Lima::Format("Too short .gro line: \"{}\"", line));
 
 		GroRecord record;
 		record.residue_number = ParseGroField<int>(line, 0, 5);
@@ -50,26 +52,21 @@ namespace {
 	}
 }
 
-std::string composeGroLine(const GroRecord& record) {
-	std::ostringstream oss;
-
-	// Format and write each part of the GroRecord
-	oss << std::setw(5) << std::left << record.residue_number
-		<< std::setw(5) << std::left << record.residueName.View()
-		<< std::setw(5) << std::left << record.atomName.View()
-		<< std::setw(5) << std::right << record.gro_id
-		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.x
-		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.y
-		<< std::setw(8) << std::fixed << std::setprecision(3) << record.position.z;
-
-	// Append velocity if present
-	if (record.velocity) {
-		oss << std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->x
-			<< std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->y
-			<< std::setw(8) << std::fixed << std::setprecision(4) << record.velocity->z;
-	}
-
-	return oss.str();
+// Fixed width columns, as ParseGroLine reads them. snprintf instead of an ostringstream per line, which made
+// writing a 200k-atom file take over a second
+static void AppendGroLine(std::string& out, const GroRecord& record) {
+	const std::string_view residueName = record.residueName.View();
+	const std::string_view atomName = record.atomName.View();
+	char line[160];
+	int length = std::snprintf(line, sizeof(line), "%-5d%-5.*s%-5.*s%5d%8.3f%8.3f%8.3f",
+		record.residue_number, static_cast<int>(residueName.size()), residueName.data(),
+		static_cast<int>(atomName.size()), atomName.data(), record.gro_id,
+		record.position.x, record.position.y, record.position.z);
+	if (record.velocity)
+		length += std::snprintf(line + length, sizeof(line) - length, "%8.4f%8.4f%8.4f",
+			record.velocity->x, record.velocity->y, record.velocity->z);
+	out.append(line, length);
+	out.push_back('\n');
 }
 
 
@@ -77,7 +74,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 	if (!(path.extension().string() == std::string{ ".gro" }))
 		throw std::runtime_error("Expected .gro extension");
 	if (!fs::exists(path))
-		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+		throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string()));
 
 	lastModificationTimestamp = TimeSinceEpoch(fs::last_write_time(path));
 
@@ -101,15 +98,15 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 
 		// Line 1 is the title, line 2 the atom count, then 1 line per atom, and finally the box
 		if (lines.size() < 3)
-			throw std::runtime_error(std::format("File {} is too short to be a .gro file", path.string()));
+			throw std::runtime_error(Lima::Format("File {} is too short to be a .gro file", path.string()));
 		title = lines[0];
 
 		size_t nAtoms = 0;
 		const std::string_view countLine = TrimSpaces(lines[1]);
 		if (std::from_chars(countLine.data(), countLine.data() + countLine.size(), nAtoms).ec != std::errc{})
-			throw std::runtime_error(std::format("Failed to read atom count in .gro file {}", path.string()));
+			throw std::runtime_error(Lima::Format("Failed to read atom count in .gro file {}", path.string()));
 		if (lines.size() < nAtoms + 3)
-			throw std::runtime_error(std::format(".gro file {} specifies {} atoms, but only has {} lines", path.string(), nAtoms, lines.size()));
+			throw std::runtime_error(Lima::Format(".gro file {} specifies {} atoms, but only has {} lines", path.string(), nAtoms, lines.size()));
 
 		atoms.resize(nAtoms);
 		ParallelUtils::ParallelForBlocked(nAtoms, [&](size_t i) { atoms[i] = ParseGroLine(lines[i + 2]); });
@@ -120,7 +117,7 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 			boxLine = TrimSpaces(boxLine);
 			const auto result = std::from_chars(boxLine.data(), boxLine.data() + boxLine.size(), box_size[dim]);
 			if (result.ec != std::errc{})
-				throw std::runtime_error(std::format("Failed to read box size in .gro file {}", path.string()));
+				throw std::runtime_error(Lima::Format("Failed to read box size in .gro file {}", path.string()));
 			boxLine.remove_prefix(result.ptr - boxLine.data());
 		}
 
@@ -130,24 +127,24 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 }
 
 void GroFile::printToFile(const std::filesystem::path& path) const {
-	if (path.extension().string() != ".gro") { throw std::runtime_error(std::format("Got {} extension, expected .gro", path.extension().string())); }
+	if (path.extension().string() != ".gro") { throw std::runtime_error(Lima::Format("Got {} extension, expected .gro", path.extension().string())); }
 	if (!path.parent_path().empty())
 		fs::create_directories(path.parent_path());
 
 	std::ofstream file(path);
 	if (!file.is_open()) {
-		throw std::runtime_error(std::format("Failed to open file {}", path.string()));
+		throw std::runtime_error(Lima::Format("Failed to open file {}", path.string()));
 	}
 
 	// Print the title and number of atoms
 	file << title << "\n";
 	file << atoms.size() << "\n";
 
-	// Iterate over atoms and print them
-	for (const auto& atom : atoms) {
-		// You need to define how GroRecord is formatted
-		file << composeGroLine(atom) << "\n";
-	}
+	std::string lines;
+	lines.reserve(atoms.size() * 69);
+	for (const auto& atom : atoms)
+		AppendGroLine(lines, atom);
+	file.write(lines.data(), static_cast<std::streamsize>(lines.size()));
 
 	// Print the box size
 	file << box_size.x << " " << box_size.y << " " << box_size.z << "\n";
@@ -179,14 +176,14 @@ PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 	if (!(path.extension().string() == std::string{ ".pdb" }))
 		throw std::runtime_error("Expected .pdb extension");
 	if (!fs::exists(path))
-		throw std::runtime_error(std::format("File \"{}\" was not found", path.string()));
+		throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string()));
 
 
 
 	std::ifstream file;
 	file.open(path);
 	if (!file.is_open() || file.fail()) {
-		throw std::runtime_error(std::format("Failed to open file {}\n", path.string()).c_str());
+		throw std::runtime_error(Lima::Format("Failed to open file {}\n", path.string()).c_str());
 	}
 
 	std::string line{};

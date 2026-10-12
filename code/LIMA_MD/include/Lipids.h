@@ -17,6 +17,17 @@ namespace Lipids {
 
 	std::string NameSelection(const Selection& selection);
 
+	// A lipid mixture by name. Unlike a Selection it reads no files, so it is cheap to create anywhere and is loaded
+	// where the membrane is built, eg. in a SimulationJob::preprocess on Environment's preparation workers
+	struct Composition {
+		struct Lipid { std::string name; double percentage; };
+		std::vector<Lipid> lipids;
+		fs::path workDir; // <name>.gro/.itp found here take precedence over the stock lipids
+
+		Selection Load() const;
+		std::string Name() const; // Same as NameSelection of the loaded Selection
+	};
+
 	void OrientLipidhead(GroFile&, Float3 desiredOrientation = Float3{0,0,1});
 
 	void OrganizeLipidIntoCompoundsizedSections(GroFile&, TopologyFile::Moleculetype&);

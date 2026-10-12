@@ -3,9 +3,11 @@
 #include <array>
 #include <string_view>
 
+#include "CliContext.h"
+
 namespace Cli {
 
-using CommandHandler = int(*)(int argc, char** argv);
+using CommandHandler = int(*)(const Context& ctx, int argc, char** argv);
 
 // Handler-free so tools other than lima (eg. limaclitest) can enumerate the commands.
 // lima.cpp maps each name to its handler.
@@ -15,18 +17,20 @@ struct CommandDefinition {
     std::string_view helpText;
 };
 
-int RunMdrun(int argc, char** argv);
-int RunBuildMembrane(int argc, char** argv);
-int RunMakeSimParams(int argc, char** argv);
-int RunSelfTest(int argc, char** argv);
-int RunRender(int argc, char** argv);
-int RunMakeBox(int argc, char** argv);
-int RunSolvate(int argc, char** argv);
-int RunInsertMolecule(int argc, char** argv);
-int RunInsertMolecules(int argc, char** argv);
-int RunEditConf(int argc, char** argv);
-int RunEnergyMinimization(int argc, char** argv);
-int RunToGmx(int argc, char** argv);
+int RunMdrun(const Context& ctx, int argc, char** argv);
+int RunBuildMembrane(const Context& ctx, int argc, char** argv);
+int RunMakeSimParams(const Context& ctx, int argc, char** argv);
+int RunSelfTest(const Context& ctx, int argc, char** argv);
+int RunRender(const Context& ctx, int argc, char** argv);
+int RunMakeBox(const Context& ctx, int argc, char** argv);
+int RunSolvate(const Context& ctx, int argc, char** argv);
+int RunInsertMolecule(const Context& ctx, int argc, char** argv);
+int RunInsertMolecules(const Context& ctx, int argc, char** argv);
+int RunEditConf(const Context& ctx, int argc, char** argv);
+int RunEnergyMinimization(const Context& ctx, int argc, char** argv);
+int RunToGmx(const Context& ctx, int argc, char** argv);
+int RunDaemon(const Context& ctx, int argc, char** argv);
+int RunWait(const Context& ctx, int argc, char** argv);
 
 inline constexpr std::string_view MdrunHelp = R"(Usage: lima mdrun [OPTION]...
 
@@ -36,9 +40,11 @@ Options:
   -c, --conf PATH              Input coordinates (default: ./conf.gro)
   -t, --topology PATH          Input topology (default: ./topol.top)
   -s, --simparams PATH         Simulation parameters (default: ./sim_params.txt)
+      --set KEY=VALUE...       Override parameters of the simparams file, eg. --set ref_t=310
       --conf-out PATH          Output coordinates (default: ./out.gro)
       --trajectory PATH        Output trajectory; disabled by default
   -d, --display                Display the running simulation
+      --async                  Run on the lima daemon and return at once; see 'lima wait'
       --uff                    Export trajectory.uff for ML training
   -h, --help                   Display this help and exit
 )";
@@ -61,6 +67,7 @@ Options:
       --seed INTEGER           Reproducible membrane construction seed (default: 0)
       --working-dir PATH       Output directory (default: current directory)
   -d, --display                Display the simulation
+      --async                  Run on the lima daemon and return at once; see 'lima wait'
   -h, --help                   Display this help and exit
 
 Example:
@@ -185,6 +192,44 @@ Options:
       --conf-out PATH          Output coordinates (default: ./conf.gro)
       --em-tolerance VALUE     Force tolerance (default: 100 kJ/mol/nm)
   -d, --display                Display the simulation
+      --async                  Run on the lima daemon and return at once; see 'lima wait'
+  -h, --help                   Display this help and exit
+)";
+
+inline constexpr std::string_view DaemonHelp = R"(Usage: lima daemon status|stop
+
+GPU commands (mdrun, em and buildmembrane) run in a background lima process, the
+daemon, so commands started at the same time share the GPU efficiently:
+
+  for d in run1 run2 run3; do lima mdrun --async -c $d/conf.gro -t $d/topol.top \
+    --conf-out $d/out.gro; done
+  lima wait
+
+The daemon starts by itself and exits after 2 minutes without work. With -d,
+the simulations it runs together are shown side by side in one window.
+
+Commands:
+  status                       List the commands the daemon is running
+  stop                         Let running commands finish, then exit
+
+Environment:
+  LIMA_NO_DAEMON=1             Run every command in its own process
+  LIMA_DAEMON_IDLE=SECONDS     Idle time before the daemon exits (default: 120)
+  LIMA_DAEMON_DIR=PATH         Where the daemon keeps its socket and log
+)";
+
+inline constexpr std::string_view WaitHelp = R"(Usage: lima wait
+
+Wait until every command started with --async has finished, then list each with
+its result. Exits 1 if any of them failed. The output of a failed command is kept
+in lima-JOB.log in the directory it was started from; successful ones leave none.
+
+Example:
+  for d in run1 run2 run3; do lima mdrun --async -c $d/conf.gro -t $d/topol.top \
+    --conf-out $d/out.gro; done
+  lima wait
+
+Options:
   -h, --help                   Display this help and exit
 )";
 
@@ -215,6 +260,8 @@ inline constexpr std::array Commands{
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp },
     CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp },
     CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 files.", ToGmxHelp },
+    CommandDefinition{ "daemon", "Show or stop the background GPU process.", DaemonHelp },
+    CommandDefinition{ "wait", "Wait for commands started with --async.", WaitHelp },
 };
 
 } // namespace Cli

@@ -1,4 +1,5 @@
 #include "SimulationBuilder.h"
+#include "Format.h"
 
 #include "BoundaryConditionPublic.h"
 #include "EngineCore.h"
@@ -122,13 +123,13 @@ void validateLipidselection(const Lipids::Selection& lipidselection) {
 		total_percentage += lipid.percentage;
 	}
 	if (std::abs(total_percentage - 100) > 0.00001f) {
-		throw std::runtime_error(std::format("Invalid lipid selection, did not add up to 100% {:.2f}", total_percentage));
+		throw std::runtime_error(Lima::Format("Invalid lipid selection, did not add up to 100% {:.2f}", total_percentage));
 	}
 
 	for (const auto& lipid : lipidselection) {
 		//if (lipid.grofile->atoms.size() != lipid.topfile->GetLocalAtoms().size()) {
 		if (lipid.grofile->atoms.size() != lipid.topfile->GetMoleculeType().atoms.size()) {
-			throw std::runtime_error(std::format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
+			throw std::runtime_error(Lima::Format("BuildMembrane failed: Structure and topology file did not have the same amount of atoms. Please validate your files.\nGRO:{}\nTOP:{}",
 				lipid.grofile->m_path.string(), lipid.topfile->path.string())
 			);
 		}
@@ -322,27 +323,36 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
 	// but it will be slightly more complex code
 
-	// Keep newly placed water atoms outside the van der Waals envelope of the
-	// existing system. The previous 0.12 nm cutoff filled membrane-occupied grid
-	// cells at bulk-water density and could overflow the engine's cluster bins.
-	const float distanceThreshold = 0.25f;	// [nm]
+	// Minimum distance from a new water to another new water
+	const float distanceThreshold = 0.20f;	// [nm]
+	// Minimum distance from a new water to an atom of the input system. Larger than between waters, so waters
+	// are not placed in the gaps between packed molecules, eg. in the hydrophobic core of a membrane
+	const float soluteDistanceThreshold = 0.35f;	// [nm]
 
 	// Place candidate waters on a box-wide cubic lattice at the desired density. Random placement with the
 	// exclusion distance above saturates at ~40% of bulk water density. The lattice spacing at bulk density
-	// (~0.31 nm) exceeds the exclusion distance, so only waters overlapping the input system are removed below
+	// (~0.31 nm) exceeds the exclusion distance, so only waters overlapping the input system are removed below.
+	// Each water is jittered a little, so the lattice planes don't show up as a sawtooth in density profiles
 	const Int3 latticeDim{
 		std::max(1, static_cast<int>(std::round(grofile.box_size.x * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
 		std::max(1, static_cast<int>(std::round(grofile.box_size.y * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
 		std::max(1, static_cast<int>(std::round(grofile.box_size.z * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))) };
 	const Float3 latticeSpacing{ grofile.box_size.x / latticeDim.x, grofile.box_size.y / latticeDim.y, grofile.box_size.z / latticeDim.z };
 	if (std::min({ latticeSpacing.x, latticeSpacing.y, latticeSpacing.z }) < distanceThreshold)
-		throw std::invalid_argument(std::format("Solvent density {}/nm^3 is too high, the maximum is {}",
+		throw std::invalid_argument(Lima::Format("Solvent density {}/nm^3 is too high, the maximum is {}",
 			desiredSolventsPerNm3, static_cast<int>(1.f / (distanceThreshold * distanceThreshold * distanceThreshold))));
+	const float latticeJitter = 0.06f;	// [nm] max offset per dimension
 
 	for (int x = 0; x < latticeDim.x; x++) {
 		for (int y = 0; y < latticeDim.y; y++) {
 			for (int z = 0; z < latticeDim.z; z++) {
-				const Float3 position{ (x + 0.5f) * latticeSpacing.x, (y + 0.5f) * latticeSpacing.y, (z + 0.5f) * latticeSpacing.z };
+				// A cheap hash of the lattice index, 3 bytes of it give an offset in [-1,1] per dimension
+				uint32_t hash = static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u ^ static_cast<uint32_t>(z) * 83492791u;
+				hash ^= hash >> 15; hash *= 0x2c1b3c6du; hash ^= hash >> 12; hash *= 0x297a2d39u; hash ^= hash >> 15;
+				const auto Jitter = [hash](int byte) { return ((hash >> (byte * 8)) & 0xffu) / 127.5f - 1.f; };
+				Float3 position = Float3{ (x + 0.5f) * latticeSpacing.x, (y + 0.5f) * latticeSpacing.y, (z + 0.5f) * latticeSpacing.z }
+					+ Float3{ Jitter(0), Jitter(1), Jitter(2) } * latticeJitter;
+				BoundaryConditionPublic::applyBCNM(position, grofile.box_size, BoundaryConditionSelect::PBC);
 				const NodeIndex nodeindex{ static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y)), static_cast<int>(std::floor(position.z)) };
 				const Float3 relPos = position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
 				boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, false });
@@ -372,7 +382,8 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 							continue;
 
 
-						if ((particles[pid].relPos - particles[otherId].relPos).len() < distanceThreshold) {
+						const float threshold = particles[otherId].presentInInputfile ? soluteDistanceThreshold : distanceThreshold;
+						if ((particles[pid].relPos - particles[otherId].relPos).len() < threshold) {
 							particles[pid].markedForDeletion = true;
 							break;
 						}
@@ -407,7 +418,8 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 									if (!queryParticle.presentInInputfile && boxgrid.GetIndex(otherNodeIndex) < boxgrid.GetIndex(nodeindex))
 										continue;
 
-									if ((particle.relPos - queryParticlePosition).len() < distanceThreshold) {
+									const float threshold = queryParticle.presentInInputfile ? soluteDistanceThreshold : distanceThreshold;
+									if ((particle.relPos - queryParticlePosition).len() < threshold) {
 										particle.markedForDeletion = true;
 									}
 								}
@@ -463,6 +475,13 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 
 	TopologyFile solventTop{
 		FileUtils::GetLimaDir() / "resources/forcefields/combined/Slipids_2020.ff/spce.itp" };
+	// Solvating an empty box: the topology gets the forcefield of the water model, and a system to add the water to
+	if (!topfile.forcefieldInclude) {
+		topfile.forcefieldInclude = TopologyFile{ FileUtils::GetLimaDir() / "resources/forcefields/Slipids_2020.ff/forcefield.itp" }.forcefieldInclude;
+		topfile.forcefieldInclude->filename = "Slipids_2020.ff/forcefield.itp";
+	}
+	if (!topfile.HasSystem())
+		topfile.SetSystem("Water");
 	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr());
 	// AppendMoleculetype also appends the first molecule.
 	for (int i = 1; i < solventCount; i++) {
@@ -482,6 +501,61 @@ void SimulationBuilder::InsertSubmoleculeInSimulation(GroFile& targetGrofile, To
 	};
 
 	AddGroAndTopToGroAndTopfile(targetGrofile, submolGro, position_transform, targetTopol, submolTop);
+}
+
+void SimulationBuilder::InsertSystem(GroFile& targetGrofile, TopologyFile& targetTopol, const GroFile& sourceGrofile,
+	const TopologyFile& sourceTopol, Float3 targetCenter,
+	const std::function<bool(const TopologyFile::Moleculetype&)>& keep)
+{
+	// The source atoms of the kept molecules, in topology order
+	struct Range { size_t begin, end; };
+	std::vector<Range> kept;
+	std::vector<const TopologyFile::MoleculeEntry*> keptEntries;
+	size_t atom = 0;
+	Float3 centerSum{};
+	size_t nKeptAtoms = 0;
+	for (const auto& entry : sourceTopol.GetSystem().molecules) {
+		const size_t nAtoms = entry.moleculetype->atoms.size() * entry.count;
+		if (atom + nAtoms > sourceGrofile.atoms.size())
+			throw std::runtime_error("InsertSystem: the source topology has more atoms than its coordinates");
+		if (keep(*entry.moleculetype)) {
+			kept.push_back({ atom, atom + nAtoms });
+			keptEntries.push_back(&entry);
+			for (size_t i = atom; i < atom + nAtoms; i++) centerSum += sourceGrofile.atoms[i].position;
+			nKeptAtoms += nAtoms;
+		}
+		atom += nAtoms;
+	}
+	if (nKeptAtoms == 0)
+		throw std::invalid_argument("InsertSystem: no molecules to insert");
+	const Float3 offset = targetCenter - centerSum / static_cast<float>(nKeptAtoms);
+
+	const int atomsOffset = static_cast<int>(targetGrofile.atoms.size());
+	const int residueOffset = targetGrofile.atoms.empty() ? 0 : targetGrofile.atoms.back().residue_number;
+	for (const Range& range : kept)
+		for (size_t i = range.begin; i < range.end; i++)
+			addAtomToFile(targetGrofile, sourceGrofile.atoms[i], atomsOffset, residueOffset, [&](Float3& position) { position += offset; });
+
+	for (const auto* entry : keptEntries) {
+		if (const auto existing = targetTopol.moleculetypes.find(entry->name); existing == targetTopol.moleculetypes.end())
+			targetTopol.moleculetypes.insert({ entry->name, std::make_shared<TopologyFile::Moleculetype>(*entry->moleculetype) });
+		else if (existing->second->atoms.size() != entry->moleculetype->atoms.size())
+			throw std::runtime_error(Lima::Format("InsertSystem: both systems have a different moleculetype named {}", entry->name));
+		for (int i = 0; i < entry->count; i++)
+			targetTopol.AppendMolecule(entry->name);
+	}
+
+	if (sourceTopol.forcefieldInclude) {
+		if (!targetTopol.forcefieldInclude)
+			targetTopol.forcefieldInclude = sourceTopol.forcefieldInclude;
+		else {
+			for (const TopologySection section : { atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, cmaptypes })
+				for (const std::string& line : sourceTopol.forcefieldInclude->contents.GetSection(section))
+					targetTopol.forcefieldInclude->AddEntry(section, line);
+			// No longer a stock forcefield, so printing the topology must write its contents rather than include the stock file
+			targetTopol.forcefieldInclude->filename = "forcefield.itp";
+		}
+	}
 }
 
 void SimulationBuilder::InsertSubmoleculesInSimulation(GroFile& targetGrofile, TopologyFile& targetTopol,
@@ -996,10 +1070,10 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 	const Lipids::Selection& lipidselection, const Float3& center, const Float3& radii,
 	const std::string& shapeName, int randomSeed) {
 	if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z))
-		throw std::invalid_argument(std::format("Membrane {} center must contain finite coordinates.", shapeName));
+		throw std::invalid_argument(Lima::Format("Membrane {} center must contain finite coordinates.", shapeName));
 	if (!std::isfinite(radii.x) || !std::isfinite(radii.y) || !std::isfinite(radii.z)
 		|| radii.x <= 0.f || radii.y <= 0.f || radii.z <= 0.f) {
-		throw std::invalid_argument(std::format(
+		throw std::invalid_argument(Lima::Format(
 			"Membrane {} radii must be positive, finite numbers.", shapeName));
 	}
 
@@ -1008,7 +1082,7 @@ static void CreateEllipsoidalMembrane(GroFile& grofile, TopologyFile& topfile,
 	const float longestAxis = std::max({ radii.x, radii.y, radii.z });
 	const float minimumCurvatureRadius = shortestAxis * shortestAxis / longestAxis;
 	if (minimumCurvatureRadius < minimumRadius) {
-		throw std::invalid_argument(std::format(
+		throw std::invalid_argument(Lima::Format(
 			"Membrane {} is too tightly curved for the selected lipids; minimum local curvature radius "
 			"is {:.3f} nm, but {:.3f} nm is required.",
 			shapeName, minimumCurvatureRadius, minimumRadius));

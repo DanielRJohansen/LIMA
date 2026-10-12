@@ -475,6 +475,13 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 
 	TopologyFile solventTop{
 		FileUtils::GetLimaDir() / "resources/forcefields/combined/Slipids_2020.ff/spce.itp" };
+	// Solvating an empty box: the topology gets the forcefield of the water model, and a system to add the water to
+	if (!topfile.forcefieldInclude) {
+		topfile.forcefieldInclude = TopologyFile{ FileUtils::GetLimaDir() / "resources/forcefields/Slipids_2020.ff/forcefield.itp" }.forcefieldInclude;
+		topfile.forcefieldInclude->filename = "Slipids_2020.ff/forcefield.itp";
+	}
+	if (!topfile.HasSystem())
+		topfile.SetSystem("Water");
 	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr());
 	// AppendMoleculetype also appends the first molecule.
 	for (int i = 1; i < solventCount; i++) {

@@ -207,9 +207,8 @@ namespace BatchingTests {
 				Require(results[i].simulation->simParams.ref_t == (i % 2 ? 310.f : 300.f),
 					"Batch changed a member thermostat target");
 			}
-			Require(results[0].execution.batchSize == 4 && results[0].execution.batchId == results[1].execution.batchId
-				&& results[1].execution.batchId == results[2].execution.batchId
-				&& results[2].execution.batchId == results[3].execution.batchId,
+			Require(std::ranges::all_of(results, [&](const SimulationResult& result) {
+				return result.execution.batchSize == 6 && result.execution.batchId == results[0].execution.batchId; }),
 				"Scheduler did not batch simulations with different thermostat targets");
 		}
 		{

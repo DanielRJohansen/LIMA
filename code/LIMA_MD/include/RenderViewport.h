@@ -21,12 +21,25 @@ struct RenderViewport {
 		if (count <= 0 || index < 0 || index >= count || windowSize.x <= 0 || windowSize.y <= 0
 			|| framebufferSize.x <= 0 || framebufferSize.y <= 0)
 			return {};
-		const int columns = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(count))));
-		const int rows = (count + columns - 1) / columns;
 		top = std::clamp(top, 0., static_cast<double>(windowSize.y));
 		const glm::dvec2 scale = glm::dvec2(framebufferSize) / glm::dvec2(windowSize);
 		const int pixelTop = static_cast<int>(std::ceil(top * scale.y));
 		const int height = framebufferSize.y - pixelTop;
+
+		// All tiles have the same size. The grid is the one that fits the largest square in each tile, preferring a grid
+		// the tiles fill exactly (32 tiles: 8x4, not 6x6 with 4 empty) unless that makes the tiles much smaller (7: 3x3, not 7x1)
+		const auto SquareSide = [&](int candidateColumns) {
+			const int candidateRows = (count + candidateColumns - 1) / candidateColumns;
+			return (std::min)(static_cast<double>(framebufferSize.x) / candidateColumns, static_cast<double>(height) / candidateRows);
+		};
+		int columns = 1, exactColumns = 1;
+		for (int candidate = 1; candidate <= count; ++candidate) {
+			if (SquareSide(candidate) > SquareSide(columns)) columns = candidate;
+			if (count % candidate == 0 && SquareSide(candidate) > SquareSide(exactColumns)) exactColumns = candidate;
+		}
+		if (SquareSide(exactColumns) >= 0.75 * SquareSide(columns))
+			columns = exactColumns;
+		const int rows = (count + columns - 1) / columns;
 		const int column = index % columns;
 		const int row = index / columns;
 		const glm::ivec2 pixelStart{ column * framebufferSize.x / columns, pixelTop + row * height / rows };

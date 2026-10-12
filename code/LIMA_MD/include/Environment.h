@@ -184,6 +184,9 @@ public:
 	// GPU work is performed by Environment's bounded worker pipeline.
 	[[nodiscard]] SimulationHandle Submit(SimulationJob job);
 
+	// The most simulations in a batch that this simulation is the first member of: enough to fill the GPU
+	static size_t MaxBatchSize(const Simulation& first);
+
 	////////////////// LIVE EDIT //////////////////
 
 	/// <summary>
@@ -300,8 +303,7 @@ private:
 	std::condition_variable schedulerWakeup;
 	std::deque<QueuedSimulation> pendingSimulations;
 	size_t unpreparedSimulations = 0; // Submitted jobs not yet finished by Preprocess.
-	static constexpr size_t maxBatchSize = 6;
-	static constexpr size_t maxPreparedSimulations = maxBatchSize * 2;
+	size_t MaxPreparedSimulations() const;
 	
 	int nextBatchId = 1;
 	SimulationId nextSimulationId = 1;

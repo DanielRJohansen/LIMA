@@ -38,7 +38,7 @@ public:
 	static void Run() {
 		std::cout << "Checking tile layouts" << std::endl;
 		// Odd sizes and fractional DPI must partition the framebuffer without gaps or overlap.
-		for (int count = 1; count <= 9; ++count) {
+		for (int count = 1; count <= 32; ++count) {
 			std::vector<RenderViewport> tiles;
 			for (int i = 0; i < count; ++i) {
 				const auto tile = RenderViewport::Tile(i, count, { 803, 601 }, { 1205, 902 }, 43.5);
@@ -52,7 +52,10 @@ public:
 				}
 				tiles.push_back(tile);
 			}
-			if (count == 1 || count == 4 || count == 9) {
+			for (const auto& tile : tiles)
+				Require(std::abs(tile.pixelSize.x - tiles.front().pixelSize.x) <= 1 && std::abs(tile.pixelSize.y - tiles.front().pixelSize.y) <= 1,
+					"Tiles differ in size");
+			if (count == 1 || count == 4 || count == 8 || count == 16 || count == 32) {
 				int area = 0;
 				for (const auto& tile : tiles) area += tile.pixelSize.x * tile.pixelSize.y;
 				Require(area == 1205 * (902 - tiles.front().pixelOrigin.y), "Grid has framebuffer gaps");

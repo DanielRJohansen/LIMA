@@ -129,41 +129,6 @@ void ShowcaseSTMV(int nSteps = 50000) {
 	std::cout << "STMV showcase completed: " << nSteps << " steps\n";
 }
 
-// Demonstrates LIMA's parallel simulation workflow.
-// Builds two membrane compositions using three independent seeds each, then energy-minimizes all six systems.
-// Each system is subsequently simulated at 300 K and 340 K, yielding 12 production simulations for comparing membrane stability across composition and temperature.
-void ShowcaseMultisim() {
-	const fs::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
-	std::vector<Lipids::Composition> lipidSelections{
-		{ { { "DPPC", 70. }, { "DOPC", 30. } }, workDir },
-		{ { { "DPPC", 40. }, { "DOPC", 60. } }, workDir }
-	};
-
-	Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
-	workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
-		Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
-	SimParams minimization = SimParams::BasicEMSimParams(800.f);
-	minimization.n_steps = 5000;
-	workflow.AddStage({ "minimize", minimization, {},
-		{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
-
-	SimParams production;
-	production.n_steps = 1000;
-	production.apply_thermostat = true;
-	production.save_energy = true;
-	production.data_logging_interval = 50;
-	workflow.AddStage({ "production", production, {
-		{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
-		{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
-	}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
-	workflow.CompareDensityProfiles("composition", "temperature");
-	workflow.Run();
-
-	std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
-}
-
-
-
 int main(int argc, char** argv) {
 	try {
 		// Dispatch before creating Environment: fatal GPU probes belong only to the child process.
@@ -211,7 +176,7 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
 		//Benchmarks::STMV(env, envmode, 1000);
 		
-		//ShowcaseMultisim();
+		EngineBatchTests::ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
 		return RunAllUnitTests() == 0 ? 0 : 1;

@@ -9,6 +9,12 @@
 #include "MDFiles.h"
 #include "BoxImageBuilder.h"
 #include "BoxBuilder.cuh"
+#include "SimulationBuilder.h"
+#include "Analyzer.h"
+
+#include <chrono>
+#include <fstream>
+#include <map>
 
 namespace EngineBatchTests {
 	void Require(bool value, const char* message) {
@@ -279,32 +285,86 @@ namespace EngineBatchTests {
 		std::cout << "Engine batch regression tests passed\n";
 	}
 
+	// Water self-diffusion from 280 to 373 K: 32 small water boxes, simulated together as one batch, against experiment.
+	// Prints how long the same simulations would take one at a time
 	void ShowcaseMultisim() {
 		const std::filesystem::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
-		std::vector<Lipids::Composition> lipidSelections{
-			{ { { "DPPC", 70. }, { "DOPC", 30. } }, workDir },
-			{ { { "DPPC", 40. }, { "DOPC", 60. } }, workDir }
-		};
+		Environment& environment = Environment::Get();
+		constexpr int nTemperatures = 28;
+		constexpr double skipPs = 5.0;	// Equilibration, left out of the analysis
 
-		Programs::SimulationWorkflow workflow{ workDir, EnvMode::Full };
-		workflow.AddInputs(Programs::MakeMembraneInputs(lipidSelections, { 101, 202, 303 },
-			Float3{ 12.f }, MembraneGeometry::Plane{ 4.f }, true));
-		SimParams minimization = SimParams::BasicEMSimParams(200.f);
-		minimization.n_steps = 5000;
-		workflow.AddStage({ "minimize", minimization, {},
-			{ OutputSelect::InitialCoordinates, OutputSelect::FinalCoordinates, OutputSelect::Topology } });
+		// One minimized box of SPC/E water, the starting point of every temperature
+		SimulationJob minimization;
+		minimization.workDir = workDir;
+		GroFile emptyBox;
+		emptyBox.box_size = Float3{ 6.f };
+		minimization.grofile = std::move(emptyBox);
+		minimization.topfile.emplace();
+		minimization.simParams = SimParams::BasicEMSimParams(500.f);
+		minimization.mode = EnvMode::Headless;
+		minimization.preprocess = [](GroFile& coordinates, TopologyFile& topology, SimParams&) {
+			SimulationBuilder::SolvateGrofile(coordinates, topology);
+		};
+		const MolecularSystem water = environment.Submit(std::move(minimization)).Get().FinalSystem();
 
 		SimParams production;
-		production.n_steps = 1000;
+		production.n_steps = 12500;	// 25 ps
 		production.apply_thermostat = true;
-		production.save_energy = true;
-		workflow.AddStage({ "production", production, {
-			{ "300K", { { "temperature", "300" } }, [](SimParams& params) { params.ref_t = 300.f; } },
-			{ "340K", { { "temperature", "340" } }, [](SimParams& params) { params.ref_t = 340.f; } }
-		}, { OutputSelect::FinalCoordinates, OutputSelect::DensityProfile }, true });
-		workflow.CompareDensityProfiles("composition", "temperature");
-		workflow.Run();
+		// The thermostat changes velocities by at most 0.1% per measurement, so it needs frequent measurements to hold
+		// each box at its temperature as kinetic energy flows into potential energy early in the run
+		production.steps_per_temperature_measurement = 20;
+		production.data_logging_interval = 100;
+		const auto MakeJob = [&](float temperature, uint64_t steps, EnvMode mode) {
+			SimParams params = production;
+			params.ref_t = temperature;
+			params.n_steps = steps;
+			SimulationJob job = Programs::MakeSimulationJob(workDir / Lima::Format("{:.0f}K", temperature), water, params, mode);
+			job.configureSimulation = [temperature](Simulation& simulation) {
+				Programs::InitializeVelocities(simulation, temperature, static_cast<uint32_t>(temperature));
+			};
+			return job;
+		};
 
-		std::cout << "Multisim showcase completed: 6 minimized membranes and 12 production simulations\n";
+		// A short run alone gives the cost of simulating the temperatures one at a time
+		SimulationJob reference = MakeJob(298.f, 2500, EnvMode::Headless);
+		reference.mustRunAlone = true;
+		const double aloneSecondsPerStep = environment.Submit(std::move(reference)).Get().engineTime.count() / 2500.0;
+
+		const auto start = std::chrono::steady_clock::now();
+		std::vector<SimulationHandle> handles;
+		for (int i = 0; i < nTemperatures; ++i)
+			handles.push_back(environment.Submit(MakeJob(280.f + 3.f * i, production.n_steps, EnvMode::Full)));
+		std::vector<SimulationResult> results;
+		for (auto& handle : handles)
+			results.push_back(handle.Get());
+		const double wallSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+		const std::filesystem::path csvPath = workDir / "water_self_diffusion.csv";
+		std::ofstream csv(csvPath);
+		csv << "ref_t_K,temperature_K,D_m2s\n";
+		std::map<int, double> batchSeconds;	// [batchId] engine time of its slowest member
+		for (const auto& result : results) {
+			if (!result.simulation || result.simulation->getStep() != production.n_steps)
+				throw std::runtime_error("A showcase simulation did not run fully");
+			const auto diffusion = SimAnalysis::SelfDiffusionCoefficient(*result.simulation,
+				[](const GroRecord& atom) { return atom.atomName == "OW"; }, skipPs);
+			csv << result.simulation->simParams.ref_t << ',' << diffusion.temperature << ',' << diffusion.coefficient << '\n';
+			double& seconds = batchSeconds[result.execution.batchId];
+			seconds = (std::max)(seconds, result.engineTime.count());
+		}
+		csv.close();
+
+		double batchedSeconds = 0.0;
+		for (const auto& [batchId, seconds] : batchSeconds) batchedSeconds += seconds;
+		const double aloneSeconds = aloneSecondsPerStep * production.n_steps * nTemperatures;
+		const size_t nAtoms = water.coordinates.atoms.size();
+		std::cout << Lima::Format("\n{} simulations of {} atoms, {:.0f} ps each, in {} batch(es)\n", nTemperatures, nAtoms,
+			production.n_steps * production.dt * NANO_TO_PICO, batchSeconds.size());
+		std::cout << Lima::Format("Engine time: {:.1f} s batched, {:.1f} s one at a time ({:.1f}x faster). Wall time {:.1f} s\n",
+			batchedSeconds, aloneSeconds, aloneSeconds / batchedSeconds, wallSeconds);
+		std::cout << "Self-diffusion written to " << csvPath.string() << '\n';
+		const auto script = FileUtils::GetLimaDir() / "dev" / "PyTools" / "WaterSelfDiffusion.py";
+		if (std::system(Lima::Format("python \"{}\" \"{}\" --show", script.string(), csvPath.string()).c_str()) != 0)
+			throw std::runtime_error("Matplotlib failed to plot the self-diffusion");
 	}
 }

@@ -25,6 +25,9 @@ namespace Programs {
 		bool initializeAtReferenceTemperature = false;
 	};
 
+	// Maxwell-Boltzmann velocities at the temperature, without net momentum. For a simulation's configureSimulation
+	void InitializeVelocities(Simulation& simulation, float temperature, uint32_t seed);
+
 	std::vector<WorkflowInput> MakeMembraneInputs(const std::vector<Lipids::Composition>& compositions,
 		const std::vector<int>& seeds, Float3 boxSize, MembraneGeometry::Figure geometry,
 		bool solvate = false);

@@ -253,6 +253,25 @@ SimulationHandle Environment::Submit(SimulationJob job) {
 	return SimulationHandle{ std::move(state) };
 }
 
+size_t Environment::MaxBatchSize(const Simulation& first) {
+	// From limaprofile --batch-scaling: the combined throughput of batched T4 lysozyme runs (7 nm box) stops growing
+	// at ~8 members, so ~3000 nm^3 of boxes fill the GPU. Larger batches only delay the results and use more memory.
+	// The limit is the largest batch measured
+	constexpr double saturatingVolume = 3000.0;	// [nm^3]
+	constexpr size_t limit = 32;
+	const Float3 box = first.box->boxparams.BoxSizeFloat();
+	const double volume = static_cast<double>(box.x) * box.y * box.z;
+	if (!(volume > 0.0))
+		return 1;
+	return std::clamp(static_cast<size_t>(std::ceil(saturatingVolume / volume)), size_t{ 1 }, limit);
+}
+
+size_t Environment::MaxPreparedSimulations() const {
+	// Room for a full batch and the next one, sized by the oldest prepared job. Before any job is prepared, the bound
+	// only has to let preparation start
+	return 2 * (preparedSimulations.empty() ? 6 : MaxBatchSize(*preparedSimulations.front().simulation));
+}
+
 bool Environment::MustRunAlone(const PreparedSimulation& next) {
 	return next.job.mustRunAlone || !next.job.run /*|| next.job.mode == Full*/
 		|| next.simulation->simParams.stepwise;
@@ -267,7 +286,7 @@ bool Environment::IsDrained() const {
 bool Environment::CanPrepare() const {
 	// Simulations being prepared count against the bound, as they will all become prepared
 	return preprocessWorkers.HasFree() && !pendingSimulations.empty()
-		&& preparedSimulations.size() + preprocessWorkers.Running() < maxPreparedSimulations;
+		&& preparedSimulations.size() + preprocessWorkers.Running() < MaxPreparedSimulations();
 }
 
 bool Environment::CanPostprocess() const {
@@ -277,16 +296,17 @@ bool Environment::CanPostprocess() const {
 bool Environment::CanStartBatch() const {
 	if (runningSimulation || preparedSimulations.empty())
 		return false;
-	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == maxBatchSize)
+	if (MustRunAlone(preparedSimulations.front()) || GetReadyBatchSize() == MaxBatchSize(*preparedSimulations.front().simulation))
 		return true;
 	// All already-submitted jobs must finish preparation before a partial batch
 	// starts. At capacity we must dispatch to free preparation space.
-	return unpreparedSimulations == 0 || preparedSimulations.size() == maxPreparedSimulations;
+	return unpreparedSimulations == 0 || preparedSimulations.size() >= MaxPreparedSimulations();
 }
 
 size_t Environment::GetReadyBatchSize() const {
 	if (preparedSimulations.empty() || MustRunAlone(preparedSimulations.front()))
 		return preparedSimulations.empty() ? 0 : 1;
+	const size_t maxBatchSize = MaxBatchSize(*preparedSimulations.front().simulation);
 	size_t count = 1;
 	for (auto it = std::next(preparedSimulations.begin()); it != preparedSimulations.end()
 		&& count < maxBatchSize; ++it) {
@@ -300,6 +320,7 @@ size_t Environment::GetReadyBatchSize() const {
 
 std::vector<Environment::PreparedSimulation> Environment::TakeReadyBatch() {
 	std::vector<PreparedSimulation> batch;
+	const size_t maxBatchSize = MaxBatchSize(*preparedSimulations.front().simulation);
 	batch.reserve(maxBatchSize);
 	batch.push_back(std::move(preparedSimulations.front()));
 	preparedSimulations.pop_front();

@@ -5,7 +5,7 @@
 
 #include <random>
 
-namespace {
+namespace Programs {
 	void InitializeVelocities(Simulation& simulation, float temperature, uint32_t seed) {
 		if (temperature <= 0.f)
 			throw std::invalid_argument("Initial temperature must be positive");

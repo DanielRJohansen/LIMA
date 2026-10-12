@@ -156,8 +156,8 @@ void Programs::SimulationWorkflow::Run(Environment& environment) {
 
 	for (PendingRun& run : pending) run.handle.Get();
 	if (!densityProfileComparison) return;
-	if (!stages.back().outputs.contains(OutputSelect::DensityProfile))
-		throw std::invalid_argument("Density-profile comparison requires density-profile output");
+	if (!stages.back().params.density_profile)
+		throw std::invalid_argument("Density-profile comparison requires density_profile in the last stage's SimParams");
 
 	std::map<std::pair<std::string, std::string>, std::vector<fs::path>> groupedProfiles;
 	for (const PendingRun& run : pending) {

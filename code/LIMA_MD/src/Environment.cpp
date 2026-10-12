@@ -6,6 +6,8 @@
 #include <optional>
 #include <numeric>
 #include <iterator>
+#include <random>
+#include <fstream>
 #include "Environment.h"
 #include "MDFiles.h"
 #include "BoxImageBuilder.h"
@@ -17,6 +19,7 @@
 #include "UpgradeableFileFormat.h"
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
+#include "Workflow.h"
 #include <cuda_profiler_api.h>
 #include <cuda_runtime.h>
 #include <cstdlib>
@@ -410,6 +413,8 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 			next.job.grofile->Get().printToFile(next.job.workDir / "initial.gro");
 		if (next.job.outputs.contains(OutputSelect::Topology))
 			next.job.topfile->Get().printToFile(next.job.workDir / "topol.top");
+		if (simulation->simParams.initial_temperature > 0.f && !simulation->simParams.em_variant)
+			Programs::InitializeVelocities(*simulation, simulation->simParams.initial_temperature, std::random_device{}());
 		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
 		if (!next.job.name.empty())
@@ -480,6 +485,23 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 	schedulerWakeup.notify_one();
 }
 
+// The analyses selected in the simulation's SimParams, each written to its own file in the directory
+static void RunAnalyses(const Simulation& simulation, const fs::path& directory) {
+	const SimParams& params = simulation.simParams;
+	if (params.em_variant || (!params.self_diffusion && !params.density_profile))
+		return;
+	fs::create_directories(directory);
+	if (params.self_diffusion) {
+		const double runPs = simulation.getStep() * static_cast<double>(params.dt) * NANO_TO_PICO;
+		const auto diffusion = SimAnalysis::SelfDiffusionCoefficient(simulation,
+			[](const GroRecord& atom) { return atom.atomName == "OW"; }, 0.2 * runPs);
+		std::ofstream file(directory / "self_diffusion.csv");
+		file << "ref_t_K,temperature_K,D_m2s\n" << params.ref_t.value << ',' << diffusion.temperature << ',' << diffusion.coefficient << '\n';
+	}
+	if (params.density_profile)
+		SimAnalysis::DensityProfile(simulation, directory / "density_profile.csv");
+}
+
 void Environment::Postprocess(ProcessedSimulation next, size_t worker) {
 	const auto started = std::chrono::steady_clock::now();
 	try {
@@ -489,8 +511,7 @@ void Environment::Postprocess(ProcessedSimulation next, size_t worker) {
 			next.result.WriteCoordinatesTo(next.result.sourceSystem->coordinates);
 			next.result.sourceSystem->coordinates.printToFile(next.job.workDir / "out.gro");
 		}
-		if (next.job.outputs.contains(OutputSelect::DensityProfile))
-			SimAnalysis::DensityProfile(*next.result.simulation, next.job.workDir / "density_profile.csv");
+		RunAnalyses(*next.result.simulation, next.job.workDir);
 		if (next.job.postprocess)
 			next.job.postprocess(next.result);
 		next.result.environmentTime += std::chrono::steady_clock::now() - started;

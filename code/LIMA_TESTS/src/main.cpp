@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
 		//Benchmarks::STMV(env, envmode, 1000);
 		
-		EngineBatchTests::ShowcaseMultisim();
+		//EngineBatchTests::ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
 		return RunAllUnitTests() == 0 ? 0 : 1;

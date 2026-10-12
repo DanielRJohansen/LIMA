@@ -15,7 +15,7 @@
 enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
 enum BoundaryConditionSelect { NoBC, PBC };
 enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };
-enum class SimParamSection { Main, Physics, Thermostat, Output, Debug };
+enum class SimParamSection { Main, Physics, Thermostat, Output, Analysis, Debug };
 
 template<typename T>
 struct SimParam {
@@ -98,11 +98,19 @@ struct SimParams {
         SimParamSection::Thermostat, "[steps]" };
     SimParam<bool> apply_thermostat{ "apply_thermostat", false, SimParamSection::Thermostat, "Thermostat on/off" };
     SimParam<float> ref_t{ "ref_t", 300.f, SimParamSection::Thermostat, "Reference temperature [K]" };
+    SimParam<float> initial_temperature{ "initial_temperature", 0.f, SimParamSection::Thermostat,
+        "[K] Give every atom a random velocity at this temperature before the first step, eg. for the first run after "
+        "energy minimization. 0 keeps the velocities of the input coordinates, as when continuing a run" };
 
     SimParam<int> data_logging_interval{ "data_logging_interval", 5, SimParamSection::Output, "[steps]" };
     SimParam<bool> save_energy{ "save_energy", false, SimParamSection::Output,
         "Save kinetic and potential energy to file" };
     SimParam<ColoringMethod> coloring_method{ "coloring_method", ColoringMethod::Atomname, SimParamSection::Output };
+
+    SimParam<bool> self_diffusion{ "self_diffusion", false, SimParamSection::Analysis,
+        "Self-diffusion of the water oxygens, written to self_diffusion.csv. Skips the first 20% of the run" };
+    SimParam<bool> density_profile{ "density_profile", false, SimParamSection::Analysis,
+        "Water, lipid head and tail density along z, written to density_profile.csv" };
 
     SimParam<bool> stepwise{ "stepwise", false, SimParamSection::Debug,
         "Wait for user to input key 'N' before each step" };
@@ -110,14 +118,14 @@ struct SimParams {
     auto Params() {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
             bc_select, enable_electrostatics, cutoff_nm, snf_select,
-            steps_per_temperature_measurement, apply_thermostat, ref_t,
-            data_logging_interval, save_energy, coloring_method, stepwise);
+            steps_per_temperature_measurement, apply_thermostat, ref_t, initial_temperature,
+            data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 
     auto Params() const {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
             bc_select, enable_electrostatics, cutoff_nm, snf_select,
-            steps_per_temperature_measurement, apply_thermostat, ref_t,
-            data_logging_interval, save_energy, coloring_method, stepwise);
+            steps_per_temperature_measurement, apply_thermostat, ref_t, initial_temperature,
+            data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 };

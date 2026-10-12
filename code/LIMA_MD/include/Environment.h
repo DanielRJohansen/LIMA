@@ -39,8 +39,7 @@ struct MolecularSystem {
 enum class OutputSelect {
 	InitialCoordinates,
 	FinalCoordinates,
-	Topology,
-	DensityProfile
+	Topology
 };
 
 namespace fs = std::filesystem;

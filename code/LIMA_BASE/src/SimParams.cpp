@@ -134,6 +134,7 @@ std::string_view SectionName(const SimParamSection section) {
     case SimParamSection::Physics: return "Physics parameters";
     case SimParamSection::Thermostat: return "Thermostat parameters";
     case SimParamSection::Output: return "Output parameters";
+    case SimParamSection::Analysis: return "Analysis";
     case SimParamSection::Debug: return "Debug parameters";
     }
     throw std::runtime_error("Invalid simulation parameter section");

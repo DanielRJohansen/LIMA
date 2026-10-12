@@ -77,7 +77,8 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
 
     // The files are parsed by the Environment, so this command joins a batch as early as possible
     SimulationJob job;
-    job.workDir = workDir;
+    // Analysis results (sim_params [Analysis]) go next to the output coordinates, so runs sharing a cwd don't collide
+    job.workDir = conf_out.has_parent_path() ? conf_out.parent_path() : workDir;
     job.grofile.emplace(conf);
     job.topfile.emplace(topol);
     job.simParams = ip;

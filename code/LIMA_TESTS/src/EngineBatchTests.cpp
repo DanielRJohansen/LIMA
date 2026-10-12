@@ -291,7 +291,6 @@ namespace EngineBatchTests {
 		const std::filesystem::path workDir = TestUtils::HeavyTestsDir() / "etc" / "showcase_multisim";
 		Environment& environment = Environment::Get();
 		constexpr int nTemperatures = 28;
-		constexpr double skipPs = 5.0;	// Equilibration, left out of the analysis
 
 		// One minimized box of SPC/E water, the starting point of every temperature
 		SimulationJob minimization;
@@ -310,6 +309,7 @@ namespace EngineBatchTests {
 		SimParams production;
 		production.n_steps = 12500;	// 25 ps
 		production.apply_thermostat = true;
+		production.self_diffusion = true;	// Each run writes its self_diffusion.csv
 		// The thermostat changes velocities by at most 0.1% per measurement, so it needs frequent measurements to hold
 		// each box at its temperature as kinetic energy flows into potential energy early in the run
 		production.steps_per_temperature_measurement = 20;
@@ -317,16 +317,14 @@ namespace EngineBatchTests {
 		const auto MakeJob = [&](float temperature, uint64_t steps, EnvMode mode) {
 			SimParams params = production;
 			params.ref_t = temperature;
+			params.initial_temperature = temperature;
 			params.n_steps = steps;
-			SimulationJob job = Programs::MakeSimulationJob(workDir / Lima::Format("{:.0f}K", temperature), water, params, mode);
-			job.configureSimulation = [temperature](Simulation& simulation) {
-				Programs::InitializeVelocities(simulation, temperature, static_cast<uint32_t>(temperature));
-			};
-			return job;
+			return Programs::MakeSimulationJob(workDir / Lima::Format("{:.0f}K", temperature), water, params, mode);
 		};
 
 		// A short run alone gives the cost of simulating the temperatures one at a time
 		SimulationJob reference = MakeJob(298.f, 2500, EnvMode::Headless);
+		reference.simParams->self_diffusion = false;
 		reference.mustRunAlone = true;
 		const double aloneSecondsPerStep = environment.Submit(std::move(reference)).Get().engineTime.count() / 2500.0;
 
@@ -346,9 +344,11 @@ namespace EngineBatchTests {
 		for (const auto& result : results) {
 			if (!result.simulation || result.simulation->getStep() != production.n_steps)
 				throw std::runtime_error("A showcase simulation did not run fully");
-			const auto diffusion = SimAnalysis::SelfDiffusionCoefficient(*result.simulation,
-				[](const GroRecord& atom) { return atom.atomName == "OW"; }, skipPs);
-			csv << result.simulation->simParams.ref_t << ',' << diffusion.temperature << ',' << diffusion.coefficient << '\n';
+			std::ifstream runCsv(workDir / Lima::Format("{:.0f}K", result.simulation->simParams.ref_t.value) / "self_diffusion.csv");
+			std::string header, row;
+			if (!std::getline(runCsv, header) || !std::getline(runCsv, row))
+				throw std::runtime_error("A showcase simulation wrote no self-diffusion");
+			csv << row << '\n';
 			double& seconds = batchSeconds[result.execution.batchId];
 			seconds = (std::max)(seconds, result.engineTime.count());
 		}

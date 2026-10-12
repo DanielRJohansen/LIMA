@@ -13,7 +13,7 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 # The single source of the release version. distribution/release.bat publishes whatever is set here
-project(lima VERSION 1.3.0 LANGUAGES CXX CUDA C)
+project(lima VERSION 1.4.0 LANGUAGES CXX CUDA C)
 
 if (MSVC)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:preprocessor /Zc:__cplusplus")

@@ -105,7 +105,7 @@ namespace Benchmarks {
 
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
-		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps) {
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps, bool printPerformance) {
 		const auto MakeJob = [&](int steps) {
 			SimulationJob job;
 			job.workDir = workDir;
@@ -138,6 +138,9 @@ namespace Benchmarks {
 			if (!completed.simulation || completed.simulation->getStep() != completed.simulation->simParams.n_steps)
 				co_return LimaUnittestResult{ false, "Simulation did not run fully", envmode != Headless };
 			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(completed.engineTime / nSteps));
+			if (printPerformance)
+				std::cout << StringUtils::FormatPerformance(std::chrono::duration<double>(completed.engineTime).count(),
+					static_cast<double>(nSteps) * completed.simulation->simParams.dt);
 		}
 
 		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
@@ -148,17 +151,17 @@ namespace Benchmarks {
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}
 
-	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
+	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
 			workDir / "sim_params.txt", { std::chrono::microseconds{ 3500 }, std::chrono::microseconds{ 7500 } },
-			nSteps, nRuns);
+			nSteps, nRuns, 0, printPerformance);
 	}
 
-	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
+	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance) {
 		const fs::path workDir = TestsDir() / "benchmarking/t4";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
 			workDir / "../sim_params.txt", { std::chrono::microseconds{ 100 }, std::chrono::microseconds{ 400 } },
-			nSteps, nRuns, 2000);
+			nSteps, nRuns, 2000, printPerformance);
 	}
 }

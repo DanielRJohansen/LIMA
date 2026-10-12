@@ -104,16 +104,16 @@ int main(int argc, char** argv) {
 	}
 	if (argc > 1 && std::string_view(argv[1]) == "--t4") {
 		if (argc != 4) { std::cerr << "Usage: limaprofile --t4 steps runs\n"; return 1; }
-		auto result = Benchmarks::T4(Environment::Get(), EnvMode::Headless, std::stoi(argv[2]), std::stoi(argv[3])).RunToCompletion();
+		auto result = Benchmarks::T4(Environment::Get(), EnvMode::Headless, std::stoi(argv[2]), std::stoi(argv[3]), true).RunToCompletion();
 		result.printStatus();
 		return result.success ? 0 : 1;
 	}
-	int stmvSteps = 300;
+	int stmvSteps = 1000;
 	if (argc > 1 && std::string_view(argv[1]) == "--stmv") {
 		if (argc != 3) { std::cerr << "Usage: limaprofile --stmv steps\n"; return 1; }
 		stmvSteps = std::stoi(argv[2]);
 	}
-	auto result = Benchmarks::STMV(Environment::Get(), EnvMode::Headless, stmvSteps).RunToCompletion();
+	auto result = Benchmarks::STMV(Environment::Get(), EnvMode::Headless, stmvSteps, 1, true).RunToCompletion();
 	result.printStatus();
 	return result.success ? 0 : 1;
 }

@@ -211,3 +211,12 @@ std::vector<std::string> StringUtils::SplitWords(std::string_view line) {
     	for (std::string word; input >> word;) result.push_back(std::move(word));
     	return result;
     }
+
+std::string StringUtils::FormatPerformance(double wallSeconds, double nsSimulated) {
+    const double nsPerDay = nsSimulated / (wallSeconds / 86400.0);
+    const double hoursPerNs = wallSeconds / nsSimulated / 3600.0;
+    return "\n               Wall t (s)\n"
+        + Lima::Format("       Time:    {:10.3f}\n", wallSeconds)
+        + "                 (ns/day)    (hour/ns)\n"
+        + Lima::Format("Performance:    {:10.3f}     {:10.3f}\n", nsPerDay, hoursPerNs);
+}

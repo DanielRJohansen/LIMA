@@ -25,21 +25,6 @@
 
 namespace fs = std::filesystem;
 
-void PrintTiming(std::ostream& out, const std::chrono::duration<double> enginetime, double totalNsSimulated) {
-    const double wall_time_sec = enginetime.count();
-
-    // Calculate performance metrics
-    const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-    const double hr_per_ns = (wall_time_sec / totalNsSimulated) / 3600.0;    // convert to hours per ns
-
-    // Print time and performance info in the GROMACS-like format
-    out << "\n";
-    out << "               Wall t (s)\n";
-    out << Lima::Format("       Time:    {:10.3f}\n", wall_time_sec);
-    out << "                 (ns/day)    (hour/ns)\n";
-    out << Lima::Format("Performance:    {:10.3f}     {:10.3f}\n", ns_per_day, hr_per_ns);
-}
-
 int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::MdrunHelp };
 
@@ -123,7 +108,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     }
 
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
-	PrintTiming(ctx.out, enginetime, total_ns_simulated);
+	ctx.out << StringUtils::FormatPerformance(enginetime.count(), total_ns_simulated);
 
     return 0;
 }

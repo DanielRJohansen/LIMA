@@ -28,6 +28,9 @@ namespace StringUtils {
     // Formats into "%%.%% [s/min/hr/days/weeks/months/years]". Takes seconds rather than a std::chrono::duration, as <chrono> is slow to compile
     std::string FormatTime(double seconds, int decimalPlacesBeforePoint, int decimalPlacesAfterPoint);
 
+    // The GROMACS-like wall time and performance (ns/day, hour/ns) table that ends an mdrun
+    std::string FormatPerformance(double wallSeconds, double nsSimulated);
+
     std::vector<std::string> SplitWords(std::string_view line);
 }
 

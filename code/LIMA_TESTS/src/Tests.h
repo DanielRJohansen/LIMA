@@ -46,9 +46,9 @@ namespace Benchmarks {
 	TestRoutine LoadT4(Environment& environment, EnvMode envmode);
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 			fs::path groPath, fs::path topPath, fs::path simParamsPath,
-			PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps = 0);
-	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns = 1);
-	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps = 500, int nRuns = 1);
+			PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps = 0, bool printPerformance = false);
+	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns = 1, bool printPerformance = false);
+	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps = 500, int nRuns = 1, bool printPerformance = false);
 }
 
 // ElectrostaticsTests.cpp

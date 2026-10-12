@@ -40,6 +40,7 @@ Options:
   -c, --conf PATH              Input coordinates (default: ./conf.gro)
   -t, --topology PATH          Input topology (default: ./topol.top)
   -s, --simparams PATH         Simulation parameters (default: ./sim_params.txt)
+      --set KEY=VALUE...       Override parameters of the simparams file, eg. --set ref_t=310
       --conf-out PATH          Output coordinates (default: ./out.gro)
       --trajectory PATH        Output trajectory; disabled by default
   -d, --display                Display the running simulation
@@ -204,8 +205,8 @@ daemon, so commands started at the same time share the GPU efficiently:
     --conf-out $d/out.gro; done
   lima wait
 
-The daemon starts by itself and exits after 2 minutes without work. Commands
-that display (-d) run in their own process.
+The daemon starts by itself and exits after 2 minutes without work. With -d,
+the simulations it runs together are shown side by side in one window.
 
 Commands:
   status                       List the commands the daemon is running
@@ -220,8 +221,8 @@ Environment:
 inline constexpr std::string_view WaitHelp = R"(Usage: lima wait
 
 Wait until every command started with --async has finished, then list each with
-its result. Exits 1 if any of them failed; its output is in the lima-JOB.log
-file in the directory it was started from.
+its result. Exits 1 if any of them failed. The output of a failed command is kept
+in lima-JOB.log in the directory it was started from; successful ones leave none.
 
 Example:
   for d in run1 run2 run3; do lima mdrun --async -c $d/conf.gro -t $d/topol.top \

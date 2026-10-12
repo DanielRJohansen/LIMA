@@ -820,7 +820,7 @@ TestRoutine TestEnergyMinimization(fs::path workDir) {
 	constexpr size_t clashA = 19, clashB = 22;	// Oxygens of the overlapping waters
 	const std::string inputBytes = ReadBytes(workDir / "metsol_clash.gro");
 
-	auto result = Run(workDir, { "em", "-c", "metsol_clash.gro", "-t", "metsol.top", "--conf-out", "em.gro", "-d" }, { .timeout = 600s });
+	auto result = Run(workDir, { "--no-daemon", "em", "-c", "metsol_clash.gro", "-t", "metsol.top", "--conf-out", "em.gro", "-d" }, { .timeout = 600s });
 	RequireSuccess(result);
 	RequireWindowSeen(result);
 
@@ -841,7 +841,7 @@ TestRoutine TestMdrun(fs::path workDir) {
 	Banner("lima mdrun");
 	CopyFixtures(workDir, { "metsol.gro", "metsol.top", "Protein_chain_A.itp", "SOL.itp", "md_params.txt" });
 
-	auto result = Run(workDir, { "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "-s", "md_params.txt",
+	auto result = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "-s", "md_params.txt",
 		"--conf-out", "out.gro", "--trajectory", "traj.trr", "--uff", "-d" }, { .timeout = 900s });
 	RequireSuccess(result);
 	RequireWindowSeen(result);
@@ -880,7 +880,7 @@ TestRoutine TestMdrun(fs::path workDir) {
 TestRoutine TestBuildMembrane(fs::path workDir) {
 	Banner("lima buildmembrane");
 	constexpr double boxSize = 8;
-	auto result = Run(workDir, { "buildmembrane", "--lipids", "POPC", "70", "cholesterol", "30",
+	auto result = Run(workDir, { "--no-daemon", "buildmembrane", "--lipids", "POPC", "70", "cholesterol", "30",
 		"--box-size", "8", "--seed", "1", "-d" }, { .timeout = 900s });
 	RequireSuccess(result);
 	RequireWindowSeen(result);
@@ -1016,7 +1016,7 @@ TestRoutine TestWait(fs::path workDir) {
 	for (int i = 0; i < nJobs; i++) {
 		auto submit = Run(workDir, { "mdrun", "--async", "-c", "metsol.gro", "-t", "metsol.top", "--conf-out", Lima::Format("async{}.gro", i) }, quiet);
 		RequireSuccess(submit);
-		ASSERT(submit.output.find("Submitted job") != std::string::npos, Lima::Format("'{}' did not report a job. Output:\n{}", submit.commandline, Tail(submit.output)));
+		ASSERT(submit.output.empty(), Lima::Format("'{}' printed output on success:\n{}", submit.commandline, Tail(submit.output)));
 	}
 	const std::chrono::duration<double> submitTime = std::chrono::steady_clock::now() - submitStarted;
 	auto wait = Run(workDir, { "wait" }, quiet);
@@ -1024,6 +1024,14 @@ TestRoutine TestWait(fs::path workDir) {
 	for (int i = 0; i < nJobs; i++)
 		ASSERT(ReadBytes(workDir / Lima::Format("async{}.gro", i)) == ReadBytes(workDir / "reference.gro"),
 			Lima::Format("Async job {} gave different coordinates than the same run without the daemon", i));
+	for (const auto& entry : fs::directory_iterator(workDir))
+		ASSERT(entry.path().extension() != ".log", Lima::Format("A successful async job left its log {}", entry.path().string()));
+
+	// --set overrides the simparams file, and rejects unknown parameters
+	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "--conf-out", "set.gro" }, quiet));
+	ASSERT(ReadBytes(workDir / "set.gro") != ReadBytes(workDir / "reference.gro"), "--set n_steps=1000 did not change the run");
+	auto unknown = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "no_such_parameter=1" }, quiet);
+	ASSERT(unknown.exitCode != 0, "--set accepted an unknown parameter");
 
 	// A failed job makes wait fail, and points to its log
 	RequireSuccess(Run(workDir, { "mdrun", "--async", "-c", "missing.gro", "-t", "metsol.top" }, quiet));

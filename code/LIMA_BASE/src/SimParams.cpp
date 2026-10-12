@@ -210,20 +210,22 @@ SimParams::SimParams(const fs::path& path) {
         return;
     }
 
-    std::unordered_set<std::string> knownKeys;
-    ForEachParam(*this, [&](auto& param) {
-        const std::string key = Lowercase(param.name);
-        knownKeys.insert(key);
-        if (const auto found = dictionary.find(key); found != dictionary.end()) {
-            ParseValue(param.name, found->second, param.value);
-            if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>)
-                if (param.name == "dt") param.value *= FEMTO_TO_NANO;
-        }
-    });
-
     for (const auto& [key, value] : dictionary)
-        if (!knownKeys.contains(key))
-            throw std::runtime_error(Lima::Format("Unknown simulation parameter '{}={}'", key, value));
+        Set(key, value);
+}
+
+void SimParams::Set(std::string_view key, std::string_view value) {
+    const std::string lowercaseKey = Lowercase(key);
+    bool known = false;
+    ForEachParam(*this, [&](auto& param) {
+        if (known || Lowercase(param.name) != lowercaseKey) return;
+        known = true;
+        ParseValue(param.name, value, param.value);
+        if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>)
+            if (param.name == "dt") param.value *= FEMTO_TO_NANO;
+    });
+    if (!known)
+        throw std::runtime_error(Lima::Format("Unknown simulation parameter '{}={}'", key, value));
 }
 
 void SimParams::DumpToFile(const fs::path& filename) const {

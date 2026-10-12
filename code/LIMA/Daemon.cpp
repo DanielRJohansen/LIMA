@@ -581,18 +581,24 @@ private:
 				const fs::path log = cwd / Lima::Format("lima-{}.log", jobId);
 				AddJob(args, true, log, jobId);
 				Log(Lima::Format("[{}] submitted in {}: {}", jobId, cwd.string(), JoinArgs(args)));
-				connection.Send('O', Lima::Format("Submitted job {}, output in {}\n", jobId, log.string()));
 				connection.Send('X', "0");
 				connection.socket.Close();	// The client returns now
 
+				// The job's output is only kept if it fails, 'lima wait' then points to it
 				int exitCode = 1;
-				std::ofstream file(log);
-				if (file) {
-					exitCode = runner(Cli::Context{ cwd, file, file }, args);
-					file << Lima::Format("\nlima: exit code {}\n", exitCode);
+				{
+					std::ofstream file(log);
+					if (file) {
+						exitCode = runner(Cli::Context{ cwd, file, file }, args);
+						file << Lima::Format("\nlima: exit code {}\n", exitCode);
+					}
+					else
+						Log(Lima::Format("[{}] cannot write {}", jobId, log.string()));
 				}
-				else
-					Log(Lima::Format("[{}] cannot write {}", jobId, log.string()));
+				if (exitCode == 0) {
+					std::error_code ignored;
+					fs::remove(log, ignored);
+				}
 				Log(Lima::Format("[{}] exit {}", jobId, exitCode));
 				CompleteJob(jobId, exitCode);
 			}
@@ -638,8 +644,11 @@ private:
 	}
 
 	void RemoveJob(uint64_t id) {
-		const std::lock_guard lock(mutex);
-		jobs.erase(id);
+		{
+			const std::lock_guard lock(mutex);
+			jobs.erase(id);
+		}
+		CloseDisplayIfIdle();
 	}
 
 	void CompleteJob(uint64_t id, int exitCode) {
@@ -649,6 +658,17 @@ private:
 			jobs[id].exitCode = exitCode;
 		}
 		changed.notify_all();
+		CloseDisplayIfIdle();
+	}
+
+	// The daemon outlives its jobs, so a display window would stay open after the last one finished
+	void CloseDisplayIfIdle() {
+		{
+			const std::lock_guard lock(mutex);
+			if (std::ranges::any_of(jobs, [](const auto& entry) { return !entry.second.done; }))
+				return;
+		}
+		Environment::Get().CloseDisplayIfIdle();
 	}
 
 	// Waits for every async job, then reports and forgets the finished ones. Exit code 1 if any failed
@@ -723,10 +743,10 @@ bool IsAnyOf(std::string_view arg, std::initializer_list<std::string_view> optio
 bool Cli::Daemon::ShouldUse(const std::vector<std::string>& args) {
 	const std::string noDaemon = GetEnv("LIMA_NO_DAEMON");
 	if (!noDaemon.empty() && noDaemon != "0") return false;
-	// Only GPU commands gain from batching. Displays stay in the user's own process
+	// Only GPU commands gain from batching. With -d, a batch is shown tiled in the daemon's display window
 	if (args.size() < 2 || !IsAnyOf(args[1], { "mdrun", "em", "buildmembrane" })) return false;
 	return std::ranges::none_of(args.begin() + 2, args.end(), [](const std::string& arg) {
-		return IsAnyOf(arg, { "-d", "--display", "-display", "-h", "--help", "-help" });
+		return IsAnyOf(arg, { "-h", "--help", "-help" });
 	});
 }
 

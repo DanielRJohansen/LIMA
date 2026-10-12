@@ -54,6 +54,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
 
     bool render = false;
 	bool uff = false;
+    std::vector<std::pair<std::string, std::string>> overrides;	// --set KEY=VALUE
 
     parser.AddOption({ "--conf", "-c", "-conf" }, false, conf);
 	parser.AddOption({ "--topology", "-t", "-topology", "-top" }, false, topol);
@@ -62,6 +63,14 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
 	parser.AddOption({ "--trajectory", "-trr", "-traj" }, false, trajOut);
 	parser.AddFlag({ "--display", "-d", "-display" }, [&render]() { render = true; });
     parser.AddFlag({ "--uff", "-uff" }, [&uff]() {uff = true; });
+    parser.AddOption({ "--set" }, false, [&overrides](const std::vector<std::string>& args) {
+        for (const std::string& arg : args) {
+            const size_t equals = arg.find('=');
+            if (equals == std::string::npos || equals == 0)
+                throw CliError(Lima::Format("option '--set' expects KEY=VALUE, got '{}'", arg));
+            overrides.emplace_back(arg.substr(0, equals), arg.substr(equals + 1));
+        }
+    });
     parser.Parse(argc, argv);
     conf = ctx.Resolve(conf);
     topol = ctx.Resolve(topol);
@@ -73,7 +82,9 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
 
     Environment& env = Environment::Get();
 
-    const SimParams ip(simpar);
+    SimParams ip(simpar);
+    for (const auto& [key, value] : overrides)
+        ip.Set(key, value);
 
     // The files are parsed by the Environment, so this command joins a batch as early as possible
     SimulationJob job;
@@ -829,8 +840,8 @@ int main(int argc, char** argv) {
     if (const auto async = std::ranges::find(args.begin() + std::min<size_t>(args.size(), 2), args.end(), "--async"); async != args.end()) {
         args.erase(async);
         if (noDaemon || !Cli::Daemon::ShouldUse(args)) {
-            std::cerr << "lima: --async runs the command on the lima daemon: only mdrun, em and buildmembrane, without -d,\n"
-                         "and not with --no-daemon or LIMA_NO_DAEMON\nTry 'lima --help' for more information.\n";
+            std::cerr << "lima: --async only works with mdrun, em and buildmembrane, and not with --no-daemon or LIMA_NO_DAEMON\n"
+                         "Try 'lima --help' for more information.\n";
             return 2;
         }
         try {

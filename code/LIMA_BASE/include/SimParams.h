@@ -81,6 +81,8 @@ struct SimParams {
     static SimParams BasicEMSimParams(float forceTolerance = 100.f);
 
     void DumpToFile(const std::filesystem::path& filename = "sim_params.txt") const;
+    // Sets a parameter as a sim_params file line "key=value" would. Throws on an unknown key
+    void Set(std::string_view key, std::string_view value);
 
     SimParam<uint64_t> n_steps{ "n_steps", 1000, SimParamSection::Main };
     SimParam<float> dt{ "dt", 2.f * FEMTO_TO_NANO, SimParamSection::Main, "[fs]" };

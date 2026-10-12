@@ -269,6 +269,13 @@ size_t Environment::MaxBatchSize(const Simulation& first) {
 	return std::clamp(static_cast<size_t>(std::ceil(saturatingVolume / volume)), size_t{ 1 }, limit);
 }
 
+void Environment::CloseDisplayIfIdle() {
+	std::lock_guard lock(schedulingMutex);
+	if (runningSimulation || unpreparedSimulations > 0 || !preparedSimulations.empty())
+		return;
+	display.reset();
+}
+
 size_t Environment::MaxPreparedSimulations() const {
 	// Room for a full batch and the next one, sized by the oldest prepared job. Before any job is prepared, the bound
 	// only has to let preparation start

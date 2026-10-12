@@ -186,6 +186,10 @@ public:
 	// The most simulations in a batch that this simulation is the first member of: enough to fill the GPU
 	static size_t MaxBatchSize(const Simulation& first);
 
+	// Closes the display window, unless a job is queued or running. For a long-lived process such as the lima
+	// daemon, where the window would otherwise outlive the simulations it showed
+	void CloseDisplayIfIdle();
+
 	////////////////// LIVE EDIT //////////////////
 
 	/// <summary>

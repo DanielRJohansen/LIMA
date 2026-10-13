@@ -655,6 +655,10 @@ namespace PME {
 	}
 }
 
+Electrostatics::ShortRangeParameters PME::Controller::ShortRange(float cutoffNM) {
+	return {true, PhysicsUtils::CalcEwaldkappa(cutoffNM)};
+}
+
 PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, cudaStream_t& stream)
 	: boxlenNm(simulations.front().simulation->box->boxparams.BoxSizeFloat()),
 	  nChargeblocks(simulations.front().simulation->box->boxparams.boxSize.InnerProduct()),

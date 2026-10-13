@@ -25,7 +25,7 @@ class RenderDataPipe;
 
 namespace NeighborList { class Controller; }
 
-namespace PME { class Controller; };
+namespace Electrostatics { class Controller; };
 namespace NeighborList{struct IdAndRelshift;}
 
 
@@ -127,13 +127,13 @@ private:
 	bool UsesEnergyMinimization() const;
 	void UploadEnergyMinimizationPreconditioner();
 	void RebuildActiveBatch();
-	void InitializePME();
+	void InitializeElectrostatics();
 	void FinalizeSimulation(EngineSimulationData& simData);
 
 
 	std::array<cudaStream_t, 5> cudaStreams{};
-	cudaStream_t pmeStream = nullptr;
-	// Used to make cudaStreams[0] wait for the other streams on the GPU, without a host roundtrip. [0] is for pmeStream, [i] for cudaStreams[i]
+	cudaStream_t electrostaticsStream = nullptr;
+	// Used to make cudaStreams[0] wait for the other streams on the GPU, without a host roundtrip. [0] is for electrostaticsStream, [i] for cudaStreams[i]
 	std::array<cudaEvent_t, 5> streamJoinEvents{};
 	void JoinStreamsIntoMainStream();
 	// Recorded on cudaStreams[0] at the start of each step, so the other streams wait for the previous step on the GPU

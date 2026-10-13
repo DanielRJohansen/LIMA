@@ -19,7 +19,7 @@ struct PClusterTransfermodule;
 class SuperclusterStagingControl;
 class TaskBuilderControl;
 
-namespace PME { class Controller; }
+namespace Electrostatics { class Controller; }
 
 
 
@@ -85,7 +85,7 @@ struct ForceEnergyInterims {
 	void Free() const;
 
 	// These are temp, pushed into fromSuperclusters*
-	ForceEnergy* pme = nullptr;
+	ForceEnergy* electrostatics = nullptr;
 
 	// Pushed to from pclusters
 	ForceEnergy* snf = nullptr;
@@ -125,6 +125,7 @@ struct EngineBatchData {
 	int nSuperclusters = 0;
 	int nResults = 0;
 	float ewaldKappa = 0.f;
+	bool screenedElectrostatics = false;
 
 	CudaBuffer<PersistentCluster> pClusterDevice;
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;
@@ -170,7 +171,7 @@ struct EngineBatchData {
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;
 	std::unique_ptr<SuperclusterStagingControl> superclusterStagingControl;
 	std::unique_ptr<TaskBuilderControl> taskbuilderControl;
-	std::unique_ptr<PME::Controller> pmeController;
+	std::unique_ptr<Electrostatics::Controller> electrostaticsController;
 	std::unique_ptr<DatabuffersDeviceController> dataBuffersDevice;
 	std::unique_ptr<Thermostat> thermostat;
 	std::unique_ptr<ForceEnergyInterims> forceEnergyInterims;

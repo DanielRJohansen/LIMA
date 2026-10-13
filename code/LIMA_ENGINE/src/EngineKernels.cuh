@@ -313,7 +313,7 @@ namespace NbNonlocal {
 //
 // __launch_bounds__: 64 registers avoid spills (16 blocks per SM), the potE variants need 80 (12 blocks per SM).
 // After larger changes, check ncu for local memory traffic and revisit the bounds.
-template <typename BoundaryCondition, bool energyMinimize, bool computePotE>
+template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool screenedElectrostatics>
 __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(const SuperCluster* const superClusters,
 	const QuarterEntryTask* const tasks, const QuarterEntry* const entries,
 	const ForceAccumulator forceAcc /*MD only*/, SCResult* const results /*EM only*/, const int* const entryResultIndices /*EM only*/,
@@ -337,6 +337,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 
 	if (laneInWarp < SuperCluster::maxParticles) {
 		float4 pq = superClusters[scId].posCharge[laneInWarp];
+		if constexpr (!screenedElectrostatics) pq.w = 0.f;
 		float2 se = superClusters[scId].sigmaEpsilon[laneInWarp];
 		if constexpr (!energyMinimize)
 			LJ::PrescaleNBParams(se.y, pq.w);
@@ -358,6 +359,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 
 		const int jIndex = entry.jQuarter * 4 + lane;
 		float4 pqJ = superClusters[entry.jScId].posCharge[jIndex];
+		if constexpr (!screenedElectrostatics) pqJ.w = 0.f;
 		float2 seJ = superClusters[entry.jScId].sigmaEpsilon[jIndex];
 		const bool validJ = seJ.y != -1.f;
 		if constexpr (!energyMinimize)
@@ -386,7 +388,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 					const float2 seJ = jSigmaEpsilon[warpInBlock][group][jLocal];
 					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
 					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
-					ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewaldKappa);
+					ForceEnergy fe = LJ::ComputePairNB<computePotE, screenedElectrostatics>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewaldKappa);
 					accJ[k] += fe;
 					accOwn[ownQuarter] += fe.InvertForce();
 				}
@@ -417,7 +419,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
 					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
 					ForceEnergy fe = masked ? ForceEnergy{}
-						: LJ::ComputePairNBEm<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, ewaldKappa);
+						: LJ::ComputePairNBEm<computePotE, screenedElectrostatics>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, ewaldKappa);
 					ownForce += fe.InvertForce();
 					// Lane m collects the force lane (m-k)&3 computed on j particle m
 					jForce += ShuffleForceEnergy<computePotE>(fe, (lane - k) & 3);
@@ -595,7 +597,7 @@ __global__ void EmCollectForcesKernel(const ForceEnergyInterims forceEnergies, c
 	for (int i = 0; i < beRefs.nBondgroupApperances; i++)
 		fe += forceEnergies.forceEnergiesBondgroups[beRefs.bondgroupApperances[i].indexInForceEnergiesBondgroups];
 	fe += forceEnergies.snf[pcId * PersistentCluster::maxParticles + indexInPc];
-	fe += forceEnergies.pme[pcId * PersistentCluster::maxParticles + indexInPc];
+	fe += forceEnergies.electrostatics[pcId * PersistentCluster::maxParticles + indexInPc];
 
 	forcesMagnitudeSquared[pidGlobal] = fe.force.lenSquared();
 

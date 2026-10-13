@@ -110,7 +110,8 @@ namespace Benchmarks {
 
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
-		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps) {
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps,
+		LongRangeElectrostaticsMethod longrangeMethod, int fmmOrder, int fmmLeafParticles) {
 		const auto MakeJob = [&](int steps) {
 			SimulationJob job;
 			job.workDir = workDir;
@@ -119,10 +120,13 @@ namespace Benchmarks {
 			job.simParams.emplace(simParamsPath);
 			job.mode = EnvMode::Headless;
 			job.mustRunAlone = true;
-			job.preprocess = [steps](GroFile&, TopologyFile&, SimParams& params) {
+			job.preprocess = [steps, longrangeMethod, fmmOrder, fmmLeafParticles](GroFile&, TopologyFile&, SimParams& params) {
 				params.data_logging_interval = 20;
 				params.enable_electrostatics = true;
 				params.n_steps = steps;
+				params.longrange_method = longrangeMethod;
+				params.fmm_order = fmmOrder;
+				params.fmm_leaf_particles = fmmLeafParticles;
 			};
 			return job;
 		};
@@ -153,11 +157,12 @@ namespace Benchmarks {
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}
 
-	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {
+	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, LongRangeElectrostaticsMethod longrangeMethod,
+		int fmmOrder, int fmmLeafParticles) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
 			workDir / "sim_params.txt", { std::chrono::microseconds{ 3500 }, std::chrono::microseconds{ 7500 } },
-			nSteps, nRuns);
+			nSteps, nRuns, 0, longrangeMethod, fmmOrder, fmmLeafParticles);
 	}
 
 	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns) {

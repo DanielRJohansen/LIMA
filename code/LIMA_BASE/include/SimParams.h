@@ -12,6 +12,8 @@
 #include <tuple>
 #include <utility>
 
+enum class LongRangeElectrostaticsMethod { PME, FMM };
+
 enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
 enum BoundaryConditionSelect { NoBC, PBC };
 enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };
@@ -91,6 +93,10 @@ struct SimParams {
 
     SimParam<BoundaryConditionSelect> bc_select{ "boundarycondition", PBC, SimParamSection::Physics, "PBC or NoBC" };
     SimParam<bool> enable_electrostatics{ "enable_electrostatics", true, SimParamSection::Physics };
+    SimParam<LongRangeElectrostaticsMethod> longrange_method{ "longrange_method", LongRangeElectrostaticsMethod::PME,
+        SimParamSection::Physics, "PME or FMM" };
+    SimParam<int> fmm_order{ "fmm_order", 6, SimParamSection::Physics, "Chebyshev nodes per axis, 4 to 8" };
+    SimParam<int> fmm_leaf_particles{ "fmm_leaf_particles", 64, SimParamSection::Physics, "Target mean particles per leaf" };
     SimParam<float> cutoff_nm{ "cutoff_nm", 1.2f, SimParamSection::Physics, "[nm]" };
     SimParam<std::set<SupernaturalForcesSelect>> snf_select{ "supernatural_forces", {}, SimParamSection::Physics };
 
@@ -109,14 +115,14 @@ struct SimParams {
 
     auto Params() {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
-            bc_select, enable_electrostatics, cutoff_nm, snf_select,
+            bc_select, enable_electrostatics, longrange_method, fmm_order, fmm_leaf_particles, cutoff_nm, snf_select,
             steps_per_temperature_measurement, apply_thermostat, ref_t,
             data_logging_interval, save_energy, coloring_method, stepwise);
     }
 
     auto Params() const {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
-            bc_select, enable_electrostatics, cutoff_nm, snf_select,
+            bc_select, enable_electrostatics, longrange_method, fmm_order, fmm_leaf_particles, cutoff_nm, snf_select,
             steps_per_temperature_measurement, apply_thermostat, ref_t,
             data_logging_interval, save_energy, coloring_method, stepwise);
     }

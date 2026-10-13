@@ -10,7 +10,7 @@
 #include "DeviceAlgorithms.cuh"
 #include "Utilities.h"
 #include "LimitTesting.cuh"
-#include "PME.cuh"
+#include "Electrostatics.cuh"
 #include "LimaPositionSystem.cuh"
 
 #include <cooperative_groups.h>
@@ -721,13 +721,13 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 		LIMA_UTILS::genericErrorCheckNoSync("Error after Prefixsum");
 		cudaMemcpyAsync(&batch->nSuperclusters, batch->superclusterStagingControl->nClustersPrefixSum + nElements - 1,
 			sizeof(int), cudaMemcpyDeviceToHost, stream);
-		// Capacity status rides on this existing sync. PME runs on its own stream, so its status may lag
+		// Capacity status rides on this existing sync. Electrostatics runs on its own stream, so its status may lag
 		// by a step; FinalizeSimulation does a fully synchronized check.
 		int overflow[2][CapacityOverflow::nValues]{};
 		cudaMemcpyAsync(overflow[0], batch->pclusterTransfermodule->overflow.status, sizeof(overflow[0]), cudaMemcpyDeviceToHost, stream);
-		const CapacityOverflow* pmeOverflow = batch->pmeController ? batch->pmeController->Overflow() : nullptr;
-		if (pmeOverflow)
-			cudaMemcpyAsync(overflow[1], pmeOverflow->status, sizeof(overflow[1]), cudaMemcpyDeviceToHost, stream);
+		const CapacityOverflow* electrostaticsOverflow = batch->electrostaticsController ? batch->electrostaticsController->Overflow() : nullptr;
+		if (electrostaticsOverflow)
+			cudaMemcpyAsync(overflow[1], electrostaticsOverflow->status, sizeof(overflow[1]), cudaMemcpyDeviceToHost, stream);
 		cudaStreamSynchronize(stream);
 		CapacityOverflow::ThrowIfSet(overflow[0]);
 		CapacityOverflow::ThrowIfSet(overflow[1]);

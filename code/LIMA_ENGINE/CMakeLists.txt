@@ -5,6 +5,8 @@
 # relocatable device code. Each kernel must be defined in one .cu file only.
 add_library(LIMA_ENGINE STATIC
     src/Engine.cu
+    src/Electrostatics.cu
+    src/FMM.cu
     src/PME.cu
     src/ParticleClusters.cu
     src/SuperclusterTaskBuilder.cu

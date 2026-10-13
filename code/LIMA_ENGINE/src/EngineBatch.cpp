@@ -127,6 +127,16 @@ namespace EngineBatch {
 			if (sim->finished || sim->getStep() != 0)
 				throw std::invalid_argument("Engine requires fresh simulations at step zero");
 			const auto& params = sim->simParams;
+			if (params.enable_electrostatics) {
+				switch (params.longrange_method.value) {
+				case LongRangeElectrostaticsMethod::PME: break;
+				case LongRangeElectrostaticsMethod::FMM:
+					if (params.fmm_order < 4 || params.fmm_order > 8 || params.fmm_leaf_particles <= 0)
+						throw std::invalid_argument("FMM requires fmm_order in [4, 8] and positive fmm_leaf_particles");
+					break;
+				default: throw std::invalid_argument("Invalid longrange_method");
+				}
+			}
 			if (params.stepsPerNlistupdate <= 0 || params.steps_per_temperature_measurement <= 0 || params.data_logging_interval < 0)
 				throw std::invalid_argument("Invalid engine measurement or update interval");
 			if (!FinitePositive(params.dt))
@@ -157,7 +167,6 @@ namespace EngineBatch {
 		else if (active->size() != simulations.size()) throw std::invalid_argument("Invalid active batch layout");
 		batch.params = simulations.front()->simParams;
 		batch.boxSize = simulations.front()->box->boxparams.boxSize;
-		batch.ewaldKappa = PhysicsUtils::CalcEwaldkappa(batch.params.cutoff_nm);
 		std::vector<PersistentCluster> pclusters;
 		std::vector<PersistentClusterMeta> metadata;
 		std::vector<PersistentclusterInterimState> states;

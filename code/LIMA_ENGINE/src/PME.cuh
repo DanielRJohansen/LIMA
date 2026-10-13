@@ -7,6 +7,7 @@
 #include "ForceAccumulator.cuh"
 namespace ChargeBlock { struct ChargeblockBuffers; }
 
+#include "Electrostatics.cuh"
 #include <cufft.h>
 #include <memory>
 
@@ -21,7 +22,7 @@ namespace PME {
 	constexpr float invCellVolume = static_cast<float>(gridpointsPerNm * gridpointsPerNm * gridpointsPerNm);
 
 
-	class Controller {
+	class Controller final : public Electrostatics::Controller {
 		Int3 gridpointsPerDim{};
 		size_t nGridpointsRealspace = 0;
 		int nGridpointsReciprocalspace = -1;	// TODO: Does this also need to be size_t?
@@ -55,13 +56,14 @@ namespace PME {
 
 		Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, cudaStream_t& stream);
 		void SetActiveSimulations(const std::vector<EngineSimulationData>& simulations);
-		~Controller();
+		~Controller() override;
 
 		// MD adds the forces to forceAcc, EM stores them in forceEnergy (pcluster layout)
-		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc);
+		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc) override;
 
 		// Charge-block capacity status, or nullptr while no simulation is active
-		const CapacityOverflow* Overflow() const;
+		const CapacityOverflow* Overflow() const override;
+		static Electrostatics::ShortRangeParameters ShortRange(float cutoffNM);
 
 	private:
 		//Just for debugging

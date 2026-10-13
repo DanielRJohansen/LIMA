@@ -15,6 +15,7 @@ add_library(LIMA_TESTCASES STATIC
     src/ElectrostaticsTests.cpp
     src/EngineBatchTests.cpp
     src/FileTests.cpp
+    src/FmmTests.cpp
     src/ForceComparisons.cpp
     src/ForceCorrectness.cpp
     src/ForcefieldTests.cpp

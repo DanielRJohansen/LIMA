@@ -7,7 +7,7 @@
 #include "EngineKernels.cuh"
 #include "EnergyMinimization.cuh"
 #include "LimaPositionSystem.cuh"
-#include "PME.cuh"
+#include "Electrostatics.cuh"
 #include "SimulationData.h"
 #include "SupernaturalForces.cuh"
 #include "Thermostat.cuh"
@@ -24,7 +24,7 @@
 #include <numeric>
 
 EngineBatchData::~EngineBatchData() {
-	pmeController.reset();
+	electrostaticsController.reset();
 	boxState.FreeMembers();
 	if (forceEnergyInterims) forceEnergyInterims->Free();
 	if (superClustersControl) superClustersControl->Free();
@@ -54,7 +54,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 	try {
 		if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
-		cudaStreamCreate(&pmeStream);
+		cudaStreamCreate(&electrostaticsStream);
 		cudaStreamCreateWithFlags(&logCopyStream, cudaStreamNonBlocking); // Not synchronized with the legacy default stream, which would wait for the copy
 		for (auto& event : streamJoinEvents) cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
 		cudaEventCreateWithFlags(&stepStartEvent, cudaEventDisableTiming);
@@ -69,7 +69,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
 		BootstrapClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
-		InitializePME();
+		InitializeElectrostatics();
 		UploadIntegrationSimulationData();
 		bool retired = false;
 		for (auto& sim : batch->simulations) {
@@ -86,7 +86,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		StopRenderDataPipes();
 		batch.reset();
 		for (auto stream : cudaStreams) if (stream) cudaStreamDestroy(stream);
-		if (pmeStream) cudaStreamDestroy(pmeStream);
+		if (electrostaticsStream) cudaStreamDestroy(electrostaticsStream);
 		if (logCopyStream) cudaStreamDestroy(logCopyStream);
 		for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 		if (stepStartEvent) cudaEventDestroy(stepStartEvent);
@@ -99,7 +99,7 @@ Engine::~Engine() {
 	StopRenderDataPipes();
 	batch.reset(); // Controllers reference streams, so destroy them first.
 	for (auto stream : cudaStreams) cudaStreamDestroy(stream);
-	cudaStreamDestroy(pmeStream);
+	cudaStreamDestroy(electrostaticsStream);
 	logDrains.clear(); // Joins the unpacking threads
 	if (logCopyStream) cudaStreamDestroy(logCopyStream);
 	for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
@@ -108,13 +108,13 @@ Engine::~Engine() {
 }
 
 void Engine::Synchronize() {
-	cudaStreamSynchronize(pmeStream);
+	cudaStreamSynchronize(electrostaticsStream);
 	for (auto stream : cudaStreams) cudaStreamSynchronize(stream);
 }
 
 // Makes work subsequently queued on cudaStreams[0] wait for all work queued so far on the other streams, on the GPU, so the host doesn't block
 void Engine::JoinStreamsIntoMainStream() {
-	cudaEventRecord(streamJoinEvents[0], pmeStream);
+	cudaEventRecord(streamJoinEvents[0], electrostaticsStream);
 	cudaStreamWaitEvent(cudaStreams[0], streamJoinEvents[0]);
 	for (size_t i = 1; i < cudaStreams.size(); i++) {
 		cudaEventRecord(streamJoinEvents[i], cudaStreams[i]);
@@ -125,7 +125,7 @@ void Engine::JoinStreamsIntoMainStream() {
 // Makes work subsequently queued on the other streams wait for all work queued so far on cudaStreams[0], on the GPU
 void Engine::ForkStreamsFromMainStream() {
 	cudaEventRecord(stepStartEvent, cudaStreams[0]);
-	cudaStreamWaitEvent(pmeStream, stepStartEvent);
+	cudaStreamWaitEvent(electrostaticsStream, stepStartEvent);
 	for (size_t i = 1; i < cudaStreams.size(); i++)
 		cudaStreamWaitEvent(cudaStreams[i], stepStartEvent);
 }
@@ -142,9 +142,12 @@ bool Engine::IsFinished() const {
 	return std::none_of(batch->simulations.begin(), batch->simulations.end(), [](const auto& sim) { return sim.device.active; });
 }
 
-void Engine::InitializePME() {
+void Engine::InitializeElectrostatics() {
+	const auto shortRange = Electrostatics::GetShortRangeParameters(batch->params);
+	batch->screenedElectrostatics = shortRange.enabled;
+	batch->ewaldKappa = shortRange.ewaldKappa;
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics) {
-		batch->pmeController = std::make_unique<PME::Controller>(batch->simulations, batch->params.cutoff_nm, pmeStream);
+		batch->electrostaticsController = Electrostatics::Create(batch->simulations, batch->params, electrostaticsStream);
 	}
 }
 
@@ -260,7 +263,7 @@ void Engine::RebuildActiveBatch() {
 	if (batch->step == 0) BootstrapClustering(cudaStreams[0]);
 	else RunClustering(cudaStreams[0]);
 	MakeSuperClusterTasksGPU(cudaStreams[0]);
-	InitializePME();
+	InitializeElectrostatics();
 	UploadIntegrationSimulationData();
 	Synchronize();
 }
@@ -401,8 +404,8 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 	Synchronize();
 	// Results are only valid if no kernel dropped entries at a capacity limit
 	if (batch->pclusterTransfermodule) batch->pclusterTransfermodule->overflow.Check();
-	if (batch->pmeController)
-		if (const CapacityOverflow* overflow = batch->pmeController->Overflow()) overflow->Check();
+	if (batch->electrostaticsController)
+		if (const CapacityOverflow* overflow = batch->electrostaticsController->Overflow()) overflow->Check();
 	OffloadLoggingData(sim);
 	JoinLogDrains();
 	const auto range = sim.device.pclusters;
@@ -661,7 +664,7 @@ void Engine::_deviceMaster() {
 	ForkStreamsFromMainStream();
 	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
 	const int nScs = batch->nSuperclusters;
-	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
+	// MD: NB, electrostatics and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
 	// and are gathered by integration, so all force kernels can run concurrently.
 	ForceAccumulator forceAcc{};
 	ForceAccumulator primaryBondForces{};
@@ -676,15 +679,19 @@ void Engine::_deviceMaster() {
 		primaryBondForces = ForceAccumulator{ base + 4 * n, base + 5 * n, base + 6 * n, logData ? base + 7 * n : nullptr };
 	}
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
-		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
-			nScs, batch->forceEnergyInterims->pme, forceAcc);
+		batch->electrostaticsController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
+			nScs, batch->forceEnergyInterims->electrostatics, forceAcc);
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
 		// Blocksize must be 64, 2 superclusters per block, see the kernel
-		NbNonlocalKernel<BoundaryCondition, emvariant, logData><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
-			batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
-			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
+		const auto LaunchNonbonded = [&]<bool screenedElectrostatics>() {
+			NbNonlocalKernel<BoundaryCondition, emvariant, logData, screenedElectrostatics><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
+				batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
+				batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
+		};
+		if (batch->screenedElectrostatics) LaunchNonbonded.operator()<true>();
+		else LaunchNonbonded.operator()<false>();
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);
 	if (batch->nBondgroups > 0) {

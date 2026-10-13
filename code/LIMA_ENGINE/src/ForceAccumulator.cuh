@@ -3,7 +3,7 @@
 #include "LimaTypes.cuh"
 #include "Bodies.cuh"
 
-// Deterministic accumulation of forces on each particle in MD: the NB, PME and SNF kernels convert their
+// Deterministic accumulation of forces on each particle in MD: the NB, electrostatics and SNF kernels convert their
 // partial forces to 64-bit fixed point and sum them with integer atomics. Unlike float atomics, integer addition is
 // associative, so the sum is bitwise independent of the order the atomics arrive in, and the kernels may run concurrently.
 // Each particle's first bondgroup stores its sum in a separate supercluster-slot plane. Integration reads it

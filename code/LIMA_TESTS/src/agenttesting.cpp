@@ -135,6 +135,7 @@ namespace {
 			<< "  --display-tiles-preview\n"
 			<< "  --environment-batch-tests\n"
 			<< "  --engine-batch-tests\n"
+			<< "  --fmm-tests\n"
 			<< "  --showcase-multisim\n";
 	}
 }
@@ -163,6 +164,10 @@ int main(int argc, char** argv) {
 			return RunDisplayPreview(true);
 		if (argc == 2 && std::string_view(argv[1]) == "--environment-batch-tests") {
 			BatchingTests::RunSchedulerTests(Environment::Get());
+			return 0;
+		}
+		if (argc == 2 && std::string_view(argv[1]) == "--fmm-tests") {
+			FmmTests::RunAll();
 			return 0;
 		}
 		if (argc == 2 && std::string_view(argv[1]) == "--engine-batch-tests") {

@@ -102,14 +102,14 @@ namespace LJ {
 	// The EM pair interaction, on unscaled particle parameters. diff is from p0 to p1, the returned fe is on p0, invert to get fe on p1.
 	// Separate from ComputePairNB, since the force activation function is applied to the LJ force alone.
 	// The caller must skip masked pairs (padding particles may overlap other particles), rather than discard the result
-	template<bool computePotE>
+	template<bool computePotE, bool computeElectrostatics = true>
 	__device__ inline ForceEnergy ComputePairNBEm(const Float3& diff, float sigma, float epsilon, float chargeProduct, float ewaldKappa)
 	{
 		ForceEnergy fe{}; // on p0
 
 		fe.force = calcLJForceOptim<computePotE, true>(diff, 1.f / diff.lenSquared(), fe.potE, sigma, epsilon, CalcLJOrigin::PP) * 24.f;
 
-		if constexpr (ENABLE_ES_SR) {
+		if constexpr (ENABLE_ES_SR && computeElectrostatics) {
 			if (chargeProduct != 0.f) {
 				fe.force += PhysicsUtilsDevice::CalcCoulumbForce(chargeProduct, -diff, ewaldKappa);
 				if constexpr (computePotE)
@@ -139,7 +139,7 @@ namespace LJ {
 	// epsilonTimes24 and chargeProductTimesK are products of particle parameters pre-scaled with PrescaleNBParams
 	// Branchless: LJ and coulomb share a single rsqrt, and are combined into a single scalar applied to diff.
 	// Masked pairs are discarded with a select, since padding particles may overlap other particles and produce NaN.
-	template<bool computePotE>
+	template<bool computePotE, bool computeElectrostatics = true>
 	__device__ inline ForceEnergy ComputePairNB(const Float3& diff, float sigma, float epsilonTimes24, float chargeProductTimesK, bool masked, float ewaldKappa)
 	{
 		ForceEnergy fe{}; // on p0
@@ -159,7 +159,7 @@ namespace LJ {
 				fe.potE += epsilonTimes24 * (1.f / 12.f) * s * (s - 1.f);	// 4*eps*s*(s-1) * 0.5 to account for splitting the potential between the 2 particles
 		}
 
-		if constexpr (ENABLE_ES_SR) {
+		if constexpr (ENABLE_ES_SR && computeElectrostatics) {
 			// Repulsive for equal charges, hence the negation
 			float coulombScalar = -chargeProductTimesK * distInv * distSqInv;
 			if constexpr (ENABLE_ERFC_FOR_EWALD && !ERFC_USE_CHEBYSHEV_APPROXIMATION) {

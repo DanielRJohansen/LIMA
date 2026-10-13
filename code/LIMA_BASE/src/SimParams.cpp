@@ -67,6 +67,11 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
         else if (input == "nobc") value = NoBC;
         else throw std::runtime_error(Lima::Format("Invalid boundary condition: '{}'", input));
     }
+    else if constexpr (std::same_as<T, LongRangeElectrostaticsMethod>) {
+        if (input == "pme") value = LongRangeElectrostaticsMethod::PME;
+        else if (input == "fmm") value = LongRangeElectrostaticsMethod::FMM;
+        else throw std::runtime_error(Lima::Format("Invalid longrange_method: '{}'", input));
+    }
     else if constexpr (std::same_as<T, ColoringMethod>) {
         static const std::unordered_map<std::string_view, ColoringMethod> values{
             { "atomname", ColoringMethod::Atomname },
@@ -96,6 +101,14 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
 
 std::string FormatValue(const bool value) { return value ? "true" : "false"; }
 std::string FormatValue(const BoundaryConditionSelect value) { return value == PBC ? "PBC" : "NoBC"; }
+
+std::string FormatValue(const LongRangeElectrostaticsMethod value) {
+    switch (value) {
+    case LongRangeElectrostaticsMethod::PME: return "PME";
+    case LongRangeElectrostaticsMethod::FMM: return "FMM";
+    }
+    throw std::runtime_error("Invalid longrange_method");
+}
 
 std::string FormatValue(const ColoringMethod value) {
     switch (value) {
@@ -178,10 +191,12 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         else throw std::runtime_error("Unsupported pbc value: " + found->second);
     }
     if (const auto found = mdp.find("coulombtype"); found != mdp.end()) {
-        if (found->second != "pme") throw std::runtime_error("Unsupported coulombtype: " + found->second);
+        ParseValue("coulombtype", found->second, params.longrange_method.value);
         params.enable_electrostatics.value = true;
     }
     parseIfPresent("rcoulomb", params.cutoff_nm.value);
+    parseIfPresent("fmm_order", params.fmm_order.value);
+    parseIfPresent("fmm_leaf_particles", params.fmm_leaf_particles.value);
 
     constexpr std::array outputKeys{ "nstxout", "nstvout", "nstenergy", "nstlog", "nstcomm" };
     std::optional<int> outputInterval;

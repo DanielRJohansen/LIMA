@@ -67,6 +67,11 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
         else if (input == "nobc") value = NoBC;
         else throw std::runtime_error(Lima::Format("Invalid boundary condition: '{}'", input));
     }
+    else if constexpr (std::same_as<T, ConstraintsSelect>) {
+        if (input == "none") value = ConstraintsSelect::None;
+        else if (input == "h-bonds") value = ConstraintsSelect::HBonds;
+        else throw std::runtime_error(Lima::Format("Invalid constraints: '{}', expected none or h-bonds", input));
+    }
     else if constexpr (std::same_as<T, ColoringMethod>) {
         static const std::unordered_map<std::string_view, ColoringMethod> values{
             { "atomname", ColoringMethod::Atomname },
@@ -96,6 +101,8 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
 
 std::string FormatValue(const bool value) { return value ? "true" : "false"; }
 std::string FormatValue(const BoundaryConditionSelect value) { return value == PBC ? "PBC" : "NoBC"; }
+
+std::string FormatValue(const ConstraintsSelect value) { return value == ConstraintsSelect::HBonds ? "h-bonds" : "none"; }
 
 std::string FormatValue(const ColoringMethod value) {
     switch (value) {

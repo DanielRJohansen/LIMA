@@ -48,7 +48,7 @@ namespace BatchingTests {
 		auto reference = co_await std::move(referenceHandle);
 
 		if (!reference.simulation)
-			co_return LimaUnittestResult{ false, "Reference T4 simulation did not complete", envmode == Full };
+			co_return LimaUnittestResult::Fail("Reference T4 simulation did not complete", envmode == Full);
 
 		const double soloSimulatedNs = reference.simulation->getStep() * reference.simulation->simParams.dt;
 		const double soloNsPerDay = soloSimulatedNs / reference.engineTime.count() * 86400.;
@@ -63,11 +63,8 @@ namespace BatchingTests {
 			if (!result.simulation || result.execution.batchSize != 4
 				|| (batchId && result.execution.batchId != *batchId)
 				|| !HasIdenticalCoordinates(*reference.simulation, *result.simulation)) {
-				co_return LimaUnittestResult{
-					false,
-					Lima::Format("Batched T4 run {} did not execute as the expected batch", index),
-					envmode == Full
-				};
+				co_return LimaUnittestResult::Fail(Lima::Format("Batched T4 run {} did not execute as the expected batch", index),
+					envmode == Full);
 			}
 
 			batchId = result.execution.batchId;
@@ -80,15 +77,11 @@ namespace BatchingTests {
 		const double batchNsPerDay = batchSimulatedNs / batchWallTime * 86400.;
 		const double throughputRatio = batchNsPerDay / soloNsPerDay;
 		const bool throughputImproved = std::isfinite(throughputRatio) && throughputRatio >= desiredRatio;
-		const std::string result = Lima::Format(
-			"Batch perf.: {:.2f}x ({:.2f} vs {:.2f} [ns/day])",
-			throughputRatio, batchNsPerDay, soloNsPerDay);
-
-		co_return LimaUnittestResult{
-			throughputImproved,
-			throughputImproved ? result : result + Lima::Format("; expected at least {:.2f}x", desiredRatio),
-			envmode == Full
-		};
+		if (!throughputImproved)
+			co_return LimaUnittestResult::Fail(Lima::Format("Batch perf.: {:.2f}x ({:.2f} vs {:.2f} [ns/day]); expected at least {:.2f}x",
+				throughputRatio, batchNsPerDay, soloNsPerDay, desiredRatio), envmode == Full);
+		co_return LimaUnittestResult{ true, OneLineMessage("Batch perf.: {:.2f}x ({:.0f} vs {:.0f} [ns/day])",
+			throughputRatio, batchNsPerDay, soloNsPerDay), envmode == Full };
 	}
 
 	// Require shared-kernel execution, not merely equivalent sequential results.
@@ -111,7 +104,7 @@ namespace BatchingTests {
 	//		if (!result.simulation || result.execution.batchSize != 4
 	//			|| (batchId && result.execution.batchId != *batchId)
 	//			|| !HasIdenticalCoordinates(*reference.simulation, *result.simulation)) {
-	//			LimaUnittestResult{ false, Lima::Format("Batched T4 run {} did not execute as the expected batch", index), envmode == Full };
+	//			LimaUnittestResult::Fail(Lima::Format("Batched T4 run {} did not execute as the expected batch", index), envmode == Full);
 	//		}
 	//		batchId = result.execution.batchId;
 	//		batchSimulatedNs += result.simulation->getStep() * result.simulation->simParams.dt;
@@ -123,7 +116,7 @@ namespace BatchingTests {
 	//
 
 	//	if (!reference.simulation)
-	//		LimaUnittestResult{ false, "Reference T4 simulation did not complete", envmode == Full };
+	//		LimaUnittestResult::Fail("Reference T4 simulation did not complete", envmode == Full);
 	//	const double soloSimulatedNs = reference.simulation->getStep() * reference.simulation->simParams.dt;
 	//	const double soloNsPerDay = soloSimulatedNs / reference.engineTime.count() * 86400.;
 

@@ -419,7 +419,9 @@ namespace LimitTesting {
 		report << test.name << ',' << passed << ',' << result.timedOut << ',' << result.exitCode << ',' << seconds << ',' << log.filename().string() << '\n';
 		const std::string summary = std::format("{}: {} (exit {}). Log: {}", test.name, passed ? "passed" : result.timedOut ? "timed out" : "FAILED", result.exitCode, log.string());
 		if (!passed) std::cout << output.substr(output.size() > 2000 ? output.size() - 2000 : 0) << std::endl;
-		co_return TestUtils::LimaUnittestResult{passed, summary, false};
+		if (!passed)
+			co_return TestUtils::LimaUnittestResult::Fail(summary, false);
+		co_return TestUtils::LimaUnittestResult{true, TestUtils::OneLineMessage("Passed in {:.1f}s", seconds), false};
 	}
 
 	inline void AddTests(TestUtils::LimaUnittestManager& manager, std::string_view filter = {}) {

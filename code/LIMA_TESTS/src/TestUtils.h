@@ -322,16 +322,140 @@ namespace TestUtils {
 	static void setConsoleTextColorGreen() { std::cout << "\033[32m"; }
 	static void setConsoleTextColorDefault() { std::cout << "\033[0m"; }
 
-	struct LimaUnittestResult {
-		LimaUnittestResult( bool success, const std::string err, const bool print_now) :
-			success(success),
-			error_description(!err.empty() ? err : success ? "Success" : "Fail")
-		{
-			if (print_now) {
-				printStatus();
-			}
+	// A passing test's message must fit on the test's line. These check that at compile time, see LimaUnittestResult
+	namespace OneLine {
+		constexpr size_t maxLength = 55;
+		// Fixed point floats ({:.2f}) cannot be bounded by their type, so they are assumed below 1e4 in magnitude, which covers
+		// the timings and counts tests report. OneLineMessage checks the formatted length when it runs, which catches a wrong assumption
+		constexpr size_t maxFixedPointIntegerDigits = 4;
+
+		enum class Kind { Bool, Char, Int32, Int64, Float, Double, String, Unbounded };
+
+		template <typename T>
+		consteval Kind KindOf() {
+			using U = std::remove_cvref_t<std::decay_t<T>>;
+			if constexpr (std::is_same_v<U, bool>) return Kind::Bool;
+			else if constexpr (std::is_same_v<U, char>) return Kind::Char;
+			else if constexpr (std::is_integral_v<U>) return sizeof(U) <= 4 ? Kind::Int32 : Kind::Int64;
+			else if constexpr (std::is_floating_point_v<U>) return sizeof(U) <= 4 ? Kind::Float : Kind::Double;
+			else if constexpr (std::is_convertible_v<U, std::string_view>) return Kind::String;
+			else return Kind::Unbounded;
 		}
 
+		// Reaching these in a constant evaluation fails it, with the function's name in the compiler error
+		void SuccessMessageMayNotFitOnOneLine();
+		void SuccessMessageFieldHasNoBoundedWidth_UseAPrecisionForStrings();
+
+		constexpr size_t ParseNumber(std::string_view& spec) {
+			size_t value = 0;
+			while (!spec.empty() && spec.front() >= '0' && spec.front() <= '9') {
+				value = value * 10 + (spec.front() - '0');
+				spec.remove_prefix(1);
+			}
+			return value;
+		}
+
+		// The widest a replacement field with this format spec can format to
+		consteval size_t FieldWidth(Kind kind, std::string_view spec) {
+			if (spec.size() >= 2 && (spec[1] == '<' || spec[1] == '>' || spec[1] == '^')) spec.remove_prefix(2);
+			else if (!spec.empty() && (spec[0] == '<' || spec[0] == '>' || spec[0] == '^')) spec.remove_prefix(1);
+			if (!spec.empty() && (spec[0] == '+' || spec[0] == '-' || spec[0] == ' ')) spec.remove_prefix(1);
+			if (!spec.empty() && spec[0] == '#') spec.remove_prefix(1);
+			if (!spec.empty() && spec[0] == '0') spec.remove_prefix(1);
+			const size_t width = ParseNumber(spec);
+			const bool hasPrecision = !spec.empty() && spec[0] == '.';
+			if (hasPrecision) spec.remove_prefix(1);
+			const size_t precision = hasPrecision ? ParseNumber(spec) : 6;
+			if (!spec.empty() && spec[0] == 'L') spec.remove_prefix(1);
+			const char type = spec.empty() ? '\0' : spec[0];
+
+			size_t length = 0;
+			const size_t exponentDigits = kind == Kind::Float ? 2 : 3;
+			switch (kind) {
+			case Kind::Bool: length = 5; break;
+			case Kind::Char: length = 4; break;
+			case Kind::Int32: length = type == 'b' || type == 'B' ? 34 : 11; break;
+			case Kind::Int64: length = type == 'b' || type == 'B' ? 66 : 20; break;
+			case Kind::Float:
+			case Kind::Double:
+				if (type == 'e' || type == 'E') length = precision + 5 + exponentDigits;			// -d.ddde+XX
+				else if (type == 'f' || type == 'F') length = 2 + maxFixedPointIntegerDigits + precision;	// -dddddd.dd
+				else if (type == 'g' || type == 'G' || hasPrecision) length = precision + 6 + exponentDigits;
+				else length = kind == Kind::Float ? 15 : 24;	// Shortest round trip
+				break;
+			case Kind::String:
+				if (!hasPrecision) SuccessMessageFieldHasNoBoundedWidth_UseAPrecisionForStrings();
+				length = precision;
+				break;
+			case Kind::Unbounded:
+				SuccessMessageFieldHasNoBoundedWidth_UseAPrecisionForStrings();
+			}
+			return length > width ? length : width;
+		}
+
+		template <typename... Args>
+		consteval size_t MaxLength(std::string_view fmt) {
+			constexpr Kind kinds[] = { KindOf<Args>()..., Kind::Unbounded };
+			size_t length = 0;
+			size_t nextArg = 0;
+			for (size_t i = 0; i < fmt.size(); i++) {
+				if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '{') { length++; i++; continue; }
+				if (fmt[i] == '}' && i + 1 < fmt.size() && fmt[i + 1] == '}') { length++; i++; continue; }
+				if (fmt[i] != '{') { length++; continue; }
+				const size_t end = fmt.find('}', i);
+				std::string_view field = fmt.substr(i + 1, end - i - 1);
+				size_t arg = nextArg++;
+				if (!field.empty() && field[0] >= '0' && field[0] <= '9')
+					arg = ParseNumber(field);
+				if (!field.empty() && field[0] == ':')
+					field.remove_prefix(1);
+				length += FieldWidth(kinds[arg < sizeof...(Args) ? arg : sizeof...(Args)], field);
+				i = end;
+			}
+			return length;
+		}
+	}
+
+	// A message for a test that may pass, checked at compile time to fit on the test's line: the literal's length
+	struct OneLineLiteral {
+		const char* text;
+		consteval OneLineLiteral(const char* literal) : text(literal) {
+			if (std::string_view(literal).size() > OneLine::maxLength)
+				OneLine::SuccessMessageMayNotFitOnOneLine();
+		}
+	};
+
+	// A format string for a message for a test that may pass, checked at compile time to fit on the test's line: each replacement
+	// field counts as the widest its argument's type and format spec can make it
+	template <typename... Args>
+	struct OneLineFormat {
+		std::format_string<Args...> fmt;
+		template <typename S> requires std::convertible_to<const S&, std::string_view>
+		consteval OneLineFormat(const S& format) : fmt(format) {
+			if (OneLine::MaxLength<Args...>(std::string_view(format)) > OneLine::maxLength)
+				OneLine::SuccessMessageMayNotFitOnOneLine();
+		}
+	};
+
+	struct OneLineText {
+		std::string text;
+	};
+
+	// Lima::Format for messages of tests that may pass, see OneLineFormat
+	template <typename... Args>
+	OneLineText OneLineMessage(OneLineFormat<std::type_identity_t<Args>...> fmt, Args&&... args) {
+		std::string text = Lima::VFormat(fmt.fmt.get(), std::make_format_args(args...));
+		if (text.size() > OneLine::maxLength)	// Only a fixed point float beyond OneLine::maxFixedPointIntegerDigits gets here
+			throw std::logic_error("Test message longer than one line: " + text);
+		return { std::move(text) };
+	}
+
+	// A test's result. A message that the test may pass with is a OneLineLiteral or OneLineMessage, which the compiler checks fits
+	// on the test's line. Messages for failures can be any length, with Fail
+	struct LimaUnittestResult {
+		LimaUnittestResult(bool success, OneLineLiteral message, bool printNow) : LimaUnittestResult(success, std::string(message.text), printNow, 0) {}
+		LimaUnittestResult(bool success, OneLineText message, bool printNow) : LimaUnittestResult(success, std::move(message.text), printNow, 0) {}
+		static LimaUnittestResult Fail(std::string message, bool printNow) { return LimaUnittestResult(false, std::move(message), printNow, 0); }
 
 		void printStatus(std::string insert="") const {
 			if (success) {
@@ -342,7 +466,7 @@ namespace TestUtils {
 			}
 
 
-			if (error_description.length() > 55) { std::cout << "\n\t"; }
+			if (error_description.length() > OneLine::maxLength) { std::cout << "\n\t"; }
 			std::cout << error_description << insert << "\n";
 
 
@@ -352,7 +476,25 @@ namespace TestUtils {
 		bool success;
 		std::string error_description;
 		std::optional<std::chrono::duration<double>> environmentTime;
+
+	private:
+		LimaUnittestResult(bool success, std::string message, bool printNow, int /*unchecked*/) :
+			success(success),
+			error_description(!message.empty() ? std::move(message) : success ? "Success" : "Fail")
+		{
+			if (printNow)
+				printStatus();
+		}
 	};
+
+	// evaluateTest as a test result
+	inline LimaUnittestResult EvaluateVcTest(const std::string& testName, std::vector<float> VCs, std::vector<float> energyGradients, bool printNow) {
+		const auto [success, message] = evaluateTest(testName, VCs, energyGradients);
+		if (!success)
+			return LimaUnittestResult::Fail(message, printNow);
+		return LimaUnittestResult{ true, OneLineMessage("VC {:.3e} / {:.3e}", *std::max_element(VCs.begin(), VCs.end()),
+			VarianceCoefficientTargets().find(testName)->second.max_vc), printNow };
+	}
 
 	struct TestFailure {
 		std::string message;
@@ -435,7 +577,7 @@ namespace TestUtils {
 					throw;
 				}
 				catch (const TestFailure& failure) {
-					result.emplace(false, failure.message, false);
+					result.emplace(LimaUnittestResult::Fail(failure.message, false));
 				}
 				catch (...) {
 					error = std::current_exception();
@@ -510,13 +652,12 @@ namespace TestUtils {
 			activeResults = &varianceResults;
 			try {
 				testresult = std::make_unique<LimaUnittestResult>(test.TakeResult());
-				elapsed = testresult->environmentTime.value_or(test.Elapsed());
 			}
 			catch (const std::exception& ex) {
-				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw exception: " + std::string(ex.what()), false);
+				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult::Fail("Test threw exception: " + std::string(ex.what()), false));
 			}
 			catch (...) {
-				testresult = std::make_unique<LimaUnittestResult>(false, "Test threw an unknown exception", false);
+				testresult = std::make_unique<LimaUnittestResult>(LimaUnittestResult::Fail("Test threw an unknown exception", false));
 			}
 			activeResults = previousResults;
 		}
@@ -525,14 +666,13 @@ namespace TestUtils {
 			std::cout << "Test " << name << " ";
 			int length = 6 + static_cast<int>(name.length());
 			while (length++ < 61) std::cout << ' ';
-			testresult->printStatus(" (" + StringUtils::FormatTime(elapsed.count(), 1, 2) + ")");
+			testresult->printStatus();
 			std::cout << std::flush;
 		}
 
 		std::string name;
 		TestRoutine test;
 		std::unique_ptr<LimaUnittestResult> testresult;
-		std::chrono::duration<double> elapsed{};
 		std::map<std::string, VarianceCoefficientThresholds> varianceResults;
 	};
 
@@ -656,18 +796,15 @@ namespace TestUtils {
 
 		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation)
-			co_return LimaUnittestResult{ false, "Environment returned no simulation", envmode == Full };
+			co_return LimaUnittestResult::Fail("Environment returned no simulation", envmode == Full);
 		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
-			co_return LimaUnittestResult{ false,
-				Lima::Format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
-				envmode == Full };
+			co_return LimaUnittestResult::Fail(Lima::Format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
+				envmode == Full);
 		}
 		if (!completed.analysis)
-			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
+			co_return LimaUnittestResult::Fail("Environment returned no analysis", envmode == Full);
 
-		const auto evaluation = evaluateTest(testName,
-			{ completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient });
-		co_return LimaUnittestResult{ evaluation.first, evaluation.second, envmode == Full };
+		co_return EvaluateVcTest(testName, { completed.analysis->variance_coefficient }, { completed.analysis->energy_gradient }, envmode == Full);
 	}
 
 	inline void stressTest(std::function<void()> func, size_t reps) {
@@ -744,7 +881,7 @@ namespace TestUtils {
 			for (size_t i = 0; i < results.size(); i++) {
 				errorMsg += Lima::Format("Run {}: {}\n", i + 1, results[i]);
 			}
-			return LimaUnittestResult{ false, errorMsg, envmode != Headless };
+			return LimaUnittestResult::Fail(errorMsg, envmode != Headless);
 		}
 		else {
 			return LimaUnittestResult{ true, "Success", envmode != Headless };
@@ -821,7 +958,7 @@ namespace TestUtils {
 					newAtom.gro_id,
 					newAtom.position.x, newAtom.position.y, newAtom.position.z,
 					refAtom.position.x, refAtom.position.y, refAtom.position.z);
-				return LimaUnittestResult{ false, errorMsg, envmode != Headless };
+				return LimaUnittestResult::Fail(errorMsg, envmode != Headless);
 			}
 
 		}

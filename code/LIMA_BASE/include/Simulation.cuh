@@ -113,6 +113,7 @@ struct Box {
 	std::vector<PersistentclusterInterimState> pclusterInterimStates;
 
 	BondGroups bondgroups;
+	std::vector<PclusterConstraints> pclusterConstraints;	// Indexed by pcluster, empty without constraints
 
 	UniformElectricField uniformElectricField;
 

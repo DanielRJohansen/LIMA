@@ -71,11 +71,11 @@ namespace TestMinorPrograms {
 
 	//	std::string error = compareFilesBitwise(fs::path(to_folder) / "POPC.gro", fs::path(to_folder) / "POPC_reference.gro");
 	//	if (error != "") {
-	//		return LimaUnittestResult{ false , error, envmode == Full };
+	//		return LimaUnittestResult::Fail(error, envmode == Full);
 	//	}
 	//	error = compareFilesBitwise(fs::path(to_folder) / "POPC.itp", fs::path(to_folder) / "POPC_reference.itp");
 	//	if (error != "") {
-	//		return LimaUnittestResult{ false , error, envmode == Full };
+	//		return LimaUnittestResult::Fail(error, envmode == Full);
 	//	}
 
 	//return LimaUnittestResult{ true , "No error", envmode == Full };

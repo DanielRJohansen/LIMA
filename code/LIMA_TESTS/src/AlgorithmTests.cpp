@@ -13,7 +13,7 @@ namespace KernelAlgorithms {
 		bool success = Engine::TestAlgorithms();
 
 		if (!success) {
-			return LimaUnittestResult{ false, "Warp sort failed for some bin configs", true };
+			return LimaUnittestResult::Fail("Warp sort failed for some bin configs", true);
 		}
 		return LimaUnittestResult{ true, "Warp sort correct for all bin configs", true };
 	}

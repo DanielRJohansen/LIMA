@@ -5,8 +5,10 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <unordered_map>
 
 #include "Bodies.cuh"
+#include "SimParams.h"
 #include "Constants.h"
 #include "Utilities.h"
 #include "BoundaryConditionPublic.h"
@@ -71,6 +73,7 @@ struct ParticleToPclusterMapping {
 using ParticleToPclusterMap = std::vector<ParticleToPclusterMapping>;
 
 struct PersistentClusterFactory {
+	std::vector<PclusterConstraints> pclusterConstraints;	// Empty without constraints
 	std::vector<PersistentCluster> pClusters;
 	std::vector<PersistentClusterMeta> pClusterMetas;
 	ParticleToPclusterMap particleToPclusterMap;
@@ -79,6 +82,15 @@ struct PersistentClusterFactory {
 };
 
 namespace LIMA_MOLECULEBUILD {
+	// The distance constraints of a moleculetype (constraints = h-bonds): its bonds to hydrogens, and for a 3-atom water also
+	// the H-H distance, which makes it rigid like GROMACS' settles. Particle ids are relative to the molecule
+	struct MoleculetypeConstraints {
+		std::vector<std::array<int, 2>> pairs;
+		std::vector<float> distances;			// [nm]
+		std::vector<int> groupOf;				// Per particle, the index of its group in groups, or -1 if unconstrained
+		std::vector<std::vector<int>> groups;	// The particles of each connected set of constraints, ascending
+	};
+
 	class SuperTopology {
 
 	public:
@@ -96,7 +108,7 @@ namespace LIMA_MOLECULEBUILD {
 			int firstCmapbond = 0;
 		};
 
-		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
+		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield, ConstraintsSelect constraintsSelect = ConstraintsSelect::None);
 
 
 		void VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
@@ -113,6 +125,10 @@ namespace LIMA_MOLECULEBUILD {
 		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
 		std::vector<CmapBondFactory> cmapbonds;
 		std::vector<MoleculeInstance> moleculeInstances;
+
+		// The constrained bonds also stay in the bond lists above. Only moleculetypes with constraints have an entry
+		std::unordered_map<const TopologyFile::Moleculetype*, MoleculetypeConstraints> constraints;
+		int64_t nConstraints = 0;	// Over all molecules
 	};
 
 
@@ -165,5 +181,6 @@ struct BoxImage {
 	std::vector<std::tuple<int, int>> gpidToPcidAndPid;
 	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
 	int totalParticles = 0;
+	std::vector<PclusterConstraints> pclusterConstraints;	// Empty without constraints
 };
  

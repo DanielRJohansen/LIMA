@@ -164,6 +164,11 @@ struct EngineBatchData {
 	CudaBuffer<int> bondgroupExtraResultIndices; // -1 for primary appearances, otherwise an extra result index
 	CudaBuffer<int> slotExtraBondReferences; // Three planes of secondary indices, rebuilt with superclusters
 	CudaBuffer<int> bondgroupParticleSlots;					// Slot of each of bondgroupParticles, so BondgroupsKernel finds them directly
+	CudaBuffer<PclusterConstraints> pclusterConstraintsDevice;	// Indexed by pcluster, only if hasConstraints
+	bool hasConstraints = false;
+	// ConstrainPositionsKernel has put the positions on the constraints. A rebuilt batch starts false, which a newly added
+	// simulation needs, and the others already satisfy
+	bool positionsConstrained = false;
 	CudaBuffer<ParticleIntegrationState> integrationStates;	// Indexed by supercluster slot
 	bool integrationStatesLoaded = false;					// integrationStates hold the current state, which pcluster states may lag
 	bool forceMagnitudesInStates = false;					// The last step left forcesMagnitudeSquareDevice to StoreIntegrationStates

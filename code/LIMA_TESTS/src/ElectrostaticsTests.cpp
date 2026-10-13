@@ -22,7 +22,7 @@ namespace ElectrostaticsTests {
 		const float expectedForce = 2.307078e-10 * AVOGADROSNUMBER * NANO;  // [J/mol/nm] https://www.omnicalculator.com/physics/coulombs-law
 
 		if (std::abs(calcedForce - expectedForce) / expectedForce >= 0.0001f)
-			co_return LimaUnittestResult{ false, Lima::Format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full };
+			co_return LimaUnittestResult::Fail(Lima::Format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full);
 		// TODO: add potE to this also
 		co_return LimaUnittestResult{ true, "Success", envmode == Full};
 	}
@@ -203,23 +203,23 @@ namespace ElectrostaticsTests {
 
 		if (slope >= 0.f) {
 			std::string errorMsg = Lima::Format("Slope of velocity distribution should be negative, but got {:.4f} ", slope);
-			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult::Fail(errorMsg, envmode == Full);
 		}
 		if (std::abs(intercept) > 50.f) {
 			std::string errorMsg = Lima::Format("Intercept of velocity distribution should be close to 0, but got {:.2f}",intercept);
-			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult::Fail(errorMsg, envmode == Full);
 		}
 
 		const float r2 = Statistics::calculateR2(x, y, slope, intercept);
 		if (std::isnan(r2))
-			co_return LimaUnittestResult{ false, "R2 value is nan", envmode == Full };
+			co_return LimaUnittestResult::Fail("R2 value is nan", envmode == Full);
 		if (r2 < 0.5f) {
 			//std::string errorMsg = "R2 value " + std::to_string(r2) + " of velocity distribution should be close to 1";
 			std::string errorMsg = Lima::Format("R2 value {:.2f} of velocity distribution should be close to 1", r2);
-			co_return LimaUnittestResult{ false, errorMsg, envmode == Full };
+			co_return LimaUnittestResult::Fail(errorMsg, envmode == Full);
 		}
 
-		co_return LimaUnittestResult{ true, Lima::Format("R2 Value: {:.2f}", r2), envmode == Full};
+		co_return LimaUnittestResult{ true, OneLineMessage("R2 Value: {:.2f}", r2), envmode == Full};
 	}
 
 	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
@@ -417,7 +417,7 @@ namespace ElectrostaticsTests {
 		const double relativeRmsError = std::sqrt(errorSquaredSum / forceSquaredSum);
 		const double relativeEnergyError = std::abs(actualEnergy - expectedEnergy) / std::abs(expectedEnergy);
 		co_return LimaUnittestResult{ relativeRmsError < 0.005 && relativeEnergyError < 0.005,
-			Lima::Format("Force err {:.2f}% Energy err {:.2f}%", relativeRmsError * 100., relativeEnergyError * 100.), envmode == Full };
+			OneLineMessage("Force err {:.2f}% Energy err {:.2f}%", relativeRmsError * 100., relativeEnergyError * 100.), envmode == Full };
 	}
 
 	LimaUnittestResult PlotPmePotAsFactorOfDistance(EnvMode envmode) {
@@ -637,7 +637,7 @@ namespace ElectrostaticsTests {
 		const float maxForceError = *std::max_element(forceErrors.begin(), forceErrors.end());
 		const float meanForceError = Statistics::Mean(forceErrors);
 		if (meanForceError >= 0.18f)
-			co_return LimaUnittestResult{ false, Lima::Format("Mean Force Error {:.3f}", meanForceError), envmode == Full };
+			co_return LimaUnittestResult::Fail(Lima::Format("Mean Force Error {:.3f}", meanForceError), envmode == Full);
 		//ASSERT(maxForceError < 0.8f, Lima::Format("Max Force Error {:.3e}", maxForceError));
 
 		co_return LimaUnittestResult{ true, "", envmode == Full };

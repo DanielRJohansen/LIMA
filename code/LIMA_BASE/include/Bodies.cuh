@@ -329,6 +329,16 @@ struct PersistentClusterMeta {
 	BondgroupRefManager bondgroupReferences[PersistentCluster::maxParticles];
 };
 
+// Distance constraints between the particles of a pcluster (constraints = h-bonds). A constrained group never spans pclusters,
+// so SuperclusterIntegrateConstrainedKernel solves it within one supercluster
+struct PclusterConstraints {
+	static const int maxConstraints = 3;
+	uint8_t nConstraints = 0;
+	uint8_t particles[maxConstraints] = {};	// The indices in the pcluster of a constraint's two particles: first | second << 2
+	float distance[maxConstraints] = {};	// [nm]
+};
+static_assert(sizeof(PclusterConstraints) == 16);
+
 struct PersistentclusterInterimState {
 	// Used specifically for Velocity Verlet stormer, and ofcourse kinE fetching
 	Float3 forces_prev[PersistentCluster::maxParticles]; // [J/mol]

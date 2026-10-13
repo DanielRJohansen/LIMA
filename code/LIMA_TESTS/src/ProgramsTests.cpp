@@ -58,11 +58,11 @@ namespace ProgramsTests {
 		const auto conversion = Programs::ToGmx(directory / "6lzm.pdb");
 		LimaUnittestResult gResult = CompareGroFiles(conversion.grofile, GroFile{ directory / "conf_ref.gro" }, envmode);
 		if (!gResult.success) 
-			co_return LimaUnittestResult{ false, gResult.error_description, envmode == Full };
+			co_return LimaUnittestResult::Fail(gResult.error_description, envmode == Full);
 		
 		LimaUnittestResult tResult = CompareTopologyFiles(conversion.topology, TopologyFile{ directory / "topol_ref.top" }, envmode);
 		if (!tResult.success) 
-			co_return LimaUnittestResult{ false, tResult.error_description, envmode == Full };
+			co_return LimaUnittestResult::Fail(tResult.error_description, envmode == Full);
 
 		TEST_ASSERT(conversion.positionRestraints.size() == 1
 			&& ReadPositionRestraintAtoms(conversion.positionRestraints.front()) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
@@ -80,11 +80,11 @@ namespace ProgramsTests {
 		LimaUnittestResult gResult = CompareGroFiles(
 			conversion.grofile, GroFile{ directory / "conf_ref.gro" }, envmode, 0.75f, 0.05f, 0.075f);
 		if (!gResult.success)
-			co_return LimaUnittestResult{ false, gResult.error_description, envmode == Full };
+			co_return LimaUnittestResult::Fail(gResult.error_description, envmode == Full);
 
 		LimaUnittestResult tResult = CompareTopologyFiles(conversion.topology, TopologyFile{ directory / "topol_ref.top" }, envmode);
 		if (!tResult.success)
-			co_return LimaUnittestResult{ false, tResult.error_description, envmode == Full };
+			co_return LimaUnittestResult::Fail(tResult.error_description, envmode == Full);
 
 		TEST_ASSERT(conversion.positionRestraints.size() == 1
 			&& ReadPositionRestraintAtoms(conversion.positionRestraints.front()) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),

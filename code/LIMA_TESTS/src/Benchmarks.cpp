@@ -15,16 +15,16 @@ namespace Benchmarks {
 	TestRoutine ToGmxLargeCif(Environment&, EnvMode envmode) {
 		const fs::path input = TestsDir() / "fileconversions" / "3J3Q.cif";
 		if (!fs::is_regular_file(input))
-			co_return LimaUnittestResult{ false, "Missing ToGmx benchmark input: " + input.string(), envmode == Full };
+			co_return LimaUnittestResult::Fail("Missing ToGmx benchmark input: " + input.string(), envmode == Full);
 		TimeIt timer;
 		const auto conversion = Programs::ToGmx(input);
 		const auto elapsed = timer.stop();
 		const std::chrono::seconds allowedTime{ 10 };
 
 		if (conversion.grofile.atoms.empty())
-			co_return LimaUnittestResult{ false, "ToGmx benchmark produced no atoms", envmode == Full };
+			co_return LimaUnittestResult::Fail("ToGmx benchmark produced no atoms", envmode == Full);
 		co_return LimaUnittestResult{ elapsed < allowedTime,
-			Lima::Format("3J3Q.cif elapsed: {:.3f} allowed: {:.3f}",
+			OneLineMessage("3J3Q.cif elapsed: {:.3f} allowed: {:.3f}",
 				std::chrono::duration<double>(elapsed).count(), std::chrono::duration<double>(allowedTime).count()),
 			envmode == Full };
 	}
@@ -33,7 +33,7 @@ namespace Benchmarks {
 	TestRoutine Load3J3Q(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = TestsDir() / "3j3q";
 		if (!fs::is_regular_file(workDir / "conf.gro") || !fs::is_regular_file(workDir / "topol.top"))
-			co_return LimaUnittestResult{ false, "Missing 3j3q load benchmark input: " + workDir.string(), envmode == Full };
+			co_return LimaUnittestResult::Fail("Missing 3j3q load benchmark input: " + workDir.string(), envmode == Full);
 
 
 		TimeIt totalTimer;
@@ -57,11 +57,11 @@ namespace Benchmarks {
 		const size_t nTopAtoms = std::ranges::distance(top.GetAllElements<TopologyFile::AtomsEntry>());
 
 		if (nTopAtoms != gro.atoms.size())
-			co_return LimaUnittestResult{ false, Lima::Format("3j3q atom count mismatch between gro({}) and top({})", gro.atoms.size(), nTopAtoms), envmode == Full};
+			co_return LimaUnittestResult::Fail(Lima::Format("3j3q atom count mismatch between gro({}) and top({})", gro.atoms.size(), nTopAtoms), envmode == Full);
 
 		auto completed = co_await environment.Submit(std::move(job));		
 		if (!completed.simulation)
-			co_return LimaUnittestResult{ false, "3j3q load benchmark produced no simulation", envmode == Full };
+			co_return LimaUnittestResult::Fail("3j3q load benchmark produced no simulation", envmode == Full);
 		
 		const std::chrono::duration<double> allowedFileTime{ 3.5 };
 		const std::chrono::duration<double> allowedBuildTime{ 7.0 };
@@ -70,7 +70,7 @@ namespace Benchmarks {
 		auto success = (groTime + topTime) < allowedFileTime && buildtime < allowedBuildTime;
 
 		co_return LimaUnittestResult{ success,
-			Lima::Format("files: ({:.2f}+{:.2f})/{:.2f}   build: {:.2f}/{:.2f} [s]",
+			OneLineMessage("files {:.1f}+{:.1f}/{:.1f}s build {:.1f}/{:.1f}s",
 				groTime.count(), topTime.count(), allowedFileTime.count(), buildtime.count(), allowedBuildTime.count()),
 			envmode == Full };
 	}
@@ -91,14 +91,14 @@ namespace Benchmarks {
 
 		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation || completed.simulation->getStep() != 1)
-			co_return LimaUnittestResult{ false, "T4 load benchmark did not complete its step", envmode == Full };
+			co_return LimaUnittestResult::Fail("T4 load benchmark did not complete its step", envmode == Full);
 
 		// environmentTime excludes time spent queued behind other jobs
 		const std::chrono::duration<double> setupTime = completed.environmentTime;
 		const std::chrono::duration<double> allowedTime{ 0.5 };
 
 		co_return LimaUnittestResult{ setupTime < allowedTime,
-			Lima::Format("setup incl. files {:.0f} (1st step {:.1f}) / {:.0f} [ms]",
+			OneLineMessage("setup {:.0f} (1st step {:.1f}) / {:.0f} [ms]",
 				setupTime.count() * 1000., completed.engineTime.count() * 1000., allowedTime.count() * 1000.),
 			envmode == Full };
 	}
@@ -127,7 +127,7 @@ namespace Benchmarks {
 		if (warmupSteps > 0) {
 			auto warmup = co_await environment.Submit(MakeJob(warmupSteps));
 			if (!warmup.simulation || warmup.simulation->getStep() != warmupSteps)
-				co_return LimaUnittestResult{ false, "Warmup simulation did not run fully", envmode != Headless };
+				co_return LimaUnittestResult::Fail("Warmup simulation did not run fully", envmode != Headless);
 		}
 
 		std::vector<std::chrono::microseconds> timesPerStep;
@@ -136,7 +136,7 @@ namespace Benchmarks {
 		for (int run = 0; run < nRuns; run++) {
 			auto completed = co_await environment.Submit(MakeJob(nSteps));
 			if (!completed.simulation || completed.simulation->getStep() != completed.simulation->simParams.n_steps)
-				co_return LimaUnittestResult{ false, "Simulation did not run fully", envmode != Headless };
+				co_return LimaUnittestResult::Fail("Simulation did not run fully", envmode != Headless);
 			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(completed.engineTime / nSteps));
 			if (printPerformance)
 				std::cout << StringUtils::FormatPerformance(std::chrono::duration<double>(completed.engineTime).count(),
@@ -146,7 +146,7 @@ namespace Benchmarks {
 		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
 		const bool withinBounds = *fastest >= allowedTimePerStep.min && *slowest <= allowedTimePerStep.max;
 		co_return LimaUnittestResult{ withinBounds,
-			Lima::Format("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step]",
+			OneLineMessage("({:.3f}-{:.3f}) / ({:.3f}-{:.3f}) [ms/step]",
 				fastest->count() / 1000., slowest->count() / 1000., allowedTimePerStep.min.count() / 1000.,
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}

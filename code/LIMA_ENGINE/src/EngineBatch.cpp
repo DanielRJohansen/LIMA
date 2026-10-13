@@ -220,6 +220,7 @@ namespace EngineBatch {
 		std::vector<PersistentCluster> pclusters;
 		std::vector<PersistentClusterMeta> metadata;
 		std::vector<PersistentclusterInterimState> states;
+		std::vector<PclusterConstraints> constraints;	// Stays empty unless a simulation has constraints
 		BondGroups bonds;
 		if (!active)
 			ForEachSimulationInParallel(simulations.size(), [&](size_t i) {
@@ -251,6 +252,17 @@ namespace EngineBatch {
 			batch.nParticles = CheckedCount(size_t(batch.nParticles) + layout.particles.count);
 			batch.nGridnodes = CheckedCount(size_t(batch.nGridnodes) + layout.gridnodes.count);
 			CheckedCount(size_t(batch.nGridnodes) * PClusterTransfermodule::maxClustersPerBlock);
+			// The box's constraints and degrees of freedom are set when it is built, so MD must use the constraints it was built with
+			const bool constrained = sim.simulation->simParams.constraints.value != ConstraintsSelect::None;
+			if (!sim.simulation->simParams.em_variant && constrained != !box.pclusterConstraints.empty())
+				throw std::invalid_argument(constrained
+					? "constraints are set, but the box was built without them. Build it with the constraints set, eg. also in the energy minimization it continues from"
+					: "The box was built with constraints, but constraints = none. Use the same constraints as the simulation that built it");
+			// Energy minimization ignores the constraints, and uses the bonds they constrain
+			if (!box.pclusterConstraints.empty() && !sim.simulation->simParams.em_variant) {
+				constraints.resize(pclusters.size());
+				Append(constraints, box.pclusterConstraints);
+			}
 			Append(pclusters, box.persistentClusters);
 			Append(states, box.pclusterInterimStates);
 			for (auto meta : box.persistentClustersMetadata) {
@@ -311,6 +323,10 @@ namespace EngineBatch {
 		batch.nBondgroups = CheckedCount(bonds.groups.size());
 		CheckedCount(pclusters.size() * PersistentCluster::maxParticles);
 		batch.pClusterDevice.SetData(pclusters);
+		if (!constraints.empty())
+			constraints.resize(pclusters.size());
+		batch.pclusterConstraintsDevice.SetData(constraints);
+		batch.hasConstraints = !constraints.empty();
 		batch.pClusterMetaDevice.SetData(metadata);
 		batch.boxState.pclusterInterimStates = GenericCopyToDevice(states);
 		batch.bondgroupDescriptors.SetData(bonds.groups);

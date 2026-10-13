@@ -34,12 +34,12 @@ namespace ForceComparisons {
 			const auto reference = FileUtils::ReadCsvAsVectorOfFloat3(workDir / "forces.csv");
 			const auto actual = SimAnalysis::GetForces(*completed.simulation, 0);
 			if (actual.size() != reference.size())
-				co_return LimaUnittestResult{ false, name + " force count mismatch", envmode == Full };
+				co_return LimaUnittestResult::Fail(name + " force count mismatch", envmode == Full);
 			for (std::size_t force = 0; force < actual.size(); force++) {
 				if ((actual[force] - reference[force]).len() / reference[force].len() > 1e-3f)
-					co_return LimaUnittestResult{ false, Lima::Format("{} force mismatch at atom {}: ({:.2f} {:.2f} {:.2f}) vs GROMACS ({:.2f} {:.2f} {:.2f})",
+					co_return LimaUnittestResult::Fail(Lima::Format("{} force mismatch at atom {}: ({:.2f} {:.2f} {:.2f}) vs GROMACS ({:.2f} {:.2f} {:.2f})",
 						name, force, actual[force].x, actual[force].y, actual[force].z,
-						reference[force].x, reference[force].y, reference[force].z), envmode == Full };
+						reference[force].x, reference[force].y, reference[force].z), envmode == Full);
 			}
 		}
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };

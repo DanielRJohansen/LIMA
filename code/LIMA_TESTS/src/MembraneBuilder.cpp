@@ -264,7 +264,7 @@ namespace TestMembraneBuilder {
 		// Finally test if we could stabilize the simulation
 		float finalMaxForce = emResult.simulation->maxForceBuffer.back().second;
 
-		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, Lima::Format("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
+		co_return LimaUnittestResult{ finalMaxForce < emtol && finalMaxForce != 0, OneLineMessage("Max Force {:.2f}/{:.2f}", finalMaxForce, emtol), envmode == Full};
 	}
 
 	TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode) {
@@ -354,7 +354,7 @@ namespace TestMembraneBuilder {
 			}
 
 			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::HeavyTestsDir() / fs::path{ "etc" } / "buildvesicle.bin", 0.01, overwriteData))
-				return LimaUnittestResult{ false , "Before relaxation mismatch", envmode == Full };
+				return LimaUnittestResult::Fail("Before relaxation mismatch", envmode == Full);
 		}
 
 
@@ -373,11 +373,11 @@ namespace TestMembraneBuilder {
 			}
 			
 			if (!TestUtils::CompareVecWithFile(vertices, TestUtils::HeavyTestsDir() / fs::path{ "etc" } / "relaxedvesicle.bin", 0.01, overwriteData))
-				return LimaUnittestResult{ false , "After relaxation mismatch", envmode == Full };
+				return LimaUnittestResult::Fail("After relaxation mismatch", envmode == Full);
 		}
 
 		if (overwriteData)
-			return LimaUnittestResult{false, "Overwriting data", envmode == Full};
+			return LimaUnittestResult::Fail("Overwriting data", envmode == Full);
 
 
 

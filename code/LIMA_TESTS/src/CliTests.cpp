@@ -618,7 +618,7 @@ TestRoutine TestDispatcher(fs::path workDir) {
 	RequireExitCode(Run(workDir, { "makebox", "--box-size", "5", "--notanoption" }, quiet), 2);
 	ASSERT(fs::is_empty(workDir), "A command that was rejected for invalid arguments still created files");
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} commands respond to help, bad input exits 2", Cli::Commands.size()), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} commands: help works, bad input exits 2", static_cast<int>(Cli::Commands.size())), false };
 }
 
 TestRoutine TestMakeSimParams(fs::path workDir) {
@@ -639,7 +639,7 @@ TestRoutine TestMakeSimParams(fs::path workDir) {
 	}
 	ASSERT(keys.contains("n_steps") && keys.contains("dt"), "sim_params.txt does not define n_steps and dt");
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} parameters", keys.size()), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} parameters", keys.size()), false };
 }
 
 TestRoutine TestMakeBox(fs::path workDir) {
@@ -688,7 +688,7 @@ TestRoutine TestEditConf(fs::path workDir) {
 	ASSERT(maxRotationDisplacement > 0.05, "The molecule was not rotated");
 
 	Preview(workDir, "out.gro", "met.top");
-	co_return LimaUnittestResult{ true, Lima::Format("Rigid, centered, rotated (distance error {:.4f} nm)", maxDistanceError), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("Rigid, centered, rotated (distance error {:.4f} nm)", maxDistanceError), false };
 }
 
 TestRoutine TestToGmx(fs::path workDir) {
@@ -722,7 +722,7 @@ TestRoutine TestToGmx(fs::path workDir) {
 	ASSERT(hasRestraints, "No position restraint file was written");
 
 	Preview(workDir, "lzm.gro", "lzm.top");
-	co_return LimaUnittestResult{ true, Lima::Format("{} residues, {} atoms", gro.ResidueCount(), gro.atoms.size()), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} residues, {} atoms", static_cast<int>(gro.ResidueCount()), static_cast<int>(gro.atoms.size())), false };
 }
 
 TestRoutine TestSolvate(fs::path workDir) {
@@ -760,7 +760,7 @@ TestRoutine TestSolvate(fs::path workDir) {
 			solventMolecules, expected, SimulationBuilder::defaultSolventsPerNm3));
 
 	Preview(workDir, "met_box4_solvated.gro", "met_box4_solvated.top");
-	co_return LimaUnittestResult{ true, Lima::Format("{} waters added", solventMolecules), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} waters added", solventMolecules), false };
 }
 
 TestRoutine TestInsertMolecule(fs::path workDir) {
@@ -810,7 +810,7 @@ TestRoutine TestInsertMolecules(fs::path workDir) {
 			minDistance = std::min(minDistance, PbcDistance(out.atoms[i].position, out.atoms[j].position, out.box));
 	ASSERT(minDistance > 0.08, Lima::Format("Two molecules overlap: atoms only {:.3f} nm apart", minDistance));
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} molecules, closest contact {:.2f} nm", nInsertions, minDistance), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} molecules, closest contact {:.2f} nm", nInsertions, minDistance), false };
 }
 
 TestRoutine TestEnergyMinimization(fs::path workDir) {
@@ -834,7 +834,7 @@ TestRoutine TestEnergyMinimization(fs::path workDir) {
 	const double after = PbcDistance(out.atoms[clashA].position, out.atoms[clashB].position, out.box);
 	ASSERT(after > 0.2, Lima::Format("The overlapping waters were not separated: {:.3f} nm -> {:.3f} nm", before, after));
 
-	co_return LimaUnittestResult{ true, Lima::Format("Clash resolved: {:.2f} nm -> {:.2f} nm", before, after), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("Clash resolved: {:.2f} nm -> {:.2f} nm", before, after), false };
 }
 
 TestRoutine TestMdrun(fs::path workDir) {
@@ -874,7 +874,7 @@ TestRoutine TestMdrun(fs::path workDir) {
 	const auto trajectoryBytes = fs::file_size(workDir / "traj.trr");
 	ASSERT(fs::exists(workDir / "trajectory.uff") && fs::file_size(workDir / "trajectory.uff") > 0, "--uff did not write trajectory.uff");
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} atoms, trajectory {:.1f} MB", out.atoms.size(), trajectoryBytes / 1e6), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} atoms, trajectory {:.1f} MB", out.atoms.size(), trajectoryBytes / 1e6), false };
 }
 
 TestRoutine TestBuildMembrane(fs::path workDir) {
@@ -905,7 +905,7 @@ TestRoutine TestBuildMembrane(fs::path workDir) {
 	const double meanZ = gro.Center(0, gro.atoms.size()).z;
 	ASSERT(std::abs(meanZ - boxSize / 2) < 0.3, Lima::Format("The membrane is centered at z={:.2f}, expected the default of {}", meanZ, boxSize / 2));
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} lipids, {:.0f}% POPC, {:.2f} nm^2/lipid", total, popcFraction * 100, areaPerLipid), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} lipids, {:.0f}% POPC, {:.2f} nm2/lipid", total, popcFraction * 100, areaPerLipid), false };
 }
 
 TestRoutine TestRender(fs::path workDir) {
@@ -919,8 +919,8 @@ TestRoutine TestRender(fs::path workDir) {
 	// Only proves something was drawn, not what; render.bmp is kept for a human to look at
 	ASSERT(session.distinctColors > 16, Lima::Format("The render window looks blank ({} distinct colors), see {}", session.distinctColors, screenshot.string()));
 
-	co_return LimaUnittestResult{ true, Lima::Format("Window after {:.1f}s, closed cleanly, screenshot {}",
-		session.timeToWindow.count(), screenshot.filename().string()), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("Window after {:.1f}s, closed cleanly, render.bmp kept",
+		session.timeToWindow.count()), false };
 }
 
 TestRoutine TestSelfTest(fs::path workDir) {
@@ -996,7 +996,7 @@ TestRoutine TestDaemon(fs::path workDir) {
 	std::this_thread::sleep_for(std::chrono::seconds(daemonIdleSeconds + 3));
 	ASSERT(!daemonRunning(), Lima::Format("The daemon was still running {} s after its last command", daemonIdleSeconds + 3));
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} of {} concurrent runs shared a batch, identical results, idle exit", batched, nConcurrent), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{}/{} batched, identical, idle exit", batched, nConcurrent), false };
 }
 
 // Commands started with --async return at once; 'lima wait' collects their results
@@ -1044,7 +1044,7 @@ TestRoutine TestWait(fs::path workDir) {
 	RequireExitCode(Run(workDir, { "--no-daemon", "mdrun", "--async" }, quiet), 2);
 	RequireSuccess(Run(workDir, { "daemon", "stop" }, quiet));
 
-	co_return LimaUnittestResult{ true, Lima::Format("{} jobs submitted in {:.2f} s, identical results, failure reported", nJobs, submitTime.count()), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} jobs in {:.1f}s, identical, failure seen", nJobs, submitTime.count()), false };
 }
 
 struct CliTest {
@@ -1157,7 +1157,9 @@ int main(int argc, char** argv) {
 		testman.AddTest("Every command has a test", [untested]() -> TestRoutine {
 			std::string missing;
 			for (const auto& name : untested) missing += " " + name;
-			co_return LimaUnittestResult{ untested.empty(), untested.empty() ? "" : "No test for:" + missing, false };
+			if (!untested.empty())
+				co_return LimaUnittestResult::Fail("No test for:" + missing, false);
+			co_return LimaUnittestResult{ true, "", false };
 		});
 
 		for (const auto& test : cliTests) {

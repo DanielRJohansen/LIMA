@@ -10,10 +10,11 @@ public:
 	const int nFrames;
 	const int nAtoms;
 	const Float3 boxSize;// nm
-	const float lambda; // [ps] deltaTime
+	const float frameSpacingPs;
+	const int stepInterval;
 
-	Trajectory(int nFrames, int nAtoms, Float3 boxSize, float dt) 
-		: nFrames(nFrames), nAtoms(nAtoms), boxSize(boxSize), lambda(dt*NANO_TO_PICO) {
+	Trajectory(int nFrames, int nAtoms, Float3 boxSize, float frameSpacing, int stepInterval)
+		: nFrames(nFrames), nAtoms(nAtoms), boxSize(boxSize), frameSpacingPs(frameSpacing * NANO_TO_PICO), stepInterval(stepInterval) {
 		data.resize(nFrames * nAtoms);
 	}
 

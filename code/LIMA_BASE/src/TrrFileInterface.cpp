@@ -29,9 +29,10 @@ void MDFiles::Dump(Trajectory& trajectory, const fs::path& path) {
 	//rvec* xData = new rvec[trajectory.nAtoms];	
 	for (int step = 0; step < trajectory.nFrames; step++) {
 		rvec* x = (rvec*)trajectory.GetFrame(step);
-		const float t = trajectory.lambda * step;
+		const int simulationStep = trajectory.stepInterval * step;
+		const float t = trajectory.frameSpacingPs * step;
 
-		write_trr(file, trajectory.nAtoms, step, t, trajectory.lambda, box, x, nullptr, nullptr);
+		write_trr(file, trajectory.nAtoms, simulationStep, t, 0.f, box, x, nullptr, nullptr);
 	}
 
 	xdrfile_close(file);

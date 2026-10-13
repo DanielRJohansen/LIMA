@@ -550,6 +550,12 @@ void RequireTopologyMatches(const fs::path& top, const Gro& gro) {
 struct Trr {
 	int nAtoms = 0;
 	int nFrames = 0;
+	int firstStep = 0;
+	int lastStep = 0;
+	float firstTime = 0;
+	float lastTime = 0;
+	std::vector<int> steps;
+	std::vector<float> times;
 	std::vector<Vec3> lastFrame;
 };
 
@@ -566,8 +572,17 @@ Trr ReadTrr(const fs::path& path) {
 	matrix box;
 	int step = 0;
 	float time = 0, lambda = 0;
-	while (read_trr(file, trr.nAtoms, &step, &time, &lambda, box, reinterpret_cast<rvec*>(x.data()), nullptr, nullptr) == exdrOK)
+	while (read_trr(file, trr.nAtoms, &step, &time, &lambda, box, reinterpret_cast<rvec*>(x.data()), nullptr, nullptr) == exdrOK) {
+		if (trr.nFrames == 0) {
+			trr.firstStep = step;
+			trr.firstTime = time;
+		}
+		trr.lastStep = step;
+		trr.lastTime = time;
+		trr.steps.push_back(step);
+		trr.times.push_back(time);
 		trr.nFrames++;
+	}
 	xdrfile_close(file);
 
 	for (size_t i = 0; i < x.size(); i += 3)
@@ -849,6 +864,26 @@ TestRoutine TestMdrun(fs::path workDir) {
 	const Gro in = ReadGro(workDir / "metsol.gro");
 	const Gro out = ReadGro(workDir / "out.gro");
 	RequireSameAtoms(in, out, "out.gro");
+	// md_params.txt runs 20000 steps and logs every 200th
+	constexpr int maxFrames = 20000 / 200 + 1;
+	const Trr trr = ReadTrr(workDir / "traj.trr");
+	ASSERT(trr.nAtoms == static_cast<int>(in.atoms.size()), Lima::Format("The trajectory has {} atoms, the system has {}", trr.nAtoms, in.atoms.size()));
+	ASSERT(trr.nFrames >= 2 && trr.nFrames <= maxFrames,
+		Lima::Format("The trajectory has {} frames, expected at most {} with the requested logging interval", trr.nFrames, maxFrames));
+	ASSERT(trr.firstStep == 0 && trr.firstTime == 0.f, "The first trajectory frame must be at step 0 and time 0 ps");
+	constexpr float frameSpacingPs = 0.4f; // 200 steps * 2 fs
+	ASSERT(trr.lastStep == (trr.nFrames - 1) * 200,
+		Lima::Format("The last trajectory frame is at step {}, expected {}", trr.lastStep, (trr.nFrames - 1) * 200));
+	ASSERT(std::abs(trr.lastTime - (trr.nFrames - 1) * frameSpacingPs) < 1e-5f,
+		Lima::Format("The last trajectory frame is at {:.6f} ps, expected {:.6f} ps",
+			trr.lastTime, (trr.nFrames - 1) * frameSpacingPs));
+	for (int frame = 0; frame < trr.nFrames; frame++) {
+		ASSERT(trr.steps[frame] == frame * 200,
+			Lima::Format("Trajectory frame {} reports step {}, expected {}", frame, trr.steps[frame], frame * 200));
+		ASSERT(std::abs(trr.times[frame] - frame * frameSpacingPs) < 1e-5f,
+			Lima::Format("Trajectory frame {} reports time {:.6f} ps, expected {:.6f} ps",
+				frame, trr.times[frame], frame * frameSpacingPs));
+	}
 	RequireFinite(out, "out.gro");
 	for (size_t i = 0; i < out.atoms.size(); i++) {
 		const Vec3 p = out.atoms[i].position;
@@ -858,12 +893,6 @@ TestRoutine TestMdrun(fs::path workDir) {
 	const double moved = MaxDisplacement(in, out);
 	ASSERT(moved > 0.01, "No atom moved during the simulation");
 
-	// md_params.txt runs 20000 steps and logs every 200th
-	constexpr int maxFrames = 20000 / 200 + 1;
-	const Trr trr = ReadTrr(workDir / "traj.trr");
-	ASSERT(trr.nAtoms == static_cast<int>(in.atoms.size()), Lima::Format("The trajectory has {} atoms, the system has {}", trr.nAtoms, in.atoms.size()));
-	ASSERT(trr.nFrames >= 2 && trr.nFrames <= maxFrames,
-		Lima::Format("The trajectory has {} frames, expected at most {} with the requested logging interval", trr.nFrames, maxFrames));
 	// The last logged frame is at most one logging interval (0.4 ps) before the final coordinates
 	double meanDistanceToFinal = 0;
 	for (size_t i = 0; i < out.atoms.size(); i++) {

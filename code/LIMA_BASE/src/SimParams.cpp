@@ -170,6 +170,7 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
 
     if (const auto found = mdp.find("integrator"); found != mdp.end()) {
         if (found->second == "md-vv") params.em_variant.value = false;
+        else if (found->second == "md") params.em_variant.value = false; // TODO: warn users that leap-frog runs as velocity Verlet: same trajectories, but the kinetic energy is at full rather than averaged half steps
         else if (found->second == "steep") params.em_variant.value = true;
         else throw std::runtime_error("Unsupported integrator: " + found->second);
     }

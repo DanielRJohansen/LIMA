@@ -89,6 +89,55 @@ namespace TestMDStability {
 			maxError, vcConstrained, vcFlexible), envmode == Full };
 	}
 
+	// constraints = h-bonds on T4 lysozyme in water: the constrained distances hold, and the energy is conserved, compared with the
+	// same run with flexible bonds
+	TestRoutine TestConstraints(Environment& environment, EnvMode envmode) {
+		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
+		std::array<SimulationHandle, 2> emHandles;
+		for (int constrained = 0; constrained < 2; constrained++) {
+			SimulationJob emJob = MakeEnergyMinJob(workDir, envmode);
+			// The box is built by the minimization, so the constraints must be set there too
+			emJob.simParams->constraints = constrained ? ConstraintsSelect::HBonds : ConstraintsSelect::None;
+			emHandles[constrained] = environment.Submit(std::move(emJob));
+		}
+		std::array<SimulationHandle, 2> mdHandles;
+		for (int constrained = 0; constrained < 2; constrained++) {
+			SimulationJob mdJob;
+			mdJob.workDir = workDir;
+			mdJob.simParams.emplace(workDir / "sim_params.txt");
+			mdJob.simParams->constraints = constrained ? ConstraintsSelect::HBonds : ConstraintsSelect::None;
+			mdJob.initialSimulation = std::move((co_await std::move(emHandles[constrained])).simulation);
+			mdJob.mode = envmode;
+			mdJob.postprocess = SimAnalysis::AnalyzeEnergy;
+			mdHandles[constrained] = environment.Submit(std::move(mdJob));
+		}
+		const auto flexible = co_await std::move(mdHandles[0]);
+		const auto constrained = co_await std::move(mdHandles[1]);
+		if (!flexible.analysis || !constrained.analysis)
+			co_return LimaUnittestResult{ false, "Environment returned no analysis", envmode == Full };
+
+		const Box& box = *constrained.simulation->box;
+		if (box.pclusterConstraints.empty())
+			co_return LimaUnittestResult{ false, "The box has no constraints", envmode == Full };
+		const Float3 boxSize = box.boxparams.BoxSizeFloat();
+		float maxError = 0.f;
+		int64_t nConstraints = 0;
+		for (size_t pc = 0; pc < box.pclusterConstraints.size(); pc++) {
+			const PclusterConstraints& constraints = box.pclusterConstraints[pc];
+			for (int c = 0; c < constraints.nConstraints; c++) {
+				Float3 r = box.persistentClusters[pc].pqd[constraints.particles[c] & 3].position - box.persistentClusters[pc].pqd[constraints.particles[c] >> 2].position;
+				r = r - boxSize * Float3{ std::round(r.x / boxSize.x), std::round(r.y / boxSize.y), std::round(r.z / boxSize.z) };
+				maxError = std::max(maxError, std::abs(r.len() - constraints.distance[c]) / constraints.distance[c]);
+				nConstraints++;
+			}
+		}
+		const float vcFlexible = flexible.analysis->variance_coefficient;
+		const float vcConstrained = constrained.analysis->variance_coefficient;
+		const bool success = maxError < 1e-4f && std::isfinite(vcConstrained) && vcConstrained < 2.f * vcFlexible;
+		co_return LimaUnittestResult{ success, Lima::Format("{} constraints, max error {:.1e}, VC {:.3e} (flexible {:.3e})",
+			nConstraints, maxError, vcConstrained, vcFlexible), envmode == Full };
+	}
+
 	TestRoutine TestDeterministic(Environment& environment, EnvMode envmode) {
 		const fs::path workDir = AutomatedTestsDir() / "T4Lysozyme";
 		constexpr int nRuns = 2;

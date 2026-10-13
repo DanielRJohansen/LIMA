@@ -8,6 +8,7 @@
 #include "MembraneGeometry.h"
 
 #include <algorithm>
+#include <functional>
 
 
 struct AtomtypeSelect {

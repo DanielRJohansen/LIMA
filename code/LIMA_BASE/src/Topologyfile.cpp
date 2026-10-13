@@ -732,8 +732,21 @@ private:
 
 	void ProcessLine(SectionState& state, const Instance& instance, std::string_view line) {
 		const fs::path& path = files[instance.file]->path;
+		TopologySection section = state.section;
+		if (section == dihedraltypes || section == impropertypes) {
+			std::istringstream iss{ std::string{ line } };
+			std::string atomtype;
+			int funct = 0;
+			for (int i = 0; i < 4; i++)
+				iss >> atomtype;
+			iss >> funct;
+			if (funct == 4)
+				section = impropertypes;
+			else if (funct == 9)
+				section = dihedraltypes;
+		}
 
-		switch (state.section) {
+		switch (section) {
 		case TopologySection::moleculetype: {
 			std::string_view sv = line;
 			SkipLeadingWhitespace(sv);
@@ -781,7 +794,7 @@ private:
 		default:	// Forcefield sections
 			if (!topology.forcefieldInclude)
 				throw std::runtime_error(Lima::Format("Forcefield section encountered before [ defaults ] in file: {}", path.string()));
-			topology.forcefieldInclude->AddEntry(state.section, std::string{ line });
+			topology.forcefieldInclude->AddEntry(section, std::string{ line });
 			break;
 		}
 	}

@@ -16,6 +16,12 @@
 ## Compare LIMA with GROMACS on every system in the Salad Benchmark .zip, for outcome and for speed.
 - Outcome: trajectories diverge within ps (chaotic dynamics, different rounding), so compare ensemble statistics, not frames: backbone RMSD vs the start structure and per-residue RMSF, radius of gyration, average potential energy and temperature, density for solvated boxes, water O-O RDF, H-bond counts and secondary structure (DSSP) over time. Run each system with a few seeds in both engines, so a difference can be told apart from run-to-run spread. gmx rms/rmsf/gyrate/rdf/energy on both trajectories (LIMA writes .trr) keeps the analysis identical.
 - Performance: Salad lists GROMACS ns/day, but measure GROMACS on this PC too (in WSL, GPU build), with matching settings (dt, cutoff, PME, nstlist, constraints, output frequency) so the comparison is like for like. LIMA via lima mdrun, which prints the same ns/day table.
+- Current blockers observed in single 100 ps Villin/RNase runs (2026-10-13):
+  - **TRR time metadata:** LIMA writes every trajectory frame at `0.000 ps`. GROMACS reads the coordinates, but time-series analyses need the simulation step/time written to each frame.
+  - **Box preservation:** LIMA replaces the Salad non-integer/non-cubic boxes with cubic 5 nm (Villin) and 7 nm (RNase) boxes. Preserve the original box vectors; until then density and solvent RDF comparisons are invalid.
+  - **Matched dynamics/thermostat:** LIMA must support or explicitly document a match for Salad's leap-frog `md` integrator and v-rescale thermostat. The provisional LIMA runs used no thermostat.
+  - **Thermodynamic series:** emit potential energy and temperature versus step/time in a machine-readable form so they can be compared with GROMACS energy output.
+  - Once timestamps and boxes are correct, run the common RMSD/RMSF/Rg/RDF/H-bond/DSSP analyses on one LIMA and one GROMACS trajectory per system before adding replicate ensembles.
 
 # Core MD features GROMACS has and LIMA lacks (status checked 2026-10-13)
 - **`[ constraints ]` sections:** not read yet. constraints = h-bonds and `[ settles ]` are handled (see Constraints below), but topologies that list their constraints explicitly lose them.

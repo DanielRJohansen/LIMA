@@ -188,6 +188,8 @@ namespace EngineBatch {
 				throw std::invalid_argument("Timestep must be finite and positive");
 			if (!FinitePositive(params.cutoff_nm))
 				throw std::invalid_argument("Cutoff must be finite and positive");
+			if (!(FinitePositive(params.verlet_buffer_tolerance) || params.verlet_buffer_tolerance == -1.f) || !std::isfinite(params.rlist.value))
+				throw std::invalid_argument("verlet_buffer_tolerance must be positive, or -1 to use rlist");
 			if (params.n_steps.value > INT64_MAX)
 				throw std::invalid_argument("Simulation step count exceeds engine limit");
 			const auto& box = *sim->box;
@@ -211,12 +213,178 @@ namespace EngineBatch {
 		});
 	}
 
+	// The pair list buffer of an MD simulation, as GROMACS' Verlet buffer (calc_verletbuf.cpp, Pall & Hess 2013): the smallest buffer
+	// for which the pairs that move from beyond the list radius into the cutoff before the next list update cause at most
+	// verlet_buffer_tolerance energy drift. Each atom is displaced as a free particle at the reference temperature, and each atom
+	// type pair's potential is expanded to third order around the cutoff. LIMA's potentials are not shifted, so unlike GROMACS
+	// the potential at the cutoff is included too. A constrained atom moves less, as it rotates around its heaviest constraint
+	// partner, and the lists hold 4x4 blocks with any pair in range, so also pairs beyond the list radius, which GROMACS credits
+	// with surfaceFraction [nm]
+	float VerletBuffer(const Simulation& simulation) {
+		const SimParams& params = simulation.simParams;
+		const float cutoff = params.cutoff_nm;
+		if (params.verlet_buffer_tolerance < 0.f)
+			return params.rlist == 0.f ? 0.05f : std::max(params.rlist.value, cutoff) - cutoff;
+
+		const Box& box = *simulation.box;
+		// partnerMass and constraintLength are of the heaviest constraint partner, 0 when unconstrained
+		struct Atomtype { float mass, partnerMass, constraintLength, sigmaHalf, epsilonSqrt, charge; int64_t count; };
+		std::vector<Atomtype> types;
+		std::unordered_map<uint64_t, std::vector<int>> typesByKey;	// Hash of the parameters to candidate types
+		double kineticEnergy = 0.0;	// [J/mol]
+		int64_t nAtoms = 0;
+		for (size_t pc = 0; pc < box.persistentClusters.size(); pc++) {
+			const auto& meta = box.persistentClustersMetadata[pc];
+			for (int p = 0; p < meta.nParticles; p++) {
+				const NBParams& nb = box.persistentClusters[pc].pqd[p].params;
+				Atomtype type{ meta.mass[p], 0.f, 0.f, nb.sigmaHalf, nb.epsilonSqrt, nb.charge, 1 };
+				// MD constrains the box's constraints whatever the batch is, see Pack
+				if (!box.pclusterConstraints.empty()) {
+					const PclusterConstraints& constraints = box.pclusterConstraints[pc];
+					for (int c = 0; c < constraints.nConstraints; c++) {
+						const int a = constraints.particles[c] & 3, b = constraints.particles[c] >> 2;
+						const int partner = a == p ? b : b == p ? a : -1;
+						if (partner >= 0 && meta.mass[partner] > type.partnerMass) {
+							type.partnerMass = meta.mass[partner];
+							type.constraintLength = constraints.distance[c];
+						}
+					}
+				}
+				const uint64_t key = std::hash<float>{}(type.mass) ^ std::hash<float>{}(type.partnerMass) * 3 ^ std::hash<float>{}(type.sigmaHalf) * 7
+					^ std::hash<float>{}(type.epsilonSqrt) * 13 ^ std::hash<float>{}(type.charge) * 17;
+				auto& candidates = typesByKey[key];
+				const auto same = std::ranges::find_if(candidates, [&](int t) { return types[t].mass == type.mass && types[t].partnerMass == type.partnerMass
+					&& types[t].constraintLength == type.constraintLength && types[t].sigmaHalf == type.sigmaHalf
+					&& types[t].epsilonSqrt == type.epsilonSqrt && types[t].charge == type.charge; });
+				if (same == candidates.end()) {
+					candidates.push_back(static_cast<int>(types.size()));
+					types.push_back(type);
+				}
+				else
+					types[*same].count++;
+				const Float3 velocity = box.pclusterInterimStates[pc].vels_prev[p];	// [nm/ns] = [m/s]
+				kineticEnergy += 0.5 * meta.mass[p] * velocity.lenSquared();
+				nAtoms++;
+			}
+		}
+
+		// As GROMACS: the reference temperature, or without a thermostat the starting temperature, and without one either a 10% buffer
+		constexpr double gasConstant = BOLTZMANNCONSTANT * AVOGADROSNUMBER;	// [J/mol/K]
+		const double temperature = params.apply_thermostat ? params.ref_t.value
+			: params.initial_temperature > 0.f ? params.initial_temperature.value
+			: kineticEnergy * 2.0 / (3.0 * nAtoms * gasConstant);
+		if (temperature <= 0.0)
+			return 0.1f * cutoff;
+
+		// Over the list's lifetime, the steps after the one it was built for [ns]
+		const double elapsed = (params.stepsPerNlistupdate - 1) * double(params.dt);
+		if (elapsed <= 0.0)
+			return 0.f;
+		const double driftTarget = nAtoms * params.verlet_buffer_tolerance * 1e6 * params.stepsPerNlistupdate * double(params.dt);	// [J/mol]
+		const Float3 boxSize = box.boxparams.BoxSizeFloat();
+		const double volume = double(boxSize.x) * boxSize.y * boxSize.z;	// [nm^3]
+
+		// The variance of an atom's displacement along one axis over the list's lifetime [nm^2]. A constrained atom moves with the
+		// center of mass of it and its partner, and rotates around it on 2 axes, at most uniformly over the sphere of its arm.
+		// GROMACS fits that saturation (constrained_atom_sigma2), here it is approximated by 1 - exp(-angle variance)
+		const double kTt2 = gasConstant * temperature * elapsed * elapsed;	// [J/mol ns^2] = [kg/mol nm^2]
+		const auto displacementVariance = [&](const Atomtype& type) {
+			if (type.partnerMass == 0.f)
+				return kTt2 / type.mass;
+			const double totalMass = double(type.mass) + type.partnerMass;
+			const double massFraction = type.partnerMass / totalMass;
+			const double arm = type.constraintLength * massFraction;
+			const double rotation = kTt2 * massFraction / type.mass;	// Per rotational degree of freedom, as arc length
+			return kTt2 / totalMass + 2.0 / 3.0 * arm * arm * (1.0 - std::exp(-rotation / (arm * arm)));
+		};
+		const double kappa = PhysicsUtils::CalcEwaldkappa(cutoff);
+
+		// Per atom type pair: the variance of the displacement along one axis [nm^2], and the potential and its first 3 derivatives at the cutoff
+		struct PairTerms { double pairs, variance, v0, d1, d2, d3; };
+		std::vector<PairTerms> pairTerms;
+		for (size_t i = 0; i < types.size(); i++) {
+			for (size_t j = i; j < types.size(); j++) {
+				const Atomtype& a = types[i];
+				const Atomtype& b = types[j];
+				const double sigma = double(a.sigmaHalf) + b.sigmaHalf;
+				const double epsilon = double(a.epsilonSqrt) * b.epsilonSqrt;	// [J/mol]
+				const double chargeTerm = double(PhysicsUtils::modifiedCoulombConstant) * a.charge * b.charge;	// [J/mol nm]
+				const auto potential = [&](double r) {	// [J/mol]
+					const double s6 = std::pow(sigma / r, 6);
+					return 4.0 * epsilon * s6 * (s6 - 1.0) + (params.enable_electrostatics ? chargeTerm * std::erfc(kappa * r) / r : 0.0);
+				};
+				// Central differences, the potential is smooth around the cutoff
+				constexpr double h = 1e-3;	// [nm]
+				const double vm2 = potential(cutoff - 2 * h), vm1 = potential(cutoff - h), v0 = potential(cutoff), vp1 = potential(cutoff + h), vp2 = potential(cutoff + 2 * h);
+				const double pairs = i == j ? 0.5 * double(a.count) * (a.count - 1) : double(a.count) * b.count;
+				if (pairs == 0.0)
+					continue;
+				pairTerms.push_back({ pairs, displacementVariance(a) + displacementVariance(b), v0,
+					(vp1 - vm1) / (2 * h), (vp1 - 2 * v0 + vm1) / (h * h), (vp2 - 2 * vp1 + 2 * vm1 - vm2) / (2 * h * h * h) });
+			}
+		}
+
+		// GROMACS' surface_frac for 4 atom clusters, assumed a regular tetrahedron with the average particle distance as edge: the
+		// share of an atom's pairs at the list radius that are not in the list, as another pair of their blocks is within it
+		const double particleDistance = std::cbrt(volume / nAtoms);	// [nm]
+		const auto surfaceFraction = [&](double listRadius) {
+			if (listRadius < 0.5 * particleDistance)
+				return 1.0;
+			const double d = particleDistance / listRadius;
+			const double d2 = d * d;
+			const double areaRelative = 1.0 + 1.0 / PI * (6.0 * std::acos(1.0 / std::sqrt(3.0)) * d
+				+ std::sqrt(3.0) * d2 * (1.0 + 5.0 / 18.0 * d2 + 7.0 / 45.0 * d2 * d2 + 83.0 / 756.0 * d2 * d2 * d2));
+			return areaRelative / 4.0;
+		};
+
+		// The energy of the pairs within the cutoff that the list misses, as GROMACS' energyDriftAtomPair, plus the 0th order term
+		const auto drift = [&](double buffer) {
+			const double blockFactor = surfaceFraction(cutoff + buffer) * surfaceFraction(cutoff + buffer);
+			double total = 0.0;
+			for (const PairTerms& t : pairTerms) {
+				const double s = std::sqrt(t.variance), s2 = t.variance, b2 = buffer * buffer;
+				const double cExp = std::exp(-b2 / (2 * s2)) / std::sqrt(2 * PI);
+				const double cErfc = 0.5 * std::erfc(buffer / (std::sqrt(2.0) * s));
+				const double pot0 = t.v0 * (s * cExp - buffer * cErfc);
+				const double pot1 = -t.d1 / 2 * ((b2 + s2) * cErfc - buffer * s * cExp);
+				const double pot2 = t.d2 / 6 * (s * (b2 + 2 * s2) * cExp - buffer * (b2 + 3 * s2) * cErfc);
+				const double pot3 = -t.d3 / 24 * ((b2 * b2 + 6 * b2 * s2 + 3 * s2 * s2) * cErfc - buffer * s * (b2 + 5 * s2) * cExp);
+				// The pair density at the surface. GROMACS uses (rlist + s)^2 as the effective r^2
+				const double surface = 4 * PI * (cutoff + buffer + s) * (cutoff + buffer + s) / volume;
+				total += t.pairs * surface * blockFactor * std::abs(pot0 + pot1 + pot2 + pot3);
+			}
+			return total;
+		};
+
+		// The drift falls with the buffer. Bisect to 1e-4 nm, then round up to GROMACS' 1e-3 nm resolution
+		double lo = 0.0, hi = 0.1;
+		while (drift(hi) > driftTarget) {
+			hi *= 2;
+			if (hi > cutoff)
+				throw std::invalid_argument(Lima::Format("The pair list buffer for verlet_buffer_tolerance={} would exceed the cutoff. "
+					"Lower nstlist or dt, or raise the tolerance", params.verlet_buffer_tolerance.value));
+		}
+		while (hi - lo > 1e-4) {
+			const double mid = 0.5 * (lo + hi);
+			(drift(mid) > driftTarget ? lo : hi) = mid;
+		}
+		return static_cast<float>(std::ceil(hi * 1000.0) / 1000.0);
+	}
+
 	void Pack(EngineBatchData& batch, const std::vector<Simulation*>& simulations, const std::vector<bool>* active) {
 		if (!active) Validate(simulations);
 		else if (active->size() != simulations.size()) throw std::invalid_argument("Invalid active batch layout");
 		batch.params = simulations.front()->simParams;
 		batch.boxSize = simulations.front()->box->boxparams.boxSize;
 		batch.ewaldKappa = PhysicsUtils::CalcEwaldkappa(batch.params.cutoff_nm);
+		// The largest of the simulations' buffers, as the batch shares one list radius. Only set at the start, so the lists of a
+		// simulation do not change when other members retire
+		if (!active) {
+			batch.listBuffer = 0.f;
+			for (const Simulation* simulation : simulations)
+				if (!simulation->simParams.em_variant)
+					batch.listBuffer = std::max(batch.listBuffer, VerletBuffer(*simulation));
+		}
 		std::vector<PersistentCluster> pclusters;
 		std::vector<PersistentClusterMeta> metadata;
 		std::vector<PersistentclusterInterimState> states;

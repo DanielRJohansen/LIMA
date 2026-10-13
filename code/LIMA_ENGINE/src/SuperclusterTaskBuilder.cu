@@ -19,10 +19,9 @@ namespace {
 	constexpr int maxNeighborsPerSc = TaskBuilderControlContents::maxTasksPerSc;
 	constexpr int neighborSearchWarpsPerBlock = 4;
 
-	// The lists also include 4x4 blocks that are within this distance beyond the cutoff, so pairs moving within the cutoff
-	// before the next task build are still computed. 0.05 nm misses as few pairs as the supercluster granular lists of
-	// earlier versions did [nm]
-	constexpr float listBuffer = 0.05f;
+	// EM's lists include 4x4 blocks that are within this distance beyond the cutoff. MD's buffer is set from the verlet buffer
+	// tolerance, see EngineBatchData::listBuffer [nm]
+	constexpr float emListBuffer = 0.05f;
 }
 
 __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const SuperClusterMeta& sc1, const PclustersBondedToPcluster* const pclustersBondedToPcluster) {
@@ -512,7 +511,7 @@ namespace {
 void Engine::MakeNbTasksMD(cudaStream_t stream) {
 	const int n = batch->nSuperclusters;
 	auto& tb = *batch->taskbuilderControl;
-	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + listBuffer, false);
+	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + batch->listBuffer, false);
 
 	tb.entryStarts.Expand(n + 1, 1.2);
 	batch->quarterEntryTasksDevice.Expand(n, 1.2);
@@ -548,7 +547,7 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 void Engine::MakeNbTasksEM(cudaStream_t stream) {
 	const int n = batch->nSuperclusters;
 	auto& tb = *batch->taskbuilderControl;
-	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + listBuffer, true);
+	FindSuperclusterNeighbors(stream, batch->params.cutoff_nm + emListBuffer, true);
 
 	int neighborOverflow = 0;
 	cudaMemcpyAsync(&neighborOverflow, tb.overflow.Get(), sizeof(int), cudaMemcpyDeviceToHost, stream);

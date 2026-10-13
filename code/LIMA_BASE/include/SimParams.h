@@ -91,6 +91,12 @@ struct SimParams {
     SimParam<float> em_force_tolerance{ "em_force_tolerance", 1000.f, SimParamSection::Main,
         "[kJ/mol/nm], only relevant if em=true" };
     SimParam<int> stepsPerNlistupdate{ "stepsPerNlistupdate", 20, SimParamSection::Main, "[steps]" };
+    SimParam<float> verlet_buffer_tolerance{ "verlet_buffer_tolerance", -1.f, SimParamSection::Main,
+        "[kJ/mol/ps] per atom. When positive, the pair list buffer is set so pairs missed between list updates cause at most this "
+        "energy drift, as GROMACS' verlet-buffer-tolerance (eg. 0.005). That needs about twice the default buffer, which is ~11% "
+        "slower without dynamic pruning. -1 uses rlist" };
+    SimParam<float> rlist{ "rlist", 0.f, SimParamSection::Main,
+        "[nm] Pair list radius with verlet_buffer_tolerance=-1, at least the cutoff. 0 is the cutoff + 0.05" };
 
     SimParam<BoundaryConditionSelect> bc_select{ "boundarycondition", PBC, SimParamSection::Physics, "PBC or NoBC" };
     SimParam<bool> enable_electrostatics{ "enable_electrostatics", true, SimParamSection::Physics };
@@ -123,14 +129,14 @@ struct SimParams {
         "Wait for user to input key 'N' before each step" };
 
     auto Params() {
-        return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
+        return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate, verlet_buffer_tolerance, rlist,
             bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, initial_temperature,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 
     auto Params() const {
-        return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
+        return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate, verlet_buffer_tolerance, rlist,
             bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, initial_temperature,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);

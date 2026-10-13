@@ -232,6 +232,7 @@ void Engine::RebuildActiveBatch() {
 	auto rebuilt = std::make_unique<EngineBatchData>();
 	EngineBatch::Pack(*rebuilt, simulations, &active);
 	rebuilt->step = batch->step;
+	rebuilt->listBuffer = batch->listBuffer;	// Pack sets it only at the start
 	for (size_t id = 0; id < simulations.size(); ++id) {
 		const auto& oldSim = batch->simulations[id];
 		auto& newSim = rebuilt->simulations[id];

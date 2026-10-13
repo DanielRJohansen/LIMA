@@ -179,6 +179,9 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         params.dt.value = ParseNumber<float>("dt", found->second) * PICO_TO_NANO;
     parseIfPresent("emtol", params.em_force_tolerance.value);
     parseIfPresent("nstlist", params.stepsPerNlistupdate.value);
+    parseIfPresent("verlet-buffer-tolerance", params.verlet_buffer_tolerance.value);
+    parseIfPresent("verlet_buffer_tolerance", params.verlet_buffer_tolerance.value);
+    parseIfPresent("rlist", params.rlist.value);
 
     if (const auto found = mdp.find("pbc"); found != mdp.end()) {
         if (found->second == "xyz") params.bc_select.value = PBC;

@@ -125,6 +125,7 @@ struct EngineBatchData {
 	int nSuperclusters = 0;
 	int nResults = 0;
 	float ewaldKappa = 0.f;
+	float listBuffer = 0.f;	// MD's pair list radius beyond the cutoff, see VerletBuffer [nm]
 
 	CudaBuffer<PersistentCluster> pClusterDevice;
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;

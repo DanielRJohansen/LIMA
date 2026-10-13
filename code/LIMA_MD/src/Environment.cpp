@@ -119,7 +119,7 @@ Trajectory SimulationResult::MakeTrajectory() const {
 	// One frame per logged step, with atoms in the order of the input coordinates
 	const int nFrames = static_cast<int>(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), loggingInterval));
 	Trajectory trajectory{ nFrames, static_cast<int>(simulation->boxImage->grofile.atoms.size()),
-		simulation->boxImage->grofile.box_size, simulation->simParams.dt * loggingInterval };
+		simulation->boxImage->grofile.box_size, simulation->simParams.dt * loggingInterval, loggingInterval };
 	for (int frame = 0; frame < nFrames; frame++) {
 		for (int clusterId = 0; clusterId < simulation->box->persistentClustersMetadata.size(); clusterId++) {
 			const auto& metadata = simulation->box->persistentClustersMetadata[clusterId];

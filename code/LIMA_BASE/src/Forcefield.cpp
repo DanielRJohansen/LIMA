@@ -119,6 +119,13 @@ public:
 		FlipBondedtypeNames<GenericBondType>(flippedBond.bonded_typenames);
 		if (flippedBond.bonded_typenames != element.bonded_typenames)
 			__insert(flippedBond);
+		if constexpr (std::is_same<GenericBondType, ImproperDihedralbondType>::value) {
+			GenericBondType reversedBond = element;
+			std::swap(reversedBond.bonded_typenames[0], reversedBond.bonded_typenames[3]);
+			std::swap(reversedBond.bonded_typenames[1], reversedBond.bonded_typenames[2]);
+			if (reversedBond.bonded_typenames != element.bonded_typenames)
+				__insert(reversedBond);
+		}
 	}
 
 private:
@@ -213,10 +220,6 @@ private:
 	}
 
 	std::vector<int> findBestMatchesInForcefield_Index(const std::array<std::string, GenericBondType::nAtoms>& query) {
-		if (parameters.size() == 0) {
-			throw std::runtime_error("No bonds in forcefield!");
-		}
-
 		//int bestBondIndex = 0;
 		std::vector<int> bestBondIndices{};	// Can be multiple bonds, if they are equally good matches
 		int lowestWildcardDegree = INT_MAX;
@@ -570,7 +573,10 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::GetBondPara
 	if (!parameters.empty())
 		return parameters;
 
-	throw std::runtime_error("Failed to find bond parameters");
+	std::string names;
+	for (const auto& name : query)
+		names += names.empty() ? name : " " + name;
+	throw std::runtime_error(Lima::Format("Failed to find bond parameters for {}", names));
 }
 template const std::vector<SingleBond::Parameters>& LIMAForcefield::GetBondParameters<SingleBond>(const std::array<std::string, SingleBond::nAtoms>&);
 template const std::vector<PairBond::Parameters>& LIMAForcefield::GetBondParameters<PairBond>(const std::array<std::string, PairBond::nAtoms>&);

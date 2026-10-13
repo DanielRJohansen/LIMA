@@ -11,6 +11,7 @@
 #include "Engine.cuh"
 #include "BatchLayout.cuh"
 #include "EnergyMinimizationTypes.h"
+#include "VRescale.h"
 #include "CompactBondTable.h"
 
 class Thermostat;
@@ -105,6 +106,7 @@ struct EngineSimulationData {
 	bool finalized = false;
 	std::vector<float> finalForcesMagnitudeSquared;
 	EM::Preconditioner emPreconditioner; // Empty unless the engine uses energy minimization
+	VRescale thermostat;	// Seeded at the start, its state carried over when the batch is repacked
 };
 
 struct EngineBatchData {
@@ -125,6 +127,7 @@ struct EngineBatchData {
 	int nSuperclusters = 0;
 	int nResults = 0;
 	float ewaldKappa = 0.f;
+	float listBuffer = 0.f;	// MD's pair list radius beyond the cutoff, see VerletBuffer [nm]
 
 	CudaBuffer<PersistentCluster> pClusterDevice;
 	CudaBuffer<PersistentClusterMeta> pClusterMetaDevice;

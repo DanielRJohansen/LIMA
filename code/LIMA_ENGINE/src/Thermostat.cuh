@@ -21,18 +21,6 @@ namespace _Thermostat {
 	}
 
 
-	float ComputeThermostatScalar(float temperature, const SimParams& simparams) {
-		// Avoid division by zero
-		const float temp_safe = (temperature == 0.f) ? 1.0f : temperature;
-
-		// Compute the temperature scalar
-		float temp_scalar = simparams.ref_t / temp_safe;
-
-		// Clamp the temperature scalar to avoid rapid temperature changes
-		const float max_scalar = 0.001f / static_cast<float>(simparams.steps_per_temperature_measurement);  // Change velocity by 0.1% over NSTEPS
-		return std::clamp(temp_scalar, 1.f - max_scalar, 1.f + max_scalar);
-	}
-
 } // namespace Thermostat
 
 class Thermostat {
@@ -55,11 +43,11 @@ public:
 	}
 
 	// Keep each simulation's reduction order and degrees of freedom independent.
-	std::pair<float, float> Temperature(const BoxParams& boxparams, const SimParams& simparams, BatchRange pclusters, cudaStream_t stream) {
+	// [K]. The thermostat's factor is computed from it by VRescale
+	float Temperature(const BoxParams& boxparams, BatchRange pclusters, cudaStream_t stream) {
 		const float* begin = intermediate + pclusters.offset * PersistentCluster::maxParticles;
 		const double totalKineticEnergy = CubWrappers::Sum(begin, begin + pclusters.count * PersistentCluster::maxParticles, stream);
-		const float temperature = PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
-		return {temperature, _Thermostat::ComputeThermostatScalar(temperature, simparams)};
+		return PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
 	}
 
 	~Thermostat() {

@@ -232,6 +232,7 @@ void Engine::RebuildActiveBatch() {
 	auto rebuilt = std::make_unique<EngineBatchData>();
 	EngineBatch::Pack(*rebuilt, simulations, &active);
 	rebuilt->step = batch->step;
+	rebuilt->listBuffer = batch->listBuffer;	// Pack sets it only at the start
 	for (size_t id = 0; id < simulations.size(); ++id) {
 		const auto& oldSim = batch->simulations[id];
 		auto& newSim = rebuilt->simulations[id];
@@ -241,6 +242,7 @@ void Engine::RebuildActiveBatch() {
 		newSim.finalized = oldSim.finalized;
 		newSim.finalForcesMagnitudeSquared = oldSim.finalForcesMagnitudeSquared;
 		newSim.device.thermostatScalar = oldSim.device.thermostatScalar;
+		newSim.thermostat = oldSim.thermostat;
 		if (!active[id]) continue;
 		newSim.emPreconditioner = std::move(batch->simulations[id].emPreconditioner);
 		cudaMemcpy(rebuilt->emParticles.Get() + newSim.device.pclusters.offset * PersistentCluster::maxParticles,
@@ -360,11 +362,16 @@ bool Engine::hostMaster() {
 		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval))
 			OffloadLoggingData(sim);
 		if (measureTemperature) {
-			auto [temperature, scalar] = batch->thermostat->Temperature(
-				sim.simulation->box->boxparams, params, sim.device.pclusters, cudaStreams[0]);
+			const auto& boxparams = sim.simulation->box->boxparams;
+			const float temperature = batch->thermostat->Temperature(boxparams, sim.device.pclusters, cudaStreams[0]);
 			sim.simulation->temperature_buffer.push_back(temperature);
 			sim.runstatus.current_temperature = temperature;
 			if (params.apply_thermostat) {
+				// The integration applies the factor to the velocities every step, so its nsttcouple-th root, until the next coupling
+				const int64_t interval = params.steps_per_temperature_measurement;
+				const double tauInCouplings = params.tau_t * PICO_TO_NANO / (interval * double(params.dt));
+				const double factor = sim.thermostat.Factor(temperature, params.ref_t, boxparams.degreesOfFreedom, tauInCouplings);
+				const float scalar = static_cast<float>(std::pow(factor, 1.0 / interval));
 				thermostatScalarsChanged |= sim.device.thermostatScalar != scalar;
 				sim.device.thermostatScalar = scalar;
 			}
@@ -738,7 +745,7 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterConstraintsDevice.Get());
+					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterTransfermodule->overflow, batch->step);
 			}
 			else {
 				// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
@@ -746,7 +753,7 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log);
+					liveEdit, log, batch->pclusterTransfermodule->overflow, batch->step);
 			}
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster

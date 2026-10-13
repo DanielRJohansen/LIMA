@@ -576,10 +576,8 @@ __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, con
 
 namespace Constraints {
 	constexpr int maxIterations = 100;
-	// Relative error of the squared constraint length. Tight, as the energy drift of rigid water depends on it
+	// SHAKE's relative error of the squared constraint length
 	constexpr float tolerance = 1e-6f;
-	// Relative error of the velocity along a constraint. Looser, as its float rounding floor in coupled constraints is close to 1e-6
-	constexpr float velocityTolerance = 1e-5f;
 
 	// Set when a solve fails, so the warning is printed once per process rather than once per group and step
 	static __device__ int failureReported = 0;
@@ -593,32 +591,144 @@ namespace Constraints {
 		int slots[PersistentCluster::maxParticles];
 	};
 
-	// Removes the velocity components along the constraints (RATTLE), at the constrained positions. Sequential, so deterministic.
-	// A single constraint is exact after one pass. Coupled ones iterate until the velocity along each constraint is small
-	// relative to the speeds of its particles, as an absolute measure would stall at the rounding of fast particles
+	// Removes the velocity components along the constraints (RATTLE), at the constrained positions. The corrections are linear in
+	// the constraints' multipliers, so with at most 3 constraints they are solved directly, as a 3x3 system, rather than iterated
 	__device__ inline void ConstrainVelocities(const PclusterConstraints& constraints, const Group& group, const Float3* const positions,
 		Float3* const velocities, const float* const invMasses) {
-		for (int iteration = 0; iteration < maxIterations; iteration++) {
-			float maxError = 0.f;
-			for (int c = 0; c < constraints.nConstraints; c++) {
-				const int a = group.slots[constraints.particles[c] & 3], b = group.slots[constraints.particles[c] >> 2];
-				const Float3 r = positions[a] - positions[b];
-				const Float3 dv = velocities[a] - velocities[b];
-				const float rr = r.dot(r);
-				const float rv = r.dot(dv);
-				const float invMassSum = invMasses[a] + invMasses[b];
-				if (invMassSum == 0.f)	// Both particles fixed by live edits
-					continue;
-				const float k = rv / (rr * invMassSum);
-				velocities[a] -= r * (k * invMasses[a]);
-				velocities[b] += r * (k * invMasses[b]);
-				// Relative to the particles' speeds: the relative velocity itself can be cancelled to rounding noise
-				maxError = fmaxf(maxError, fabsf(rv) / (sqrtf(rr) * (velocities[a].len() + velocities[b].len()) + 1e-30f));
-			}
-			if (constraints.nConstraints == 1 || maxError < velocityTolerance)
-				return;
+		constexpr int maxC = PclusterConstraints::maxConstraints;
+		static_assert(maxC == 3);
+		int a[maxC], b[maxC];
+		Float3 r[maxC];
+		for (int c = 0; c < constraints.nConstraints; c++) {
+			a[c] = group.slots[constraints.particles[c] & 3];
+			b[c] = group.slots[constraints.particles[c] >> 2];
+			r[c] = positions[a[c]] - positions[b[c]];
 		}
-		ReportFailure("RATTLE", maxIterations);
+		// Row c: the change of the velocity along constraint c per unit multiplier of constraint k, which moves a[k] by +r[k]/m
+		// and b[k] by -r[k]/m. Unused rows, and those of constraints between two particles fixed by live edits, are identity
+		float m[maxC][maxC] = { { 1.f, 0.f, 0.f }, { 0.f, 1.f, 0.f }, { 0.f, 0.f, 1.f } };
+		float rhs[maxC] = {};
+		for (int c = 0; c < constraints.nConstraints; c++) {
+			if (invMasses[a[c]] + invMasses[b[c]] == 0.f)
+				continue;
+			for (int k = 0; k < constraints.nConstraints; k++) {
+				const float side = (a[c] == a[k] ? invMasses[a[c]] : a[c] == b[k] ? -invMasses[a[c]] : 0.f)
+					- (b[c] == a[k] ? invMasses[b[c]] : b[c] == b[k] ? -invMasses[b[c]] : 0.f);
+				m[c][k] = side * r[c].dot(r[k]);
+			}
+			rhs[c] = -r[c].dot(velocities[a[c]] - velocities[b[c]]);
+		}
+		// Cramer's rule
+		const float det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+			+ m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+		if (!(fabsf(det) > 0.f)) {
+			ReportFailure("RATTLE", 0);
+			return;
+		}
+		float multipliers[maxC];
+		for (int k = 0; k < maxC; k++) {
+			float mk[maxC][maxC];
+			for (int i = 0; i < maxC; i++)
+				for (int j = 0; j < maxC; j++)
+					mk[i][j] = j == k ? rhs[i] : m[i][j];
+			multipliers[k] = (mk[0][0] * (mk[1][1] * mk[2][2] - mk[1][2] * mk[2][1]) - mk[0][1] * (mk[1][0] * mk[2][2] - mk[1][2] * mk[2][0])
+				+ mk[0][2] * (mk[1][0] * mk[2][1] - mk[1][1] * mk[2][0])) / det;
+		}
+		for (int k = 0; k < constraints.nConstraints; k++) {
+			velocities[a[k]] += r[k] * (multipliers[k] * invMasses[a[k]]);
+			velocities[b[k]] -= r[k] * (multipliers[k] * invMasses[b[k]]);
+		}
+	}
+
+	// A water made rigid by its 3 constraints: an oxygen and two hydrogens of equal mass, at equal distance from it. Slots in the group's
+	// supercluster
+	struct Water {
+		int o, h1, h2;
+		float distanceOH, distanceHH;	// [nm]
+	};
+	// Whether the constraints are such a water, with no particle fixed by live edits
+	__device__ inline bool FindWater(const PclusterConstraints& constraints, const Group& group, const float* const invMasses, Water& water) {
+		if (constraints.nConstraints != 3)
+			return false;
+		for (int hh = 0; hh < 3; hh++) {
+			const int c1 = (hh + 1) % 3, c2 = (hh + 2) % 3;
+			if (constraints.distance[c1] != constraints.distance[c2])
+				continue;
+			const int h1 = constraints.particles[hh] & 3, h2 = constraints.particles[hh] >> 2;
+			const int a1 = constraints.particles[c1] & 3, b1 = constraints.particles[c1] >> 2;
+			const int a2 = constraints.particles[c2] & 3, b2 = constraints.particles[c2] >> 2;
+			const int o = (a1 == a2 || a1 == b2) ? a1 : (b1 == a2 || b1 == b2) ? b1 : -1;
+			if (o < 0 || o == h1 || o == h2 || (a1 == o ? b1 : a1) == (a2 == o ? b2 : a2))
+				continue;
+			water = { group.slots[o], group.slots[h1], group.slots[h2], constraints.distance[c1], constraints.distance[hh] };
+			return invMasses[water.o] > 0.f && invMasses[water.h1] > 0.f && invMasses[water.h1] == invMasses[water.h2];
+		}
+		return false;
+	}
+
+	// SETTLE (Miyamoto & Kollman 1992, as GROMACS' settle.cpp): moves a rigid water's steps so its positions after the step satisfy
+	// its constraints, analytically. Expects the positions before the step to satisfy them, which the previous step ensured. Works
+	// relative to the oxygen before the step, so the values stay small and precise. Returns false if the step is too large to solve
+	__device__ inline bool Settle(const Water& water, const Float3* const positions, Float3* const steps, const float* const invMasses) {
+		const float massO = 1.f / invMasses[water.o], massH = 1.f / invMasses[water.h1];
+		const float totalMass = massO + 2.f * massH;
+		// The canonical water around its center of mass: O at (0, ra, 0), the hydrogens at (-+rc, -rb, 0)
+		const float rc = 0.5f * water.distanceHH;
+		const float height = sqrtf(water.distanceOH * water.distanceOH - rc * rc);
+		const float ra = 2.f * massH * height / totalMass;
+		const float rb = height - ra;
+
+		const Float3 b0 = positions[water.h1] - positions[water.o];
+		const Float3 c0 = positions[water.h2] - positions[water.o];
+		// The unconstrained positions after the step, around their center of mass
+		const Float3 aNew = steps[water.o], bNew = b0 + steps[water.h1], cNew = c0 + steps[water.h2];
+		const Float3 com = (aNew * massO + (bNew + cNew) * massH) * (1.f / totalMass);
+		const Float3 a1 = aNew - com, b1 = bNew - com, c1 = cNew - com;
+
+		// A frame with z normal to the water's plane before the step, and x perpendicular to that and the new oxygen
+		Float3 ez = b0.cross(c0);
+		Float3 ex = a1.cross(ez);
+		Float3 ey = ez.cross(ex);
+		ex = ex * rsqrtf(ex.lenSquared());
+		ey = ey * rsqrtf(ey.lenSquared());
+		ez = ez * rsqrtf(ez.lenSquared());
+		const float xb0 = ex.dot(b0), yb0 = ey.dot(b0), xc0 = ex.dot(c0), yc0 = ey.dot(c0);
+		const float za1 = ez.dot(a1);
+		const float xb1 = ex.dot(b1), yb1 = ey.dot(b1), zb1 = ez.dot(b1);
+		const float xc1 = ex.dot(c1), yc1 = ey.dot(c1), zc1 = ez.dot(c1);
+
+		// The tilts out of the plane: phi of the oxygen, psi of the H-H axis
+		const float sinPhi = za1 / ra;
+		const float cosPhiSq = 1.f - sinPhi * sinPhi;
+		if (!(cosPhiSq > 0.f))
+			return false;
+		const float cosPhi = sqrtf(cosPhiSq);
+		const float sinPsi = (zb1 - zc1) / (2.f * rc * cosPhi);
+		const float cosPsi = sqrtf(fmaxf(1.f - sinPsi * sinPsi, 0.f));
+		const float ya2 = ra * cosPhi;
+		const float xb2 = -rc * cosPsi;
+		const float t1 = -rb * cosPhi, t2 = rc * sinPsi * sinPhi;
+		const float yb2 = t1 - t2, yc2 = t1 + t2;
+
+		// The rotation theta in the plane, from the conservation of angular momentum
+		const float alpha = xb2 * (xb0 - xc0) + yb0 * yb2 + yc0 * yc2;
+		const float beta = xb2 * (yc0 - yb0) + xb0 * yb2 + xc0 * yc2;
+		const float gamma = xb0 * yb1 - xb1 * yb0 + xc0 * yc1 - xc1 * yc0;
+		const float alphaBetaSq = alpha * alpha + beta * beta;
+		const float rootSq = alphaBetaSq - gamma * gamma;
+		if (!(rootSq > 0.f))
+			return false;
+		const float sinTheta = (alpha * gamma - beta * sqrtf(rootSq)) / alphaBetaSq;
+		const float cosTheta = sqrtf(fmaxf(1.f - sinTheta * sinTheta, 0.f));
+
+		const Float3 a3{ -ya2 * sinTheta, ya2 * cosTheta, za1 };
+		const Float3 b3{ xb2 * cosTheta - yb2 * sinTheta, xb2 * sinTheta + yb2 * cosTheta, zb1 };
+		const Float3 c3{ -xb2 * cosTheta - yc2 * sinTheta, -xb2 * sinTheta + yc2 * cosTheta, zc1 };
+		const auto toBox = [&](const Float3& v) { return ex * v.x + ey * v.y + ez * v.z; };
+		steps[water.o] = com + toBox(a3);
+		steps[water.h1] = com + toBox(b3) - b0;
+		steps[water.h2] = com + toBox(c3) - c0;
+		return true;
 	}
 
 	// SHAKE: moves the particles' steps so the new positions satisfy the constraints, along the constraint directions at the old
@@ -707,8 +817,8 @@ __global__ void ConstrainPositionsKernel(SuperCluster* const superClusters, cons
 		superClusters[scId].SetPosition(threadIdx.x, pos + steps[scInBlock][threadIdx.x]);
 }
 
-// SuperclusterIntegrateKernel with distance constraints (constraints = h-bonds), as RATTLE: the velocities are made orthogonal to
-// the constraints, and SHAKE puts the positions after the step back on them. The position correction is added to forcePrev as
+// SuperclusterIntegrateKernel with distance constraints (settled water, constraints = h-bonds), as RATTLE: the velocities are made
+// orthogonal to the constraints, and SETTLE (water) or SHAKE puts the positions after the step back on them. The position correction is added to forcePrev as
 // the constraint force, so the next step's half kick includes it, while the stored velocity stays the constrained full-step
 // velocity. A constrained group never spans pclusters, and each pcluster's constraints are solved by the thread of its first
 // particle in a fixed order, so the result is deterministic. One supercluster per 16 threads, blockDim = (16, 4, 1)
@@ -774,6 +884,8 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 
 	PclusterConstraints constraints{};
 	Constraints::Group group{ { -1, -1, -1, -1 } };
+	Constraints::Water water{};
+	bool isWater = false;
 	if (active && indexInPc == 0) {
 		constraints = pclusterConstraints[pcId];
 		for (int i = 0; i < n; i++) {
@@ -787,8 +899,10 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 				printf("Constrained particles of pcluster %d are not in the same supercluster\n", pcId);
 				constraints.nConstraints = 0;
 			}
-		if (constraints.nConstraints > 0)
+		if (constraints.nConstraints > 0) {
 			Constraints::ConstrainVelocities(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
+			isWater = Constraints::FindWater(constraints, group, invMasses[scInBlock], water);
+		}
 	}
 	__syncthreads();
 
@@ -812,7 +926,8 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	velocities[scInBlock][threadIdx.x] = step;
 	__syncthreads();
 
-	if (constraints.nConstraints > 0)
+	// SETTLE for rigid water, SHAKE for the rest, and for a water whose step is too large for SETTLE, which then reports it
+	if (constraints.nConstraints > 0 && !(isWater && Constraints::Settle(water, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock])))
 		Constraints::ConstrainSteps(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
 	__syncthreads();
 

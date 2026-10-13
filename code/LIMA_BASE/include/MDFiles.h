@@ -63,7 +63,7 @@ struct GroFile {
 enum TopologySection {
 	// Keywords typically found in topologies
 	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, // system is a protected keyword??
-	cmap, no_section,
+	cmap, settles, no_section,
 	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
 	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
 
@@ -177,6 +177,16 @@ public:
 		std::vector<DihedralBond> dihedralbonds;
 		std::vector<ImproperDihedralBond> improperdihedralbonds;		 
 		std::vector<CmapBond> cmapbonds;
+		// [ settles ]: a rigid water, the oxygen followed by its two hydrogens. Without FLEXIBLE defined, the water topologies
+		// describe water this way only, so the parser also adds the O-H bonds and H-O-H angle at the settle's geometry
+		// (settleBondsAdded). The exclusions and energy minimization need them, MD constrains them, and the writer leaves them out
+		struct Settle {
+			int oxygen = -1;
+			float distanceOH = 0.f;	// [nm]
+			float distanceHH = 0.f;	// [nm]
+		};
+		std::vector<Settle> settles;
+		bool settleBondsAdded = false;
 		std::optional<fs::path> positionRestraintsInclude;
 
 		void ToFile(const fs::path& dir) const;

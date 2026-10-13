@@ -29,6 +29,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	boxImage.bondgroups.clear();
 
 	box->pclusterConstraints = std::move(boxImage.pclusterConstraints);
+	box->builtConstraints = boxImage.builtConstraints;
 
 	// Ndof = 3*nParticles - nConstraints - nCOM : https://manual.gromacs.org/current/reference-manual/algorithms/molecular-dynamics.html eq:24
 	box->boxparams.degreesOfFreedom = box->boxparams.totalParticles * 3 - boxImage.topology.nConstraints - 3;

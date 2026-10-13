@@ -182,5 +182,6 @@ struct BoxImage {
 	//std::vector<ParticleToCompoundOrSolventMapping> particleToCompoundOrSolventMapping;
 	int totalParticles = 0;
 	std::vector<PclusterConstraints> pclusterConstraints;	// Empty without constraints
+	ConstraintsSelect builtConstraints = ConstraintsSelect::None;	// Settled water is constrained also with None
 };
  

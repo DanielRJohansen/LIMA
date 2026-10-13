@@ -114,6 +114,7 @@ struct Box {
 
 	BondGroups bondgroups;
 	std::vector<PclusterConstraints> pclusterConstraints;	// Indexed by pcluster, empty without constraints
+	ConstraintsSelect builtConstraints = ConstraintsSelect::None;	// The constraints setting it was built with. Settled water is constrained also with None
 
 	UniformElectricField uniformElectricField;
 

@@ -68,7 +68,7 @@ public:
 		if (directive == "cmaptypes") return cmaptypes;
 
 
-		if (directive == "settles") return notimplemented;
+		if (directive == "settles") return settles;
 		if (directive == "exclusions") return notimplemented;
 		if (directive == "nonbond_params") return notimplemented; // TODO implement this: https://manual.gromacs.org/current/reference-manual/topologies/parameter-files.html
 
@@ -414,7 +414,7 @@ class TopologyParser {
 	};
 
 	// The atoms/bonds/... sections of a moleculetype, which we parse in parallel in the last phase
-	static constexpr std::array entrySections{ atoms, bonds, pairs, angles, dihedrals, impropers, cmap };
+	static constexpr std::array entrySections{ atoms, bonds, pairs, angles, dihedrals, impropers, cmap, settles };
 	struct MoleculetypeWork {
 		std::shared_ptr<TopologyFile::Moleculetype> moleculetype;
 		int file = -1;
@@ -437,7 +437,6 @@ public:
 	TopologyParser(TopologyFile& topology) : topology(topology) {}
 
 	void Parse(const fs::path& path) {
-		topology.defines.insert("FLEXIBLE");// Cant handle gromacs definition of rigid water right now
 
 		ScanAll(path);
 		const int mainInstance = Resolve(0, std::nullopt, 0);
@@ -825,6 +824,47 @@ private:
 		ParseBonds(Lines(dihedrals), moleculetype.dihedralbonds, groIdToLimaId);
 		ParseBonds(Lines(impropers), moleculetype.improperdihedralbonds, groIdToLimaId);
 		ParseBonds(Lines(cmap), moleculetype.cmapbonds, groIdToLimaId);
+		ParseSettles(Lines(settles), moleculetype, groIdToLimaId);
+	}
+
+	// See TopologyFile::Moleculetype::Settle
+	static void ParseSettles(const std::vector<std::string_view>& lines, TopologyFile::Moleculetype& moleculetype, GroIdToLimaId groIdToLimaId) {
+		for (std::string_view sv : lines) {
+			SkipLeadingWhitespace(sv);
+			std::array<int, 1> oxygen{};
+			if (!LoadIds(sv, oxygen, groIdToLimaId))
+				continue;
+			int funct = 0;
+			TopologyFile::Moleculetype::Settle settle{ oxygen[0] };
+			if (!ParseValue<int>(sv, funct) || !ParseValue<float>(sv, settle.distanceOH) || !ParseValue<float>(sv, settle.distanceHH))
+				throw std::runtime_error(Lima::Format("Moleculetype {}: invalid settles entry", moleculetype.name));
+			if (settle.oxygen + 2 >= static_cast<int>(moleculetype.atoms.size()))
+				throw std::runtime_error(Lima::Format("Moleculetype {}: settles needs the oxygen to be followed by two hydrogens", moleculetype.name));
+			moleculetype.settles.push_back(settle);
+		}
+		if (moleculetype.settles.empty() || !moleculetype.singlebonds.empty() || !moleculetype.anglebonds.empty())
+			return;
+
+		// Force constants of CHARMM's flexible TIP3P. MD constrains these, so they only matter in energy minimization
+		constexpr float kb = 376560.f;		// [kJ/mol/nm^2]
+		constexpr float kTheta = 460.24f;	// [kJ/mol/rad^2]
+		for (const auto& settle : moleculetype.settles) {
+			const int o = settle.oxygen;
+			for (const int h : { o + 1, o + 2 }) {
+				TopologyFile::SingleBond bond;
+				bond.ids = { o, h };
+				bond.funct = 1;
+				bond.parameters = Bondtypes::SingleBond::Parameters::CreateFromCharmm(settle.distanceOH, kb);
+				moleculetype.singlebonds.push_back(bond);
+			}
+			TopologyFile::AngleBond angle;
+			angle.ids = { o + 1, o, o + 2 };
+			angle.funct = 1;
+			const float theta0 = 2.f * std::asin(settle.distanceHH / (2.f * settle.distanceOH)) * 180.f / 3.14159265358979f;	// [degrees]
+			angle.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, kTheta, 0.f, 0.f, angle.funct);
+			moleculetype.anglebonds.push_back(angle);
+		}
+		moleculetype.settleBondsAdded = true;
 	}
 };
 
@@ -1158,18 +1198,28 @@ void TopologyFile::Moleculetype::ToFile(const fs::path& dir) const {
 		
 		file << "[ atoms ]\n" << generateLegend({ "nr", "type", "resnr", "residue", "atom", "cgnr", "charge", "mass" }) + "\n";
 		file << composeString(atoms);
-		file << "[ bonds ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
-		file << composeString(singlebonds);
+		if (!settleBondsAdded) {
+			file << "[ bonds ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
+			file << composeString(singlebonds);
+		}
 		file << "[ pairs ]\n" << generateLegend({ "ai", "aj", "funct", "c0", "c1", "c2", "c3" }) + "\n";
 		file << composeString(pairbonds);
-		file << "[ angles ]\n" << generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) + "\n";
-		file << composeString(anglebonds);
+		if (!settleBondsAdded) {
+			file << "[ angles ]\n" << generateLegend({ "ai", "aj", "ak", "funct", "c0", "c1", "c2", "c3" }) + "\n";
+			file << composeString(anglebonds);
+		}
 		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3", "c4", "c5" }) + "\n";
 		file << composeString(dihedralbonds);
 		file << "[ dihedrals ]\n" << generateLegend({ "ai", "aj", "ak", "al", "funct", "c0", "c1", "c2", "c3" }) + "\n";
 		file << composeString(improperdihedralbonds);
 		file << "[ cmap ]\n" << generateLegend({ "ai", "aj", "ak", "al", "am", "funct" }) + "\n";
 		file << composeString(cmapbonds);
+		if (!settles.empty()) {
+			file << "[ settles ]\n" << generateLegend({ "OW", "funct", "doh", "dhh" }) + "\n";
+			for (const auto& settle : settles)
+				file << std::setw(10) << settle.oxygen + 1 << std::setw(10) << 1 << std::setw(10) << settle.distanceOH << std::setw(10) << settle.distanceHH << "\n";
+			file << "\n";
+		}
 		if (positionRestraintsInclude) {
 			file << "#ifdef POSRES\n#include \"" << positionRestraintsInclude->string() << "\"\n#endif\n";
 		}

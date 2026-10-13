@@ -30,7 +30,7 @@
 - SETTLE (analytic) for water instead of iterative SHAKE: cheaper and exact. The constrained integrate kernel is ~7 us vs ~3 us on T4 vacuum.
 - Hydrogen mass repartitioning, for 4 fs steps. First fix the next item.
 - dt > 2 fs crashes LIMA (illegal memory access in FindNeighborsKernel), also without constraints: T4 vacuum at 3 fs within 250 steps. Probably the neighbor list buffer/interval tuned for 2 fs, and a blown-up system should stop with an error rather than an illegal access.
-- [ settles ] / [ constraints ] topology sections are still not read: LIMA forces FLEXIBLE and constrains from the bonds instead.
+- [ settles ] is read (2026-10-13): water is rigid when its topology says so, as in GROMACS, independent of the constraints setting, with generated O-H bonds and angle for exclusions and EM. FLEXIBLE is no longer forced. [ constraints ] sections are still not read. With SHAKE in float, rigid water drifts more than flexible did on T4Lysozyme (energy gradient 1.6e-8 vs target 9.2e-9); analytic SETTLE should help.
 - initial_temperature draws velocities with components along the constraints, which the first step removes, so the start is somewhat colder than asked.
 - Not yet compared with a constrained GROMACS run (bond lengths, water RDF, energy drift).
 ## Restraints: position restraints are skipped (posre includes ignored in Topologyfile.cpp), so no restrained equilibration. Also missing: distance/dihedral/flat-bottom restraints and pulling (umbrella sampling, steered MD).

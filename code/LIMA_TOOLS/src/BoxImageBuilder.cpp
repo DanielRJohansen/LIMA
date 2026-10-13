@@ -35,22 +35,34 @@ namespace {
 		return !atom.atomname.empty() && std::toupper(static_cast<unsigned char>(atom.atomname[0])) == 'H';	// As GROMACS
 	}
 
-	// Constrains the bonds to hydrogens of a moleculetype at their b0. In a 3-atom water, also the distance between the hydrogens
-	// at the angle's theta0. The bonds and the angle stay: at the constrained lengths their energy is 0 and the constraints absorb
-	// their forces, so MD is unaffected, while energy minimization, which ignores the constraints, can use the same box
-	MoleculetypeConstraints MakeConstraints(const TopologyFile::Moleculetype& molType, const MoleculetypeBonds& bonds) {
+	// The constraints of a moleculetype: its settled waters ([ settles ]) always, and with constrainHBonds also its bonds to
+	// hydrogens at their b0, and in a 3-atom flexible water the distance between the hydrogens at the angle's theta0.
+	// The constrained bonds and angles stay: at the constrained lengths their energy is 0 and the constraints absorb their forces,
+	// so MD is unaffected, while energy minimization, which ignores the constraints, can use the same box
+	MoleculetypeConstraints MakeConstraints(const TopologyFile::Moleculetype& molType, const MoleculetypeBonds& bonds, bool constrainHBonds) {
 		MoleculetypeConstraints constraints;
-		for (const auto& bond : bonds.singlebonds) {
-			const auto [a, b] = bond.global_atom_indexes;
-			if (IsHydrogen(molType.atoms[a]) || IsHydrogen(molType.atoms[b])) {
-				constraints.pairs.push_back({ a, b });
-				constraints.distances.push_back(bond.params.b0);
+		std::vector<bool> settled(molType.atoms.size(), false);
+		for (const auto& settle : molType.settles) {
+			const int o = settle.oxygen;
+			constraints.pairs.push_back({ o, o + 1 });
+			constraints.pairs.push_back({ o, o + 2 });
+			constraints.pairs.push_back({ o + 1, o + 2 });
+			constraints.distances.insert(constraints.distances.end(), { settle.distanceOH, settle.distanceOH, settle.distanceHH });
+			settled[o] = settled[o + 1] = settled[o + 2] = true;
+		}
+		if (constrainHBonds) {
+			for (const auto& bond : bonds.singlebonds) {
+				const auto [a, b] = bond.global_atom_indexes;
+				if ((IsHydrogen(molType.atoms[a]) || IsHydrogen(molType.atoms[b])) && !settled[a] && !settled[b]) {
+					constraints.pairs.push_back({ a, b });
+					constraints.distances.push_back(bond.params.b0);
+				}
 			}
 		}
 		if (constraints.pairs.empty())
 			return constraints;
 
-		if (molType.atoms.size() == 3 && constraints.pairs.size() == 2) {
+		if (molType.settles.empty() && molType.atoms.size() == 3 && constraints.pairs.size() == 2) {
 			for (size_t i = 0; i < bonds.anglebonds.size(); i++) {
 				const auto [h1, o, h2] = bonds.anglebonds[i].global_atom_indexes;
 				if (!IsHydrogen(molType.atoms[h1]) || !IsHydrogen(molType.atoms[h2]))
@@ -241,8 +253,8 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		ResolveBonds<DihedralBond>(molType.dihedralbonds, types, forcefield, forcefieldMutex, bonds.dihedralbonds);
 		ResolveBonds<ImproperDihedralBond>(molType.improperdihedralbonds, types, forcefield, forcefieldMutex, bonds.improperdihedralbonds);
 		ResolveCmaps(molType.cmapbonds, types, forcefield, forcefieldMutex, bonds.cmapbonds);
-		if (constraintsSelect == ConstraintsSelect::HBonds)
-			moleculetypeConstraints[i] = MakeConstraints(molType, bonds);
+		if (constraintsSelect == ConstraintsSelect::HBonds || !molType.settles.empty())
+			moleculetypeConstraints[i] = MakeConstraints(molType, bonds, constraintsSelect == ConstraintsSelect::HBonds);
 		});
 	for (size_t i = 0; i < moleculetypes.size(); i++)
 		if (!moleculetypeConstraints[i].pairs.empty())
@@ -1021,5 +1033,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		nParticles
 	);
 	boxImage->pclusterConstraints = std::move(pclusterConstraints);
+	boxImage->builtConstraints = simparams.constraints.value;
 	return boxImage;
 }

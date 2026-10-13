@@ -577,7 +577,10 @@ __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, con
 
 namespace Constraints {
 	constexpr int maxIterations = 100;
-	constexpr float tolerance = 1e-5f;	// Relative error of the squared constraint length, and of the velocity along it
+	// Relative error of the squared constraint length. Tight, as the energy drift of rigid water depends on it
+	constexpr float tolerance = 1e-6f;
+	// Relative error of the velocity along a constraint. Looser, as its float rounding floor in coupled constraints is close to 1e-6
+	constexpr float velocityTolerance = 1e-5f;
 
 	// Set when a solve fails, so the warning is printed once per process rather than once per group and step
 	static __device__ int failureReported = 0;
@@ -613,7 +616,7 @@ namespace Constraints {
 				// Relative to the particles' speeds: the relative velocity itself can be cancelled to rounding noise
 				maxError = fmaxf(maxError, fabsf(rv) / (sqrtf(rr) * (velocities[a].len() + velocities[b].len()) + 1e-30f));
 			}
-			if (constraints.nConstraints == 1 || maxError < tolerance)
+			if (constraints.nConstraints == 1 || maxError < velocityTolerance)
 				return;
 		}
 		ReportFailure("RATTLE", maxIterations);

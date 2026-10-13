@@ -158,7 +158,7 @@ void ParseForcefieldFromItp(
             >> kPhi
             >> n;
         dihedralparams.phi_0 = phi0;
-        dihedralparams.k_phi = kPhi * 2.f; // once we moved the /2 from Forcefield.cpp to the forcecalculations, we must also undo this
+        dihedralparams.k_phi = kPhi;
         dihedralparams.n = n;
 
         if (kPhi == 0) // Todo: maybe this should not be here

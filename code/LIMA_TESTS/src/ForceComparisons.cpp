@@ -12,11 +12,13 @@ namespace ForceComparisons {
 	using namespace TestUtils;
 
 	TestRoutine DoAllForceComparisons(Environment& environment, EnvMode envmode) {
-		const std::array<std::string, 5> directories{ "PoolNoES", "Singlebond", "Anglebond", "Dihedralbond", "Cmapbond" };
+		// TODO: Can't these all use automatedtestsdir? 
+		const fs::path heavyDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step";
+		const std::array<fs::path, 6> workDirs{ heavyDir / "PoolNoES", heavyDir / "Singlebond", heavyDir / "Anglebond", heavyDir / "Dihedralbond", heavyDir / "Cmapbond",
+			AutomatedTestsDir() / "ForceComparisons/DihedralBackbone" };
 		std::vector<SimulationHandle> handles;
-		handles.reserve(directories.size());
-		for (const auto& directory : directories) {
-			const fs::path workDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / directory;
+		handles.reserve(workDirs.size());
+		for (const fs::path& workDir : workDirs) {
 			SimulationJob job;
 			job.workDir = workDir;
 			job.grofile.emplace(workDir / "conf.gro");
@@ -27,15 +29,16 @@ namespace ForceComparisons {
 		}
 		for (std::size_t index = 0; index < handles.size(); index++) {
 			auto completed = co_await std::move(handles[index]);
-			const fs::path workDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step" / directories[index];
+			const fs::path& workDir = workDirs[index];
+			const std::string name = workDir.filename().string();
 			const auto reference = FileUtils::ReadCsvAsVectorOfFloat3(workDir / "forces.csv");
 			const auto actual = SimAnalysis::GetForces(*completed.simulation, 0);
 			if (actual.size() != reference.size())
-				co_return LimaUnittestResult{ false, directories[index] + " force count mismatch", envmode == Full };
+				co_return LimaUnittestResult{ false, name + " force count mismatch", envmode == Full };
 			for (std::size_t force = 0; force < actual.size(); force++) {
 				if ((actual[force] - reference[force]).len() / reference[force].len() > 1e-3f)
 					co_return LimaUnittestResult{ false, Lima::Format("{} force mismatch at atom {}: ({:.2f} {:.2f} {:.2f}) vs GROMACS ({:.2f} {:.2f} {:.2f})",
-						directories[index], force, actual[force].x, actual[force].y, actual[force].z,
+						name, force, actual[force].x, actual[force].y, actual[force].z,
 						reference[force].x, reference[force].y, reference[force].z), envmode == Full };
 			}
 		}

@@ -11,6 +11,8 @@
 
 ## The tests: Test T4 (MD performance) and LoadT4 (setup performance) are always noisy. Find a better way to isolate them from other tests.
 
+## Find and solve TODO's spread around the codebase
+
 ## Compare LIMA with GROMACS on every system in the Salad Benchmark .zip, for outcome and for speed.
 - Outcome: trajectories diverge within ps (chaotic dynamics, different rounding), so compare ensemble statistics, not frames: backbone RMSD vs the start structure and per-residue RMSF, radius of gyration, average potential energy and temperature, density for solvated boxes, water O-O RDF, H-bond counts and secondary structure (DSSP) over time. Run each system with a few seeds in both engines, so a difference can be told apart from run-to-run spread. gmx rms/rmsf/gyrate/rdf/energy on both trajectories (LIMA writes .trr) keeps the analysis identical.
 - Performance: Salad lists GROMACS ns/day, but measure GROMACS on this PC too (in WSL, GPU build), with matching settings (dt, cutoff, PME, nstlist, constraints, output frequency) so the comparison is like for like. LIMA via lima mdrun, which prints the same ns/day table.

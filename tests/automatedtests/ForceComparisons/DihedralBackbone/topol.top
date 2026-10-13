@@ -1,0 +1,32 @@
+#include "charmm27.ff/forcefield.itp"
+
+[ moleculetype ]
+cmp     3
+
+[ atoms ]
+     1          C      1    CMP      C      1      0.000     12.011
+     2        NH1      1    CMP      N      2      0.000     14.007
+     3        CT1      1    CMP     CA      3      0.000     12.011
+     4          C      1    CMP     C2      4      0.000     12.011
+     5        NH1      1    CMP     N2      5      0.000     14.007
+
+[ bonds ]
+    1     2 1
+    2     3 1
+    3     4 1
+    4     5 1
+
+[ angles ]
+    1     2     3 5
+    2     3     4 5
+    3     4     5 5
+
+[ dihedrals ]
+    1     2     3     4 9
+    2     3     4     5 9
+
+[ system ]
+dihedralbackbone
+
+[ molecules ]
+cmp 8

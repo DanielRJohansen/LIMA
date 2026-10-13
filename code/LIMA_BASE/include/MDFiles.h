@@ -408,7 +408,7 @@ struct TopologyFile::GenericBond{
 			}
 			else if constexpr (std::is_same_v<ParametersType, Bondtypes::DihedralBond::Parameters>) {
 				oss << std::setw(width) << parameters->phi_0 / DEG_TO_RAD
-					<< std::setw(width) << parameters->k_phi * 2.f / KILO
+					<< std::setw(width) << parameters->k_phi / KILO
 					<< std::setw(width) << static_cast<int>(parameters->n);
 			}
 			else if constexpr (std::is_same_v<ParametersType, Bondtypes::ImproperDihedralBond::Parameters>) {

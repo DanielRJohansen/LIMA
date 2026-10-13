@@ -37,7 +37,7 @@ DihedralBond::DihedralBond(std::array<uint8_t, 4> ids, const Parameters& params)
 	}
 }
 DihedralBond::Parameters DihedralBond::Parameters::CreateFromCharmm(float phi0, float kPhi, int n) {
-	return Parameters{ phi0 * DEG_TO_RAD, kPhi * KILO / 2.f, static_cast<float>(n)}; //TODO: Move the /2 from here to the force calculation to save an op there
+	return Parameters{ phi0 * DEG_TO_RAD, kPhi * KILO, static_cast<float>(n)};
 }
 
 ImproperDihedralBond::ImproperDihedralBond(std::array<uint8_t, nAtoms> ids, const Parameters& params) : params{ params} {

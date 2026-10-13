@@ -6,6 +6,7 @@
 
 #include <format>
 #include <tuple>
+#include <algorithm>
 
 using std::string;
 
@@ -257,7 +258,89 @@ template class ParameterDatabase<ImproperDihedralbondType>;
 
 
 
+namespace {
+	// GROMACS' cmap spline setup (grompp setup_cmap, spline1d and interpolate1d), in degrees and kJ/mol like the itp
+	void Spline1d(double dx, const double* y, int n, double* u, double* y2) {
+		y2[0] = 0.0;
+		u[0] = 0.0;
+		for (int i = 1; i < n - 1; i++) {
+			const double p = 0.5 * y2[i - 1] + 2.0;
+			y2[i] = -0.5 / p;
+			const double q = (y[i + 1] - 2.0 * y[i] + y[i - 1]) / dx;
+			u[i] = (3.0 * q / dx - 0.5 * u[i - 1]) / p;
+		}
+		y2[n - 1] = 0.0;
+		for (int i = n - 2; i >= 0; i--)
+			y2[i] = y2[i] * y2[i + 1] + u[i];
+	}
+
+	void Interpolate1d(double xmin, double dx, const double* ya, const double* y2a, double x, double& y, double& y1) {
+		const int ix = static_cast<int>((x - xmin) / dx);
+		const double a = (xmin + (ix + 1) * dx - x) / dx;
+		const double b = (x - xmin - ix * dx) / dx;
+		y = a * ya[ix] + b * ya[ix + 1] + ((a * a * a - a) * y2a[ix] + (b * b * b - b) * y2a[ix + 1]) * (dx * dx) / 6.0;
+		y1 = (ya[ix + 1] - ya[ix]) / dx - (3.0 * a * a - 1.0) / 6.0 * dx * y2a[ix] + (3.0 * b * b - 1.0) / 6.0 * dx * y2a[ix + 1];
+	}
+
+	// energies: n*n values [kJ/mol], phi-major, starting at -180 degrees
+	CmapGrid MakeCmapGrid(int n, const std::vector<double>& energies) {
+		const int n2 = 2 * n;
+		std::vector<double> tmpU(n2), tmpU2(n2), tmpYY(n2), tmpY1(n2), tmpT2(n2 * n2), tmpGrid(n2 * n2);
+		const double dx = 360.0 / n;
+		const double xmin = -180.0 - dx * n / 2;
+
+		// The grid extended by half a period on each side, so the splines are periodic within the original range
+		for (int i = 0; i < n2; i++) {
+			const int ii = (i + n - n / 2) % n;
+			for (int j = 0; j < n2; j++) {
+				const int jj = (j + n - n / 2) % n;
+				tmpGrid[i * n2 + j] = energies[ii * n + jj];
+			}
+		}
+		for (int i = 0; i < n2; i++)
+			Spline1d(dx, &tmpGrid[n2 * i], n2, tmpU.data(), &tmpT2[n2 * i]);
+
+		CmapGrid grid{ n, std::vector<float4>(n * n) };
+		for (int i = n / 2; i < n + n / 2; i++) {
+			const int ii = i - n / 2;
+			const double phi = ii * dx - 180.0;
+			for (int j = n / 2; j < n + n / 2; j++) {
+				const int jj = j - n / 2;
+				const double psi = jj * dx - 180.0;
+				for (int k = 0; k < n2; k++)
+					Interpolate1d(xmin, dx, &tmpGrid[n2 * k], &tmpT2[n2 * k], psi, tmpYY[k], tmpY1[k]);
+				double v, v1, v2, v12;
+				Spline1d(dx, tmpYY.data(), n2, tmpU.data(), tmpU2.data());
+				Interpolate1d(xmin, dx, tmpYY.data(), tmpU2.data(), phi, v, v1);
+				Spline1d(dx, tmpY1.data(), n2, tmpU.data(), tmpU2.data());
+				Interpolate1d(xmin, dx, tmpY1.data(), tmpU2.data(), phi, v2, v12);
+
+				// Derivatives per degree, scaled to a grid cell, and kJ -> J
+				grid.points[ii * n + jj] = float4{ static_cast<float>(energies[ii * n + jj] * KILO), static_cast<float>(v1 * dx * KILO),
+					static_cast<float>(v2 * dx * KILO), static_cast<float>(v12 * dx * dx * KILO) };
+			}
+		}
+		return grid;
+	}
+
+	std::string JoinCmapTypenames(const std::array<std::string, CmapBond::nAtoms>& names) {
+		std::string key;
+		for (const auto& name : names) {
+			key += name;
+			key += ' ';
+		}
+		return key;
+	}
+}
+
 LIMAForcefield::LIMAForcefield() {};
+
+std::optional<int> LIMAForcefield::GetCmapGridIndex(const std::array<std::string, CmapBond::nAtoms>& atomtypes) const {
+	const auto found = cmapGridIndices.find(JoinCmapTypenames(atomtypes));
+	if (found == cmapGridIndices.end())
+		return std::nullopt;
+	return found->second;
+}
 
 LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 
@@ -401,6 +484,30 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		dihedralbondtype.params = DihedralBond::Parameters::CreateFromCharmm(phi0, kphi, n);
 
 		dihedralbondParameters->insert(dihedralbondtype);
+	}
+	{
+		// An entry spans several lines joined by '\': 5 atomtypes, funct, the grid size in phi and psi, then the energies [kJ/mol]
+		std::string entries;
+		for (const auto& line : file.GetSection(TopologySection::cmaptypes)) {
+			std::string data = line.substr(0, line.find(';'));
+			std::replace(data.begin(), data.end(), '\\', ' ');
+			entries += data;
+			entries += ' ';
+		}
+		std::istringstream iss(entries);
+		std::array<std::string, CmapBond::nAtoms> names;
+		int func = 0, nPhi = 0, nPsi = 0;
+		while (iss >> names[0] >> names[1] >> names[2] >> names[3] >> names[4] >> func >> nPhi >> nPsi) {
+			if (nPhi != nPsi || nPhi < 4)
+				throw std::runtime_error(Lima::Format("Unsupported cmaptypes grid of {}x{} points", nPhi, nPsi));
+			std::vector<double> energies(nPhi * nPsi);
+			for (double& energy : energies)
+				if (!(iss >> energy))
+					throw std::runtime_error("Incomplete cmaptypes grid");
+			// Like other types, the first definition wins
+			if (cmapGridIndices.try_emplace(JoinCmapTypenames(names), static_cast<int>(cmapGrids.size())).second)
+				cmapGrids.push_back(MakeCmapGrid(nPhi, energies));
+		}
 	}
 	for (const auto& line : file.GetSection(TopologySection::impropertypes)) {
 		std::istringstream iss(line);

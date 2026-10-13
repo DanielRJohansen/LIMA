@@ -131,21 +131,22 @@ void ShowcaseSTMV(int nSteps = 50000) {
 
 int main(int argc, char** argv) {
 	try {
-		// Dispatch before creating Environment: fatal GPU probes belong only to the child process.
-		if (argc == 3 && std::string_view(argv[1]) == "--limit-case") {
-			const int result = LimitTesting::RunChild(argv[2]);
-			// RunChild has destroyed every fixture and explicitly tested Engine cleanup. Skip global
-			// CUDA/CRT teardown, which can hang after a deliberately poisoned device context.
-			std::cout.flush();
-			std::cerr.flush();
-			std::_Exit(result);
-		}
-		if (argc >= 2 && std::string_view(argv[1]) == "--limit-tests") {
-			if (argc > 3) throw std::invalid_argument("Usage: limatest --limit-tests [NAME-SUBSTRING]");
-			LimaUnittestManager testman(false);
-			LimitTesting::AddTests(testman, argc == 3 ? argv[2] : "");
-			return testman.Finish() == 0 ? 0 : 1;
-		}
+		// I NEVER want any args in this main(), any args goes to agenttesting.cpp...
+		//// Dispatch before creating Environment: fatal GPU probes belong only to the child process.
+		//if (argc == 3 && std::string_view(argv[1]) == "--limit-case") {
+		//	const int result = LimitTesting::RunChild(argv[2]);
+		//	// RunChild has destroyed every fixture and explicitly tested Engine cleanup. Skip global
+		//	// CUDA/CRT teardown, which can hang after a deliberately poisoned device context.
+		//	std::cout.flush();
+		//	std::cerr.flush();
+		//	std::_Exit(result);
+		//}
+		//if (argc >= 2 && std::string_view(argv[1]) == "--limit-tests") {
+		//	if (argc > 3) throw std::invalid_argument("Usage: limatest --limit-tests [NAME-SUBSTRING]");
+		//	LimaUnittestManager testman(false);
+		//	LimitTesting::AddTests(testman, argc == 3 ? argv[2] : "");
+		//	return testman.Finish() == 0 ? 0 : 1;
+		//}
 		constexpr auto envmode = EnvMode::Full;
 		Environment& env = Environment::Get();
 		//TestDisplayT4();
@@ -176,11 +177,11 @@ int main(int argc, char** argv) {
 		//Benchmarks::Benchmark(env, envmode, "stmv", std::nullopt, 1000);
 		//Benchmarks::STMV(env, envmode, 1000);
 		
-		EngineBatchTests::ShowcaseLargeEM();
+		//EngineBatchTests::ShowcaseLargeEM();
 		//EngineBatchTests::ShowcaseMultisim();
 		//Benchmarks::Load3J3Q(env, envmode);
 		//ShowcaseSTMV();
-		//return RunAllUnitTests() == 0 ? 0 : 1;
+		return RunAllUnitTests() == 0 ? 0 : 1;
 	}
 	catch (std::runtime_error ex) {
 		std::cerr << "\nCaught runtime_error: " << ex.what() << std::endl;

@@ -6,6 +6,8 @@
 #include "LimaTypes.cuh"
 #include "MDFiles.h"
 #include <span>
+#include <optional>
+#include <unordered_map>
 
 
 
@@ -83,7 +85,14 @@ public:
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
 
+	// The CMAP grid of 5 atomtypes, as an index into GetCmapGrids. Matched in the given order only, as GROMACS does
+	std::optional<int> GetCmapGridIndex(const std::array<std::string, CmapBond::nAtoms>& atomtypes) const;
+	const std::vector<CmapGrid>& GetCmapGrids() const { return cmapGrids; }
+
 private:
+	std::unordered_map<std::string, int> cmapGridIndices;	// Keyed by the 5 atomtypes joined by spaces
+	std::vector<CmapGrid> cmapGrids;
+
 	std::unique_ptr<AtomtypeDatabase> ljParameters;
 
 	std::unique_ptr<ParameterDatabase<SinglebondType>> singlebondParameters;

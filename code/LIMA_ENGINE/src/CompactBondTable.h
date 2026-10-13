@@ -132,4 +132,7 @@ struct CompactBondGroupsDevice {
 	CompactBondTableDevice<AngleUreyBradleyBond> anglebonds;
 	CompactBondTableDevice<DihedralBond> dihedralbonds;
 	CompactBondTableDevice<ImproperDihedralBond> improperdihedralbonds;
+	const CmapBond* cmapbonds;
+	const float4* cmapGridPoints;	// See CmapGrid
+	int cmapGridSpacing;
 };

@@ -271,6 +271,7 @@ namespace EngineBatch {
 				group.indexOfFirstAnglebond += CheckedCount(bonds.anglebonds.size());
 				group.indexOfFirstDihedralbond += CheckedCount(bonds.dihedralbonds.size());
 				group.indexOfFirstImproperdihedralbond += CheckedCount(bonds.improperdihedralbonds.size());
+				group.indexOfFirstCmapbond += CheckedCount(bonds.cmapbonds.size());
 				bonds.groups.push_back(group);
 			}
 			for (auto ref : box.bondgroups.particles) {
@@ -282,6 +283,20 @@ namespace EngineBatch {
 			Append(bonds.anglebonds, box.bondgroups.anglebonds);
 			Append(bonds.dihedralbonds, box.bondgroups.dihedralbonds);
 			Append(bonds.improperdihedralbonds, box.bondgroups.improperdihedralbonds);
+			{
+				// Boxes usually share a forcefield, so their CMAP grids are deduplicated
+				std::vector<int> gridIndices(box.bondgroups.cmapGrids.size());
+				for (size_t g = 0; g < gridIndices.size(); g++) {
+					const auto found = std::find(bonds.cmapGrids.begin(), bonds.cmapGrids.end(), box.bondgroups.cmapGrids[g]);
+					gridIndices[g] = CheckedCount(found - bonds.cmapGrids.begin());
+					if (found == bonds.cmapGrids.end())
+						bonds.cmapGrids.push_back(box.bondgroups.cmapGrids[g]);
+				}
+				for (auto cmap : box.bondgroups.cmapbonds) {
+					cmap.params.gridIndex = gridIndices.at(cmap.params.gridIndex);
+					bonds.cmapbonds.push_back(cmap);
+				}
+			}
 			for (auto neighbors : box.particlesBondedToParticle) {
 				neighbors.AddOffset(layout.particles.offset);
 				batch.particlesBondedToParticle.push_back(neighbors);
@@ -317,6 +332,17 @@ namespace EngineBatch {
 		batch.bondgroupAnglebonds.SetData(bonds.anglebonds);
 		batch.bondgroupDihedralbonds.SetData(bonds.dihedralbonds);
 		batch.bondgroupImproperdihedralbonds.SetData(bonds.improperdihedralbonds);
+		batch.bondgroupCmapbonds.SetData(bonds.cmapbonds);
+		{
+			batch.cmapGridSpacing = bonds.cmapGrids.empty() ? 0 : bonds.cmapGrids.front().gridSpacing;
+			std::vector<float4> points;
+			for (const CmapGrid& grid : bonds.cmapGrids) {
+				if (grid.gridSpacing != batch.cmapGridSpacing)
+					throw std::runtime_error("CMAP grids of different sizes in one batch are not supported");
+				Append(points, grid.points);
+			}
+			batch.cmapGridPoints.SetData(points);
+		}
 		if (std::getenv("LIMA_BOND_LAYOUT_STATS")) {
 			const auto PrintTable = [](const char* name, const auto& host, const auto& device) {
 				std::printf("Bond table %s: %zu bonds, %zu parameters, %d-byte indices, %zu -> %zu bytes\n",
@@ -328,6 +354,7 @@ namespace EngineBatch {
 			PrintTable("angle", bonds.anglebonds, batch.bondgroupAnglebonds);
 			PrintTable("dihedral", bonds.dihedralbonds, batch.bondgroupDihedralbonds);
 			PrintTable("improper", bonds.improperdihedralbonds, batch.bondgroupImproperdihedralbonds);
+			std::printf("Bond table cmap: %zu bonds, %zu grids of %d^2 points\n", bonds.cmapbonds.size(), bonds.cmapGrids.size(), batch.cmapGridSpacing);
 		}
 		batch.forceEnergyInterims = std::make_unique<ForceEnergyInterims>(CheckedCount(bonds.particles.size()), batch.nParticles, batch.nPclusters);
 		batch.forcesMagnitudeSquareDevice.Expand(batch.nParticles);

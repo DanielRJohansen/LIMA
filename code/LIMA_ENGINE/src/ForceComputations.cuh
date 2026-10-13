@@ -567,5 +567,109 @@ __device__ inline void computeImproperdihedralForces(const ImproperDihedralBond*
 }
 
 
+// A torsion of a CMAP, with the conventions of GROMACS (dih_angle and do_dih_fup), which the CMAP grids assume
+struct CmapTorsion {
+	Float3 rij, rkj, rkl, m, n;
+	float phi;	// [rad] in [-pi, pi]
+
+	__device__ CmapTorsion(const Float3& xi, const Float3& xj, const Float3& xk, const Float3& xl)
+		: rij(xi - xj), rkj(xk - xj), rkl(xk - xl), m(rij.cross(rkj)), n(rkj.cross(rkl)) {
+		phi = atan2f(m.cross(n).len(), m.dot(n));
+		if (rij.dot(n) < 0.f)
+			phi = -phi;
+	}
+
+	// Adds the forces of an energy with derivative dVdphi [J/mol/rad] to the torsion's atoms i, j, k, l
+	__device__ void AddForces(float dVdphi, Float3* forces) const {
+		const float nrkj2 = rkj.dot(rkj);
+		const float nrkj = sqrtf(nrkj2);
+		const Float3 fi = m * (-dVdphi * nrkj / m.dot(m));
+		const Float3 fl = n * (dVdphi * nrkj / n.dot(n));
+		const Float3 svec = fi * (rij.dot(rkj) / nrkj2) - fl * (rkl.dot(rkj) / nrkj2);
+		forces[0] += fi;
+		forces[1] -= fi - svec;
+		forces[2] -= fl + svec;
+		forces[3] += fl;
+	}
+};
+
+// Bicubic interpolation within the grid cell of (phi, psi), from the energies and scaled derivatives of its corners, see CmapGrid.
+// This is the bicubic patch GROMACS builds with its coefficient matrix, written as Hermite basis functions
+__device__ inline void calcCmapForces(const Float3(&pos)[CmapBond::nAtoms], const CmapBond& cmap, const float4* const gridPoints, int gridSpacing,
+	Float3(&forces)[CmapBond::nAtoms], float& potE) {
+	constexpr float pi = 3.14159265358979f;
+	const CmapTorsion phi(pos[0], pos[1], pos[2], pos[3]);
+	const CmapTorsion psi(pos[1], pos[2], pos[3], pos[4]);
+
+	// Grid point 0 is at -180 degrees
+	const float dx = 2.f * pi / gridSpacing;
+	const auto Cell = [&](float angle, int& index) {
+		float shifted = angle + pi;
+		if (shifted < 0.f) shifted += 2.f * pi;
+		else if (shifted >= 2.f * pi) shifted -= 2.f * pi;
+		index = min(static_cast<int>(shifted / dx), gridSpacing - 1);
+		return shifted / dx - index;	// Position within the cell, [0, 1)
+	};
+	int i, j;
+	const float t = Cell(phi.phi, i);
+	const float u = Cell(psi.phi, j);
+	const int iNext = i + 1 == gridSpacing ? 0 : i + 1;
+	const int jNext = j + 1 == gridSpacing ? 0 : j + 1;
+	const float4* const grid = gridPoints + cmap.params.gridIndex * gridSpacing * gridSpacing;
+	const float4 corners[2][2] = { { grid[i * gridSpacing + j], grid[i * gridSpacing + jNext] },
+		{ grid[iNext * gridSpacing + j], grid[iNext * gridSpacing + jNext] } };	// [phi][psi]
+
+	// Cubic Hermite basis for the values (h) and the slopes (g) at the cell's two ends, and their derivatives
+	const float h[2] = { (2.f * t - 3.f) * t * t + 1.f, (3.f - 2.f * t) * t * t };
+	const float g[2] = { ((t - 2.f) * t + 1.f) * t, (t - 1.f) * t * t };
+	const float dh[2] = { (6.f * t - 6.f) * t, (6.f - 6.f * t) * t };
+	const float dg[2] = { (3.f * t - 4.f) * t + 1.f, (3.f * t - 2.f) * t };
+	const float hu[2] = { (2.f * u - 3.f) * u * u + 1.f, (3.f - 2.f * u) * u * u };
+	const float gu[2] = { ((u - 2.f) * u + 1.f) * u, (u - 1.f) * u * u };
+	const float dhu[2] = { (6.f * u - 6.f) * u, (6.f - 6.f * u) * u };
+	const float dgu[2] = { (3.f * u - 4.f) * u + 1.f, (3.f * u - 2.f) * u };
+
+	float energy = 0.f, dEdt = 0.f, dEdu = 0.f;
+#pragma unroll
+	for (int a = 0; a < 2; a++) {
+#pragma unroll
+		for (int b = 0; b < 2; b++) {
+			const float4 c = corners[a][b];	// V, dV/dphi*dx, dV/dpsi*dx, d2V/dphi/dpsi*dx^2
+			energy += c.x * h[a] * hu[b] + c.y * g[a] * hu[b] + c.z * h[a] * gu[b] + c.w * g[a] * gu[b];
+			dEdt += c.x * dh[a] * hu[b] + c.y * dg[a] * hu[b] + c.z * dh[a] * gu[b] + c.w * dg[a] * gu[b];
+			dEdu += c.x * h[a] * dhu[b] + c.y * g[a] * dhu[b] + c.z * h[a] * dgu[b] + c.w * g[a] * dgu[b];
+		}
+	}
+	potE = energy;
+	phi.AddForces(dEdt / dx, forces);
+	psi.AddForces(dEdu / dx, forces + 1);
+}
+
+template<typename BoundaryCondition, typename Accumulator>
+__device__ inline void computeCmapForces(const CmapBond* const cmaps, const int nCmaps, const Float3* const positions, const Accumulator& acc,
+	const float4* const gridPoints, int gridSpacing, const Float3& boxSize, const Float3& boxSizeInv)
+{
+	for (int bondOffset = 0; (bondOffset * Accumulator::nThreads) < nCmaps; bondOffset++) {
+		const CmapBond* cmap = nullptr;
+		Float3 forces[CmapBond::nAtoms] = {};
+		float potential = 0.f;
+		const int bondIndex = acc.ThreadIndex() + bondOffset * Accumulator::nThreads;
+
+		if (bondIndex < nCmaps) {
+			cmap = &cmaps[bondIndex];
+			Float3 pos[CmapBond::nAtoms];
+			LoadBondPositions<BoundaryCondition>(positions, cmap->atom_indexes, pos, boxSize, boxSizeInv);
+			calcCmapForces(pos, *cmap, gridPoints, gridSpacing, forces, potential);
+		}
+
+		ScatterBondResults(acc, cmap != nullptr, [&] {
+#pragma unroll
+			for (int i = 0; i < CmapBond::nAtoms; i++)
+				acc.Add(cmap->atom_indexes[i], forces[i], potential * 0.2f);
+			});
+	}
+}
+
+
 
 }	// End of namespace LimaForcecalc

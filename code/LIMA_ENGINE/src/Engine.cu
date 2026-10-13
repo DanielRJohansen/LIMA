@@ -695,10 +695,12 @@ void Engine::_deviceMaster() {
 	if (batch->nBondgroups > 0) {
 		const CompactBondGroupsDevice bondGroups{
 			batch->bondgroupDescriptors.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
-			batch->bondgroupAnglebonds.Get(), batch->bondgroupDihedralbonds.Get(), batch->bondgroupImproperdihedralbonds.Get()
+			batch->bondgroupAnglebonds.Get(), batch->bondgroupDihedralbonds.Get(), batch->bondgroupImproperdihedralbonds.Get(),
+			batch->bondgroupCmapbonds.Get(), batch->cmapGridPoints.Get(), batch->cmapGridSpacing
 		};
 		const Float3 boxSizeInv = boxSize.Inv();
-		BondgroupsKernel<BoundaryCondition, emvariant, logData><<<(batch->nBondgroups + BONDGROUPS_PER_BLOCK - 1) / BONDGROUPS_PER_BLOCK, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
+		const auto kernel = batch->cmapGridSpacing > 0 ? BondgroupsKernel<BoundaryCondition, emvariant, logData, true> : BondgroupsKernel<BoundaryCondition, emvariant, logData, false>;
+		kernel<<<(batch->nBondgroups + BONDGROUPS_PER_BLOCK - 1) / BONDGROUPS_PER_BLOCK, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
 			bondGroups, batch->nBondgroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, primaryBondForces, extraBondForces, batch->bondgroupExtraResultIndices.Get(), batch->superClustersControl->scData,
 			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv);
 	}

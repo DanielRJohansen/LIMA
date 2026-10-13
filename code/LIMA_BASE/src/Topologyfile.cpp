@@ -720,6 +720,7 @@ private:
 		case TopologySection::angletypes:
 		case TopologySection::dihedraltypes:
 		case TopologySection::impropertypes:
+		case TopologySection::cmaptypes:
 			ForEachLine(text, [&](std::string_view line) {
 				if (IsDataLine(line))
 					ProcessLine(state, instance, line);

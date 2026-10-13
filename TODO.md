@@ -16,11 +16,17 @@
 - Performance: Salad lists GROMACS ns/day, but measure GROMACS on this PC too (in WSL, GPU build), with matching settings (dt, cutoff, PME, nstlist, constraints, output frequency) so the comparison is like for like. LIMA via lima mdrun, which prints the same ns/day table.
 
 # Core MD features GROMACS has and LIMA lacks (status checked 2026-10-13)
+- **Hydrogen-bond constraints:** LIMA does not currently parse/apply GROMACS `[ constraints ]`. Both systems depend on them for the specified 2 fs timestep.
+- **Rigid TIP3P water / SETTLE:** LIMA skips `[ settles ]` and currently defines `FLEXIBLE` while parsing topologies. This replaces the benchmark’s rigid water with a different model; it must support SETTLE or an equivalent rigid-water constraint implementation.
+- **AMBER99SB topology compatibility:** The AMBER force field’s proper/improper dihedral layout and GROMACS function types need to be parsed correctly. The current topology path assumes a simpler ordering and fails while loading the benchmark topology.
+- **MDP integrator compatibility:** Salad specifies `integrator = md` (GROMACS leap-frog), while LIMA’s MDP parser accepts only `md-vv`. Confirm LIMA’s actual stepping convention—its `vels_prev` state suggests it may already be leap-frog-like—and accept/map `md` only if the semantics match.
+- **Thermostat compatibility:** Salad uses `tcoupl = v-rescale`, `tau_t = 0.1`, `ref_t = 300`. LIMA’s thermostat behavior must be compared with and, if needed, made compatible with GROMACS v-rescale. This matters because thermostat behavior depends on the kinetic-energy convention used by the integrator.
+- **MDP validation:** Explicitly validate/reject unsupported settings instead of silently ignoring them, including `rvdw`, PME grid settings, neighbor-list behavior, constraints, thermostat parameters, output cadence, and seeds.
+- **Regression coverage:** Add a small AMBER99SB/TIP3P constrained-water fixture with tests for topology loading, constraint preservation, short-run stability, and readable `.trr` output. Validate against GROMACS observables, not frame-by-frame coordinates.
 ## Constraints: no [ constraints ]/[ settles ] support (settles is parsed as notimplemented, constrainttypes are read but unused). Needed for rigid water (SETTLE) and h-bond constraints (LINCS/SHAKE), which is what lets GROMACS run at dt=2 fs safely; LIMA currently runs 2 fs on flexible bonds. Determinism matters here too: LINCS-style iteration must stay order-independent.
 ## Restraints: position restraints are skipped (posre includes ignored in Topologyfile.cpp), so no restrained equilibration. Also missing: distance/dihedral/flat-bottom restraints and pulling (umbrella sampling, steered MD).
 ## Constant pressure (NPT): no barostat (C-rescale/Berendsen for equilibration, Parrinello-Rahman/MTTK for production). Needs box rescaling on the GPU, a virial (the fixed-point force accumulation would have to also sum pair virials), and the grid/PME to follow the box size.
 ## Thermostats: only a global, clamped velocity rescale (Thermostat.cuh, 0.1% per measurement). Missing v-rescale (Bussi, the GROMACS default), Nose-Hoover and Langevin/stochastic dynamics, and per-group coupling (eg. protein vs solvent).
-## CMAP: [ cmap ] is parsed but the engine never applies it, so CHARMM proteins (incl. STMV) run without their backbone correction. Likely the quickest accuracy win of this list.
 ## Also missing vs GROMACS: virtual sites (TIP4P water, hydrogen vsites for 4-5 fs steps), free-energy perturbation (lambda coupling), center-of-mass motion removal, energy groups, and .edr-style energy output. Check each against what the Salad comparison (above) actually needs, and do those first.
 
 # Implicit solvent (idea, 2026-10-12)

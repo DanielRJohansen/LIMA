@@ -133,8 +133,45 @@ namespace Bondtypes {
 		uint8_t atom_indexes[4] = { 0,0,0,0 };
 		const static int nAtoms = 4;
 	};
+
+	// CHARMM backbone correction: an energy grid over the two consecutive torsions phi (atoms 0-3) and psi (atoms 1-4),
+	// interpolated bicubically as in GROMACS, see CmapGrid
+	struct CmapBond {
+		struct Parameters {
+			int gridIndex = 0;	// Into BondGroups::cmapGrids
+
+			bool operator==(const Parameters&) const = default;
+			bool HasZeroParam() const { return false; }
+		};
+
+		CmapBond() {}
+		CmapBond(std::array<uint8_t, 5> ids, const Parameters& params) : params(params) {
+			for (int i = 0; i < nAtoms; i++) atom_indexes[i] = ids[i];
+		}
+
+		Parameters params;
+		uint8_t atom_indexes[5] = { 0,0,0,0,0 };
+		const static int nAtoms = 5;
+	};
 }
 using namespace Bondtypes;
+
+// A CMAP energy grid of gridSpacing x gridSpacing points, phi-major, starting at -180 degrees. Each point holds the energy
+// and its derivatives, scaled to one grid cell: { V, dV/dphi * dx, dV/dpsi * dx, d2V/dphi/dpsi * dx^2 } [J/mol],
+// which is what the bicubic interpolation within a cell needs. The derivatives are made from the energies with the
+// periodic splines of GROMACS (grompp setup_cmap), so the forces match GROMACS
+struct CmapGrid {
+	int gridSpacing = 0;
+	std::vector<float4> points;
+
+	bool operator==(const CmapGrid& other) const {
+		if (gridSpacing != other.gridSpacing || points.size() != other.points.size()) return false;
+		for (size_t i = 0; i < points.size(); i++)
+			if (points[i].x != other.points[i].x || points[i].y != other.points[i].y || points[i].z != other.points[i].z || points[i].w != other.points[i].w)
+				return false;
+		return true;
+	}
+};
 
 
 
@@ -178,6 +215,8 @@ struct BondGroup {
 	int nDihedralbonds = 0;
 	int indexOfFirstImproperdihedralbond = 0;
 	int nImproperdihedralbonds = 0;
+	int indexOfFirstCmapbond = 0;
+	int nCmapbonds = 0;
 };
 
 // Host-side SoA storage. BondGroup remains a compact device-friendly range descriptor.
@@ -189,11 +228,14 @@ struct BondGroups {
 	std::vector<AngleUreyBradleyBond> anglebonds;
 	std::vector<DihedralBond> dihedralbonds;
 	std::vector<ImproperDihedralBond> improperdihedralbonds;
+	std::vector<CmapBond> cmapbonds;
+	std::vector<CmapGrid> cmapGrids;	// Indexed by CmapBond::Parameters::gridIndex
 
 	size_t size() const { return groups.size(); }
 	bool empty() const { return groups.empty(); }
 	void clear() {
 		groups.clear(); particles.clear(); singlebonds.clear(); pairbonds.clear(); anglebonds.clear(); dihedralbonds.clear(); improperdihedralbonds.clear();
+		cmapbonds.clear(); cmapGrids.clear();
 	}
 };
 

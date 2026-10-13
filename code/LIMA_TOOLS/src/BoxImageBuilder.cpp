@@ -28,6 +28,7 @@ namespace {
 		std::vector<AngleBondFactory> anglebonds;
 		std::vector<DihedralBondFactory> dihedralbonds;
 		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
+		std::vector<CmapBondFactory> cmapbonds;
 	};
 
 	// The atomtypes of a moleculetype, as small ids so we can make cheap lookup keys for bonds
@@ -86,6 +87,32 @@ namespace {
 		}
 	}
 
+	// CMAP parameters are grids in the forcefield, never in the topology
+	void ResolveCmaps(const std::vector<TopologyFile::CmapBond>& cmapsInTopfile, const MoleculetypeAtomtypes& atomtypes,
+		const LIMAForcefield& forcefield, std::mutex& forcefieldMutex, std::vector<CmapBondFactory>& cmaps)
+	{
+		const int nAtoms = static_cast<int>(atomtypes.atomToType.size());
+		for (const auto& cmapTopol : cmapsInTopfile) {
+			if (std::ranges::any_of(cmapTopol.ids, [nAtoms](int id) { return id >= nAtoms; }))
+				continue;
+			std::array<std::string, CmapBond::nAtoms> atomTypenames;
+			std::array<int, CmapBond::nAtoms> ids;
+			for (int i = 0; i < CmapBond::nAtoms; ++i) {
+				ids[i] = cmapTopol.ids[i];
+				atomTypenames[i] = atomtypes.typeNames[atomtypes.atomToType[ids[i]]];
+			}
+			std::optional<int> gridIndex;
+			{
+				std::scoped_lock lock(forcefieldMutex);
+				gridIndex = forcefield.GetCmapGridIndex(atomTypenames);
+			}
+			if (!gridIndex)
+				throw std::runtime_error(Lima::Format("No cmaptypes entry for {} {} {} {} {}", atomTypenames[0], atomTypenames[1],
+					atomTypenames[2], atomTypenames[3], atomTypenames[4]));
+			cmaps.emplace_back(CmapBondFactory{ ids, CmapBond::Parameters{ *gridIndex } });
+		}
+	}
+
 	template <typename BondtypeFactory>
 	void InstantiateBonds(const std::vector<BondtypeFactory>& moleculetypeBonds, int particleOffset, BondtypeFactory* out) {
 		for (const auto& bond : moleculetypeBonds) {
@@ -139,6 +166,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		ResolveBonds<AngleUreyBradleyBond>(molType.anglebonds, types, forcefield, forcefieldMutex, bonds.anglebonds);
 		ResolveBonds<DihedralBond>(molType.dihedralbonds, types, forcefield, forcefieldMutex, bonds.dihedralbonds);
 		ResolveBonds<ImproperDihedralBond>(molType.improperdihedralbonds, types, forcefield, forcefieldMutex, bonds.improperdihedralbonds);
+		ResolveCmaps(molType.cmapbonds, types, forcefield, forcefieldMutex, bonds.cmapbonds);
 		});
 
 	// The active LJ indices are assigned in the order the types are first requested, so this must be sequential and in order of appearance
@@ -170,7 +198,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 	}
 
 	// Each molecule gets a contiguous range of each bondtype
-	size_t nSinglebonds = 0, nPairbonds = 0, nAnglebonds = 0, nDihedralbonds = 0, nImproperdihedralbonds = 0;
+	size_t nSinglebonds = 0, nPairbonds = 0, nAnglebonds = 0, nDihedralbonds = 0, nImproperdihedralbonds = 0, nCmapbonds = 0;
 	for (size_t instanceId = 0; instanceId < moleculeInstances.size(); instanceId++) {
 		MoleculeInstance& instance = moleculeInstances[instanceId];
 		const MoleculetypeBonds& bonds = moleculetypeBonds[instanceMoleculetype[instanceId]];
@@ -179,13 +207,15 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		instance.firstAnglebond = static_cast<int>(nAnglebonds);
 		instance.firstDihedralbond = static_cast<int>(nDihedralbonds);
 		instance.firstImproperdihedralbond = static_cast<int>(nImproperdihedralbonds);
+		instance.firstCmapbond = static_cast<int>(nCmapbonds);
 		nSinglebonds += bonds.singlebonds.size();
 		nPairbonds += bonds.pairbonds.size();
 		nAnglebonds += bonds.anglebonds.size();
 		nDihedralbonds += bonds.dihedralbonds.size();
 		nImproperdihedralbonds += bonds.improperdihedralbonds.size();
+		nCmapbonds += bonds.cmapbonds.size();
 	}
-	if (nSinglebonds > INT_MAX || nPairbonds > INT_MAX || nAnglebonds > INT_MAX || nDihedralbonds > INT_MAX || nImproperdihedralbonds > INT_MAX)
+	if (nSinglebonds > INT_MAX || nPairbonds > INT_MAX || nAnglebonds > INT_MAX || nDihedralbonds > INT_MAX || nImproperdihedralbonds > INT_MAX || nCmapbonds > INT_MAX)
 		throw std::runtime_error("Too many bonds in system");
 
 	singlebonds.resize(nSinglebonds);
@@ -193,6 +223,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 	anglebonds.resize(nAnglebonds);
 	dihedralbonds.resize(nDihedralbonds);
 	improperdihedralbonds.resize(nImproperdihedralbonds);
+	cmapbonds.resize(nCmapbonds);
 	ParallelUtils::ParallelForBlocked(moleculeInstances.size(), [&](size_t instanceId) {
 		const MoleculeInstance& instance = moleculeInstances[instanceId];
 		const MoleculetypeBonds& bonds = moleculetypeBonds[instanceMoleculetype[instanceId]];
@@ -201,6 +232,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		InstantiateBonds(bonds.anglebonds, instance.particleOffset, anglebonds.data() + instance.firstAnglebond);
 		InstantiateBonds(bonds.dihedralbonds, instance.particleOffset, dihedralbonds.data() + instance.firstDihedralbond);
 		InstantiateBonds(bonds.improperdihedralbonds, instance.particleOffset, improperdihedralbonds.data() + instance.firstImproperdihedralbond);
+		InstantiateBonds(bonds.cmapbonds, instance.particleOffset, cmapbonds.data() + instance.firstCmapbond);
 		}, 64, 64);
 }
 
@@ -815,6 +847,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 
 	bgFactory.AddBondgroupRefsToPclusters(pcFactory.particleToPclusterMap, pcFactory.pClusterMetas);
 	BondGroups bondGroups = bgFactory.GetBondgroups();
+	if (!bondGroups.cmapbonds.empty())
+		bondGroups.cmapGrids = forcefield.GetCmapGrids();
 
 
 

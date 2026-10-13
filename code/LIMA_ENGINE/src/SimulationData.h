@@ -149,6 +149,9 @@ struct EngineBatchData {
 	CompactBondTable<AngleUreyBradleyBond> bondgroupAnglebonds;
 	CompactBondTable<DihedralBond> bondgroupDihedralbonds;
 	CompactBondTable<ImproperDihedralBond> bondgroupImproperdihedralbonds;
+	CudaBuffer<CmapBond> bondgroupCmapbonds;
+	CudaBuffer<float4> cmapGridPoints;		// The CmapGrid points of all grids, gridSpacing^2 per grid
+	int cmapGridSpacing = 0;
 
 	CudaBuffer<QuarterEntryTask> quarterEntryTasksDevice;	// See NbNonlocalKernel
 	CudaBuffer<QuarterEntry> quarterEntriesDevice;

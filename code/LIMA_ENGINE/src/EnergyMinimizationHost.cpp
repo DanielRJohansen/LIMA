@@ -97,6 +97,7 @@ namespace EM {
 			for (int i = 0; i < group.nAnglebonds; i++) Mark(bonds.anglebonds[group.indexOfFirstAnglebond + i].atom_indexes, 3);
 			for (int i = 0; i < group.nDihedralbonds; i++) Mark(bonds.dihedralbonds[group.indexOfFirstDihedralbond + i].atom_indexes, 4);
 			for (int i = 0; i < group.nImproperdihedralbonds; i++) Mark(bonds.improperdihedralbonds[group.indexOfFirstImproperdihedralbond + i].atom_indexes, 4);
+			for (int i = 0; i < group.nCmapbonds; i++) Mark(bonds.cmapbonds[group.indexOfFirstCmapbond + i].atom_indexes, 5);
 		}
 		return wholeMolecule;
 	}

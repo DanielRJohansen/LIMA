@@ -91,7 +91,7 @@ namespace {
 	};
 
 
-	enum Bondtype { single, pair, angle, dihedral, improper };
+	enum Bondtype { single, pair, angle, dihedral, improper, cmap };
 
 	// The bonds of one or more consecutive molecules
 	struct BondsChunk {
@@ -102,6 +102,7 @@ namespace {
 		std::span<const AngleBondFactory> anglebonds;
 		std::span<const DihedralBondFactory> dihedralbonds;
 		std::span<const ImproperDihedralBondFactory> improperdihedralbonds;
+		std::span<const CmapBondFactory> cmapbonds;
 	};
 
 	// Greedily groups bonds: Add the bond containing the lowest available particle id, then add all bonds
@@ -122,15 +123,18 @@ namespace {
 			const ParticleToBondsMap pid2AnglebondIdMap(chunk.anglebonds, chunk.firstParticle, chunk.nParticles);
 			const ParticleToBondsMap pid2DihedralbondIdMap(chunk.dihedralbonds, chunk.firstParticle, chunk.nParticles);
 			const ParticleToBondsMap pid2ImproperDihedralbondIdMap(chunk.improperdihedralbonds, chunk.firstParticle, chunk.nParticles);
+			const ParticleToBondsMap pid2CmapbondIdMap(chunk.cmapbonds, chunk.firstParticle, chunk.nParticles);
 
 			RandomAccessDeleteSet availableSinglebondIds(chunk.singlebonds.size());
 			RandomAccessDeleteSet availablePairbondIds(chunk.pairbonds.size());
 			RandomAccessDeleteSet availableAnglebondIds(chunk.anglebonds.size());
 			RandomAccessDeleteSet availableDihedralbondIds(chunk.dihedralbonds.size());
 			RandomAccessDeleteSet availableImproperDihedralbondIds(chunk.improperdihedralbonds.size());
+			RandomAccessDeleteSet availableCmapbondIds(chunk.cmapbonds.size());
 
 			auto MoreWorkToBeDone = [&]() {
-				return !availableSinglebondIds.empty() || !availablePairbondIds.empty() || !availableAnglebondIds.empty() || !availableDihedralbondIds.empty() || !availableImproperDihedralbondIds.empty();
+				return !availableSinglebondIds.empty() || !availablePairbondIds.empty() || !availableAnglebondIds.empty() || !availableDihedralbondIds.empty() || !availableImproperDihedralbondIds.empty()
+					|| !availableCmapbondIds.empty();
 				};
 
 			auto GetBondtypeWithLowestAvailableParticleId = [&]() {
@@ -151,6 +155,7 @@ namespace {
 				Check(availableAnglebondIds, chunk.anglebonds, angle);
 				Check(availableDihedralbondIds, chunk.dihedralbonds, dihedral);
 				Check(availableImproperDihedralbondIds, chunk.improperdihedralbonds, improper);
+				Check(availableCmapbondIds, chunk.cmapbonds, cmap);
 				return type;
 				};
 
@@ -193,6 +198,10 @@ namespace {
 					AddFirstBond(chunk.improperdihedralbonds[availableImproperDihedralbondIds.front()]);
 					availableImproperDihedralbondIds.erase(availableImproperDihedralbondIds.front());
 					break;
+				case cmap:
+					AddFirstBond(chunk.cmapbonds[availableCmapbondIds.front()]);
+					availableCmapbondIds.erase(availableCmapbondIds.front());
+					break;
 				}
 
 				// Now go from the current index of particles in the group to the last.
@@ -210,6 +219,7 @@ namespace {
 					AddBondsFromMap(pid2AnglebondIdMap[currentParticleId], availableAnglebondIds, chunk.anglebonds);
 					AddBondsFromMap(pid2DihedralbondIdMap[currentParticleId], availableDihedralbondIds, chunk.dihedralbonds);
 					AddBondsFromMap(pid2ImproperDihedralbondIdMap[currentParticleId], availableImproperDihedralbondIds, chunk.improperdihedralbonds);
+					AddBondsFromMap(pid2CmapbondIdMap[currentParticleId], availableCmapbondIds, chunk.cmapbonds);
 				}
 			}
 		}
@@ -222,7 +232,8 @@ namespace {
 				static_cast<int>(bondgroups.pairbonds.size()), 0,
 				static_cast<int>(bondgroups.anglebonds.size()), 0,
 				static_cast<int>(bondgroups.dihedralbonds.size()), 0,
-				static_cast<int>(bondgroups.improperdihedralbonds.size()), 0
+				static_cast<int>(bondgroups.improperdihedralbonds.size()), 0,
+				static_cast<int>(bondgroups.cmapbonds.size()), 0
 				});
 		}
 
@@ -250,12 +261,14 @@ namespace {
 		std::vector<AngleUreyBradleyBond>& Output(const AngleBondFactory&) { return bondgroups.anglebonds; }
 		std::vector<DihedralBond>& Output(const DihedralBondFactory&) { return bondgroups.dihedralbonds; }
 		std::vector<ImproperDihedralBond>& Output(const ImproperDihedralBondFactory&) { return bondgroups.improperdihedralbonds; }
+		std::vector<CmapBond>& Output(const CmapBondFactory&) { return bondgroups.cmapbonds; }
 
 		static int& Count(BondGroup& group, const SingleBondFactory&) { return group.nSinglebonds; }
 		static int& Count(BondGroup& group, const PairBondFactory&) { return group.nPairbonds; }
 		static int& Count(BondGroup& group, const AngleBondFactory&) { return group.nAnglebonds; }
 		static int& Count(BondGroup& group, const DihedralBondFactory&) { return group.nDihedralbonds; }
 		static int& Count(BondGroup& group, const ImproperDihedralBondFactory&) { return group.nImproperdihedralbonds; }
+		static int& Count(BondGroup& group, const CmapBondFactory&) { return group.nCmapbonds; }
 
 		// Adds the bond to the last group. Returns false if there is no room for its particles
 		template <typename BondFactoryType>
@@ -296,14 +309,14 @@ namespace {
 	std::vector<BondsChunk> MakeChunks(const SuperTopology& topology) {
 		const auto& instances = topology.moleculeInstances;
 		const size_t totalBonds = topology.singlebonds.size() + topology.pairbonds.size() + topology.anglebonds.size()
-			+ topology.dihedralbonds.size() + topology.improperdihedralbonds.size();
+			+ topology.dihedralbonds.size() + topology.improperdihedralbonds.size() + topology.cmapbonds.size();
 		const size_t targetBondsPerChunk = std::max<size_t>(totalBonds / 256, 1);
 
 		auto FirstBonds = [&](size_t instanceId) {
 			if (instanceId == instances.size())
-				return std::array<size_t, 5>{ topology.singlebonds.size(), topology.pairbonds.size(), topology.anglebonds.size(), topology.dihedralbonds.size(), topology.improperdihedralbonds.size() };
+				return std::array<size_t, 6>{ topology.singlebonds.size(), topology.pairbonds.size(), topology.anglebonds.size(), topology.dihedralbonds.size(), topology.improperdihedralbonds.size(), topology.cmapbonds.size() };
 			const auto& instance = instances[instanceId];
-			return std::array<size_t, 5>{ size_t(instance.firstSinglebond), size_t(instance.firstPairbond), size_t(instance.firstAnglebond), size_t(instance.firstDihedralbond), size_t(instance.firstImproperdihedralbond) };
+			return std::array<size_t, 6>{ size_t(instance.firstSinglebond), size_t(instance.firstPairbond), size_t(instance.firstAnglebond), size_t(instance.firstDihedralbond), size_t(instance.firstImproperdihedralbond), size_t(instance.firstCmapbond) };
 			};
 		auto FirstParticle = [&](size_t instanceId) {
 			return instanceId == instances.size() ? static_cast<int>(topology.particles.size()) : instances[instanceId].particleOffset;
@@ -315,7 +328,7 @@ namespace {
 			const auto begin = FirstBonds(chunkStart);
 			const auto end = FirstBonds(instanceId);
 			size_t nBonds = 0;
-			for (int i = 0; i < 5; i++) nBonds += end[i] - begin[i];
+			for (int i = 0; i < 6; i++) nBonds += end[i] - begin[i];
 			if (nBonds < targetBondsPerChunk && instanceId != instances.size())
 				continue;
 
@@ -327,6 +340,7 @@ namespace {
 			chunk.anglebonds = std::span(topology.anglebonds).subspan(begin[2], end[2] - begin[2]);
 			chunk.dihedralbonds = std::span(topology.dihedralbonds).subspan(begin[3], end[3] - begin[3]);
 			chunk.improperdihedralbonds = std::span(topology.improperdihedralbonds).subspan(begin[4], end[4] - begin[4]);
+			chunk.cmapbonds = std::span(topology.cmapbonds).subspan(begin[5], end[5] - begin[5]);
 			chunks.push_back(chunk);
 			chunkStart = instanceId;
 		}
@@ -367,6 +381,7 @@ BondGroupFactory::BondGroupFactory(const LIMA_MOLECULEBUILD::SuperTopology& topo
 			group.indexOfFirstAnglebond += static_cast<int>(bondgroups.anglebonds.size());
 			group.indexOfFirstDihedralbond += static_cast<int>(bondgroups.dihedralbonds.size());
 			group.indexOfFirstImproperdihedralbond += static_cast<int>(bondgroups.improperdihedralbonds.size());
+			group.indexOfFirstCmapbond += static_cast<int>(bondgroups.cmapbonds.size());
 			bondgroups.groups.push_back(group);
 		}
 		Append(bondgroups.particles, chunkGroups.particles);
@@ -375,6 +390,7 @@ BondGroupFactory::BondGroupFactory(const LIMA_MOLECULEBUILD::SuperTopology& topo
 		Append(bondgroups.anglebonds, chunkGroups.anglebonds);
 		Append(bondgroups.dihedralbonds, chunkGroups.dihedralbonds);
 		Append(bondgroups.improperdihedralbonds, chunkGroups.improperdihedralbonds);
+		Append(bondgroups.cmapbonds, chunkGroups.cmapbonds);
 		Append(particleGlobalIds, result->particleGlobalIds);
 	}
 }

@@ -125,7 +125,8 @@ static constexpr int BONDGROUPS_PER_BLOCK = THREADS_PER_BONDSGROUPSKERNEL / 32;
 static constexpr int BONDGROUP_MAX_PARTICLES = 64;
 static_assert(BONDGROUP_MAX_PARTICLES <= 64, "Compact bond records reserve 6 bits per atom id");
 static_assert(LimaForcecalc::FixedPointBondAccumulator::scale == ForceAccumulator::scale, "Integration combines bonded and nonbonded sums in the same fixed point");
-template <typename BoundaryCondition, bool emVariant, bool computePotE>
+// withCmap: the CMAP code raises the kernel from 62 to 84 registers, which cuts occupancy, so batches without CMAP use a variant without it
+template <typename BoundaryCondition, bool emVariant, bool computePotE, bool withCmap>
 __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int nBondgroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut /*EM only*/,
 	const ForceAccumulator primaryBondForces, ulonglong4* const extraBondForces, const int* const extraResultIndices /*MD only*/, const SuperCluster* const superClusters, const int* const particleSlots, Float3 boxSize, Float3 boxSizeInv) {
 	const int groupInBlock = threadIdx.x / 32;
@@ -145,6 +146,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 
 	static const int batchSize = 32;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
+	static_assert(sizeof(CmapBond) <= largestBondBytesize);
 	__shared__ __align__(16) char bondsBuffers[BONDGROUPS_PER_BLOCK][largestBondBytesize * batchSize];
 	char* const _bondsBuffer = bondsBuffers[groupInBlock];
 
@@ -218,6 +220,19 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 			acc.Sync();
 
 			LimaForcecalc::computeImproperdihedralForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nImproperdihedralbonds - batchStart), positions, acc, boxSize, boxSizeInv);
+		}
+	}
+
+	if constexpr (withCmap) {
+		acc.Sync();
+		CmapBond* bondsBuffer = reinterpret_cast<CmapBond*>(_bondsBuffer);
+		for (int batchStart = 0; batchStart < bondGroup->nCmapbonds; batchStart += batchSize) {
+			if (batchStart + lane < bondGroup->nCmapbonds)
+				bondsBuffer[lane] = bondGroups.cmapbonds[bondGroup->indexOfFirstCmapbond + batchStart + lane];
+			acc.Sync();
+
+			LimaForcecalc::computeCmapForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nCmapbonds - batchStart), positions, acc,
+				bondGroups.cmapGridPoints, bondGroups.cmapGridSpacing, boxSize, boxSizeInv);
 		}
 	}
 

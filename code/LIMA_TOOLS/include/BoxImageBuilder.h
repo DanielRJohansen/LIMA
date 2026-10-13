@@ -53,6 +53,7 @@ using PairBondFactory = BondFactory<2, PairBond::Parameters>;
 using AngleBondFactory = BondFactory<3, AngleUreyBradleyBond::Parameters>;
 using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
 using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
+using CmapBondFactory = BondFactory<5, CmapBond::Parameters>;
 
 struct ParticleToCompoundMapping {
 	int compoundId = -1;
@@ -92,6 +93,7 @@ namespace LIMA_MOLECULEBUILD {
 			int firstAnglebond = 0;
 			int firstDihedralbond = 0;
 			int firstImproperdihedralbond = 0;
+			int firstCmapbond = 0;
 		};
 
 		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield);
@@ -109,6 +111,7 @@ namespace LIMA_MOLECULEBUILD {
 		std::vector<AngleBondFactory> anglebonds;
 		std::vector<DihedralBondFactory> dihedralbonds;
 		std::vector<ImproperDihedralBondFactory> improperdihedralbonds;
+		std::vector<CmapBondFactory> cmapbonds;
 		std::vector<MoleculeInstance> moleculeInstances;
 	};
 

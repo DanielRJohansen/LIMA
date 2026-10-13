@@ -1,4 +1,5 @@
 #include "Tests.h"
+#include "Format.h"
 
 #include "TestUtils.h"
 #include "Filehandling.h"
@@ -11,7 +12,7 @@ namespace ForceComparisons {
 	using namespace TestUtils;
 
 	TestRoutine DoAllForceComparisons(Environment& environment, EnvMode envmode) {
-		const std::array<std::string, 4> directories{ "PoolNoES", "Singlebond", "Anglebond", "Dihedralbond" };
+		const std::array<std::string, 5> directories{ "PoolNoES", "Singlebond", "Anglebond", "Dihedralbond", "Cmapbond" };
 		std::vector<SimulationHandle> handles;
 		handles.reserve(directories.size());
 		for (const auto& directory : directories) {
@@ -33,7 +34,9 @@ namespace ForceComparisons {
 				co_return LimaUnittestResult{ false, directories[index] + " force count mismatch", envmode == Full };
 			for (std::size_t force = 0; force < actual.size(); force++) {
 				if ((actual[force] - reference[force]).len() / reference[force].len() > 1e-3f)
-					co_return LimaUnittestResult{ false, directories[index] + " force mismatch", envmode == Full };
+					co_return LimaUnittestResult{ false, Lima::Format("{} force mismatch at atom {}: ({:.2f} {:.2f} {:.2f}) vs GROMACS ({:.2f} {:.2f} {:.2f})",
+						directories[index], force, actual[force].x, actual[force].y, actual[force].z,
+						reference[force].x, reference[force].y, reference[force].z), envmode == Full };
 			}
 		}
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };

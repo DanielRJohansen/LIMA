@@ -135,6 +135,7 @@ namespace TestMDStability {
 	TestRoutine LoadEnergyMinAndRunBasicSimulation(
 			Environment& environment, EnvMode envmode, std::string folderName, std::string testName);
 	TestRoutine TestDeterministic(Environment& environment, EnvMode envmode);
+	TestRoutine TestConstraints(Environment& environment, EnvMode envmode);
 	bool doMoleculeTranslationTest(std::string foldername);
 }
 

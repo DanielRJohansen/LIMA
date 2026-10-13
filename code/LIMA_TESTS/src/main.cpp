@@ -256,6 +256,7 @@ int RunAllUnitTests() {
 	ADD_TEST("SolventBenchmark", LoadAndRunBasicSimulation, "Solvents", "SolventBenchmark");
 	ADD_TEST("T4Lysozyme", LoadEnergyMinAndRunBasicSimulation, "T4Lysozyme", "T4Lysozyme");
 	ADD_TEST("Deterministic Simulations", TestDeterministic);
+	ADD_TEST("Constraints", TestConstraints);
 	ADD_TEST("Four batched T4 simulations match reference", TestFourT4BatchMatchReference);
 
 

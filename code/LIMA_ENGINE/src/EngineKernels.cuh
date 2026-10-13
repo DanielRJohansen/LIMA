@@ -575,6 +575,237 @@ __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, con
 	superClusters[scId].SetPosition(threadIdx.x, posNext);
 }
 
+namespace Constraints {
+	constexpr int maxIterations = 100;
+	constexpr float tolerance = 1e-5f;	// Relative error of the squared constraint length, and of the velocity along it
+
+	// The particles of a pcluster in its supercluster, -1 for the unused indices
+	struct Group {
+		int slots[PersistentCluster::maxParticles];
+	};
+
+	// Removes the velocity components along the constraints (RATTLE), at the constrained positions. Sequential, so deterministic.
+	// A single constraint is exact after one pass. Coupled ones iterate until the velocity along each constraint is small
+	// relative to the relative velocity of its particles, as an absolute measure would stall at the rounding of fast particles
+	__device__ inline void ConstrainVelocities(const PclusterConstraints& constraints, const Group& group, const Float3* const positions,
+		Float3* const velocities, const float* const invMasses) {
+		for (int iteration = 0; iteration < maxIterations; iteration++) {
+			float maxError = 0.f;
+			for (int c = 0; c < constraints.nConstraints; c++) {
+				const int a = group.slots[constraints.particles[c] & 3], b = group.slots[constraints.particles[c] >> 2];
+				const Float3 r = positions[a] - positions[b];
+				const Float3 dv = velocities[a] - velocities[b];
+				const float rr = r.dot(r);
+				const float rv = r.dot(dv);
+				const float k = rv / (rr * (invMasses[a] + invMasses[b]));
+				velocities[a] -= r * (k * invMasses[a]);
+				velocities[b] += r * (k * invMasses[b]);
+				maxError = fmaxf(maxError, fabsf(rv) / (sqrtf(rr * dv.dot(dv)) + 1e-30f));
+			}
+			if (constraints.nConstraints == 1 || maxError < tolerance)
+				return;
+		}
+	}
+
+	// SHAKE: moves the particles' steps so the new positions satisfy the constraints, along the constraint directions at the old
+	// positions. Works on the steps rather than the positions, as those are small, so the solution is precise. Sequential
+	__device__ inline void ConstrainSteps(const PclusterConstraints& constraints, const Group& group, const Float3* const positions,
+		Float3* const steps, const float* const invMasses) {
+		for (int iteration = 0; iteration < maxIterations; iteration++) {
+			float maxError = 0.f;
+			for (int c = 0; c < constraints.nConstraints; c++) {
+				const int a = group.slots[constraints.particles[c] & 3], b = group.slots[constraints.particles[c] >> 2];
+				const Float3 rOld = positions[a] - positions[b];
+				const Float3 rNew = rOld + steps[a] - steps[b];
+				const float dd = constraints.distance[c] * constraints.distance[c];
+				const float diff = dd - rNew.dot(rNew);
+				const float g = diff / (2.f * rNew.dot(rOld) * (invMasses[a] + invMasses[b]));
+				steps[a] += rOld * (g * invMasses[a]);
+				steps[b] -= rOld * (g * invMasses[b]);
+				maxError = fmaxf(maxError, fabsf(diff) / dd);
+			}
+			if (maxError < tolerance)
+				return;
+		}
+	}
+}
+
+// Puts the positions on the constraints before the first MD step, like GROMACS constrains the starting coordinates. Otherwise
+// the first step would, and its jump in energy would show in the energy of the run. blockDim = (16, 4, 1)
+template<typename BoundaryCondition>
+__global__ void ConstrainPositionsKernel(SuperCluster* const superClusters, const ParticleIntegrationState* const states,
+	const PclusterConstraints* const pclusterConstraints, int nSuperclusters, Float3 boxSize)
+{
+	constexpr int n = SuperCluster::maxParticles;
+	__shared__ Float3 positions[4][n];
+	__shared__ Float3 steps[4][n];
+	__shared__ float invMasses[4][n];
+	__shared__ int pclusterParticles[4][n];
+	const int scInBlock = threadIdx.y;
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	const bool inRange = scId < nSuperclusters;
+	ParticleIntegrationState state{};
+	state.mass = 0.f;
+	if (inRange)
+		state = states[scId * n + threadIdx.x];
+	const bool active = inRange && state.mass != 0.f;
+
+	Float3 pos{}, p0{};
+	if (active) {
+		p0 = superClusters[scId].Position(0);
+		BoundaryCondition::applyBCNM(p0, boxSize);
+		pos = superClusters[scId].Position(threadIdx.x);
+		BoundaryCondition::applyHyperposNM(p0, pos, boxSize);
+	}
+	positions[scInBlock][threadIdx.x] = pos;
+	steps[scInBlock][threadIdx.x] = Float3{};
+	invMasses[scInBlock][threadIdx.x] = active ? 1.f / state.mass : 0.f;
+	pclusterParticles[scInBlock][threadIdx.x] = active ? state.pclusterParticle : -1;
+	__syncthreads();
+
+	const int pcId = state.pclusterParticle / PersistentCluster::maxParticles;
+	if (active && state.pclusterParticle % PersistentCluster::maxParticles == 0) {
+		PclusterConstraints constraints = pclusterConstraints[pcId];
+		Constraints::Group group{ { -1, -1, -1, -1 } };
+		for (int i = 0; i < n; i++) {
+			const int particle = pclusterParticles[scInBlock][i];
+			if (particle >= 0 && particle / PersistentCluster::maxParticles == pcId)
+				group.slots[particle % PersistentCluster::maxParticles] = i;
+		}
+		for (int c = 0; c < constraints.nConstraints; c++)
+			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0)
+				constraints.nConstraints = 0;
+		if (constraints.nConstraints > 0)
+			Constraints::ConstrainSteps(constraints, group, positions[scInBlock], steps[scInBlock], invMasses[scInBlock]);
+	}
+	__syncthreads();
+
+	if (active)
+		superClusters[scId].SetPosition(threadIdx.x, pos + steps[scInBlock][threadIdx.x]);
+}
+
+// SuperclusterIntegrateKernel with distance constraints (constraints = h-bonds), as RATTLE: the velocities are made orthogonal to
+// the constraints, and SHAKE puts the positions after the step back on them. The position correction is added to forcePrev as
+// the constraint force, so the next step's half kick includes it, while the stored velocity stays the constrained full-step
+// velocity. A constrained group never spans pclusters, and each pcluster's constraints are solved by the thread of its first
+// particle in a fixed order, so the result is deterministic. One supercluster per 16 threads, blockDim = (16, 4, 1)
+template<typename BoundaryCondition, bool logData>
+__global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
+	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
+	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints)
+{
+	constexpr int n = SuperCluster::maxParticles;
+	__shared__ Float3 positions[4][n];	// Before the step
+	__shared__ Float3 velocities[4][n];	// Then the steps
+	__shared__ float invMasses[4][n];
+	__shared__ int pclusterParticles[4][n];
+	const int scInBlock = threadIdx.y;
+	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	const int slot = scId * n + threadIdx.x;
+
+	// No early returns, as the threads synchronize below
+	const bool inRange = scId < nSuperclusters;
+	ParticleIntegrationState state{};
+	state.mass = 0.f;
+	if (inRange)
+		state = states[slot];
+	const bool active = inRange && state.mass != 0.f;	// Unused slots have no mass
+
+	const int pcId = state.pclusterParticle / PersistentCluster::maxParticles;
+	const int indexInPc = state.pclusterParticle % PersistentCluster::maxParticles;
+	const IntegrationSimulationData* const simulation = active ? &simulationData[scMeta[scId].simulationId] : nullptr;
+	const int pidGlobal = active ? scMeta[scId].globalParticleIds[threadIdx.x] : -1;
+
+	Float3 pos{}, velocity{};
+	ForceEnergy fe{};
+	Float3 p0{};
+	if (active) {
+		// The supercluster is kept in the periodic image of its first particle
+		p0 = superClusters[scId].Position(0);
+		BoundaryCondition::applyBCNM(p0, boxSize);
+		pos = superClusters[scId].Position(threadIdx.x);
+		BoundaryCondition::applyHyperposNM(p0, pos, boxSize);
+
+		fe = forceAcc.Take<logData>(slot, primaryBondForces, extraBondForces, bondReferences, nSuperclusters * n);
+		KernelHelpersWarnings::ForceCheck(fe.force);
+		// The constraint force goes into forcePrev, so monitoring gets the measured force here
+		forcesMagnitudeSquared[pidGlobal] = fe.force.lenSquared();
+		if (liveEdit.forceMask)
+			fe.force = fe.force * liveEdit.forceMask[pidGlobal];
+		velocity = EngineUtils::integrateVelocityVVS(state.velocity, state.forcePrev, fe.force, simulation->dt, state.mass);
+	}
+	positions[scInBlock][threadIdx.x] = pos;
+	velocities[scInBlock][threadIdx.x] = velocity;
+	invMasses[scInBlock][threadIdx.x] = active ? 1.f / state.mass : 0.f;
+	pclusterParticles[scInBlock][threadIdx.x] = active ? state.pclusterParticle : -1;
+	__syncthreads();
+
+	PclusterConstraints constraints{};
+	Constraints::Group group{ { -1, -1, -1, -1 } };
+	if (active && indexInPc == 0) {
+		constraints = pclusterConstraints[pcId];
+		for (int i = 0; i < n; i++) {
+			const int particle = pclusterParticles[scInBlock][i];
+			if (particle >= 0 && particle / PersistentCluster::maxParticles == pcId)
+				group.slots[particle % PersistentCluster::maxParticles] = i;
+		}
+		// Pclusters are placed in superclusters whole, so this only guards against a broken layout
+		for (int c = 0; c < constraints.nConstraints; c++)
+			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0) {
+				printf("Constrained particles of pcluster %d are not in the same supercluster\n", pcId);
+				constraints.nConstraints = 0;
+			}
+		if (constraints.nConstraints > 0)
+			Constraints::ConstrainVelocities(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
+	}
+	__syncthreads();
+
+	velocity = velocities[scInBlock][threadIdx.x];
+	Float3 step{};
+	if (active)	// As IntegratePositionVVS, but without adding pos, which would cost the step most of its precision
+		step = velocity * simulation->dt + fe.force * (0.5f / state.mass * simulation->dt * simulation->dt);
+	__syncthreads();	// Everyone has read their velocity before the steps replace them
+	velocities[scInBlock][threadIdx.x] = step;
+	__syncthreads();
+
+	if (constraints.nConstraints > 0)
+		Constraints::ConstrainSteps(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
+	__syncthreads();
+
+	if (!active)
+		return;
+	const Float3 constrainedStep = velocities[scInBlock][threadIdx.x];
+	Float3 posNext = pos + constrainedStep;
+	// The correction to the step is dt^2/2m of the constraint force
+	const Float3 constraintForce = (constrainedStep - step) * (2.f * state.mass / (simulation->dt * simulation->dt));
+
+	if (liveEdit.fixedParticleMovement) {
+		const Float3 fixedMovement = liveEdit.fixedParticleMovement[pidGlobal];
+		if (fixedMovement.lenSquared() > 0) {
+			fe.force = Float3{};
+			velocity = Float3{};
+			posNext = pos + fixedMovement;
+		}
+	}
+	if (liveEdit.fixedParticleRotation) {
+		fe.force = Float3{};
+		velocity = Float3{};
+		const Rotation& rotation = liveEdit.fixedParticleRotation[pidGlobal];
+		BoundaryCondition::applyHyperposNM(rotation.center, posNext, boxSize);
+		LAL::RotatePoint(posNext, rotation.center, rotation.rotation);
+		BoundaryCondition::applyHyperposNM(p0, posNext, boxSize);
+	}
+
+	state.velocity = velocity * simulation->thermostatScalar;
+	state.forcePrev = fe.force + constraintForce;
+	states[slot] = state;
+
+	if constexpr (logData)
+		log.Log(*simulation, pcId, indexInPc, posNext, fe, state.velocity.len());
+
+	superClusters[scId].SetPosition(threadIdx.x, posNext);
+}
+
 // EM: sums each particle's forces from the force kernels into emForces, for EM::UpdateKernel to move the particles once the
 // step is decided for the whole simulation. One supercluster per 16 threads, blockDim = (16, 4, 1)
 template<typename BoundaryCondition, bool logData>

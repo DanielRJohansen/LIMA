@@ -31,6 +31,79 @@ namespace {
 		std::vector<CmapBondFactory> cmapbonds;
 	};
 
+	bool IsHydrogen(const TopologyFile::AtomsEntry& atom) {
+		return !atom.atomname.empty() && std::toupper(static_cast<unsigned char>(atom.atomname[0])) == 'H';	// As GROMACS
+	}
+
+	// Constrains the bonds to hydrogens of a moleculetype at their b0. In a 3-atom water, also the distance between the hydrogens
+	// at the angle's theta0. The bonds and the angle stay: at the constrained lengths their energy is 0 and the constraints absorb
+	// their forces, so MD is unaffected, while energy minimization, which ignores the constraints, can use the same box
+	MoleculetypeConstraints MakeConstraints(const TopologyFile::Moleculetype& molType, const MoleculetypeBonds& bonds) {
+		MoleculetypeConstraints constraints;
+		for (const auto& bond : bonds.singlebonds) {
+			const auto [a, b] = bond.global_atom_indexes;
+			if (IsHydrogen(molType.atoms[a]) || IsHydrogen(molType.atoms[b])) {
+				constraints.pairs.push_back({ a, b });
+				constraints.distances.push_back(bond.params.b0);
+			}
+		}
+		if (constraints.pairs.empty())
+			return constraints;
+
+		if (molType.atoms.size() == 3 && constraints.pairs.size() == 2) {
+			for (size_t i = 0; i < bonds.anglebonds.size(); i++) {
+				const auto [h1, o, h2] = bonds.anglebonds[i].global_atom_indexes;
+				if (!IsHydrogen(molType.atoms[h1]) || !IsHydrogen(molType.atoms[h2]))
+					continue;
+				const auto Distance = [&](int h) {
+					for (size_t c = 0; c < constraints.pairs.size(); c++)
+						if (constraints.pairs[c] == std::array{ o, h } || constraints.pairs[c] == std::array{ h, o })
+							return constraints.distances[c];
+					throw std::runtime_error(Lima::Format("Moleculetype {}: water angle without matching O-H bonds", molType.name));
+				};
+				const float d1 = Distance(h1), d2 = Distance(h2);
+				const float theta = bonds.anglebonds[i].params.theta0;
+				constraints.pairs.push_back({ h1, h2 });
+				constraints.distances.push_back(std::sqrt(d1 * d1 + d2 * d2 - 2.f * d1 * d2 * std::cos(theta)));
+				break;
+			}
+		}
+
+		// Connected groups, which must each fit in a pcluster
+		const int nAtoms = static_cast<int>(molType.atoms.size());
+		std::vector<int> root(nAtoms);
+		for (int i = 0; i < nAtoms; i++) root[i] = i;
+		const auto Find = [&](int i) { while (root[i] != i) i = root[i] = root[root[i]]; return i; };
+		for (const auto& [a, b] : constraints.pairs)
+			root[Find(a)] = Find(b);
+		constraints.groupOf.assign(nAtoms, -1);
+		std::vector<int> groupOfRoot(nAtoms, -1);
+		std::vector<int> nGroupConstraints;
+		for (const auto& [a, b] : constraints.pairs) {
+			for (const int atom : { a, b }) {
+				int& group = groupOfRoot[Find(atom)];
+				if (group == -1) {
+					group = static_cast<int>(constraints.groups.size());
+					constraints.groups.emplace_back();
+					nGroupConstraints.push_back(0);
+				}
+				if (constraints.groupOf[atom] == -1) {
+					constraints.groupOf[atom] = group;
+					constraints.groups[group].push_back(atom);
+				}
+			}
+			nGroupConstraints[groupOfRoot[Find(a)]]++;
+		}
+		for (size_t g = 0; g < constraints.groups.size(); g++) {
+			std::ranges::sort(constraints.groups[g]);
+			if (constraints.groups[g].size() > PersistentCluster::maxParticles || nGroupConstraints[g] > PclusterConstraints::maxConstraints)
+				throw std::runtime_error(Lima::Format("Moleculetype {}: a group of {} constrained atoms around atom {} ({}), at most {} atoms "
+					"and {} constraints are supported (eg. not CH4)", molType.name, constraints.groups[g].size(), constraints.groups[g][0] + 1,
+					molType.atoms[constraints.groups[g][0]].atomname, PersistentCluster::maxParticles, PclusterConstraints::maxConstraints));
+		}
+		return constraints;
+	}
+
 	// The atomtypes of a moleculetype, as small ids so we can make cheap lookup keys for bonds
 	struct MoleculetypeAtomtypes {
 		std::vector<int> atomToType;
@@ -124,7 +197,7 @@ namespace {
 	}
 }
 
-SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield) {
+SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield, ConstraintsSelect constraintsSelect) {
 	moleculeInstances.reserve(system.MoleculeCount());
 
 	// Find the molecules, and the unique moleculetypes in order of appearance
@@ -155,6 +228,7 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 
 	std::vector<std::unique_ptr<MoleculetypeAtomtypes>> atomtypes(moleculetypes.size());
 	std::vector<MoleculetypeBonds> moleculetypeBonds(moleculetypes.size());
+	std::vector<MoleculetypeConstraints> moleculetypeConstraints(moleculetypes.size());
 	std::mutex forcefieldMutex;
 	ParallelUtils::ParallelFor(moleculetypes.size(), [&](size_t i) {
 		const TopologyFile::Moleculetype& molType = *moleculetypes[i];
@@ -167,7 +241,17 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		ResolveBonds<DihedralBond>(molType.dihedralbonds, types, forcefield, forcefieldMutex, bonds.dihedralbonds);
 		ResolveBonds<ImproperDihedralBond>(molType.improperdihedralbonds, types, forcefield, forcefieldMutex, bonds.improperdihedralbonds);
 		ResolveCmaps(molType.cmapbonds, types, forcefield, forcefieldMutex, bonds.cmapbonds);
+		if (constraintsSelect == ConstraintsSelect::HBonds)
+			moleculetypeConstraints[i] = MakeConstraints(molType, bonds);
 		});
+	for (size_t i = 0; i < moleculetypes.size(); i++)
+		if (!moleculetypeConstraints[i].pairs.empty())
+			constraints.emplace(moleculetypes[i], std::move(moleculetypeConstraints[i]));
+	for (const int moleculetype : instanceMoleculetype) {
+		const auto found = constraints.find(moleculetypes[moleculetype]);
+		if (found != constraints.end())
+			nConstraints += static_cast<int64_t>(found->second.pairs.size());
+	}
 
 	// The active LJ indices are assigned in the order the types are first requested, so this must be sequential and in order of appearance
 	std::vector<std::vector<int>> activeLJParamIndices(moleculetypes.size());
@@ -284,6 +368,7 @@ namespace {
 		std::vector<ParticlesBondedToParticle> particleBondedToParticle;	// Relative to the molecule
 		std::vector<PclustersBondedToPcluster> pclusterBondedToPcluster;	// Relative to the molecule
 		std::vector<PersistentParticleTemplate> particles;
+		std::vector<PclusterConstraints> constraints;	// Per cluster, empty without constraints
 	};
 
 	bool IsSolventResidue(const std::string& residue) {
@@ -381,7 +466,7 @@ namespace {
 	};
 
 	std::vector<std::array<int, PersistentCluster::maxParticles>> MakeLocalPersistentClusters(
-		const TopologyFile::Moleculetype& molecule
+		const TopologyFile::Moleculetype& molecule, const MoleculetypeConstraints* constraints
 	) {
 		const LocalMoleculeGraph moleculeGraph(molecule);
 		const std::vector<std::vector<int>> connectedComponents = moleculeGraph.ConnectedComponents();
@@ -400,6 +485,31 @@ namespace {
 			return distanceToFirstNode.value_or(INT_MAX) < 3 ||
 				distanceToFirstNode.value_or(INT_MAX) <= 4 && distanceToPreviousNode.value_or(INT_MAX) <= 2;
 		};
+
+		// With constraints, each constrained group is added to a cluster as a whole, so it never spans clusters
+		if (constraints) {
+			std::vector<bool> added(molecule.atoms.size(), false);
+			for (const std::vector<int>& component : connectedComponents) {
+				clusters.emplace_back(std::array{ -1, -1, -1, -1 });
+				int nextIndex = 0;
+				for (const int particleId : component) {
+					if (added[particleId])
+						continue;
+					const int group = constraints->groupOf[particleId];
+					const std::vector<int> single{ particleId };
+					const std::vector<int>& members = group == -1 ? single : constraints->groups[group];
+					if (nextIndex != 0 && (nextIndex + members.size() > PersistentCluster::maxParticles || !CanAppendToCluster(particleId, clusters.back(), nextIndex))) {
+						clusters.emplace_back(std::array{ -1, -1, -1, -1 });
+						nextIndex = 0;
+					}
+					for (const int member : members) {
+						clusters.back()[nextIndex++] = member;
+						added[member] = true;
+					}
+				}
+			}
+			return clusters;
+		}
 
 		std::unordered_set<int> addedByLookahead;
 		for (const std::vector<int>& component : connectedComponents) {
@@ -451,10 +561,11 @@ namespace {
 
 	PersistentClusterTemplate BuildPersistentClusterTemplate(
 		const TopologyFile::Moleculetype& molecule,
-		const LIMAForcefield& forcefield
+		const LIMAForcefield& forcefield,
+		const MoleculetypeConstraints* constraints
 	) {
 		PersistentClusterTemplate result;
-		result.clusters = MakeLocalPersistentClusters(molecule);
+		result.clusters = MakeLocalPersistentClusters(molecule, constraints);
 		result.particleToPcluster.resize(molecule.atoms.size(), -1);
 		result.particles.resize(molecule.atoms.size());
 
@@ -462,6 +573,25 @@ namespace {
 			for (const int particleId : result.clusters[pcid]) {
 				if (particleId != -1)
 					result.particleToPcluster[particleId] = pcid;
+			}
+		}
+
+		if (constraints) {
+			result.constraints.resize(result.clusters.size());
+			const auto IndexInCluster = [&](int particleId) {
+				const auto& cluster = result.clusters[result.particleToPcluster[particleId]];
+				return static_cast<int>(std::ranges::find(cluster, particleId) - cluster.begin());
+			};
+			for (size_t c = 0; c < constraints->pairs.size(); c++) {
+				const auto [a, b] = constraints->pairs[c];
+				if (result.particleToPcluster[a] != result.particleToPcluster[b])
+					throw std::runtime_error("A constraint spans two pclusters");
+				PclusterConstraints& clusterConstraints = result.constraints[result.particleToPcluster[a]];
+				if (clusterConstraints.nConstraints == PclusterConstraints::maxConstraints)
+					throw std::runtime_error("Too many constraints in a pcluster");
+				clusterConstraints.particles[clusterConstraints.nConstraints] = static_cast<uint8_t>(IndexInCluster(a) | IndexInCluster(b) << 2);
+				clusterConstraints.distance[clusterConstraints.nConstraints] = constraints->distances[c];
+				clusterConstraints.nConstraints++;
 			}
 		}
 
@@ -560,7 +690,9 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, con
 
 	std::vector<PersistentClusterTemplate> templates(uniqueMoleculetypes.size());
 	ParallelUtils::ParallelFor(uniqueMoleculetypes.size(), [&](size_t i) {
-		templates[i] = BuildPersistentClusterTemplate(*uniqueMoleculetypes[i], forcefield);
+		const auto constraints = system.constraints.find(uniqueMoleculetypes[i]);
+		templates[i] = BuildPersistentClusterTemplate(*uniqueMoleculetypes[i], forcefield,
+			constraints == system.constraints.end() ? nullptr : &constraints->second);
 		});
 
 	// Each instance gets a contiguous range of pclusters
@@ -575,6 +707,8 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, con
 	pcFactory.particleToPclusterMap.resize(system.particles.size());
 	pcFactory.particleBondedToParticle.resize(system.particles.size());
 	pcFactory.pclusterBondedToPcluster.resize(totalClusterCount);
+	if (!system.constraints.empty())
+		pcFactory.pclusterConstraints.resize(totalClusterCount);
 
 	// Instances write to disjoint ranges, so they can be instantiated in parallel
 	ParallelUtils::ParallelForBlocked(system.moleculeInstances.size(), [&](size_t instanceId) {
@@ -613,6 +747,9 @@ PersistentClusterFactory MakePersistentClusters(const SuperTopology& system, con
 			bonded.AddOffset(instance.particleOffset);
 			pcFactory.particleBondedToParticle[instance.particleOffset + localParticleId] = bonded;
 		}
+
+		for (int localPcid = 0; localPcid < persistentTemplate.constraints.size(); localPcid++)
+			pcFactory.pclusterConstraints[pclusterOffset + localPcid] = persistentTemplate.constraints[localPcid];
 
 		for (int localPcid = 0; localPcid < persistentTemplate.pclusterBondedToPcluster.size(); localPcid++) {
 			PclustersBondedToPcluster bonded = persistentTemplate.pclusterBondedToPcluster[localPcid];
@@ -830,7 +967,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//TimeIt timer("buildMolecules", true);
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
 
-	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield);
+	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield, simparams.constraints.value);
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
 
@@ -871,7 +1008,8 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		}
 	}
 
-	return std::make_unique<BoxImage>(
+	auto pclusterConstraints = std::move(pcFactory.pclusterConstraints);
+	auto boxImage = std::make_unique<BoxImage>(
 		grofile,	// TODO: wierd ass copy here. Probably make the input a sharedPtr?
 		std::move(superTopology),
 		std::move(bondGroups),
@@ -882,4 +1020,6 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 		std::move(gpidToPcidAndPid),
 		nParticles
 	);
+	boxImage->pclusterConstraints = std::move(pclusterConstraints);
+	return boxImage;
 }

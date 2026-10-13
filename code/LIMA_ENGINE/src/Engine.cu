@@ -662,10 +662,16 @@ template <typename BoundaryCondition, bool emvariant, bool logData>
 void Engine::_deviceMaster() {
 	if (emvariant != tasksBuiltForEm)
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
-	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
-	ForkStreamsFromMainStream();
 	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
 	const int nScs = batch->nSuperclusters;
+	if constexpr (!emvariant) {
+		if (batch->hasConstraints && !batch->positionsConstrained && nScs > 0)
+			ConstrainPositionsKernel<BoundaryCondition><<<(nScs + 3) / 4, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+				batch->superClustersControl->scData, batch->integrationStates.Get(), batch->pclusterConstraintsDevice.Get(), nScs, boxSize);
+		batch->positionsConstrained = true;
+	}
+	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
+	ForkStreamsFromMainStream();
 	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
 	// and are gathered by integration, so all force kernels can run concurrently.
 	ForceAccumulator forceAcc{};
@@ -726,12 +732,22 @@ void Engine::_deviceMaster() {
 			const LiveEditBuffers liveEdit{ batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
 				batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
 				batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr };
-			// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
-			batch->forceMagnitudesInStates = !liveEdit.Any();
-			SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-				forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
-				batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-				liveEdit, log);
+			if (batch->hasConstraints) {
+				// forcePrev includes the constraint force, so the kernel writes the measured force magnitudes itself
+				batch->forceMagnitudesInStates = false;
+				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
+					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
+					liveEdit, log, batch->pclusterConstraintsDevice.Get());
+			}
+			else {
+				// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
+				batch->forceMagnitudesInStates = !liveEdit.Any();
+				SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
+					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
+					liveEdit, log);
+			}
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster
 		if constexpr (emvariant)

@@ -14,6 +14,7 @@
 
 enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
 enum BoundaryConditionSelect { NoBC, PBC };
+enum class ConstraintsSelect { None, HBonds };
 enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };
 enum class SimParamSection { Main, Physics, Thermostat, Output, Analysis, Debug };
 
@@ -95,6 +96,9 @@ struct SimParams {
     SimParam<bool> enable_electrostatics{ "enable_electrostatics", true, SimParamSection::Physics };
     SimParam<float> cutoff_nm{ "cutoff_nm", 1.2f, SimParamSection::Physics, "[nm]" };
     SimParam<std::set<SupernaturalForcesSelect>> snf_select{ "supernatural_forces", {}, SimParamSection::Physics };
+    SimParam<ConstraintsSelect> constraints{ "constraints", ConstraintsSelect::None, SimParamSection::Physics,
+        "none or h-bonds: h-bonds holds bonds to hydrogens at their equilibrium length and makes water rigid, as GROMACS' "
+        "constraints = h-bonds with settled water. MD only, energy minimization keeps them flexible" };
 
     SimParam<int64_t> steps_per_temperature_measurement{ "steps_per_temperature_measurement", 200,
         SimParamSection::Thermostat, "[steps]" };
@@ -119,14 +123,14 @@ struct SimParams {
 
     auto Params() {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
-            bc_select, enable_electrostatics, cutoff_nm, snf_select,
+            bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, initial_temperature,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 
     auto Params() const {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate,
-            bc_select, enable_electrostatics, cutoff_nm, snf_select,
+            bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, initial_temperature,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }

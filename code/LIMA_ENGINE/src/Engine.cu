@@ -739,7 +739,7 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterConstraintsDevice.Get());
+					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterTransfermodule->overflow, batch->step);
 			}
 			else {
 				// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
@@ -747,7 +747,7 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log);
+					liveEdit, log, batch->pclusterTransfermodule->overflow, batch->step);
 			}
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster

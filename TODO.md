@@ -27,8 +27,7 @@
 ## Constraints: done for constraints = h-bonds (2026-10-13): bonds to hydrogens, and 3-atom water made rigid via its H-H distance. Groups (<=4 atoms, <=3 constraints) are kept within one pcluster, and SuperclusterIntegrateConstrainedKernel solves them per pcluster with SHAKE/RATTLE (deterministic, one thread per pcluster). Constrained bonds stay in the bond lists (0 energy at the constrained length), so EM and MD can share a box. T4 in water: constraint error < 1e-5, energy conservation better than flexible at 2 fs. Left:
 - LINCS / constraints = all-bonds: postponed, h-bonds covers the usual CHARMM/AMBER setups. Needs coupled constraints across pclusters, ie. across superclusters, so a separate deterministic solver.
 - SETTLE (analytic) for water instead of iterative SHAKE: cheaper and exact. The constrained integrate kernel is ~7 us vs ~3 us on T4 vacuum.
-- Hydrogen mass repartitioning, for 4 fs steps. First fix the next item.
-- dt > 2 fs crashes LIMA (illegal memory access in FindNeighborsKernel), also without constraints: T4 vacuum at 3 fs within 250 steps. Probably the neighbor list buffer/interval tuned for 2 fs, and a blown-up system should stop with an error rather than an illegal access.
+- Hydrogen mass repartitioning, for 4-5 fs steps. With constraints = h-bonds, T4 (vacuum and water) already runs 2000 steps at 4 fs without it; check energy conservation there first.
 - initial_temperature draws velocities with components along the constraints, which the first step removes, so the start is somewhat colder than asked.
 - Not yet compared with a constrained GROMACS run (bond lengths, water RDF, energy drift).
 ## Restraints: position restraints are skipped (posre includes ignored in Topologyfile.cpp), so no restrained equilibration. Also missing: distance/dihedral/flat-bottom restraints and pulling (umbrella sampling, steered MD).

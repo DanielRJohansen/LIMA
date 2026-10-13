@@ -8,7 +8,9 @@
 // instead of corrupting neighboring data. The status is sticky: the host reads it at an existing sync
 // point and aborts the run, since dropped entries mean the step's physics is already wrong.
 struct CapacityOverflow {
-	enum Code : int { None = 0, ClusterTransfer, ClusterOccupancy, ChargeBlock };
+	// Unstable is no capacity, but rides the same sync: a particle moved more than maxStep in one step, or became non-finite
+	enum Code : int { None = 0, ClusterTransfer, ClusterOccupancy, ChargeBlock, Unstable };
+	static constexpr float maxStep = 0.2f;	// [nm] Also in the message of ThrowIfSet. Thermal motion is below ~0.05 nm per step even at 4 fs
 	static constexpr int nValues = 4; // code, block, count, capacity
 
 	int* status = nullptr;
@@ -40,6 +42,9 @@ struct CapacityOverflow {
 
 	__host__ static void ThrowIfSet(const int values[nValues]) {
 		if (values[0] == None) return;
+		if (values[0] == Unstable)
+			throw std::runtime_error("The simulation became unstable: particle " + std::to_string(values[1]) + " moved more than 0.2 nm in one step, at step " + std::to_string(values[2]) + ". Eg. dt is too large: above 2 fs, "
+				"use constraints=h-bonds");
 		const char* what = values[0] == ClusterTransfer ? "outgoing cluster transfers per direction"
 			: values[0] == ClusterOccupancy ? "persistent clusters per grid block"
 			: "PME charge entries per charge block";

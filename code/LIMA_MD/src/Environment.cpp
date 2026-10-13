@@ -421,7 +421,8 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 		if (next.job.outputs.contains(OutputSelect::Topology))
 			next.job.topfile->Get().printToFile(next.job.workDir / "topol.top");
 		if (simulation->simParams.initial_temperature > 0.f && !simulation->simParams.em_variant)
-			Programs::InitializeVelocities(*simulation, simulation->simParams.initial_temperature, std::random_device{}());
+			Programs::InitializeVelocities(*simulation, simulation->simParams.initial_temperature,
+				static_cast<uint32_t>(simulation->simParams.velocity_seed.value));
 		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
 		if (!next.job.name.empty())

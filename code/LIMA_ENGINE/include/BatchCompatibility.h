@@ -19,7 +19,7 @@ namespace EngineBatch {
 			([&] {
 				const auto& param = std::get<indices>(candidate);
 				// Per-member settings, or settings used only before the first step or after the last
-				constexpr std::array<std::string_view, 6> perMember{ "dt", "n_steps", "ref_t", "initial_temperature",
+				constexpr std::array<std::string_view, 9> perMember{ "dt", "n_steps", "ref_t", "tau_t", "thermostat_seed", "initial_temperature", "velocity_seed",
 					"self_diffusion", "density_profile" };
 				if (!mismatch && std::ranges::find(perMember, param.name) == perMember.end()
 					&& param.value != std::get<indices>(reference).value)

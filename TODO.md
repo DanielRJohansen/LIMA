@@ -32,7 +32,7 @@
 - Not yet compared with a constrained GROMACS run (bond lengths, water RDF, energy drift).
 ## Restraints: position restraints are skipped (posre includes ignored in Topologyfile.cpp), so no restrained equilibration. Also missing: distance/dihedral/flat-bottom restraints and pulling (umbrella sampling, steered MD).
 ## Constant pressure (NPT): no barostat (C-rescale/Berendsen for equilibration, Parrinello-Rahman/MTTK for production). Needs box rescaling on the GPU, a virial (the fixed-point force accumulation would have to also sum pair virials), and the grid/PME to follow the box size.
-## Thermostats: only a global, clamped velocity rescale (Thermostat.cuh, 0.1% per measurement). Missing v-rescale (Bussi, the GROMACS default), Nose-Hoover and Langevin/stochastic dynamics, and per-group coupling (eg. protein vs solvent).
+## Thermostats: v-rescale (Bussi) done 2026-10-13, deterministic (seeded, own deviates; T4 in water: mean 299.8 K, fluctuations 1.598 K vs 1.600 canonical). Missing Nose-Hoover and Langevin/stochastic dynamics, and per-group coupling (eg. protein vs solvent).
 ## Also missing vs GROMACS: virtual sites (TIP4P water, hydrogen vsites for 4-5 fs steps), free-energy perturbation (lambda coupling), center-of-mass motion removal, energy groups, and .edr-style energy output. Check each against what the Salad comparison (above) actually needs, and do those first.
 
 # Implicit solvent (idea, 2026-10-12)

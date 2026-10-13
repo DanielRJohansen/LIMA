@@ -206,9 +206,47 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
     }
     if (outputInterval) params.data_logging_interval.value = *outputInterval;
 
-    if (const auto found = mdp.find("tcoupl"); found != mdp.end())
-        params.apply_thermostat.value = found->second != "no" && found->second != "none";
+    if (const auto found = mdp.find("tcoupl"); found != mdp.end()) {
+        const std::string tcoupl = Lowercase(found->second);
+        if (tcoupl != "no" && tcoupl != "none" && tcoupl != "v-rescale")
+            throw std::runtime_error("Unsupported tcoupl: " + found->second + ". LIMA has v-rescale");
+        params.apply_thermostat.value = tcoupl == "v-rescale";
+    }
     parseIfPresent("nsttcouple", params.steps_per_temperature_measurement.value);
+    // GROMACS gives these per coupling group. LIMA couples the whole system, so the groups must agree
+    const auto parseSameForAllGroups = [&mdp](const std::string_view key, float& target) {
+        const auto found = mdp.find(std::string{ key });
+        if (found == mdp.end())
+            return;
+        std::optional<float> value;
+        std::string_view rest = found->second;
+        while (!rest.empty()) {
+            const size_t start = rest.find_first_not_of(" \t");
+            if (start == std::string_view::npos)
+                break;
+            rest = rest.substr(start);
+            const size_t end = std::min(rest.find_first_of(" \t"), rest.size());
+            const float groupValue = ParseNumber<float>(key, rest.substr(0, end));
+            if (value && *value != groupValue)
+                throw std::runtime_error(Lima::Format("'{}' differs between coupling groups, LIMA couples the whole system", key));
+            value = groupValue;
+            rest = rest.substr(end);
+        }
+        if (value)
+            target = *value;
+    };
+    parseSameForAllGroups("tau_t", params.tau_t.value);
+    parseSameForAllGroups("ref_t", params.ref_t.value);
+    // GROMACS' default -1 picks a random seed, which would make runs irreproducible, so it keeps LIMA's fixed seed
+    const auto parseSeed = [&mdp](const std::string_view key, int64_t& target) {
+        if (const auto found = mdp.find(std::string{ key }); found != mdp.end()) {
+            const int64_t seed = ParseNumber<int64_t>(key, found->second);
+            if (seed != -1)
+                target = seed;
+        }
+    };
+    parseSeed("ld-seed", params.thermostat_seed.value);
+    parseSeed("gen-seed", params.velocity_seed.value);
 }
 
 } // namespace

@@ -186,6 +186,8 @@ namespace EngineBatch {
 				throw std::invalid_argument("Invalid engine measurement or update interval");
 			if (!FinitePositive(params.dt))
 				throw std::invalid_argument("Timestep must be finite and positive");
+			if (params.apply_thermostat && !FinitePositive(params.tau_t))
+				throw std::invalid_argument("tau_t must be finite and positive");
 			if (!FinitePositive(params.cutoff_nm))
 				throw std::invalid_argument("Cutoff must be finite and positive");
 			if (!(FinitePositive(params.verlet_buffer_tolerance) || params.verlet_buffer_tolerance == -1.f) || !std::isfinite(params.rlist.value))
@@ -407,6 +409,7 @@ namespace EngineBatch {
 			const auto& box = *simulation->box;
 			EngineSimulationData sim;
 			sim.simulation = simulation;
+			sim.thermostat = VRescale(static_cast<uint64_t>(simulation->simParams.thermostat_seed.value));
 			auto& layout = sim.device;
 			layout.particles = { batch.nParticles, box.boxparams.totalParticles };
 			layout.pclusters = { CheckedCount(pclusters.size()), CheckedCount(box.persistentClusters.size()) };

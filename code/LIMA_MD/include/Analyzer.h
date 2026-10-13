@@ -33,6 +33,8 @@ namespace SimAnalysis {
 
 	AnalyzedPackage analyzeEnergy(Simulation* simulation); // Prints a file of doubles: [step, molecule, atom, coordinate_dim]
 	void AnalyzeEnergy(SimulationResult& result);
+	// Potential, kinetic and total energy [kJ/mol] and temperature [K] of each logged step, as an .xvg file like gmx energy writes
+	void WriteEnergySeries(const Simulation& simulation, const std::filesystem::path& outputPath);
 	void DensityProfile(const Simulation& simulation, const std::filesystem::path& outputPath, bool show = false);
 	struct DensityProfileGroup {
 		std::string composition;

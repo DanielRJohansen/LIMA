@@ -496,7 +496,7 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 // The analyses selected in the simulation's SimParams, each written to its own file in the directory
 static void RunAnalyses(const Simulation& simulation, const fs::path& directory) {
 	const SimParams& params = simulation.simParams;
-	if (params.em_variant || (!params.self_diffusion && !params.density_profile))
+	if (params.em_variant || (!params.self_diffusion && !params.density_profile && !params.save_energy))
 		return;
 	fs::create_directories(directory);
 	if (params.self_diffusion) {
@@ -508,6 +508,8 @@ static void RunAnalyses(const Simulation& simulation, const fs::path& directory)
 	}
 	if (params.density_profile)
 		SimAnalysis::DensityProfile(simulation, directory / "density_profile.csv");
+	if (params.save_energy)
+		SimAnalysis::WriteEnergySeries(simulation, directory / "energy.xvg");
 }
 
 void Environment::Postprocess(ProcessedSimulation next, size_t worker) {

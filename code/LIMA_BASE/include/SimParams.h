@@ -123,7 +123,8 @@ struct SimParams {
 
     SimParam<int> data_logging_interval{ "data_logging_interval", 5, SimParamSection::Output, "[steps]" };
     SimParam<bool> save_energy{ "save_energy", false, SimParamSection::Output,
-        "Save kinetic and potential energy to file" };
+        "Write energy.xvg: potential, kinetic and total energy [kJ/mol] and temperature [K] every data_logging_interval steps, "
+        "in the format of GROMACS' gmx energy" };
     SimParam<ColoringMethod> coloring_method{ "coloring_method", ColoringMethod::Atomname, SimParamSection::Output };
 
     SimParam<bool> self_diffusion{ "self_diffusion", false, SimParamSection::Analysis,

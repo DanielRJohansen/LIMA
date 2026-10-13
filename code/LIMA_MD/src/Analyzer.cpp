@@ -119,6 +119,47 @@ void SimAnalysis::AnalyzeEnergy(SimulationResult& result) {
 	result.analysis = analyzeEnergy(result.simulation.get());
 }
 
+void SimAnalysis::WriteEnergySeries(const Simulation& simulation, const std::filesystem::path& outputPath) {
+	const SimParams& params = simulation.simParams;
+	if (params.data_logging_interval <= 0 || !simulation.potE_buffer || !simulation.vel_buffer)
+		throw std::invalid_argument("save_energy requires data logging, data_logging_interval > 0");
+	const auto& metadata = simulation.box->persistentClustersMetadata;
+	const int64_t nEntries = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation.getStep(), params.data_logging_interval);
+	const size_t valuesPerEntry = metadata.size() * PersistentCluster::maxParticles;
+	const auto& potentialEnergies = simulation.potE_buffer->data();	// [J/mol] per particle
+	const auto& speeds = simulation.vel_buffer->data();					// [m/s]
+	const int64_t degreesOfFreedom = simulation.box->boxparams.degreesOfFreedom;
+
+	std::ofstream file(outputPath);
+	if (!file)
+		throw std::runtime_error("Unable to open file: " + outputPath.string());
+	file << "# Written by LIMA. Energies are system totals\n"
+		<< "@    title \"LIMA Energies\"\n"
+		<< "@    xaxis  label \"Time (ps)\"\n"
+		<< "@    yaxis  label \"(kJ/mol), (K)\"\n"
+		<< "@TYPE xy\n"
+		<< "@ s0 legend \"Potential\"\n"
+		<< "@ s1 legend \"Kinetic En.\"\n"
+		<< "@ s2 legend \"Total Energy\"\n"
+		<< "@ s3 legend \"Temperature\"\n";
+	for (int64_t entry = 0; entry < nEntries; entry++) {
+		double potential = 0.0, kinetic = 0.0;	// [J/mol]
+		for (size_t clusterId = 0; clusterId < metadata.size(); clusterId++) {
+			for (int particleId = 0; particleId < PersistentCluster::maxParticles; particleId++) {
+				if (metadata[clusterId].particleIdsGlobal[particleId] < 0)
+					continue;
+				const size_t index = entry * valuesPerEntry + clusterId * PersistentCluster::maxParticles + particleId;
+				potential += potentialEnergies[index];
+				kinetic += PhysicsUtils::calcKineticEnergy(speeds[index], metadata[clusterId].mass[particleId]);
+			}
+		}
+		const double timePs = entry * params.data_logging_interval * static_cast<double>(params.dt) * NANO_TO_PICO;
+		const double temperature = PhysicsUtils::kineticEnergyToTemperature(kinetic, degreesOfFreedom);
+		file << Lima::Format("{:12.4f} {:16.4f} {:16.4f} {:16.4f} {:12.4f}\n",
+			timePs, potential / KILO, kinetic / KILO, (potential + kinetic) / KILO, temperature);
+	}
+}
+
 void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesystem::path& outputPath, bool show) {
 	if (!simulation.traj_buffer || !simulation.boxImage)
 		throw std::invalid_argument("Density profile requires trajectory data and atom metadata");

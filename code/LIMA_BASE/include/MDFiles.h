@@ -65,7 +65,9 @@ enum TopologySection {
 	title, molecules, moleculetype, atoms, bonds, pairs, angles, dihedrals, impropers, position_restraints, _system, // system is a protected keyword??
 	cmap, settles, no_section,
 	// Keywords typically found in forcefields, but also in topologies when a user wishes to overwrite a parameter
-	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes, defaults, cmaptypes,
+	atomtypes, pairtypes, bondtypes, constainttypes, angletypes, dihedraltypes, impropertypes,
+	periodicimpropertypes,	// [ dihedraltypes ] of funct 4
+	defaults, cmaptypes,
 
 	// custom one i defined to do some workarounds
 	includes, notimplemented

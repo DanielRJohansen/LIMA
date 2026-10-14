@@ -86,7 +86,8 @@ void Programs::GetForcefieldParams(const GroFile& grofile, const TopologyFile& t
 	}
 
 	{
-		file << "[ dihedraltypes ]\n";
+		// LIMA's own directive, as these lines have no funct to tell them from the periodic dihedrals above
+		file << "[ impropertypes ]\n";
 		file << "; name_i name_j name_k name_l psi0[rad] kpsi[J/(mol*rad^2)]\n";
 		for (const auto& improper : boximage->topology.improperdihedralbonds) {
 			for (int i = 0; i < improper.nAtoms; i++)

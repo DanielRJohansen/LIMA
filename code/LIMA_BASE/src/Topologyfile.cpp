@@ -26,30 +26,20 @@
 
 using namespace FileUtils;
 
+// Proper and improper dihedrals share the [ dihedrals ] and [ dihedraltypes ] directives, and are told apart by each line's funct,
+// see DihedralSection
 class TopologySectionGetter {
-	int dihedralCount = 0;
-	int dihedraltypesCount = 0;
-
-	void Reset() {
-		dihedralCount = 0;
-		dihedraltypesCount = 0;
-	}
-
 public:
 	constexpr TopologySection operator()(const std::string_view& directive) {
 		if (directive == "molecules") return molecules;
 		if (directive == "moleculetype") {
-			Reset();
 			return moleculetype;
 		}
 		if (directive == "atoms") return atoms;
 		if (directive == "bonds") return bonds;
 		if (directive == "pairs") return pairs;
 		if (directive == "angles") return angles;
-		if (directive == "dihedrals") {
-			if (++dihedralCount <= 2) return dihedralCount == 1 ? dihedrals : impropers;
-			throw std::runtime_error("Encountered 'dihedral' directive more than 2 times in .itp/.top file");
-		}
+		if (directive == "dihedrals") return dihedrals;
 		if (directive == "position_restraints") return position_restraints;
 		if (directive == "system") return _system;
 		if (directive == "cmap") return cmap;
@@ -59,10 +49,7 @@ public:
 		if (directive == "bondtypes") return bondtypes;
 		if (directive == "constrainttypes") return constainttypes;
 		if (directive == "angletypes") return angletypes;
-		if (directive == "dihedraltypes") {
-			if (++dihedraltypesCount <= 2) return dihedraltypesCount == 1 ? dihedraltypes : impropertypes;
-			throw std::runtime_error("Encountered 'dihedraltypes' directive more than 2 times in .itp/ file");
-		}
+		if (directive == "dihedraltypes") return dihedraltypes;
 		if (directive == "impropertypes") return impropertypes;
 		if (directive == "defaults") return defaults;
 		if (directive == "cmaptypes") return cmaptypes;
@@ -174,11 +161,39 @@ inline bool ParseValue(std::string_view& sv, T& out) noexcept {
 }
 
 inline bool ParseValue(std::string_view& sv, std::optional<float>& out) noexcept {
-	float tmp{};	
+	float tmp{};
 	if (!ParseValue(sv, tmp))
 		return false;
 	out = tmp;
 	return true;
+}
+
+// The section a [ dihedrals ] or [ dihedraltypes ] line belongs to, by its funct as GROMACS: 1 and 9 periodic propers, 4 periodic
+// impropers, 2 harmonic impropers. The funct follows 4 atom ids or types. Scanned in place, as large topologies have millions of these
+TopologySection DihedralSection(std::string_view line, bool types) {
+	std::string_view sv = line;
+	for (int i = 0; i < 4; i++) {
+		SkipLeadingWhitespace(sv);
+		size_t length = 0;
+		while (length < sv.size() && sv[length] != ' ' && sv[length] != '\t')
+			length++;
+		sv.remove_prefix(length);
+	}
+	SkipLeadingWhitespace(sv);
+	int funct = 0;
+	if (!ParseValue<int>(sv, funct))
+		throw std::runtime_error(Lima::Format("Dihedral without a funct: {}", line));
+	switch (funct) {
+	case 1:
+	case 9:
+		return types ? dihedraltypes : dihedrals;
+	case 4:
+		return types ? periodicimpropertypes : dihedrals;	// The bond's funct selects the parameters, see ResolveBonds
+	case 2:
+		return types ? impropertypes : impropers;
+	default:
+		throw std::runtime_error(Lima::Format("Unsupported dihedral funct {}, LIMA has 1, 2, 4 and 9: {}", funct, line));
+	}
 }
 
 inline bool ParseValue(std::string_view& sv, std::string& out) noexcept {
@@ -733,18 +748,8 @@ private:
 	void ProcessLine(SectionState& state, const Instance& instance, std::string_view line) {
 		const fs::path& path = files[instance.file]->path;
 		TopologySection section = state.section;
-		if (section == dihedraltypes || section == impropertypes) {
-			std::istringstream iss{ std::string{ line } };
-			std::string atomtype;
-			int funct = 0;
-			for (int i = 0; i < 4; i++)
-				iss >> atomtype;
-			iss >> funct;
-			if (funct == 4)
-				section = impropertypes;
-			else if (funct == 9)
-				section = dihedraltypes;
-		}
+		if (section == dihedraltypes || section == impropertypes)
+			section = DihedralSection(line, true);
 
 		switch (section) {
 		case TopologySection::moleculetype: {
@@ -834,8 +839,12 @@ private:
 		ParseBonds(Lines(bonds), moleculetype.singlebonds, groIdToLimaId);
 		ParseBonds(Lines(pairs), moleculetype.pairbonds, groIdToLimaId);
 		ParseBonds(Lines(angles), moleculetype.anglebonds, groIdToLimaId);
-		ParseBonds(Lines(dihedrals), moleculetype.dihedralbonds, groIdToLimaId);
-		ParseBonds(Lines(impropers), moleculetype.improperdihedralbonds, groIdToLimaId);
+		// The [ dihedrals ] lines are split by funct, see DihedralSection
+		std::vector<std::string_view> properLines, improperLines;
+		for (const std::string_view line : Lines(dihedrals))
+			(DihedralSection(line, false) == dihedrals ? properLines : improperLines).push_back(line);
+		ParseBonds(properLines, moleculetype.dihedralbonds, groIdToLimaId);
+		ParseBonds(improperLines, moleculetype.improperdihedralbonds, groIdToLimaId);
 		ParseBonds(Lines(cmap), moleculetype.cmapbonds, groIdToLimaId);
 		ParseSettles(Lines(settles), moleculetype, groIdToLimaId);
 	}
@@ -946,9 +955,7 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 
 
 		if (newSection) {
-			if (!GetSection(current_section).empty()) {
-				throw std::runtime_error("Found the same section muliple times in the same file");
-			}
+			// A directive may appear several times, eg. [ dihedraltypes ] for propers and impropers. Its entries are appended
 			sections.insert({ current_section, {} });
 			newSection = false;
 		}
@@ -969,7 +976,7 @@ void GenericItpFile::printToFile(const fs::path& path) const {
 		std::pair{ defaults, "defaults" }, std::pair{ atomtypes, "atomtypes" },
 		std::pair{ pairtypes, "pairtypes" }, std::pair{ bondtypes, "bondtypes" },
 		std::pair{ constainttypes, "constrainttypes" }, std::pair{ angletypes, "angletypes" },
-		std::pair{ dihedraltypes, "dihedraltypes" }, std::pair{ impropertypes, "dihedraltypes" },
+		std::pair{ dihedraltypes, "dihedraltypes" }, std::pair{ impropertypes, "dihedraltypes" }, std::pair{ periodicimpropertypes, "dihedraltypes" },
 		std::pair{ cmaptypes, "cmaptypes" }, std::pair{ moleculetype, "moleculetype" },
 		std::pair{ atoms, "atoms" }, std::pair{ bonds, "bonds" }, std::pair{ pairs, "pairs" },
 		std::pair{ angles, "angles" }, std::pair{ dihedrals, "dihedrals" },
@@ -1035,6 +1042,9 @@ void TopologyFile::ForcefieldInclude::SaveToDir(const fs::path& directory) const
 
 	file << "[ dihedraltypes ]\n";
 	for (const auto& entry : contents.GetSection(impropertypes)) {
+		file << entry << '\n';
+	}
+	for (const auto& entry : contents.GetSection(periodicimpropertypes)) {
 		file << entry << '\n';
 	}
 }

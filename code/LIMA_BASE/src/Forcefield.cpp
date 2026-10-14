@@ -353,6 +353,7 @@ LIMAForcefield::LIMAForcefield(const GenericItpFile& file) {
 	pairbondParameters = std::make_unique<ParameterDatabase<PairbondType>>();
 	anglebondParameters = std::make_unique<ParameterDatabase<AnglebondType>>();
 	dihedralbondParameters = std::make_unique<ParameterDatabase<DihedralbondType>>();
+	periodicImproperParameters = std::make_unique<ParameterDatabase<DihedralbondType>>();
 	improperdihedralbondParameters = std::make_unique<ParameterDatabase<ImproperDihedralbondType>>();
 
 	LoadFileIntoForcefield(file);
@@ -472,7 +473,32 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 
 		anglebondParameters->insert(anglebondtype);
 	}
-	for (const auto& line : file.GetSection(TopologySection::dihedraltypes)) {
+	// Propers and impropers share [ dihedraltypes ], so each line is placed by its funct: 1 and 9 periodic propers, 4 periodic
+	// impropers, 2 harmonic impropers. The topology parser already sorts them, a GenericItpFile does not
+	std::vector<std::string> dihedralLines, periodicImproperLines, improperLines;
+	for (const TopologySection section : { TopologySection::dihedraltypes, TopologySection::impropertypes, TopologySection::periodicimpropertypes }) {
+		for (const auto& line : file.GetSection(section)) {
+			std::istringstream iss(line);
+			std::string typeName;
+			int funct = 0;
+			iss >> typeName >> typeName >> typeName >> typeName >> funct;
+			if (funct == 1 || funct == 9) dihedralLines.push_back(line);
+			else if (funct == 4) periodicImproperLines.push_back(line);
+			else if (funct == 2) improperLines.push_back(line);
+			else throw std::runtime_error(Lima::Format("Unsupported dihedraltypes funct {}, LIMA has 1, 2, 4 and 9: {}", funct, line));
+		}
+	}
+	for (const auto& line : periodicImproperLines) {
+		std::istringstream iss(line);
+		DihedralbondType type{};
+		float phi0, kphi;
+		int n;
+		iss >> type.bonded_typenames[0] >> type.bonded_typenames[1] >> type.bonded_typenames[2] >> type.bonded_typenames[3]
+			>> type.func >> phi0 >> kphi >> n;	// [degrees], [kJ/mol]
+		type.params = DihedralBond::Parameters::CreateFromCharmm(phi0, kphi, n);
+		periodicImproperParameters->insert(type);
+	}
+	for (const auto& line : dihedralLines) {
 		std::istringstream iss(line);
 
 		DihedralbondType dihedralbondtype{};
@@ -512,7 +538,7 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 				cmapGrids.push_back(MakeCmapGrid(nPhi, energies));
 		}
 	}
-	for (const auto& line : file.GetSection(TopologySection::impropertypes)) {
+	for (const auto& line : improperLines) {
 		std::istringstream iss(line);
 
 		ImproperDihedralbondType improperdihedralbondtype{};
@@ -565,6 +591,13 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 	else {
 		throw std::runtime_error("Unsupported bond type");
 	}
+}
+
+const std::vector<DihedralBond::Parameters>& LIMAForcefield::GetPeriodicImproperParameters(const std::array<std::string, DihedralBond::nAtoms>& query) {
+	const auto& parameters = periodicImproperParameters->get(query);
+	if (!parameters.empty())
+		return parameters;
+	throw std::runtime_error(Lima::Format("Failed to find periodic improper (funct 4) parameters for {} {} {} {}", query[0], query[1], query[2], query[3]));
 }
 
 template<typename GenericBond>

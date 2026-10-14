@@ -140,6 +140,7 @@ namespace {
 		LIMAForcefield& forcefield, std::mutex& forcefieldMutex, std::vector<BondtypeFactory>& bonds)
 	{
 		std::unordered_map<uint64_t, const std::vector<typename BondType::Parameters>*> cache;
+		std::unordered_map<uint64_t, const std::vector<typename BondType::Parameters>*> periodicImproperCache;	// Dihedrals of funct 4
 		const int nAtoms = static_cast<int>(atomtypes.atomToType.size());
 
 		for (const auto& bondTopol : bondsInTopfile) {
@@ -156,15 +157,26 @@ namespace {
 			for (const int id : bondTopol.ids)
 				key = (key << 16) | static_cast<uint64_t>(atomtypes.atomToType[id]);
 
-			auto cached = cache.find(key);
-			if (cached == cache.end()) {
+			// GROMACS matches periodic impropers (funct 4) only against their own [ dihedraltypes ]
+			bool periodicImproper = false;
+			if constexpr (std::is_same_v<BondType, DihedralBond>)
+				periodicImproper = bondTopol.funct == 4;
+			auto& bondCache = periodicImproper ? periodicImproperCache : cache;
+			auto cached = bondCache.find(key);
+			if (cached == bondCache.end()) {
 				std::array<std::string, BondType::nAtoms> atomTypenames;
 				for (int i = 0; i < BondType::nAtoms; ++i)
 					atomTypenames[i] = atomtypes.typeNames[atomtypes.atomToType[bondTopol.ids[i]]];
 
 				std::scoped_lock lock(forcefieldMutex);
 				// A bond may be described as multiple bonds, so this is a vector
-				cached = cache.emplace(key, &forcefield.GetBondParameters<BondType>(atomTypenames)).first;
+				const std::vector<typename BondType::Parameters>* parameters = nullptr;
+				if constexpr (std::is_same_v<BondType, DihedralBond>)
+					if (periodicImproper)
+						parameters = &forcefield.GetPeriodicImproperParameters(atomTypenames);
+				if (!parameters)
+					parameters = &forcefield.GetBondParameters<BondType>(atomTypenames);
+				cached = bondCache.emplace(key, parameters).first;
 			}
 
 			for (const auto& param : *cached->second)

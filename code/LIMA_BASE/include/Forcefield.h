@@ -84,6 +84,8 @@ public:
 
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
+	// Periodic impropers (funct 4), which GROMACS matches only against [ dihedraltypes ] of funct 4
+	const std::vector<DihedralBond::Parameters>& GetPeriodicImproperParameters(const std::array<std::string, DihedralBond::nAtoms>& query);
 
 	// The CMAP grid of 5 atomtypes, as an index into GetCmapGrids. Matched in the given order only, as GROMACS does
 	std::optional<int> GetCmapGridIndex(const std::array<std::string, CmapBond::nAtoms>& atomtypes) const;
@@ -99,6 +101,7 @@ private:
 	std::unique_ptr<ParameterDatabase<PairbondType>> pairbondParameters;
 	std::unique_ptr<ParameterDatabase<AnglebondType>> anglebondParameters;
 	std::unique_ptr<ParameterDatabase<DihedralbondType>> dihedralbondParameters;
+	std::unique_ptr<ParameterDatabase<DihedralbondType>> periodicImproperParameters;
 	std::unique_ptr<ParameterDatabase<ImproperDihedralbondType>> improperdihedralbondParameters;
 
 	template<typename GenericBond>

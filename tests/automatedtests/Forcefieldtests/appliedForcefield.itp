@@ -79664,7 +79664,7 @@ HA CT2 NH3 HC 0 418.4 3
 HA CT2 NH3 HC 0 418.4 3
 HA CT2 NH3 HC 0 418.4 3
 
-[ dihedraltypes ]
+[ impropertypes ]
 ; name_i name_j name_k name_l psi0[rad] kpsi[J/(mol*rad^2)]
 C CT1 NH1 O 0 1.00416e+06
 NH1 C CT1 H 0 167360

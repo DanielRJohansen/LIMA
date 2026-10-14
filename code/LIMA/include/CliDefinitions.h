@@ -125,7 +125,7 @@ Example:
 
 inline constexpr std::string_view SolvateHelp = R"(Usage: lima solvate [OPTION]...
 
-Fill the unoccupied volume of a simulation box with SPC/E water and update its
+Fill the unoccupied volume of a simulation box with water and update its
 topology.
 
 Options:
@@ -134,10 +134,18 @@ Options:
       --conf-out PATH          Output coordinates (default: INPUT_solvated.gro)
       --topology-out PATH      Output topology (default: INPUT_solvated.top)
   -p, --density COUNT          Target waters per nm^3 (default: 34)
+      --water-model MODEL      Water model name or .itp file (default: spce)
   -h, --help                   Display this help and exit
+
+A model name uses that model's .itp from the system's forcefield, or from
+CHARMM27. An .itp file must define one 3-atom water moleculetype, with
+[ settles ] or with bonds and an angle that have explicit parameters.
+Water models: tip3p, tips3p, spc, spce (tip4p and tip5p need virtual sites,
+which LIMA does not support)
 
 Example:
   lima solvate --conf membrane.gro --topology membrane.top
+  lima solvate --conf protein.gro --topology protein.top --water-model tip3p
 )";
 
 inline constexpr std::string_view InsertMoleculeHelp = R"(Usage: lima insertmolecule [OPTION]...
@@ -254,7 +262,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "selftest", "Run LIMA's internal self-test.", SelfTestHelp },
     CommandDefinition{ "render", "Render a molecular structure.", RenderHelp },
     CommandDefinition{ "makebox", "Create an empty simulation box.", MakeBoxHelp },
-    CommandDefinition{ "solvate", "Fill a simulation box with SPC/E water.", SolvateHelp },
+    CommandDefinition{ "solvate", "Fill a simulation box with water.", SolvateHelp },
     CommandDefinition{ "insertmolecule", "Insert one molecule into a box.", InsertMoleculeHelp },
     CommandDefinition{ "insertmolecules", "Insert multiple molecules into a box.", InsertMoleculesHelp },
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp },

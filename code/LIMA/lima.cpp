@@ -355,12 +355,14 @@ int Cli::RunSolvate(const Context& ctx, int argc, char** argv) {
     fs::path confOutputPath;
     fs::path topologyOutputPath;
     int density = SimulationBuilder::defaultSolventsPerNm3;
+    std::string waterModel = SimulationBuilder::defaultWaterModel;
 
     parser.AddOption({ "--conf", "-c", "-conf", "-confInput", "-ci" }, false, confPath);
     parser.AddOption({ "--topology", "-t", "-top", "-topInput", "-ti" }, false, topologyPath);
     parser.AddOption({ "--conf-out", "-co", "-confOutput" }, false, confOutputPath);
     parser.AddOption({ "--topology-out", "-to", "-topOutput" }, false, topologyOutputPath);
     parser.AddOption({ "--density", "-p", "-pressure" }, false, density);
+    parser.AddOption({ "--water-model", "-water" }, false, waterModel);
     parser.Parse(argc, argv);
     confPath = ctx.Resolve(confPath);
     topologyPath = ctx.Resolve(topologyPath);
@@ -382,7 +384,15 @@ int Cli::RunSolvate(const Context& ctx, int argc, char** argv) {
     GroFile grofile{ confPath };
     TopologyFile topfile{ topologyPath };
     if (!topfile.HasSystem()) topfile.SetSystem("Solvated system");
-    SimulationBuilder::SolvateGrofile(grofile, topfile, density);
+    // A model name is kept as is, an .itp path is relative to the caller's directory
+    if (fs::path{ waterModel }.extension() == ".itp")
+        waterModel = ctx.Resolve(waterModel).string();
+    try {
+        SimulationBuilder::SolvateGrofile(grofile, topfile, density, waterModel);
+    }
+    catch (const std::invalid_argument& e) {
+        throw CliError(e.what());
+    }
     grofile.printToFile(confOutputPath);
     topfile.printToFile(topologyOutputPath);
     return 0;

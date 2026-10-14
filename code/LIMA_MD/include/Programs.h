@@ -19,6 +19,8 @@ namespace Programs {
 	};
 
 	WaterModel ParseWaterModel(std::string_view name);
+	// Filename of the model's topology in a forcefield dir, eg. "tip3p.itp"
+	std::string_view WaterModelItpFilename(WaterModel model);
 
 	void GetForcefieldParams(const GroFile&, const TopologyFile&, const fs::path& workdir);
 

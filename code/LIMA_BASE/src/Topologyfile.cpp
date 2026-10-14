@@ -914,6 +914,16 @@ TopologyFile::TopologyFile(const fs::path& path) : path(path)
 	TopologyParser{ *this }.Parse(path);
 }
 
+TopologyFile::TopologyFile(const fs::path& path, const std::unordered_set<std::string>& predefined) : path(path), defines(predefined)
+{
+	if (!(path.extension().string() == std::string{ ".top" } || path.extension().string() == ".itp"))
+		throw std::runtime_error("Expected .top or .itp extension");
+	if (!fs::exists(path))
+		throw std::runtime_error(Lima::Format("File \"{}\" was not found", path.string()));
+
+	TopologyParser{ *this }.Parse(path);
+}
+
 
 
 GenericItpFile::GenericItpFile(const fs::path& path) {

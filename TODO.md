@@ -11,13 +11,10 @@
 
 ## Solvate by tiling a pre-equilibrated water box (like gmx solvate with spc216.gro) instead of a jittered cubic lattice (SimulationBuilder::SolvateGrofile). Faster, the water starts with a realistic structure, and needs less EM/equilibration. The lattice still shows faintly as a sawtooth in water density profiles of short runs.
 
-## The tests: Test T4 (MD performance) and LoadT4 (setup performance) are always noisy. Find a better way to isolate them from other tests.
-
 ## Find and solve TODO's spread around the codebase
 
 ## PRIORITY: remaining issues from comparing villin (Salad, AMBER99SB) with GROMACS 2024.2 (2026-10-14). Bonded terms, LJ, 1-4 pairs (fudgeLJ/fudgeQQ), periodic impropers and electrostatics (1-4 Coulomb, Ewald exclusion correction) now match: forces to 1e-4, electrostatic forces to 0.04% RMS, Coulomb energy -4779.8 vs -4780.9 kJ/mol. Fixture tests/automatedtests/ForceComparisons/VillinAmber has zero charges; a charged fixture needs an RMS rather than per-atom criterion, as PME differs by up to 0.4% per atom.
 - Smaller issue found on the way: exclusions come from the listed bonds/angles/dihedrals/impropers, not GROMACS' bond graph with nrexcl. Same for normal topologies, but differs without angle lines, or for impropers spanning atoms more than 3 bonds apart.
-  - amber99sb.ff is now bundled in resources/forcefields (copied from GROMACS 2024.2, LGPL); other GROMACS forcefields are not.
 
 ## Compare LIMA with GROMACS on every system in the Salad Benchmark .zip, for outcome and for speed. PRIORITY!
 - Outcome: trajectories diverge within ps (chaotic dynamics, different rounding), so compare ensemble statistics, not frames: backbone RMSD vs the start structure and per-residue RMSF, radius of gyration, average potential energy and temperature, density for solvated boxes, water O-O RDF, H-bond counts and secondary structure (DSSP) over time. Run each system with a few seeds in both engines, so a difference can be told apart from run-to-run spread. gmx rms/rmsf/gyrate/rdf/energy on both trajectories (LIMA writes .trr) keeps the analysis identical.

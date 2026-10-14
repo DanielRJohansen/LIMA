@@ -1271,6 +1271,10 @@ Programs::GmxConversionResult convertStructureToGmx(
 
 } // namespace
 
+std::string_view Programs::WaterModelItpFilename(WaterModel model) {
+    return waterTopologyFilename(model);
+}
+
 Programs::WaterModel Programs::ParseWaterModel(std::string_view name) {
     const std::string normalized = lowercase(std::string(name));
     if (normalized == "tip3p") return WaterModel::Tip3p;

@@ -774,8 +774,43 @@ TestRoutine TestSolvate(fs::path workDir) {
 		Lima::Format("Added {} waters, expected about {:.0f} at the default density of {}/nm^3",
 			solventMolecules, expected, SimulationBuilder::defaultSolventsPerNm3));
 
+	// --water-model as a name, into its own dir since the water is written to SOL.itp like the default's. CHARMM27's
+	// tip3p.itp only defines its atoms with the forcefield's _FF_CHARMM
+	RequireSuccess(Run(workDir, { "solvate", "-c", "met_box4.gro", "-t", "met_box4.top", "--water-model", "tip3p",
+		"--conf-out", "tip3p/out.gro", "--topology-out", "tip3p/out.top" }));
+	const Gro tip3p = ReadGro(workDir / "tip3p/out.gro");
+	RequireTopologyMatches(workDir / "tip3p/out.top", tip3p);
+	ASSERT(ReadBytes(workDir / "tip3p/SOL.itp").find("OWT3") != std::string::npos, "--water-model tip3p did not write CHARMM's TIP3P");
+
+	// --water-model as an .itp, a flexible water with the central atom in the middle, given its geometry by bonds and an angle
+	{
+		std::ofstream itp(workDir / "wat.itp");
+		itp << "[ moleculetype ]\nWAT 2\n\n[ atoms ]\n"
+			"1 HW 1 WAT H1 1 0.4238 1.008\n2 OW 1 WAT O 1 -0.8476 15.9994\n3 HW 1 WAT H2 1 0.4238 1.008\n\n"
+			"[ bonds ]\n2 1 1 0.1 345000\n2 3 1 0.1 345000\n\n[ angles ]\n1 2 3 1 109.47 383\n";
+	}
+	RequireSuccess(Run(workDir, { "solvate", "-c", "met_box4.gro", "-t", "met_box4.top", "--water-model", "wat.itp",
+		"--conf-out", "wat.gro", "--topology-out", "wat.top" }));
+	const Gro wat = ReadGro(workDir / "wat.gro");
+	RequireTopologyMatches(workDir / "wat.top", wat);
+	ASSERT(MoleculeCounts(workDir / "wat.top").contains("WAT"), "The custom water model's moleculetype is not in the topology");
+	for (size_t i = in.atoms.size(); i + 2 < wat.atoms.size(); i += 3) {
+		ASSERT(wat.atoms[i + 1].name == "O", Lima::Format("Atom {} should be the custom water's O", i + 1));
+		const double oh1 = (wat.atoms[i].position - wat.atoms[i + 1].position).Len();
+		const double oh2 = (wat.atoms[i + 2].position - wat.atoms[i + 1].position).Len();
+		ASSERT(std::abs(oh1 - 0.1) < 0.002 && std::abs(oh2 - 0.1) < 0.002, Lima::Format("Custom water {} has O-H lengths {:.4f} and {:.4f}, expected 0.1", i, oh1, oh2));
+	}
+
+	// Rejected models exit 2 without writing output: an unknown name, and TIP4P which needs a virtual site
+	RunOptions quiet{ .timeout = 60s, .captureStdout = true, .echo = false };
+	for (const std::string model : { "notamodel", "tip4p" }) {
+		RequireExitCode(Run(workDir, { "solvate", "-c", "met_box4.gro", "-t", "met_box4.top", "--water-model", model,
+			"--conf-out", "rejected.gro", "--topology-out", "rejected.top" }, quiet), 2);
+		ASSERT(!fs::exists(workDir / "rejected.gro"), Lima::Format("--water-model {} was rejected but still wrote coordinates", model));
+	}
+
 	Preview(workDir, "met_box4_solvated.gro", "met_box4_solvated.top");
-	co_return LimaUnittestResult{ true, OneLineMessage("{} waters added", solventMolecules), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} waters added, water models ok", solventMolecules), false };
 }
 
 TestRoutine TestInsertMolecule(fs::path workDir) {

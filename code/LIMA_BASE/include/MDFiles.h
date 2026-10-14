@@ -256,6 +256,9 @@ public:
 
 	TopologyFile();										// Create an empty file	
 	TopologyFile(const fs::path& path);	// Load a file from path	
+	// Load a file from path, with these keywords #define'd beforehand. Eg. a water .itp that is included by a forcefield
+	// using #ifdef on the forcefield's defines (CHARMM's tip3p.itp needs _FF_CHARMM)
+	TopologyFile(const fs::path& path, const std::unordered_set<std::string>& predefined);
 
 	/// <summary>
 	/// Recursively write topology + all includes + forcefieldfiles to the parentpath of the dir
@@ -299,6 +302,7 @@ public:
 		return m_system;
 	}
 	bool HasSystem() const { return m_system.IsInit(); }
+	const std::unordered_set<std::string>& GetDefines() const { return defines; }
 	void SetSystem(const std::string& systemName) {
 		if (m_system.IsInit())
 			throw std::runtime_error("System already initialized");

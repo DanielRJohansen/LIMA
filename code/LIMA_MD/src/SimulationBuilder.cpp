@@ -1,4 +1,5 @@
 #include "SimulationBuilder.h"
+#include "Programs.h"
 #include "Format.h"
 
 #include "BoundaryConditionPublic.h"
@@ -297,12 +298,124 @@ void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, co
 }
 
 
-void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3) {
+// The moleculetype of a water model given as an .itp path, or as a model name looked up in LIMA's forcefields
+std::shared_ptr<const TopologyFile::Moleculetype> LoadWaterMoleculetype(const std::string& waterModel, const TopologyFile& topfile) {
+	fs::path itpPath;
+	if (fs::path{ waterModel }.extension() == ".itp" && fs::is_regular_file(waterModel)) {
+		itpPath = waterModel;
+	}
+	else {
+		Programs::WaterModel model;
+		try { model = Programs::ParseWaterModel(waterModel); }
+		catch (const std::runtime_error&) {
+			throw std::invalid_argument(Lima::Format("Unknown water model \"{}\": expected an existing .itp file or one of tip3p, tip4p, tips3p, tip5p, spc, spce", waterModel));
+		}
+		// The model's file next to the system's forcefield, which defines its atomtypes. Otherwise CHARMM27's, which has every model
+		const fs::path forcefieldsDir = FileUtils::GetLimaDir() / "resources/forcefields";
+		const fs::path filename{ Programs::WaterModelItpFilename(model) };
+		itpPath = forcefieldsDir / "charmm27.ff" / filename;
+		if (topfile.forcefieldInclude && !topfile.forcefieldInclude->filename.parent_path().empty()) {
+			const fs::path candidate = forcefieldsDir / topfile.forcefieldInclude->filename.parent_path() / filename;
+			if (fs::is_regular_file(candidate))
+				itpPath = candidate;
+		}
+	}
+
+	std::optional<TopologyFile> waterTop;
+	try { waterTop.emplace(itpPath, topfile.GetDefines()); }
+	catch (const std::exception& e) {
+		throw std::invalid_argument(Lima::Format("Failed to load water model {}: {}", itpPath.string(), e.what()));
+	}
+	if (waterTop->moleculetypes.size() != 1)
+		throw std::invalid_argument(Lima::Format("Water model {} must define exactly 1 moleculetype, found {}", itpPath.string(), waterTop->moleculetypes.size()));
+	return waterTop->GetMoleculeTypePtr();
+}
+
+// The shape of a 3-atom water: a central atom with the 2 others bonded to it at an angle
+struct WaterGeometry {
+	int center = 0;
+	std::array<int, 2> others{ 1, 2 };
+	std::array<float, 2> bondLengths{};	// [nm]
+	float angle = 0.f;					// [rad]
+};
+
+WaterGeometry GetWaterGeometry(const TopologyFile::Moleculetype& moltype) {
+	if (moltype.atoms.size() != 3)
+		throw std::invalid_argument(Lima::Format("Water moleculetype {} has {} atoms, solvate only supports 3-atom water (LIMA has no virtual sites)",
+			moltype.name, moltype.atoms.size()));
+
+	WaterGeometry geometry;
+	if (!moltype.settles.empty()) {
+		const auto& settle = moltype.settles.front();
+		geometry.center = settle.oxygen;
+		geometry.others = { settle.oxygen + 1, settle.oxygen + 2 };
+		geometry.bondLengths = { settle.distanceOH, settle.distanceOH };
+		geometry.angle = 2.f * std::asin(settle.distanceHH / (2.f * settle.distanceOH));
+		return geometry;
+	}
+
+	// Flexible water: the angle's middle atom is the center, the bonds to it give the lengths
+	const std::string missingGeometry = Lima::Format("Water moleculetype {} needs [ settles ], or 2 bonds and 1 angle with explicit parameters, to give its geometry", moltype.name);
+	if (moltype.anglebonds.size() != 1 || !moltype.anglebonds.front().parameters || moltype.singlebonds.size() != 2)
+		throw std::invalid_argument(missingGeometry);
+	const auto& angle = moltype.anglebonds.front();
+	geometry.center = angle.ids[1];
+	geometry.others = { angle.ids[0], angle.ids[2] };
+	geometry.angle = angle.parameters->theta0;
+	for (int i = 0; i < 2; i++) {
+		const auto bond = std::ranges::find_if(moltype.singlebonds, [&](const auto& b) {
+			return (b.ids[0] == geometry.center && b.ids[1] == geometry.others[i]) || (b.ids[1] == geometry.center && b.ids[0] == geometry.others[i]); });
+		if (bond == moltype.singlebonds.end() || !bond->parameters)
+			throw std::invalid_argument(missingGeometry);
+		geometry.bondLengths[i] = bond->parameters->b0;
+	}
+	return geometry;
+}
+
+void CheckWaterAtomtypesInForcefield(const TopologyFile::Moleculetype& moltype, const TopologyFile& topfile) {
+	if (!topfile.forcefieldInclude)
+		return;
+	const auto& atomtypeEntries = topfile.forcefieldInclude->contents.GetSection(TopologySection::atomtypes);
+	if (atomtypeEntries.empty())
+		return;	// The forcefield's contents are unknown
+
+	std::unordered_set<std::string> known;
+	for (const auto& entry : atomtypeEntries) {
+		std::istringstream stream{ entry };
+		std::string name;
+		stream >> name;
+		known.insert(name);
+	}
+	std::vector<std::string> missing;
+	for (const auto& atom : moltype.atoms)
+		if (!known.contains(atom.type) && !std::ranges::contains(missing, atom.type))
+			missing.push_back(atom.type);
+	if (!missing.empty()) {
+		std::string list;
+		for (const auto& type : missing)
+			list += (list.empty() ? "" : ", ") + type;
+		throw std::invalid_argument(Lima::Format("Water moleculetype {} uses atomtypes not in the forcefield {}: {}",
+			moltype.name, topfile.forcefieldInclude->filename.string(), list));
+	}
+}
+
+void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3, const std::string& waterModel) {
 	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
 		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
 	}
 
 	
+	// Solvating an empty box: the topology gets the forcefield of the water model, and a system to add the water to
+	if (!topfile.forcefieldInclude) {
+		topfile.forcefieldInclude = TopologyFile{ FileUtils::GetLimaDir() / "resources/forcefields/Slipids_2020.ff/forcefield.itp" }.forcefieldInclude;
+		topfile.forcefieldInclude->filename = "Slipids_2020.ff/forcefield.itp";
+	}
+	const auto waterMoltype = LoadWaterMoleculetype(waterModel, topfile);
+	const WaterGeometry waterGeometry = GetWaterGeometry(*waterMoltype);
+	CheckWaterAtomtypesInForcefield(*waterMoltype, topfile);
+	if (topfile.moleculetypes.contains(waterMoltype->name) && topfile.moleculetypes.at(waterMoltype->name)->atoms != waterMoltype->atoms)
+		throw std::invalid_argument(Lima::Format("The topology already has a different moleculetype named {}", waterMoltype->name));
+
 	const Int3 gridDim = grofile.box_size.ToInt3();
 	const int nAtomsInput = grofile.atoms.size();
 	const int startResidueId = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
@@ -435,10 +548,9 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 		}
 	}
 	
-	const float bondLen = 0.1f;	// probably shouldnt be hardcoded here...
-	const float bondAngle = 109.47f * PI / 180.f;	// [rad] 
-	const Float3 _h1Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -bondLen), Float3(0,1,0), -bondAngle * 0.5f);
-	const Float3 _h2Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -bondLen), Float3(0, 1, 0), bondAngle * 0.5f);
+	// Positions of the 2 outer atoms relative to the central one
+	const Float3 _h1Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -waterGeometry.bondLengths[0]), Float3(0,1,0), -waterGeometry.angle * 0.5f);
+	const Float3 _h2Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -waterGeometry.bondLengths[1]), Float3(0, 1, 0), waterGeometry.angle * 0.5f);
 
 	//float zOffset = -h1Pos.z * 0.5f;
 	RandomUniformGeneratorUnitvector genRandomUnitVector(1238971);	// Seed offset so we can get different random vectors for each simulation
@@ -462,9 +574,15 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 					Float3 h2Pos = Float3::rodriguesRotatation(_h2Pos, rotVector, rotAngle);
 
 					const Float3 blockOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
-					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("OW"),  (atomCount + 1)% 100000, solvent.relPos + blockOffset, std::nullopt});
-					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("HW1"), (atomCount + 2)% 100000, solvent.relPos + blockOffset + h1Pos, std::nullopt });
-					grofile.atoms.push_back(GroRecord{ (solventCount+startResidueId) % 100000, SmallString("SOL"), SmallString("HW2"), (atomCount + 3)% 100000, solvent.relPos + blockOffset + h2Pos, std::nullopt });
+					std::array<Float3, 3> positions;
+					positions[waterGeometry.center] = solvent.relPos + blockOffset;
+					positions[waterGeometry.others[0]] = solvent.relPos + blockOffset + h1Pos;
+					positions[waterGeometry.others[1]] = solvent.relPos + blockOffset + h2Pos;
+					for (int i = 0; i < 3; i++) {
+						const auto& atom = waterMoltype->atoms[i];
+						grofile.atoms.push_back(GroRecord{ (solventCount + startResidueId) % 100000, SmallString(atom.residue), SmallString(atom.atomname),
+							(atomCount + i + 1) % 100000, positions[i], std::nullopt });
+					}
 
 					atomCount += 3;
 					solventCount++;
@@ -473,19 +591,12 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 		}
 	}
 
-	TopologyFile solventTop{
-		FileUtils::GetLimaDir() / "resources/forcefields/combined/Slipids_2020.ff/spce.itp" };
-	// Solvating an empty box: the topology gets the forcefield of the water model, and a system to add the water to
-	if (!topfile.forcefieldInclude) {
-		topfile.forcefieldInclude = TopologyFile{ FileUtils::GetLimaDir() / "resources/forcefields/Slipids_2020.ff/forcefield.itp" }.forcefieldInclude;
-		topfile.forcefieldInclude->filename = "Slipids_2020.ff/forcefield.itp";
-	}
 	if (!topfile.HasSystem())
 		topfile.SetSystem("Water");
-	topfile.AppendMoleculetype(solventTop.GetMoleculeTypePtr());
+	topfile.AppendMoleculetype(waterMoltype);
 	// AppendMoleculetype also appends the first molecule.
 	for (int i = 1; i < solventCount; i++) {
-		topfile.AppendMolecule("SOL");
+		topfile.AppendMolecule(waterMoltype->name);
 	}
 }
 

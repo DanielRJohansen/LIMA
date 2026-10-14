@@ -287,15 +287,27 @@ namespace {
 		if (!LoadIds(sv, bond.ids, groIdToLimaId))
 			return false;
 
-		float theta0, ktheta, ub0, kUb;
-		bool err = false;
-		err |= !ParseValue<int>(sv, bond.funct);
-		err |= !ParseValue<float>(sv, theta0);
-		err |= !ParseValue<float>(sv, ktheta);
-		err |= !ParseValue<float>(sv, ub0);
-		err |= !ParseValue<float>(sv, kUb);
-		if (!err)
-			bond.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, ub0, kUb, bond.funct);
+		if (!ParseValue<int>(sv, bond.funct))
+			throw std::runtime_error(Lima::Format("Angle without a funct: {}", sv));
+		SkipLeadingWhitespace(sv);
+		if (sv.empty() || sv.front() == ';')
+			return true;
+
+		float theta0, ktheta;
+		if (!ParseValue<float>(sv, theta0) || !ParseValue<float>(sv, ktheta))
+			throw std::runtime_error(Lima::Format("Angle funct {} has invalid explicit parameters", bond.funct));
+
+		if (bond.funct == 1) {
+			bond.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, 0.f, 0.f, bond.funct);
+			return true;
+		}
+		if (bond.funct != 5)
+			throw std::runtime_error(Lima::Format("Unsupported angle funct {} with explicit parameters", bond.funct));
+
+		float ub0, kUb;
+		if (!ParseValue<float>(sv, ub0) || !ParseValue<float>(sv, kUb))
+			throw std::runtime_error(Lima::Format("Angle funct 5 has invalid explicit Urey-Bradley parameters"));
+		bond.parameters = Bondtypes::AngleUreyBradleyBond::Parameters::CreateFromCharmm(theta0, ktheta, ub0, kUb, bond.funct);
 		return true;
 	}
 

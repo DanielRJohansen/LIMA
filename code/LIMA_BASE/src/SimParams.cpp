@@ -10,6 +10,7 @@
 #include <concepts>
 #include <format>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -162,6 +163,41 @@ void ForEachParam(const SimParams& params, Function&& function) {
     std::apply([&](const auto&... param) { (function(param), ...); }, params.Params());
 }
 
+// An .mdp file as GROMACS reads it: ';' starts a comment, keys are case-insensitive with '-' and '_' equal (normalized to '-'),
+// and values keep their inner spaces, as some have one entry per group. Values are lowercased too, as LIMA compares them so
+Dictionary ReadMdp(const fs::path& path) {
+    std::ifstream file{ path };
+    if (!file)
+        throw std::runtime_error("Failed to open file " + path.string());
+    const auto Trim = [](std::string_view sv) {
+        const size_t begin = sv.find_first_not_of(" \t\r");
+        if (begin == std::string_view::npos) return std::string_view{};
+        return sv.substr(begin, sv.find_last_not_of(" \t\r") - begin + 1);
+    };
+    Dictionary mdp;
+    std::string line;
+    while (std::getline(file, line)) {
+        std::string_view sv{ line };
+        sv = sv.substr(0, sv.find(';'));
+        const size_t equals = sv.find('=');
+        if (equals == std::string_view::npos)
+            continue;
+        std::string key = Lowercase(Trim(sv.substr(0, equals)));
+        std::ranges::replace(key, '_', '-');
+        std::string value;
+        for (const char c : Trim(sv.substr(equals + 1))) {
+            const bool space = c == ' ' || c == '\t';
+            if (!space || (!value.empty() && value.back() != ' '))
+                value += space ? ' ' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (key.empty())
+            continue;
+        if (!mdp.emplace(key, value).second)
+            throw std::runtime_error(Lima::Format("'{}' is given more than once in {}", key, path.string()));
+    }
+    return mdp;
+}
+
 void ParseMdp(const Dictionary& mdp, SimParams& params) {
     const auto parseIfPresent = [&mdp]<typename T>(const std::string_view key, T& target) {
         if (const auto found = mdp.find(std::string{ key }); found != mdp.end())
@@ -175,14 +211,21 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         else throw std::runtime_error("Unsupported integrator: " + found->second);
     }
 
-    parseIfPresent("nsteps", params.n_steps.value);
+    if (const auto found = mdp.find("nsteps"); found != mdp.end()) {
+        // GROMACS' -1 runs without end. LIMA sizes its output buffers by the step count, so it needs one
+        if (found->second == "-1")
+            std::cerr << Lima::Format("Warning: nsteps = -1 (no limit) is not supported, running the default {} steps. Set "
+                "n_steps, eg. with --set n_steps=...\n", params.n_steps.value);
+        else
+            ParseValue("nsteps", found->second, params.n_steps.value);
+    }
     if (const auto found = mdp.find("dt"); found != mdp.end())
         params.dt.value = ParseNumber<float>("dt", found->second) * PICO_TO_NANO;
     parseIfPresent("emtol", params.em_force_tolerance.value);
     parseIfPresent("nstlist", params.stepsPerNlistupdate.value);
     parseIfPresent("verlet-buffer-tolerance", params.verlet_buffer_tolerance.value);
-    parseIfPresent("verlet_buffer_tolerance", params.verlet_buffer_tolerance.value);
     parseIfPresent("rlist", params.rlist.value);
+    parseIfPresent("constraints", params.constraints.value);
 
     if (const auto found = mdp.find("pbc"); found != mdp.end()) {
         if (found->second == "xyz") params.bc_select.value = PBC;
@@ -194,6 +237,10 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         params.enable_electrostatics.value = true;
     }
     parseIfPresent("rcoulomb", params.cutoff_nm.value);
+    // LIMA has one cutoff for LJ and Coulomb
+    if (const auto found = mdp.find("rvdw"); found != mdp.end())
+        if (ParseNumber<float>("rvdw", found->second) != params.cutoff_nm)
+            throw std::runtime_error(Lima::Format("rvdw = {} differs from rcoulomb = {}. LIMA uses one cutoff for both", found->second, params.cutoff_nm.value));
 
     constexpr std::array outputKeys{ "nstxout", "nstvout", "nstenergy", "nstlog", "nstcomm" };
     std::optional<int> outputInterval;
@@ -236,8 +283,8 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         if (value)
             target = *value;
     };
-    parseSameForAllGroups("tau_t", params.tau_t.value);
-    parseSameForAllGroups("ref_t", params.ref_t.value);
+    parseSameForAllGroups("tau-t", params.tau_t.value);
+    parseSameForAllGroups("ref-t", params.ref_t.value);
     // GROMACS' default -1 picks a random seed, which would make runs irreproducible, so it keeps LIMA's fixed seed
     const auto parseSeed = [&mdp](const std::string_view key, int64_t& target) {
         if (const auto found = mdp.find(std::string{ key }); found != mdp.end()) {
@@ -253,11 +300,11 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
 } // namespace
 
 SimParams::SimParams(const fs::path& path) {
-    const Dictionary dictionary = FileUtils::parseINIFile(path.string(), true);
     if (path.extension() == ".mdp") {
-        ParseMdp(dictionary, *this);
+        ParseMdp(ReadMdp(path), *this);
         return;
     }
+    const Dictionary dictionary = FileUtils::parseINIFile(path.string(), true);
 
     for (const auto& [key, value] : dictionary)
         Set(key, value);

@@ -19,7 +19,6 @@
 - Smaller, found on the way:
   - Explicit angle parameters in AMBER form (funct 1: theta k) do not parse, as ParseBond expects CHARMM's 4 values, and silently fall back to the forcefield lookup. Parse per funct, and error rather than fall back when explicit parameters are present but unreadable.
   - Exclusions come from the listed bonds/angles/dihedrals/impropers, not GROMACS' bond graph with nrexcl. Same for normal topologies, but differs without angle lines, or for impropers spanning atoms more than 3 bonds apart.
-  - mdp parsing of villin's grompp.mdp fails: nsteps = -1 (run forever) is rejected, values are matched case-sensitively (coulombtype = PME rejected), and constraints is not read from mdp at all.
   - amber99sb.ff is now bundled in resources/forcefields (copied from GROMACS 2024.2, LGPL); other GROMACS forcefields are not.
 
 ## Compare LIMA with GROMACS on every system in the Salad Benchmark .zip, for outcome and for speed. PRIORITY!

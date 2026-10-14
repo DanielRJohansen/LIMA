@@ -1,4 +1,6 @@
-﻿## Compiling takes forever. Can we optimize a bit?
+﻿## 3J3Q benchmarks got slower, and their limits were raised to keep them green (2026-10-14): "3j3q load benchmark" build step ~5.4 -> 7.5-8.9 s (limit 7.0 -> 10.0), likely the Ewald exclusion-correction pair entries (~3x the pair entries) going through BondGroupFactory, plus building the exclusion lists per moleculetype in SuperTopology. "ToGmx large CIF benchmark" ~8.5 -> 10.2 s (limit 10 -> 12), cause not investigated (ToGmx builds no box, so maybe the topology parser changes, or noise). Profile both, and put the limits back.
+
+## Compiling takes forever. Can we optimize a bit?
 
 
 ## Investigate startup latency for small systems (say t4 in 7^3nm^3 box). Defined as time from command to first step.

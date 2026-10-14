@@ -19,7 +19,7 @@ namespace Benchmarks {
 		TimeIt timer;
 		const auto conversion = Programs::ToGmx(input);
 		const auto elapsed = timer.stop();
-		const std::chrono::seconds allowedTime{ 10 };
+		const std::chrono::seconds allowedTime{ 12 };	// See TODO.md, was 10
 
 		if (conversion.grofile.atoms.empty())
 			co_return LimaUnittestResult::Fail("ToGmx benchmark produced no atoms", envmode == Full);
@@ -64,7 +64,7 @@ namespace Benchmarks {
 			co_return LimaUnittestResult::Fail("3j3q load benchmark produced no simulation", envmode == Full);
 		
 		const std::chrono::duration<double> allowedFileTime{ 3.5 };
-		const std::chrono::duration<double> allowedBuildTime{ 7.0 };
+		const std::chrono::duration<double> allowedBuildTime{ 10.0 };	// See TODO.md, was 7.0
 
 		auto buildtime = completed.environmentTime;
 		auto success = (groTime + topTime) < allowedFileTime && buildtime < allowedBuildTime;

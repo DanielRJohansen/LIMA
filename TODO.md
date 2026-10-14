@@ -16,9 +16,7 @@
 ## Find and solve TODO's spread around the codebase
 
 ## PRIORITY: remaining issues from comparing villin (Salad, AMBER99SB) with GROMACS 2024.2 (2026-10-14). Bonded terms, LJ, 1-4 pairs (fudgeLJ/fudgeQQ), periodic impropers and electrostatics (1-4 Coulomb, Ewald exclusion correction) now match: forces to 1e-4, electrostatic forces to 0.04% RMS, Coulomb energy -4779.8 vs -4780.9 kJ/mol. Fixture tests/automatedtests/ForceComparisons/VillinAmber has zero charges; a charged fixture needs an RMS rather than per-atom criterion, as PME differs by up to 0.4% per atom.
-- Smaller, found on the way:
-  - Explicit angle parameters in AMBER form (funct 1: theta k) do not parse, as ParseBond expects CHARMM's 4 values, and silently fall back to the forcefield lookup. Parse per funct, and error rather than fall back when explicit parameters are present but unreadable.
-  - Exclusions come from the listed bonds/angles/dihedrals/impropers, not GROMACS' bond graph with nrexcl. Same for normal topologies, but differs without angle lines, or for impropers spanning atoms more than 3 bonds apart.
+- Smaller issue found on the way: exclusions come from the listed bonds/angles/dihedrals/impropers, not GROMACS' bond graph with nrexcl. Same for normal topologies, but differs without angle lines, or for impropers spanning atoms more than 3 bonds apart.
   - amber99sb.ff is now bundled in resources/forcefields (copied from GROMACS 2024.2, LGPL); other GROMACS forcefields are not.
 
 ## Compare LIMA with GROMACS on every system in the Salad Benchmark .zip, for outcome and for speed. PRIORITY!
@@ -30,7 +28,6 @@
 
 # Core MD features GROMACS has and LIMA lacks (status checked 2026-10-13)
 - **`[ constraints ]` sections:** not read yet. constraints = h-bonds and `[ settles ]` are handled (see Constraints below), but topologies that list their constraints explicitly lose them.
-- **AMBER99SB topology compatibility:** The AMBER force field’s proper/improper dihedral layout and GROMACS function types need to be parsed correctly. The current topology path assumes a simpler ordering and fails while loading the benchmark topology.
 - **Thermostat compatibility:** Salad uses `tcoupl = v-rescale`, `tau_t = 0.1`, `ref_t = 300`. LIMA’s thermostat behavior must be compared with and, if needed, made compatible with GROMACS v-rescale. This matters because thermostat behavior depends on the kinetic-energy convention used by the integrator.
 - **MDP validation:** Explicitly validate/reject unsupported settings instead of silently ignoring them, including `rvdw`, PME grid settings, neighbor-list behavior, constraints, thermostat parameters, output cadence, and seeds.
 - **Regression coverage:** Add a small AMBER99SB/TIP3P constrained-water fixture with tests for topology loading, constraint preservation, short-run stability, and readable `.trr` output. Validate against GROMACS observables, not frame-by-frame coordinates.

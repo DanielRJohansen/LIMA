@@ -190,5 +190,54 @@ MolE 1
 		fs::remove_all(dir);
 		co_return LimaUnittestResult{ true, "No error", envmode == Full };
 	}
+
+	TestRoutine TestExplicitAngleParameters(Environment&, EnvMode envmode) {
+		const fs::path dir = fs::temp_directory_path() / "lima_explicit_angle_parameters_test";
+		fs::remove_all(dir);
+		fs::create_directories(dir);
+		WriteTextFile(dir / "topol.top", R"([ moleculetype ]
+Mol 3
+
+[ atoms ]
+1 CT 1 RES A1 1 0.0 12.0
+2 CT 1 RES A2 2 0.0 12.0
+3 CT 1 RES A3 3 0.0 12.0
+
+[ angles ]
+1 2 3 1 109.5 200.0
+3 2 1 5 110.0 210.0 0.15 300.0
+)");
+
+		const TopologyFile topology{ dir / "topol.top" };
+		const auto& angles = topology.moleculetypes.at("Mol")->anglebonds;
+		ASSERT(angles.size() == 2, "Explicit angles were not parsed");
+		ASSERT(angles[0].parameters.has_value() && angles[0].parameters->ub0 == 0.f && angles[0].parameters->kUB == 0.f,
+			"Funct 1 explicit angle did not use its two parameters");
+		ASSERT(angles[1].parameters.has_value() && angles[1].parameters->ub0 == 0.15f && angles[1].parameters->kUB == 300000.f,
+			"Funct 5 explicit angle did not use its Urey-Bradley parameters");
+
+		WriteTextFile(dir / "invalid.top", R"([ moleculetype ]
+Mol 3
+
+[ atoms ]
+1 CT 1 RES A1 1 0.0 12.0
+2 CT 1 RES A2 2 0.0 12.0
+3 CT 1 RES A3 3 0.0 12.0
+
+[ angles ]
+1 2 3 1 109.5
+)");
+		bool rejectedInvalidParameters = false;
+		try {
+			TopologyFile{ dir / "invalid.top" };
+		}
+		catch (const std::runtime_error&) {
+			rejectedInvalidParameters = true;
+		}
+		ASSERT(rejectedInvalidParameters, "Malformed explicit angle parameters were silently ignored");
+
+		fs::remove_all(dir);
+		co_return LimaUnittestResult{ true, "No error", envmode == Full };
+	}
 }
 

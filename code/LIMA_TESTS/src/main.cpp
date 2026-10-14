@@ -273,6 +273,7 @@ int RunAllUnitTests() {
 	// Test Setup
 	ADD_TEST("TestBoxIsSavedCorrectlyBetweenSimulations", TestBoxIsSavedCorrectlyBetweenSimulations);
 	ADD_TEST("TestTopologyPreprocessor", FileTests::TestTopologyPreprocessor);
+	ADD_TEST("TestExplicitAngleParameters", FileTests::TestExplicitAngleParameters);
 
 	// Programs test
 	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile);

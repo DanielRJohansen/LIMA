@@ -85,6 +85,7 @@ namespace FileTests {
 	namespace fs = std::filesystem;
 	LimaUnittestResult TestFilesAreCachedAsBinaries(EnvMode envmode);
 	TestRoutine TestTopologyPreprocessor(Environment&, EnvMode envmode);
+	TestRoutine TestExplicitAngleParameters(Environment&, EnvMode envmode);
 }
 
 // ForceComparisons.cpp

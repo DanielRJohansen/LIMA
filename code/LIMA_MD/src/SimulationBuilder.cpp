@@ -10,6 +10,7 @@
 
 #include <format>
 #include <functional>
+#include <fstream>
 #include <algorithm>
 #include <random>
 #include <numeric>
@@ -248,6 +249,7 @@ struct ParticlePlaceholder {
 	Float3 relPos{};	// [nm]
 	bool presentInInputfile = false;	// We need to know the difference between the particles already present, and the ones we just added
 	bool markedForDeletion = false;
+	int waterIndex = -1;	// Which water of the equilibrated water box a new water is a copy of
 };
 
 // TODO: remove this temp class
@@ -399,6 +401,49 @@ void CheckWaterAtomtypesInForcefield(const TopologyFile::Moleculetype& moltype, 
 	}
 }
 
+// A cubic box of equilibrated water, tiled to solvate a system. Each water is its oxygen, wrapped into the box, and the
+// directions of its 2 O-H bonds
+struct EquilibratedWaterBox {
+	float boxLength = 0.f;	// [nm]
+	std::vector<Float3> oxygens;
+	std::vector<std::array<Float3, 2>> bondDirections;
+};
+
+// GROMACS' spc216.gro: 216 SPC waters equilibrated at 300 K. Read by columns here, as GroFile would write a binary cache
+// next to it, in what may be a read-only install dir
+const EquilibratedWaterBox& LoadEquilibratedWaterBox() {
+	static const EquilibratedWaterBox waterBox = [] {
+		const fs::path path = FileUtils::GetLimaDir() / "resources/forcefields/spc216.gro";
+		std::ifstream file(path);
+		if (!file.is_open())
+			throw std::runtime_error(Lima::Format("Failed to open {}", path.string()));
+
+		std::string line;
+		std::getline(file, line);	// Title
+		std::getline(file, line);
+		const int nAtoms = std::stoi(line);
+		if (nAtoms % 3 != 0)
+			throw std::runtime_error(Lima::Format("{} must contain 3-atom waters", path.string()));
+		std::vector<Float3> positions(nAtoms);
+		for (auto& position : positions) {
+			std::getline(file, line);
+			position = Float3{ std::stof(line.substr(20, 8)), std::stof(line.substr(28, 8)), std::stof(line.substr(36, 8)) };
+		}
+		std::getline(file, line);
+		EquilibratedWaterBox box;
+		box.boxLength = std::stof(line);
+
+		for (int i = 0; i < nAtoms; i += 3) {
+			Float3 oxygen = positions[i];
+			BoundaryConditionPublic::applyBCNM(oxygen, Float3{ box.boxLength }, BoundaryConditionSelect::PBC);
+			box.oxygens.push_back(oxygen);
+			box.bondDirections.push_back({ (positions[i + 1] - positions[i]).norm(), (positions[i + 2] - positions[i]).norm() });
+		}
+		return box;
+	}();
+	return waterBox;
+}
+
 void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3, const std::string& waterModel) {
 	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
 		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
@@ -436,39 +481,37 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
 	// but it will be slightly more complex code
 
-	// Minimum distance from a new water to another new water
-	const float distanceThreshold = 0.20f;	// [nm]
+	// Minimum distance from a new water to another new water. Below the closest O-O distance in the equilibrated water
+	// box (0.251 nm), so it only removes waters that clash where the tiles meet and across the box's periodic boundary
+	const float distanceThreshold = 0.23f;	// [nm]
 	// Minimum distance from a new water to an atom of the input system. Larger than between waters, so waters
 	// are not placed in the gaps between packed molecules, eg. in the hydrophobic core of a membrane
 	const float soluteDistanceThreshold = 0.35f;	// [nm]
 
-	// Place candidate waters on a box-wide cubic lattice at the desired density. Random placement with the
-	// exclusion distance above saturates at ~40% of bulk water density. The lattice spacing at bulk density
-	// (~0.31 nm) exceeds the exclusion distance, so only waters overlapping the input system are removed below.
-	// Each water is jittered a little, so the lattice planes don't show up as a sawtooth in density profiles
-	const Int3 latticeDim{
-		std::max(1, static_cast<int>(std::round(grofile.box_size.x * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
-		std::max(1, static_cast<int>(std::round(grofile.box_size.y * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))),
-		std::max(1, static_cast<int>(std::round(grofile.box_size.z * std::cbrt(static_cast<float>(desiredSolventsPerNm3))))) };
-	const Float3 latticeSpacing{ grofile.box_size.x / latticeDim.x, grofile.box_size.y / latticeDim.y, grofile.box_size.z / latticeDim.z };
-	if (std::min({ latticeSpacing.x, latticeSpacing.y, latticeSpacing.z }) < distanceThreshold)
-		throw std::invalid_argument(Lima::Format("Solvent density {}/nm^3 is too high, the maximum is {}",
-			desiredSolventsPerNm3, static_cast<int>(1.f / (distanceThreshold * distanceThreshold * distanceThreshold))));
-	const float latticeJitter = 0.06f;	// [nm] max offset per dimension
+	// Tile the box with copies of the equilibrated water box, scaled to the desired density, keeping the waters whose
+	// oxygen is inside the box. The waters keep their orientations, so they start out hydrogen bonded
+	const EquilibratedWaterBox& waterBox = LoadEquilibratedWaterBox();
+	const float nativeDensity = waterBox.oxygens.size() / (waterBox.boxLength * waterBox.boxLength * waterBox.boxLength);	// [1/nm^3]
+	const float scale = std::cbrt(nativeDensity / static_cast<float>(desiredSolventsPerNm3));
+	if (0.251f * scale < distanceThreshold)
+		throw std::invalid_argument(Lima::Format("Solvent density {}/nm^3 is too high, the maximum is {}", desiredSolventsPerNm3,
+			static_cast<int>(nativeDensity * std::pow(0.251f / distanceThreshold, 3.f))));
+	const float tileLength = waterBox.boxLength * scale;
+	const Int3 tileDim{ static_cast<int>(std::ceil(grofile.box_size.x / tileLength)), static_cast<int>(std::ceil(grofile.box_size.y / tileLength)),
+		static_cast<int>(std::ceil(grofile.box_size.z / tileLength)) };
 
-	for (int x = 0; x < latticeDim.x; x++) {
-		for (int y = 0; y < latticeDim.y; y++) {
-			for (int z = 0; z < latticeDim.z; z++) {
-				// A cheap hash of the lattice index, 3 bytes of it give an offset in [-1,1] per dimension
-				uint32_t hash = static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u ^ static_cast<uint32_t>(z) * 83492791u;
-				hash ^= hash >> 15; hash *= 0x2c1b3c6du; hash ^= hash >> 12; hash *= 0x297a2d39u; hash ^= hash >> 15;
-				const auto Jitter = [hash](int byte) { return ((hash >> (byte * 8)) & 0xffu) / 127.5f - 1.f; };
-				Float3 position = Float3{ (x + 0.5f) * latticeSpacing.x, (y + 0.5f) * latticeSpacing.y, (z + 0.5f) * latticeSpacing.z }
-					+ Float3{ Jitter(0), Jitter(1), Jitter(2) } * latticeJitter;
-				BoundaryConditionPublic::applyBCNM(position, grofile.box_size, BoundaryConditionSelect::PBC);
-				const NodeIndex nodeindex{ static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y)), static_cast<int>(std::floor(position.z)) };
-				const Float3 relPos = position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
-				boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, false });
+	for (int x = 0; x < tileDim.x; x++) {
+		for (int y = 0; y < tileDim.y; y++) {
+			for (int z = 0; z < tileDim.z; z++) {
+				const Float3 tileOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) } * tileLength;
+				for (int i = 0; i < static_cast<int>(waterBox.oxygens.size()); i++) {
+					const Float3 position = waterBox.oxygens[i] * scale + tileOffset;
+					if (position.x >= grofile.box_size.x || position.y >= grofile.box_size.y || position.z >= grofile.box_size.z)
+						continue;
+					const NodeIndex nodeindex{ static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y)), static_cast<int>(std::floor(position.z)) };
+					const Float3 relPos = position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
+					boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, false, false, i });
+				}
 			}
 		}
 	}
@@ -548,13 +591,10 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 		}
 	}
 	
-	// Positions of the 2 outer atoms relative to the central one
-	const Float3 _h1Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -waterGeometry.bondLengths[0]), Float3(0,1,0), -waterGeometry.angle * 0.5f);
-	const Float3 _h2Pos = Float3::rodriguesRotatation(Float3(0.f, 0.f, -waterGeometry.bondLengths[1]), Float3(0, 1, 0), waterGeometry.angle * 0.5f);
-
-	//float zOffset = -h1Pos.z * 0.5f;
-	RandomUniformGeneratorUnitvector genRandomUnitVector(1238971);	// Seed offset so we can get different random vectors for each simulation
-	RandomUniformGenerator genRandomAngle(-PI, PI);
+	// The outer atoms are placed in the plane and around the bisector of the equilibrated water's O-H bonds, at the
+	// bond lengths and angle of the water model
+	const float cosHalfAngle = std::cos(waterGeometry.angle * 0.5f);
+	const float sinHalfAngle = std::sin(waterGeometry.angle * 0.5f);
 
 	int atomCount = nAtomsInput;
 	int solventCount = 0;
@@ -567,11 +607,11 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 						continue;
 
 
-					Float3 rotVector = genRandomUnitVector();
-					float rotAngle = genRandomAngle();
-
-					Float3 h1Pos = Float3::rodriguesRotatation(_h1Pos, rotVector, rotAngle);
-					Float3 h2Pos = Float3::rodriguesRotatation(_h2Pos, rotVector, rotAngle);
+					const auto& bonds = waterBox.bondDirections[solvent.waterIndex];
+					const Float3 bisector = (bonds[0] + bonds[1]).norm();
+					const Float3 inPlane = (bonds[0] - bonds[1]).norm();
+					const Float3 h1Pos = (bisector * cosHalfAngle + inPlane * sinHalfAngle) * waterGeometry.bondLengths[0];
+					const Float3 h2Pos = (bisector * cosHalfAngle - inPlane * sinHalfAngle) * waterGeometry.bondLengths[1];
 
 					const Float3 blockOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
 					std::array<Float3, 3> positions;

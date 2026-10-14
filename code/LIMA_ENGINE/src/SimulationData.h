@@ -117,7 +117,8 @@ struct EngineBatchData {
 
 	std::vector<EngineSimulationData> simulations;
 	SimParams params;
-	Int3 boxSize;
+	Int3 boxSize;		// Grid cells per axis, see BoxParams
+	Float3 boxLength;	// [nm]
 	int64_t step = 0;
 	int nPclusters = 0;
 	int nBondgroups = 0;

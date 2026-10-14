@@ -469,14 +469,17 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	const int n = batch->nSuperclusters;
 	const int nCells = batch->nGridnodes;
 	const Int3 boxSize = batch->boxSize;
-	const Float3 boxSizeF = NodeIndex(boxSize).toFloat3();
+	const Float3 boxSizeF = batch->boxLength;
 	auto& tb = *batch->taskbuilderControl;
 
-	// Cells are 1 nm, so particles within the list radius are at most ceil(listRadius) cells away, plus 1 for particles
-	// protruding from their cells. FindNeighborsKernel skips the cells out of reach. In small boxes, every cell is visited once
-	const int range = static_cast<int>(std::ceil(listRadius)) + 1;
-	const Int3 rangeLo{ std::min(range, (boxSize.x - 1) / 2), std::min(range, (boxSize.y - 1) / 2), std::min(range, (boxSize.z - 1) / 2) };
-	const Int3 rangeHi{ std::min(range, boxSize.x / 2), std::min(range, boxSize.y / 2), std::min(range, boxSize.z / 2) };
+	// Particles within the list radius are at most ceil(listRadius / cell length) cells away, plus 1 for particles protruding from
+	// their cells. Cells are 1 nm, or slightly longer in a non-integer box. FindNeighborsKernel skips the cells out of reach. In
+	// small boxes, every cell is visited once
+	const Float3 cellLength = boxSizeF / NodeIndex(boxSize).toFloat3();
+	const auto Range = [&](float length) { return static_cast<int>(std::ceil(listRadius / length)) + 1; };
+	const Int3 range{ Range(cellLength.x), Range(cellLength.y), Range(cellLength.z) };
+	const Int3 rangeLo{ std::min(range.x, (boxSize.x - 1) / 2), std::min(range.y, (boxSize.y - 1) / 2), std::min(range.z, (boxSize.z - 1) / 2) };
+	const Int3 rangeHi{ std::min(range.x, boxSize.x / 2), std::min(range.y, boxSize.y / 2), std::min(range.z, boxSize.z / 2) };
 
 	tb.scSpheres.Expand(n, 1.2);
 	tb.scCells.Expand(n, 1.2);

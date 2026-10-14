@@ -37,6 +37,18 @@ __global__ void ApplyBoundaryCondition(PersistentCluster* const pClusters, int n
 
 // nBlocks = nPclusters/32
 // blockdim = (32, 1, 1)
+// The cells are boxSize per axis, of equal lengths boxSizeFloat / boxSize, see BoxParams
+__device__ __host__ inline Float3 CellLength(Int3 boxSize, Float3 boxSizeFloat) { return boxSizeFloat / NodeIndex(boxSize).toFloat3(); }
+__device__ __host__ inline Float3 CellCenter(const NodeIndex& cell, Int3 boxSize, Float3 boxSizeFloat) {
+	return (cell.toFloat3() + Float3{ 0.5f }) * CellLength(boxSize, boxSizeFloat);
+}
+// The cell of a position wrapped into the box. Clamped, as rounding can put a position just below the box length on its edge
+__device__ __host__ inline NodeIndex CellOf(const Float3& wrappedPos, Int3 boxSize, Float3 boxSizeFloat) {
+	const Float3 cellsPerNm = NodeIndex(boxSize).toFloat3() / boxSizeFloat;
+	const auto Axis = [](float pos, float perNm, int n) { return min(max(static_cast<int>(floorf(pos * perNm)), 0), n - 1); };
+	return NodeIndex{ Axis(wrappedPos.x, cellsPerNm.x, boxSize.x), Axis(wrappedPos.y, cellsPerNm.y, boxSize.y), Axis(wrappedPos.z, cellsPerNm.z, boxSize.z) };
+}
+
 __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, PersistentCluster* const pClustersData, int pclusterOffset, const int nPclusters, int gridOffset, Int3 boxSize, const Float3 boxSizeFloat, const Float3 boxSizeFloatInv) {
 	const int workId = blockIdx.x * blockDim.x + threadIdx.x;
 	if (workId >= nPclusters) return;
@@ -61,11 +73,8 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 
 
 	//const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
-	Float3 gridPosF = meanPos.Floor();
-	PeriodicBoundaryCondition::ApplyBC(gridPosF, boxSizeFloat, boxSizeFloatInv);
-	PeriodicBoundaryCondition::ApplyHyperpos(gridPosF, meanPos, boxSizeFloat, boxSizeFloatInv);
-
-	NodeIndex blockId = NodeIndex(gridPosF.x, gridPosF.y, gridPosF.z);
+	PeriodicBoundaryCondition::ApplyBC(meanPos, boxSizeFloat, boxSizeFloatInv);
+	const NodeIndex blockId = CellOf(meanPos, boxSize, boxSizeFloat);
 	if constexpr (INDEXING_CHECKS) {
 		if (blockId.x < 0 || blockId.y < 0 || blockId.z < 0 || blockId.x >= boxSize.x || blockId.y >= boxSize.y || blockId.z >= boxSize.z)
 			printf("Storing pc %d pos %f %f %f at block %d %d %d particleCount %d\n", pcId, meanPos.x, meanPos.y, meanPos.z, blockId.x, blockId.y, blockId.z, count);
@@ -148,8 +157,8 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	}
 	__syncthreads();
 
-	// TODO FIx this part
-	const Float3 blockCenter = BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize).toFloat3() + Float3{ 0.5f };
+	const Float3 blockCenter = CellCenter(BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize), boxSize, boxSizeFloat);
+	const Float3 cellsPerNm = NodeIndex(boxSize).toFloat3() / boxSizeFloat;
 
 	for (int i = threadIdx.x; i < nPClusters; i += blockDim.x) {
 		const int pcIndex = indexOfFirstCluster + i;
@@ -158,7 +167,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 
 		
 
-		const Float3 posRelativeToBlockCenter = absPos - blockCenter;
+		const Float3 posRelativeToBlockCenter = (absPos - blockCenter) * cellsPerNm;	// [cells]
 		const NodeIndex direction = LIMAPOSITIONSYSTEM::GetTransferDirection(posRelativeToBlockCenter);
 
 
@@ -320,7 +329,7 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	__shared__ int assignedScIds[PClusterTransfermodule::maxClustersPerBlock];
 	//__shared__ int scOutStartIndex;
 
-	const Float3 blockCenter = BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize).toFloat3() + Float3{ 0.5f };
+	const Float3 blockCenter = CellCenter(BoxGrid::Get3dIndex(blockIdx.x % boxSize.InnerProduct(), boxSize), boxSize, boxSizeFloat);
 
 	if (threadIdx.x == 0) {
 		nPclustersInBlock = min(transferModule.nPClustersPerBlock[blockIdx.x], PClusterTransfermodule::maxClustersPerBlock);
@@ -657,7 +666,7 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	const Int3 boxSize = batch->boxSize;
 	const int nBlocks = batch->nGridnodes;
 	const int nPclusters = batch->nPclusters;
-	const Float3 boxSizeF = Float3{ boxSize.x, boxSize.y, boxSize.z };
+	const Float3 boxSizeF = batch->boxLength;
 	const Float3 boxSizeFInv = boxSizeF.Inv();
 
 
@@ -785,7 +794,7 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 
 void Engine::BootstrapClustering(cudaStream_t stream) {
 	const auto boxSize = batch->boxSize;
-	const Float3 boxSizeF = NodeIndex(boxSize).toFloat3();
+	const Float3 boxSizeF = batch->boxLength;
 	const int nBlocks = batch->nGridnodes;
 	std::vector<Float3> positions(nBlocks * PClusterTransfermodule::maxClustersPerBlock);
 	std::vector<int> ids(nBlocks * PClusterTransfermodule::maxClustersPerBlock);
@@ -796,9 +805,8 @@ void Engine::BootstrapClustering(cudaStream_t stream) {
 		for (int pc = 0; pc < sim.device.pclusters.count; ++pc) {
 			const int pcId = pc + sim.device.pclusters.offset;
 			Float3 pos = box.persistentClusters[pc].pqd[0].position;
-			NodeIndex node{static_cast<int>(floorf(pos.x)), static_cast<int>(floorf(pos.y)), static_cast<int>(floorf(pos.z))};
-			BoundaryConditionPublic::applyBC(node, boxSize, PBC);
-			BoundaryConditionPublic::applyHyperposNM(node.toFloat3(), pos, boxSizeF, PBC);
+			BoundaryConditionPublic::applyBCNM(pos, boxSizeF, PBC);
+			const NodeIndex node = CellOf(pos, boxSize, boxSizeF);
 			const int bin = sim.device.gridnodes.offset + BoxGrid::Get1dIndex(node, boxSize);
 			if (counts[bin] >= PClusterTransfermodule::maxClustersPerBlock)
 				throw std::runtime_error("Too many pclusters in bootstrap grid bin");

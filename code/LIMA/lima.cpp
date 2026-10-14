@@ -79,17 +79,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     job.topfile.emplace(topol);
     job.simParams = ip;
     job.mode = envmode;
-    std::optional<int> resizedBox;
-    job.preprocess = [&resizedBox](GroFile& grofile, TopologyFile&, SimParams&) {
-        if ((NodeIndex(grofile.box_size.ToInt3()).toFloat3() - grofile.box_size).len() > 0.0001 || grofile.box_size.x != grofile.box_size.y || grofile.box_size.y != grofile.box_size.z) {
-            resizedBox = static_cast<int>(std::ceil((std::max)({
-                grofile.box_size.x, grofile.box_size.y, grofile.box_size.z })));
-            grofile.box_size = Float3(*resizedBox, *resizedBox, *resizedBox);
-        }
-    };
     auto result = env.Submit(std::move(job)).Get();
-    if (resizedBox)
-        ctx.out << Lima::Format("Boxsize was not an integer, or was not cubic. Setting new boxsize to {}\n", *resizedBox);
 
     const std::chrono::duration<double> enginetime = result.engineTime; // [s]
     ctx.out << Lima::Format("Engine time {:f}\n", enginetime.count());
@@ -293,19 +283,10 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 	std::unique_ptr<Rendering::AtomRenderTask> renderTask;
 	if (topology) {
 		try {
-			// Simulation boxes currently require integer dimensions. Keep the input
-			// coordinates unchanged and use a private, padded copy for the adapter.
-			GroFile simulationGrofile = grofile;
-			simulationGrofile.box_size = Float3{
-				std::ceil(simulationGrofile.box_size.x),
-				std::ceil(simulationGrofile.box_size.y),
-				std::ceil(simulationGrofile.box_size.z)
-			};
-
 			Environment& environment = Environment::Get();
 			SimulationJob job;
-			job.workDir = simulationGrofile.m_path.parent_path();
-			job.grofile = std::move(simulationGrofile);
+			job.workDir = grofile.m_path.parent_path();
+			job.grofile = grofile;
 			job.topfile.emplace(*topology);
 			job.simParams = SimParams{};
 			job.run = false;

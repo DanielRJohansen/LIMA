@@ -609,7 +609,7 @@ void Display::TestDisplay() {
 	
 	const auto position = std::make_unique<Float3>(0.5f, 0.5f, 0.5f);
 	BoxParams params;
-    params.boxSize = { 3, 2, 1 };
+    params.SetBoxLength({ 3.f, 2.f, 1.f });
 	params.totalParticles = 1;
     std::vector<PersistentCluster> pclusters(1);
     std::vector<PersistentClusterMeta> pcMetas(1);

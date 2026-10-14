@@ -8,6 +8,8 @@
 #include "SimParams.h"
 #include "Backbone.h"
 
+#include <algorithm>
+#include <cmath>
 #include <set>
 #include <string>
 
@@ -16,15 +18,25 @@ struct BoxImage;
 
 
 
+// A box length within this of an integer counts as that integer when rounding it to whole cells or chargeblocks. Above the
+// precision of a .gro box (1e-5) and of a float length of up to ~100 nm, far below anything physical [nm]
+constexpr float boxLengthRoundingTolerance = 1e-4f;
+
+// A rectangular box of any size. The engine bins particles in a grid of equal cells, boxSize of them per axis: the box length
+// rounded down, so the cells are 1 nm in an integer box and slightly larger otherwise
 struct BoxParams {
-	Int3 boxSize{};	// [nm]
+	Int3 boxSize{};		// Grid cells per axis
+	Float3 boxLength{};	// [nm]
 	int n_bridges = 0;
 	int totalParticles = 0;
 	int64_t degreesOfFreedom=0;
 
-	__host__ Float3 BoxSizeFloat() const {
-		return Float3{ static_cast<float>(boxSize.x), static_cast<float>(boxSize.y), static_cast<float>(boxSize.z) };
+	__host__ void SetBoxLength(Float3 length) {
+		boxLength = length;
+		const auto Cells = [](float l) { return (std::max)(1, static_cast<int>(std::floor(l + boxLengthRoundingTolerance))); };
+		boxSize = Int3{ Cells(length.x), Cells(length.y), Cells(length.z) };
 	}
+	__host__ Float3 BoxSizeFloat() const { return boxLength; }
 };
 
 

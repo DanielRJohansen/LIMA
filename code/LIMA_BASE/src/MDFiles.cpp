@@ -111,13 +111,22 @@ GroFile::GroFile(const fs::path& path) : m_path(path){
 		atoms.resize(nAtoms);
 		ParallelUtils::ParallelForBlocked(nAtoms, [&](size_t i) { atoms[i] = ParseGroLine(lines[i + 2]); });
 
-		// The box line has 3 or 9 values, we only use the first 3
+		// The box line has 3 or 9 values: the diagonal, then the off-diagonal ones of a triclinic box
 		std::string_view boxLine = lines[nAtoms + 2];
 		for (int dim = 0; dim < 3; dim++) {
 			boxLine = TrimSpaces(boxLine);
 			const auto result = std::from_chars(boxLine.data(), boxLine.data() + boxLine.size(), box_size[dim]);
 			if (result.ec != std::errc{})
 				throw std::runtime_error(Lima::Format("Failed to read box size in .gro file {}", path.string()));
+			boxLine.remove_prefix(result.ptr - boxLine.data());
+		}
+		for (int offDiagonal = 0; offDiagonal < 6; offDiagonal++) {
+			boxLine = TrimSpaces(boxLine);
+			float value = 0.f;
+			const auto result = std::from_chars(boxLine.data(), boxLine.data() + boxLine.size(), value);
+			if (result.ec != std::errc{})
+				break;
+			triclinic |= value != 0.f;
 			boxLine.remove_prefix(result.ptr - boxLine.data());
 		}
 

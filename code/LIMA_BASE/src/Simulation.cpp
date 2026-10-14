@@ -18,11 +18,9 @@
 
 
 Box::Box(Float3 boxSizeNM) {
-	if ((NodeIndex(boxSizeNM.ToInt3()).toFloat3() - boxSizeNM).len() > 0.0000001) {
-		throw std::invalid_argument("Boxsize was not an integer");
-	}
-
-	boxparams.boxSize = boxSizeNM.ToInt3();
+	if (!(boxSizeNM.x > 0.f && boxSizeNM.y > 0.f && boxSizeNM.z > 0.f))
+		throw std::invalid_argument("Box size must be positive");
+	boxparams.SetBoxLength(boxSizeNM);
 	//solventblockgrid_circularqueue = SolventBlocksCircularQueue::createQueue(boxparams.boxSize);
 }
 

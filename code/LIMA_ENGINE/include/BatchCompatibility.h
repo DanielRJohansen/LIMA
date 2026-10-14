@@ -11,7 +11,7 @@ namespace EngineBatch {
 	// Keep scheduling and Engine validation in agreement as SimParams grows.
 	inline std::optional<std::string_view> FindIncompatibility(const Simulation& lhs, const Simulation& rhs) {
 		if (!lhs.box || !rhs.box) return "missing box";
-		if (lhs.box->boxparams.boxSize != rhs.box->boxparams.boxSize) return "box size";
+		if (lhs.box->boxparams.boxLength != rhs.box->boxparams.boxLength) return "box size";
 		const auto reference = lhs.simParams.Params();
 		const auto candidate = rhs.simParams.Params();
 		std::optional<std::string_view> mismatch;

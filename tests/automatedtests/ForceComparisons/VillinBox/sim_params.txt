@@ -1,0 +1,6 @@
+n_steps=1
+dt=2
+data_logging_interval=1
+cutoff_nm=0.9
+enable_electrostatics=true
+apply_thermostat=false

@@ -41,7 +41,8 @@ struct GroFile {
 	std::string title="";
 	std::vector<GroRecord>atoms;
 	Float3 box_size{};
-	// --------------------- // 
+	bool triclinic = false;	// The box has off-diagonal vectors, which are not kept. Simulations support rectangular boxes only
+	// --------------------- //
 
 	// Meta data not in file
 	fs::path m_path;

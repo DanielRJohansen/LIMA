@@ -27,6 +27,8 @@ namespace PME {
 		int nGridpointsReciprocalspace = -1;	// TODO: Does this also need to be size_t?
 		const float ewaldKappa;
 		Float3 boxlenNm{};
+		Int3 blocksPerDim{};	// The box length rounded up, independent of the engine's cells
+		Float3 gridScale{};		// Per axis, from nm to the grid's coordinates, where the chargeblocks are 1 by 1 by 1
 		const int nChargeblocks;
 
 		CudaBuffer<int> simulationSlots;

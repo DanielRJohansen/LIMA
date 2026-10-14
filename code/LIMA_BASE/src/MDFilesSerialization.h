@@ -33,7 +33,7 @@ inline int64_t TimeSinceEpoch(std::filesystem::file_time_type fileTime) {
 }
 
 inline constexpr uint64_t CacheVersionNumberValue() {
-	const int cacheVersionNumber = 24;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
+	const int cacheVersionNumber = 25;	// Modify this value each time we want to invalidate cached files made by previous versions of the program. 
 	return 0xF0F0F0F0'00000000 + cacheVersionNumber;	// Cant just have a bunch of zeroes preceding the version, then we can't tell if the file is corrupted or not
 }  
 
@@ -164,6 +164,7 @@ inline void readGroFileFromBinaryCache(const fs::path& path, GroFile& file) {
 	file.title.resize(titleLength);
 	is.read(file.title.data(), titleLength);
 	ReadRaw(is, file.box_size);
+	ReadRaw(is, file.triclinic);
 
 	uint64_t nAtoms = 0;
 	ReadRaw(is, nAtoms);
@@ -202,6 +203,7 @@ inline void WriteFileToBinaryCache(const GroFile& file, std::optional<fs::path> 
 		WriteRaw(os, static_cast<uint64_t>(file.title.size()));
 		os.write(file.title.data(), file.title.size());
 		WriteRaw(os, file.box_size);
+		WriteRaw(os, file.triclinic);
 
 		WriteRaw(os, static_cast<uint64_t>(file.atoms.size()));
 		os.write(reinterpret_cast<const char*>(file.atoms.data()), file.atoms.size() * sizeof(GroRecord));

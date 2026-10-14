@@ -1,5 +1,6 @@
 #include "BoxBuilder.cuh"
 #include "Printer.h"
+#include "Format.h"
 #include "PhysicsUtils.cuh"
 #include "LimaPositionSystem.cuh"
 
@@ -13,6 +14,8 @@ using namespace LIMA_Print;
 // ---------------------------------------------------------------- Public Functions ---------------------------------------------------------------- //
 
 std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& boxImage, EnvMode envmode) {
+	if (boxImage.grofile.triclinic)
+		throw std::runtime_error(Lima::Format("The box in {} is triclinic. LIMA supports rectangular boxes only", boxImage.grofile.m_path.string()));
 	auto box = std::make_unique<Box>(boxImage.grofile.box_size);
 
 	// All pclusters start with zero previous forces and velocities

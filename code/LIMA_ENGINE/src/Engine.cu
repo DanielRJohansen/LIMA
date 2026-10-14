@@ -669,7 +669,7 @@ template <typename BoundaryCondition, bool emvariant, bool logData>
 void Engine::_deviceMaster() {
 	if (emvariant != tasksBuiltForEm)
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
-	const Float3 boxSize = NodeIndex(batch->boxSize).toFloat3();
+	const Float3 boxSize = batch->boxLength;
 	const int nScs = batch->nSuperclusters;
 	if constexpr (!emvariant) {
 		if (batch->hasConstraints && !batch->positionsConstrained && nScs > 0)
@@ -825,7 +825,7 @@ void Engine::SnfHandler(cudaStream_t& stream, const ForceAccumulator& forceAcc) 
 		if (batch->params.snf_select.contains(ElasticPosition) && batch->elasticPositionsBuffer) {
 			ElasticPositionsForceKernel<<<(count + 31) / 32, 32, 0, stream>>>(
 				batch->pClusterMetaDevice.Get(), batch->elasticPositionsBuffer->Get(), output, particleSlots,
-				sim.device.pclusters.offset, count, NodeIndex(batch->boxSize).toFloat3());
+				sim.device.pclusters.offset, count, batch->boxLength);
 		}
 	}
 }

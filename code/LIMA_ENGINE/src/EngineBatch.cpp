@@ -46,7 +46,7 @@ namespace EngineBatch {
 	// For each particle, in (pcluster, lane) order, its pairs with earlier particles are reported, so b is always the later one.
 	template <typename OnPair>
 	void ForEachClosePair(const Box& box, BoundaryConditionSelect bc, float maxDistance, bool includeBonded, OnPair&& onPair) {
-		const Int3 size = box.boxparams.boxSize;
+		const Float3 size = box.boxparams.BoxSizeFloat();
 		struct Entry { Float3 pos; ParticleRef ref; int id; };
 		std::vector<Entry> entries;
 		entries.reserve(box.persistentClusters.size() * PersistentCluster::maxParticles);
@@ -66,7 +66,7 @@ namespace EngineBatch {
 
 		// A flat grid of about one particle per cell. Cells are never smaller than maxDistance, so every close pair is
 		// in the same or adjacent cells. Cells this small as a hash map were the cost of starting a large batch
-		Float3 lo{}, hi{ static_cast<float>(size.x), static_cast<float>(size.y), static_cast<float>(size.z) };
+		Float3 lo{}, hi{ size };
 		if (bc != PBC) {
 			lo = hi = entries.front().pos;
 			for (const Entry& entry : entries) {
@@ -378,6 +378,7 @@ namespace EngineBatch {
 		else if (active->size() != simulations.size()) throw std::invalid_argument("Invalid active batch layout");
 		batch.params = simulations.front()->simParams;
 		batch.boxSize = simulations.front()->box->boxparams.boxSize;
+		batch.boxLength = simulations.front()->box->boxparams.BoxSizeFloat();
 		batch.ewaldKappa = PhysicsUtils::CalcEwaldkappa(batch.params.cutoff_nm);
 		// The largest of the simulations' buffers, as the batch shares one list radius. Only set at the start, so the lists of a
 		// simulation do not change when other members retire

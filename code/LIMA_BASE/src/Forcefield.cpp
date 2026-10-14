@@ -414,6 +414,16 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		throw std::runtime_error("Includes not supported here");
 	}
 
+	// nbfunc comb-rule gen-pairs fudgeLJ fudgeQQ. Without the fudge columns GROMACS uses 1
+	for (const auto& line : file.GetSection(TopologySection::defaults)) {
+		std::istringstream iss(line);
+		int nbfunc = 0, combinationRule = 0;
+		std::string genPairs;
+		iss >> nbfunc >> combinationRule >> genPairs;
+		if (!(iss >> fudgeLJ)) fudgeLJ = 1.f;
+		if (!(iss >> fudgeQQ)) fudgeQQ = 1.f;
+	}
+
 	for (const auto& line : file.GetSection(TopologySection::atomtypes)) {
 		std::istringstream iss(line);
 		float sigma, epsilon;
@@ -568,8 +578,9 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 			const AtomType right = *ljParameters->GetAtomType(query[1]);
 
 			// TODO: Would prefer to have this computation in a file specialized for it..
+			// Generated pairs are scaled by fudgeLJ, as GROMACS' gen-pairs. Explicit [ pairtypes ] are not
 			const float sigma = left.parameters.sigmaHalf + right.parameters.sigmaHalf;
-			const float epsilon = left.parameters.epsilonSqrt * right.parameters.epsilonSqrt;
+			const float epsilon = left.parameters.epsilonSqrt * right.parameters.epsilonSqrt * fudgeLJ;
 
 			pairbondParameters->insert(PairbondType{
 				.bonded_typenames = query,

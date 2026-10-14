@@ -128,7 +128,8 @@ static_assert(LimaForcecalc::FixedPointBondAccumulator::scale == ForceAccumulato
 // withCmap: the CMAP code raises the kernel from 62 to 84 registers, which cuts occupancy, so batches without CMAP use a variant without it
 template <typename BoundaryCondition, bool emVariant, bool computePotE, bool withCmap>
 __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int nBondgroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut /*EM only*/,
-	const ForceAccumulator primaryBondForces, ulonglong4* const extraBondForces, const int* const extraResultIndices /*MD only*/, const SuperCluster* const superClusters, const int* const particleSlots, Float3 boxSize, Float3 boxSizeInv) {
+	const ForceAccumulator primaryBondForces, ulonglong4* const extraBondForces, const int* const extraResultIndices /*MD only*/, const SuperCluster* const superClusters, const int* const particleSlots, Float3 boxSize, Float3 boxSizeInv,
+	float ewaldKappa /*0 without PME*/) {
 	const int groupInBlock = threadIdx.x / 32;
 	const int groupId = blockIdx.x * BONDGROUPS_PER_BLOCK + groupInBlock;
 	if (groupId >= nBondgroups) return; // Uniform per warp; no block barriers below
@@ -147,6 +148,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	static const int batchSize = 32;
 	static const int largestBondBytesize = std::max(sizeof(AngleUreyBradleyBond), sizeof(DihedralBond));
 	static_assert(sizeof(CmapBond) <= largestBondBytesize);
+	static_assert(sizeof(PairBond) <= largestBondBytesize);
 	__shared__ __align__(16) char bondsBuffers[BONDGROUPS_PER_BLOCK][largestBondBytesize * batchSize];
 	char* const _bondsBuffer = bondsBuffers[groupInBlock];
 
@@ -248,7 +250,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 			}
 			acc.Sync();
 
-			LimaForcecalc::computePairbondForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, acc, boxSize, boxSizeInv);
+			LimaForcecalc::computePairbondForces<BoundaryCondition, Accumulator>(bondsBuffer, std::min(batchSize, bondGroup->nPairbonds - batchStart), positions, acc, boxSize, boxSizeInv, ewaldKappa);
 		}
 	}
 

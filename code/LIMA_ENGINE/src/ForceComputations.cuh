@@ -432,8 +432,9 @@ __device__ inline void computeSinglebondForces(const SingleBond* const singlebon
 }
 
 template<typename BoundaryCondition, typename Accumulator>
+// ewaldKappa: 0 without PME, which removes the Ewald exclusion correction, as erf(0) = 0
 __device__ inline void computePairbondForces(const PairBond* const pairbonds, const int n_pairbonds, const Float3* const positions,	const Accumulator& acc,
-	const Float3& boxSize, const Float3& boxSizeInv)
+	const Float3& boxSize, const Float3& boxSizeInv, float ewaldKappa)
 {
 	for (int bond_offset = 0; (bond_offset * Accumulator::nThreads) < n_pairbonds; bond_offset++) {
 		const PairBond* pb = nullptr;
@@ -449,7 +450,20 @@ __device__ inline void computePairbondForces(const PairBond* const pairbonds, co
 			const Float3 diff = pos[1] - pos[0];
 			const float distSqReciprocal = 1.f / diff.lenSquared();
 
-			const Float3 forceOnLeft = LJ::calcLJForceOptim<true, false>(diff, distSqReciprocal, potential, pb->params.sigma, pb->params.epsilon, LJ::CalcLJOrigin::Pairbond) * 24.f;
+			Float3 forceOnLeft = LJ::calcLJForceOptim<true, false>(diff, distSqReciprocal, potential, pb->params.sigma, pb->params.epsilon, LJ::CalcLJOrigin::Pairbond) * 24.f;
+			// Plain Coulomb, not Ewald's real space part, as GROMACS' 1-4 pairs. Repulsive for equal charges, so away from p1
+			const float coulomb = PhysicsUtils::modifiedCoulombConstant * pb->params.chargeProduct * sqrtf(distSqReciprocal);	// [J/mol]
+			forceOnLeft -= diff * (coulomb * distSqReciprocal);
+			potential += 0.5f * coulomb;	// Split between the 2 particles, as the LJ potential
+
+			// The Ewald exclusion correction V = -k*qi*qj*erf(kappa*r)/r, on p0 the force dV/dr * diff/r
+			const float distInv = sqrtf(distSqReciprocal);
+			const float kq = PhysicsUtils::modifiedCoulombConstant * pb->params.exclusionChargeProduct;	// [J/mol nm]
+			const float erfTerm = erff(ewaldKappa / distInv);
+			const float gaussian = 2.f * ewaldKappa / PI_sqrt * expf(-ewaldKappa * ewaldKappa / distSqReciprocal);
+			const float dVdr = -kq * (gaussian * distInv - erfTerm * distSqReciprocal);
+			forceOnLeft += diff * (dVdr * distInv);
+			potential -= 0.5f * kq * erfTerm * distInv;
 			forces[0] = forceOnLeft;
 			forces[1] = -forceOnLeft;
 		}

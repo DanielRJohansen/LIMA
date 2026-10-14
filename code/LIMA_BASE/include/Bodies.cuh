@@ -43,13 +43,18 @@ namespace Bondtypes {
 		const static int nAtoms = 2;
 	};
 
+	// A pair of atoms excluded from the nonbonded kernel. A 1-4 pair (GROMACS' [ pairs ] funct 1) has LJ and plain Coulomb. Every
+	// excluded pair, 1-4 or bonded closer, also has the Ewald exclusion correction: PME's reciprocal sum includes all pairs, so the
+	// part of excluded ones, qi*qj*erf(kappa*r)/r, is subtracted, as GROMACS does
 	struct PairBond {
 		struct Parameters {
 			float sigma = 0.f;
 			float epsilon = 0.f;
+			float chargeProduct = 0.f;			// fudgeQQ * qi * qj [(kC/mol)^2], 1-4 pairs only. Set when the box is built, from the atoms' charges
+			float exclusionChargeProduct = 0.f;	// qi * qj [(kC/mol)^2], for the Ewald exclusion correction
 
 			bool operator==(const Parameters&) const = default;
-			bool HasZeroParam() const { return epsilon == 0.f; };
+			bool HasZeroParam() const { return epsilon == 0.f && chargeProduct == 0.f && exclusionChargeProduct == 0.f; };
 
 			
 			/// <param name="sigma">[nm]</param>

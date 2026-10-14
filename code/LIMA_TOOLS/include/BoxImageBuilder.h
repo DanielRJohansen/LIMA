@@ -108,7 +108,9 @@ namespace LIMA_MOLECULEBUILD {
 			int firstCmapbond = 0;
 		};
 
-		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield, ConstraintsSelect constraintsSelect = ConstraintsSelect::None);
+		// electrostatics: whether the 1-4 pairs get Coulomb and the Ewald exclusion correction. Without it BoxBuilder zeroes all charges
+		SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield, ConstraintsSelect constraintsSelect = ConstraintsSelect::None,
+			bool electrostatics = true);
 
 
 		void VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;

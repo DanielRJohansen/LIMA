@@ -221,7 +221,8 @@ namespace {
 	}
 }
 
-SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield, ConstraintsSelect constraintsSelect) {
+SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& grofile, LIMAForcefield& forcefield, ConstraintsSelect constraintsSelect,
+	bool electrostatics) {
 	moleculeInstances.reserve(system.MoleculeCount());
 
 	// Find the molecules, and the unique moleculetypes in order of appearance
@@ -265,6 +266,56 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 		ResolveBonds<DihedralBond>(molType.dihedralbonds, types, forcefield, forcefieldMutex, bonds.dihedralbonds);
 		ResolveBonds<ImproperDihedralBond>(molType.improperdihedralbonds, types, forcefield, forcefieldMutex, bonds.improperdihedralbonds);
 		ResolveCmaps(molType.cmapbonds, types, forcefield, forcefieldMutex, bonds.cmapbonds);
+		if (electrostatics) {
+			// After all bonded terms are resolved, as the exclusions come from them. The 1-4 Coulomb, scaled by fudgeQQ. A charge
+			// missing in the topology comes from the atomtype, as for the nonbonded charges
+			std::vector<float> charges(molType.atoms.size());	// [kC/mol]
+			{
+				std::scoped_lock lock(forcefieldMutex);
+				for (size_t a = 0; a < molType.atoms.size(); a++) {
+					const auto& atom = molType.atoms[a];
+					const std::optional<AtomType> atomtype = atom.charge.has_value() ? std::nullopt : forcefield.GetAtomtype(atom.type);
+					charges[a] = atom.charge.has_value() ? atom.charge.value() * elementaryChargeToKiloCoulombPerMole
+						: atomtype.has_value() ? atomtype->charge : 0.f;
+				}
+			}
+			for (auto& pair : bonds.pairbonds)
+				pair.params.chargeProduct = forcefield.FudgeQQ() * charges[pair.global_atom_indexes[0]] * charges[pair.global_atom_indexes[1]];
+
+			// The Ewald exclusion correction, for every pair the nonbonded kernel excludes: those sharing a bond, angle, dihedral or
+			// improper (see the exclusions built from these in MakePersistentClusters). 1-4 pairs carry it in their entry, the
+			// others get an entry of their own
+			std::vector<uint64_t> excluded;
+			const auto addExcluded = [&](const auto& bondList) {
+				for (const auto& bond : bondList)
+					for (size_t a = 0; a < bond.global_atom_indexes.size(); a++)
+						for (size_t b = a + 1; b < bond.global_atom_indexes.size(); b++) {
+							const uint32_t i = bond.global_atom_indexes[a], j = bond.global_atom_indexes[b];
+							excluded.push_back(uint64_t(std::min(i, j)) << 32 | std::max(i, j));
+						}
+			};
+			addExcluded(bonds.singlebonds);
+			addExcluded(bonds.anglebonds);
+			addExcluded(bonds.dihedralbonds);
+			addExcluded(bonds.improperdihedralbonds);
+			std::ranges::sort(excluded);
+			excluded.erase(std::unique(excluded.begin(), excluded.end()), excluded.end());
+			std::unordered_map<uint64_t, size_t> pairIndices;
+			for (size_t p = 0; p < bonds.pairbonds.size(); p++) {
+				const auto [i, j] = bonds.pairbonds[p].global_atom_indexes;
+				pairIndices.emplace(uint64_t(std::min(i, j)) << 32 | uint32_t(std::max(i, j)), p);
+			}
+			for (const uint64_t key : excluded) {
+				const int i = static_cast<int>(key >> 32), j = static_cast<int>(key & 0xFFFFFFFFu);
+				const float exclusionChargeProduct = charges[i] * charges[j];
+				if (exclusionChargeProduct == 0.f)
+					continue;
+				if (const auto found = pairIndices.find(key); found != pairIndices.end())
+					bonds.pairbonds[found->second].params.exclusionChargeProduct = exclusionChargeProduct;
+				else
+					bonds.pairbonds.emplace_back(PairBondFactory{ { i, j }, PairBond::Parameters{ 0.f, 0.f, 0.f, exclusionChargeProduct } });
+			}
+		}
 		if (constraintsSelect == ConstraintsSelect::HBonds || !molType.settles.empty())
 			moleculetypeConstraints[i] = MakeConstraints(molType, bonds, constraintsSelect == ConstraintsSelect::HBonds);
 		});
@@ -991,7 +1042,7 @@ std::unique_ptr<BoxImage> LIMA_MOLECULEBUILD::buildMolecules(
 	//TimeIt timer("buildMolecules", true);
 	LIMAForcefield forcefield{ topol_file.forcefieldInclude ? topol_file.forcefieldInclude->contents : GenericItpFile{} };
 
-	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield, simparams.constraints.value);
+	SuperTopology superTopology(topol_file.GetSystem(), grofile, forcefield, simparams.constraints.value, simparams.enable_electrostatics);
 	superTopology.VerifyBondsAreStable(grofile.box_size, simparams.bc_select, simparams.em_variant);
 
 

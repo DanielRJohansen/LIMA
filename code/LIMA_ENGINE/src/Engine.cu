@@ -715,7 +715,7 @@ void Engine::_deviceMaster() {
 		const auto kernel = batch->cmapGridSpacing > 0 ? BondgroupsKernel<BoundaryCondition, emvariant, logData, true> : BondgroupsKernel<BoundaryCondition, emvariant, logData, false>;
 		kernel<<<(batch->nBondgroups + BONDGROUPS_PER_BLOCK - 1) / BONDGROUPS_PER_BLOCK, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
 			bondGroups, batch->nBondgroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, primaryBondForces, extraBondForces, batch->bondgroupExtraResultIndices.Get(), batch->superClustersControl->scData,
-			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv);
+			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv, ENABLE_ES_LR && batch->params.enable_electrostatics ? batch->ewaldKappa : 0.f);
 	}
 	if (nScs == 0) {
 		Synchronize();

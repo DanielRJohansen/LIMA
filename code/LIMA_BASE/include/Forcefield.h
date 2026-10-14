@@ -84,6 +84,10 @@ public:
 
 	template<typename GenericBond>
 	const std::vector<typename GenericBond::Parameters>& GetBondParameters(const auto& query);
+	// From [ defaults ]: the scaling of 1-4 LJ generated from the atomtypes, and of all 1-4 Coulomb
+	float FudgeLJ() const { return fudgeLJ; }
+	float FudgeQQ() const { return fudgeQQ; }
+
 	// Periodic impropers (funct 4), which GROMACS matches only against [ dihedraltypes ] of funct 4
 	const std::vector<DihedralBond::Parameters>& GetPeriodicImproperParameters(const std::array<std::string, DihedralBond::nAtoms>& query);
 
@@ -92,6 +96,8 @@ public:
 	const std::vector<CmapGrid>& GetCmapGrids() const { return cmapGrids; }
 
 private:
+	float fudgeLJ = 1.f;
+	float fudgeQQ = 1.f;
 	std::unordered_map<std::string, int> cmapGridIndices;	// Keyed by the 5 atomtypes joined by spaces
 	std::vector<CmapGrid> cmapGrids;
 

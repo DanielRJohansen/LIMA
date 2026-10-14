@@ -14,8 +14,10 @@ namespace ForceComparisons {
 	TestRoutine DoAllForceComparisons(Environment& environment, EnvMode envmode) {
 		// TODO: Can't these all use automatedtestsdir? 
 		const fs::path heavyDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step";
-		const std::array<fs::path, 6> workDirs{ heavyDir / "PoolNoES", heavyDir / "Singlebond", heavyDir / "Anglebond", heavyDir / "Dihedralbond", heavyDir / "Cmapbond",
-			AutomatedTestsDir() / "ForceComparisons/DihedralBackbone" };
+		// VillinAmber: the villin protein of the Salad benchmark (AMBER99SB) with its charges zeroed, so bonded terms and LJ are
+		// compared without PME's differences. Reference from GROMACS 2024.2, one step, 5 nm cubic box
+		const std::array<fs::path, 7> workDirs{ heavyDir / "PoolNoES", heavyDir / "Singlebond", heavyDir / "Anglebond", heavyDir / "Dihedralbond", heavyDir / "Cmapbond",
+			AutomatedTestsDir() / "ForceComparisons/DihedralBackbone", AutomatedTestsDir() / "ForceComparisons/VillinAmber" };
 		std::vector<SimulationHandle> handles;
 		handles.reserve(workDirs.size());
 		for (const fs::path& workDir : workDirs) {

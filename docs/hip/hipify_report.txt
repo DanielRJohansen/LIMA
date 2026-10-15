@@ -1,0 +1,216 @@
+﻿HIP port: hipify report for code/LIMA_ENGINE and code/LIMA_BASE (2026-10-15, laptop, Radeon 780M gfx1103)
+=========================================================================================================
+
+How it was produced
+-------------------
+hipify-clang (ROCm 7.2 HIP SDK, LLVM 21) --examine over all 107 .cu/.cuh/.h/.cpp files, in a VS 2022 (MSVC 14.44)
+developer shell:
+  hipify-clang --examine --clang-resource-directory="%HIP_PATH%lib\clang\21" <files> --
+    -x cuda -DNOMINMAX -std=c++20 --cuda-path=<CUDA 13.1>
+    -I<stubs> -I<CUDA 13.1>\include\cccl -Icode/LIMA_BASE/include -Icode/LIMA_ENGINE/include -Icode/LIMA_ENGINE/src
+    -Icode/LIMA_ENGINE/platform -Icode/dependencies -Icode/dependencies/glm -Icode/dependencies/cereal/include
+Workarounds needed:
+  - hipify-clang 7.2 supports CUDA <= 12.8. With 13.1, empty stub headers for the files CUDA 13 removed but clang's CUDA
+    wrapper still includes (texture_fetch_functions.h, crt/device_runtime.h, device_functions.hpp, math_functions.hpp,
+    math_functions_dbl_ptx3.hpp). CUB is under include/cccl since CUDA 13.
+  - -DNOMINMAX against windows.h min/max.
+Caveats:
+  - 87 files had GPU references; the other 20 are host-only LIMA_BASE .cpp files.
+  - 37 of the 87 (marked * below) had parse errors, mostly headers examined standalone (missing includes) and STL noise
+    under -x cuda, so their counts may be low. The grep inventory and the compile probes below cover what hipify misses.
+  - UNCONVERTED refs: 0 in every file. hipify knows every CUDA name it saw; it does not judge warp-mask widths, PTX or
+    cooperative_groups features, hence the probes.
+
+Compile probes (hipcc 7.2, --offload-arch=gfx1103, each construct as LIMA uses it)
+---------------------------------------------------------------------------------
+OK    __shfl_sync / __shfl_xor_sync / __ballot_sync / __any_sync / __match_any_sync / __reduce_or|min|max_sync,
+      but ONLY with a 64-bit mask: HIP static_asserts "The mask must be a 64-bit integer". LIMA passes 0xFFFFFFFFu
+      (52 sites in EngineKernels.cuh, PME.cu, SuperclusterTaskBuilder.cu) -> needs a named full-warp mask macro
+      (0xFFFFFFFFu under CUDA, 0xFFFFFFFFull under HIP).
+OK    __ballot_sync returns 64-bit under HIP. LIMA stores it in uint32_t (6 sites): fine on wave32 (upper bits 0).
+OK    __syncwarp, __popc, __ffs, __ldg (incl. ulonglong2/float4), __half2float, __launch_bounds__(64, 16)
+FAIL  __ldcg: HIP only has it for __half/__half2. Used for 6 fields in EnergyMinimization.cuh:194-199 (reading another
+      block's results). Map to a coherent load; a plain load may read a stale per-CU cache on AMD, so check the
+      semantics (e.g. __hip_atomic_load relaxed, agent scope) rather than just *ptr.
+FAIL  asm("trap;") (EngineUtils.cuh:88, Engine.cu:943): PTX. Use __builtin_trap() under HIP (compiles).
+FAIL  asm("ex2.approx.ftz.f32 ...") (DeviceAlgorithmsPrivate.cuh:68): PTX. Use exp2f / __builtin_amdgcn_exp2f under HIP.
+FAIL  cooperative_groups::memcpy_async / wait (ParticleClusters.cu:499-502): not in HIP. Replace with a plain block-
+      strided copy + __syncthreads under HIP.
+
+Other constructs found by grep (no HIP issue expected, verify at build time)
+---------------------------------------------------------------------------
+  __constant__ (KernelConstants.cuh, SuperclusterTaskBuilder.cu), cudaHostAlloc mapped + cudaHostGetDevicePointer
+  (MappedHostBuffer.h, Engine.cu; iGPU: shares system memory), cudaMallocManaged (3), cudaEvent*, cudaStreamWaitEvent,
+  cudaProfilerStart/Stop, atomicAdd/Max/CAS/Exch on integers (no float atomics, as required).
+  CUB: cub::DeviceReduce, cub::DeviceScan (CubWrappers.cu), cub::BlockReduce (EnergyMinimization.cuh) -> hipCUB.
+  cuFFT: cufftPlanMany, cufftSetStream, cufftExecR2C/C2R, cufftDestroy (PME.cu) -> hipFFT, as the spike passed.
+  cufftXtSetJITCallback appears only in a comment (PME.cuh:46).
+  Hardcoded warp width: "32 *" in SuperclusterTaskBuilder.cu (4), fine for wave32-only.
+
+hipify converted references, summed over all files (CUDA runtime/library names and headers)
+------------------------------------------------------------------------------------------
+__any_sync                      6
+__ballot_sync                  12
+__CUDACC__                      3
+__ffs                           8
+__float2int_rn                  6
+__int_as_float                  2
+__ldcg                          6
+__ldg                           8
+__match_any_sync                6
+__popc                         18
+__shfl_sync                    38
+__shfl_xor_sync                30
+__syncthreads                  91
+__threadfence                   4
+cooperative_groups.h            2
+cuda_fp16.h                     1
+cuda_profiler_api.h             2
+cuda_runtime.h                  4
+cudaDeviceProp                  1
+cudaDeviceSynchronize           7
+cudaDriverGetVersion            1
+cudaError_t                    12
+cudaEvent_t                     9
+cudaEventCreateWithFlags        6
+cudaEventDestroy                8
+cudaEventDisableTiming          6
+cudaEventRecord                 7
+cudaEventSynchronize            3
+cudaFree                       50
+cudaFreeHost                    4
+cudaGetDevice                   1
+cudaGetDeviceProperties         1
+cudaGetErrorString              9
+cudaGetLastError                9
+cudaHostAlloc                   1
+cudaHostAllocMapped             1
+cudaHostGetDevicePointer        1
+cudaMalloc                     43
+cudaMallocHost                  1
+cudaMallocManaged               3
+cudaMemcpy                     40
+cudaMemcpyAsync                10
+cudaMemcpyDeviceToDevice        6
+cudaMemcpyDeviceToHost         20
+cudaMemcpyHostToDevice         24
+cudaMemset                     22
+cudaMemsetAsync                10
+cudaPeekAtLastError             1
+cudaProfilerStart               1
+cudaProfilerStop                1
+cudaRuntimeGetVersion           1
+cudaSetDevice                   2
+cudaStream_t                   47
+cudaStreamCreate                2
+cudaStreamCreateWithFlags       2
+cudaStreamDestroy               7
+cudaStreamNonBlocking           2
+cudaStreamQuery                 3
+cudaStreamSynchronize          11
+cudaStreamWaitEvent             6
+cudaSuccess                    14
+cufft.h                         1
+CUFFT_C2R                       1
+CUFFT_R2C                       1
+CUFFT_SUCCESS                   1
+cufftComplex                    4
+cufftDestroy                    4
+cufftExecC2R                    1
+cufftExecR2C                    1
+cufftHandle                     2
+cufftPlanMany                   2
+cufftResult                     1
+cufftSetStream                  2
+device_launch_parameters.h      1
+vector_types.h                  1
+
+Converted references per file (* = parse errors, count may be low)
+------------------------------------------------------------------
+code\LIMA_BASE\include\argparser.h                             1  *
+code\LIMA_BASE\include\Backbone.h                              0
+code\LIMA_BASE\include\Bodies.cuh                              1
+code\LIMA_BASE\include\BoundaryConditionPublic.h               0
+code\LIMA_BASE\include\BoxGrid.cuh                             0
+code\LIMA_BASE\include\CommandlineUtils.h                      0
+code\LIMA_BASE\include\Constants.h                             1
+code\LIMA_BASE\include\DebugUtils.h                            0
+code\LIMA_BASE\include\EngineCore.h                            0
+code\LIMA_BASE\include\Filehandling.h                          0
+code\LIMA_BASE\include\Forcefield.h                            0  *
+code\LIMA_BASE\include\Format.h                                0
+code\LIMA_BASE\include\Geometry.cuh                            0
+code\LIMA_BASE\include\GpuRuntime.h                            3  *
+code\LIMA_BASE\include\lima_pch.h                              0  *
+code\LIMA_BASE\include\LimaLogger.h                            1
+code\LIMA_BASE\include\LimaScaleSystem.cuh                     0
+code\LIMA_BASE\include\LimaTypes.cuh                         136
+code\LIMA_BASE\include\MDFiles.h                               0  *
+code\LIMA_BASE\include\MoleculeGraph.h                         0  *
+code\LIMA_BASE\include\MoleculeHull.cuh                        1
+code\LIMA_BASE\include\MoleculeUtils.h                         0  *
+code\LIMA_BASE\include\ParallelFor.h                           1
+code\LIMA_BASE\include\PhysicsUtils.cuh                        2  *
+code\LIMA_BASE\include\PhysicsUtilsDevice.cuh                  0  *
+code\LIMA_BASE\include\PlotUtils.h                             0
+code\LIMA_BASE\include\Printer.h                               0
+code\LIMA_BASE\include\RenderUtilities.cuh                     9  *
+code\LIMA_BASE\include\SimParams.h                             2
+code\LIMA_BASE\include\Simulation.cuh                          3
+code\LIMA_BASE\include\SmallString.h                           0
+code\LIMA_BASE\include\Statistics.h                            0
+code\LIMA_BASE\include\TimeIt.h                                0
+code\LIMA_BASE\include\Trajectory.h                            0
+code\LIMA_BASE\include\UpgradeableFileFormat.h                 1
+code\LIMA_BASE\include\Utilities.h                             3
+code\LIMA_BASE\src\Bodies.cpp                                  0
+code\LIMA_BASE\src\BoundaryConditionPublic.cpp                 0
+code\LIMA_ENGINE\include\BatchCompatibility.h                  0
+code\LIMA_ENGINE\include\DeviceAlgorithms.cuh                 35  *
+code\LIMA_ENGINE\include\DeviceBuffer.h                        0
+code\LIMA_ENGINE\include\Engine.cuh                           15  *
+code\LIMA_ENGINE\include\GpuUtils.h                            0
+code\LIMA_ENGINE\include\LimaPositionSystem.cuh                9
+code\LIMA_ENGINE\include\RenderDataPipe.h                      3
+code\LIMA_ENGINE\platform\GpuTypes.h                           1
+code\LIMA_ENGINE\src\BatchData.cuh                             0  *
+code\LIMA_ENGINE\src\BatchLayout.cuh                           0
+code\LIMA_ENGINE\src\BoundaryCondition.cuh                     9  *
+code\LIMA_ENGINE\src\CapacityOverflow.cuh                      8
+code\LIMA_ENGINE\src\ChargeBlock.cuh                          13  *
+code\LIMA_ENGINE\src\CompactBondTable.h                        0  *
+code\LIMA_ENGINE\src\CubWrappers.cu                           18
+code\LIMA_ENGINE\src\CubWrappers.h                             4
+code\LIMA_ENGINE\src\DeviceAlgorithmsPrivate.cuh              25  *
+code\LIMA_ENGINE\src\DeviceDebugUtils.h                        0  *
+code\LIMA_ENGINE\src\EnergyMinimization.cuh                   34
+code\LIMA_ENGINE\src\EnergyMinimizationHost.cpp               10
+code\LIMA_ENGINE\src\EnergyMinimizationTypes.h                 0
+code\LIMA_ENGINE\src\Engine.cu                               113  *
+code\LIMA_ENGINE\src\EngineBatch.cpp                          51  *
+code\LIMA_ENGINE\src\EngineBodies.cuh                         27
+code\LIMA_ENGINE\src\EngineHostside.h                         11  *
+code\LIMA_ENGINE\src\EngineKernels.cuh                        86  *
+code\LIMA_ENGINE\src\EngineUtils.cuh                           7  *
+code\LIMA_ENGINE\src\ForceAccumulator.cuh                     23
+code\LIMA_ENGINE\src\ForceComputations.cuh                    50  *
+code\LIMA_ENGINE\src\GpuErrorCheck.h                           3
+code\LIMA_ENGINE\src\GpuUtils.cpp                             44
+code\LIMA_ENGINE\src\KernelConstants.cuh                       0
+code\LIMA_ENGINE\src\KernelWarnings.cuh                       12  *
+code\LIMA_ENGINE\src\LennardJonesInteractions.cuh             14  *
+code\LIMA_ENGINE\src\LimitTesting.cuh                          2  *
+code\LIMA_ENGINE\src\MappedHostBuffer.h                       27
+code\LIMA_ENGINE\src\ParticleClusteringCPU.cpp                 0  *
+code\LIMA_ENGINE\src\ParticleClusters.cu                      88  *
+code\LIMA_ENGINE\src\PME.cu                                  109  *
+code\LIMA_ENGINE\src\PME.cuh                                   6  *
+code\LIMA_ENGINE\src\RenderDataPipe.cpp                       28  *
+code\LIMA_ENGINE\src\SimulationData.cpp                       15  *
+code\LIMA_ENGINE\src\SimulationData.h                          0  *
+code\LIMA_ENGINE\src\SuperclusterStagingControl.cuh           10
+code\LIMA_ENGINE\src\SuperclusterTaskBuilder.cu              150  *
+code\LIMA_ENGINE\src\SupernaturalForces.cuh                   18
+code\LIMA_ENGINE\src\TaskBuilderControl.cuh                   12  *
+code\LIMA_ENGINE\src\Thermostat.cuh                            5  *
+code\LIMA_ENGINE\src\VRescale.h                               11

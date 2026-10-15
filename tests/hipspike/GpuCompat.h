@@ -2,7 +2,8 @@
 
 // The spike's code uses the CUDA names. Under hipcc they are mapped to HIP here, the way GpuRuntime.h's HIP branch will.
 // Only the names the spike (and LIMA's PME) use
-#if defined(__HIP_PLATFORM_AMD__)
+// __HIP_PLATFORM_AMD__ is only defined by the HIP headers themselves, so detect hipcc by the compiler's own __HIP__
+#if defined(__HIP__)
 #include <hip/hip_runtime.h>
 #include <hipfft/hipfft.h>
 

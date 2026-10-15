@@ -1,6 +1,7 @@
 // HIP go/no-go spike: does a plain kernel and PME's FFT setup run on this GPU? Not part of the LIMA build.
 //   CUDA: nvcc -O2 spike.cu -o spike.exe -lcufft
 //   HIP:  hipcc -x hip --offload-arch=gfx1103 -O2 spike.cu -o spike.exe -lhipfft
+//         ROCm 7.2 on Windows: from a VS 2022 (MSVC 14.44) developer shell, and run with %HIP_PATH%bin on PATH
 // Prints the device, the checks, and ends with SPIKE_PASS or SPIKE_FAIL (exit code 0 or 1)
 
 #include "GpuCompat.h"
@@ -135,7 +136,7 @@ int main() {
 	int driver = 0, runtime = 0;
 	cudaDriverGetVersion(&driver);
 	cudaRuntimeGetVersion(&runtime);
-#if defined(__HIP_PLATFORM_AMD__)
+#if defined(__HIP__)
 	std::printf("%s %s (%s), driver %d, runtime %d\n", LIMA_GPU_VENDOR, properties.name, properties.gcnArchName, driver, runtime);
 #else
 	std::printf("%s %s (sm_%d%d), driver %d, runtime %d\n", LIMA_GPU_VENDOR, properties.name, properties.major, properties.minor, driver, runtime);

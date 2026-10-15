@@ -206,15 +206,19 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
    - Done (2026-10-15): dead CUDA code outside Engine removed; `LIMA_BASE/include/GpuRuntime.h` (CUDA branch only) replaces every `cuda_runtime.h`/`cuda_profiler_api.h` include, SASS unchanged.
    - Still direct: `cuda_fp16.h` in `Bodies.cuh` (HIP: `hip_fp16.h`), CUB/cuFFT in Engine.
    - Keep `CudaBuffer`, `RenderDataPipe`, `genericErrorCheck`, `GenericCopyToHost` where they are; they build for HIP through the shim. A rename (e.g. `GpuBuffer`) is optional and separate.
-2. Confirm card/OS support, then hipify report. Done on the laptop (780M); spike first, as it decides go/no-go:
-   - Setup: install AMD's HIP SDK for Windows (the latest release; it bundles hipcc, hipify-clang, hipFFT/rocFFT, hipCUB). Run `hipInfo`: it must list the 780M as gfx1103. If it doesn't, or the spike below fails to load its code object, look for community gfx1103 builds of the ROCm libraries (rocFFT especially) before giving up.
-   - Spike: `tests/hipspike/` (ready, passes on the RTX 4090 under nvcc). `spike.cu` uses the CUDA names; `GpuCompat.h` maps them to HIP under hipcc (a first draft of `GpuRuntime.h`'s HIP branch). It checks a plain kernel, `warpSize == 32`, and hipFFT planned exactly as `PME.cu` does (batched 3D R2C + C2R, rectangular 32x28x24 grid): one mode vs a host DFT and the round trip.
-     - Build and run, from `tests/hipspike/` in a shell with the HIP SDK on PATH: `hipcc -x hip --offload-arch=gfx1103 -O2 spike.cu -o spike.exe -lhipfft`, then `spike.exe`. If hipfft doesn't link, add `-L"%HIP_PATH%lib"`. Output ends with SPIKE_PASS or SPIKE_FAIL.
-     - If it fails to compile on a CUDA name, add the missing mapping to `GpuCompat.h` (that is the point of the draft). If it compiles but fails at runtime ("no kernel image", invalid device function), the gfx1103 support is the problem: try the community libs above.
-     - Record: SDK version, driver version, pass/fail, and any env vars or community libs needed.
-   - hipify report: needs the CUDA toolkit headers on the laptop (install the toolkit without the driver). Run `hipify-clang --examine` (or `hipify-perl -examine` if clang setup fights back) over `code/LIMA_ENGINE` and `code/LIMA_BASE`, with the same include dirs as the CMake build. Save the output as `docs/hip/hipify_report.txt`.
-   - From the report, list here: runtime APIs used (-> the `GpuRuntime.h` mapping list), CUB/cuFFT calls, and everything flagged as unsupported (inline PTX, `__shfl_*_sync`/ballot masks, `__launch_bounds__`, intrinsics).
-   - No-go (no gfx1103 support at all): note it here and stop the port until a supported card is available.
+2. Done (2026-10-15): **go**. Card/OS support confirmed, hipify report in `docs/hip/hipify_report.txt`.
+   - Setup: HIP SDK for Windows 7.2 (`C:\Program Files\AMD\ROCm\7.2`), Radeon driver 32.0.13022.3006. `hipInfo` lists the 780M as gfx1103, warpSize 32. Stock ROCm libraries, no community builds or env vars needed.
+   - Spike (`tests/hipspike/`): SPIKE_PASS. R2C mode error 3.3e-8, round trip 5.4e-7.
+     - hipcc 7.2 (clang 21) can't parse the VS 2026 STL (MSVC 14.51 made `isgreater` etc. `constexpr`, which HIP takes as host+device): build in a VS 2022 (14.44) developer shell (`vcvars64.bat`), then `hipcc -x hip --offload-arch=gfx1103 -O2 spike.cu -o spike.exe -lhipfft`. Run with `%HIP_PATH%bin` on PATH (else 0xC0000135, DLL not found). Don't pass `-L"%HIP_PATH%lib"`: hipcc splits it on the space.
+     - The HIP preset (step 3) needs the same: the v143 (14.44) toolset, until a ROCm release supports 14.5x.
+     - `__HIP_PLATFORM_AMD__` is only defined by the HIP headers, so detect hipcc with `__HIP__` (clang's own) before including anything.
+   - hipify report: `hipify-clang --examine` needed workarounds for CUDA 13.1 (it supports <= 12.8); see the report header. No unconverted names. Compile probes for what hipify doesn't judge:
+     - **Warp masks must be 64-bit** under HIP (static_assert): the 52 `0xFFFFFFFFu` masks need a named full-warp mask macro. `__ballot_sync` returns 64 bits; storing it in `uint32_t` is fine on wave32.
+     - **`__ldcg`** exists only for half types: 6 uses in `EnergyMinimization.cuh:194`. Needs a load that is coherent across CUs, not a plain load.
+     - **PTX:** `asm("trap;")` (2) -> `__builtin_trap()`; `ex2.approx.ftz.f32` in `DeviceAlgorithmsPrivate.cuh:68` -> `exp2f`/`__builtin_amdgcn_exp2f`.
+     - **`cooperative_groups::memcpy_async`/`wait`** (`ParticleClusters.cu:499`) don't exist in HIP: plain block-strided copy + `__syncthreads`.
+     - OK as is: all other `*_sync` warp ops incl. `__match_any_sync` and `__reduce_*_sync`, `__syncwarp`, `__popc`, `__ffs`, `__ldg`, `__half2float`, `__launch_bounds__`.
+   - Runtime API list for `GpuRuntime.h`: the "converted references" table in the report (malloc/memcpy/memset (+Async), streams, events, `cudaStreamWaitEvent`, mapped host alloc, `cudaMallocManaged`, device props, errors, profiler). Libraries: CUB `DeviceReduce`/`DeviceScan`/`BlockReduce` -> hipCUB; cuFFT `PlanMany`/`SetStream`/`ExecR2C`/`ExecC2R`/`Destroy` -> hipFFT (proven by the spike).
 3. Build preset + shim
 4. Engine without PME (headless EM, vacuum MD)
 5. Warp-level kernels (neighbor search, NB) + determinism tests

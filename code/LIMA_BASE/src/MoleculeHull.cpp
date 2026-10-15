@@ -353,7 +353,7 @@ MoleculeHullCollection::~MoleculeHullCollection() {
 
 void MoleculeHullCollection::WritePositionsToGrofile(GroFile& grofile) {
     if (nParticles != grofile.atoms.size())
-        throw ("GroFile does not seem to belong to this MoleculeHullCollection");
+        throw std::runtime_error("GroFile does not seem to belong to this MoleculeHullCollection");
 
     std::vector<RenderAtom> renderatoms(nParticles);
     cudaMemcpy(renderatoms.data(), particles, sizeof(RenderAtom) * nParticles, cudaMemcpyDeviceToHost);

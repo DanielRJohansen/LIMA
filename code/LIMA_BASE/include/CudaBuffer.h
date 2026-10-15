@@ -1,7 +1,17 @@
 #pragma once
 #include "GpuRuntime.h"
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <vector>
+
+// Throws on a failed allocation, and clears the error so it isn't reported again by a later error check
+inline void ThrowIfAllocationFailed(cudaError_t status, const char* what) {
+	if (status == cudaSuccess)
+		return;
+	cudaGetLastError();
+	throw std::runtime_error(std::string(what) + ": " + cudaGetErrorString(status));
+}
 
 template <typename T>
 class CudaBuffer {
@@ -24,8 +34,10 @@ public:
 
 		size_t newSize = static_cast<size_t>((double)requiredSize * margin.value_or(1.));		
 		if (devicePtr)
-			cudaFree(devicePtr);		
-		cudaMalloc(&devicePtr, newSize * sizeof(T));
+			cudaFree(devicePtr);
+		devicePtr = nullptr;
+		size = 0;
+		ThrowIfAllocationFailed(cudaMalloc(&devicePtr, newSize * sizeof(T)), "CudaBuffer allocation failed");
 		size = newSize;
 	}
 	void SetData(const std::vector<T>& v){
@@ -68,7 +80,10 @@ public:
 		if (requiredSize <= size)
 			return;
 		cudaFreeHost(host);
-		cudaHostAlloc(&host, requiredSize * sizeof(int), cudaHostAllocMapped);
+		host = nullptr;
+		device = nullptr;
+		size = 0;
+		ThrowIfAllocationFailed(cudaHostAlloc(&host, requiredSize * sizeof(int), cudaHostAllocMapped), "MappedHostBuffer allocation failed");
 		cudaHostGetDevicePointer(&device, host, 0);
 		size = requiredSize;
 		if (!written) cudaEventCreateWithFlags(&written, cudaEventDisableTiming);

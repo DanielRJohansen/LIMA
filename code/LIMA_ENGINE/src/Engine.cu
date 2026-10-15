@@ -38,6 +38,8 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 {
 	if (mode == EngineRunMode::Interactive && simulations.size() != 1)
 		throw std::invalid_argument("Interactive engines require one simulation");
+	if (mode == EngineRunMode::Interactive && simulations.front() && simulations.front()->simParams.apply_barostat)
+		throw std::invalid_argument("Pressure coupling is not supported during live editing");
 	if (!renderDataPipes.empty() && renderDataPipes.size() != simulations.size())
 		throw std::invalid_argument("Render data pipe count does not match simulation count");
 	EngineBatch::Pack(*batch, simulations);
@@ -296,6 +298,8 @@ void Engine::step() {
 		// Live editing changes EM/MD and force selections between steps.
 		const bool wasEnergyMinimizing = batch->params.em_variant;
 		batch->params = sim.simulation->simParams;
+		if (batch->params.apply_barostat)
+			throw std::invalid_argument("Pressure coupling is not supported during live editing");
 		if (batch->params.em_variant && !wasEnergyMinimizing)
 			ResetEnergyMinimization();
 		if (sim.device.dt != batch->params.dt) {
@@ -348,9 +352,12 @@ void Engine::PublishRenderData(size_t simulationIndex) {
 bool Engine::hostMaster() {
 	bool retired = false;
 	bool thermostatScalarsChanged = false;
+	float barostatCoordinateScale = 1.f;
 	// Temperature cadence is independent of logging, otherwise the logging interval changes the thermostat's dynamics
 	const bool measureTemperature = batch->step % batch->params.steps_per_temperature_measurement == 0;
-	if (measureTemperature) {
+	const bool measurePressure = batch->params.apply_barostat
+		&& batch->step % batch->params.steps_per_pressure_measurement == 0;
+	if (measureTemperature || measurePressure) {
 		StoreIntegrationStates(cudaStreams[0]);
 		batch->thermostat->ComputeKineticEnergy(batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
 			batch->nPclusters, cudaStreams[0]);
@@ -366,9 +373,24 @@ bool Engine::hostMaster() {
 			sim.device.thermostatScalar = 1.f;
 			thermostatScalarsChanged = true;
 		}
+		double kineticEnergy = 0.0;
+		double virial = 0.0;
+		if (measurePressure) {
+			const int kineticCount = sim.device.pclusters.count * PersistentCluster::maxParticles;
+			const int reciprocalCount = batch->pmeController ? batch->pmeController->VirialPartialCount() : 0;
+			const auto sums = CubWrappers::SumPressure(batch->thermostat->KineticEnergyValues(sim.device.pclusters), kineticCount,
+				batch->nbVirialPartials.Get(), batch->nSuperclusters,
+				batch->nBondgroups > 0 ? batch->bondVirialPartials.Get() : nullptr, batch->nBondgroups,
+				batch->hasConstraints ? batch->constraintVirialPartials.Get() : nullptr, batch->hasConstraints ? batch->nSuperclusters : 0,
+				reciprocalCount > 0 ? batch->pmeVirialPartials.Get() : nullptr, reciprocalCount, cudaStreams[0]);
+			kineticEnergy = sums.kineticEnergy;
+			virial = sums.virial * Virial::fixedPointScaleInv;
+		}
+		else if (measureTemperature)
+			kineticEnergy = batch->thermostat->KineticEnergy(sim.device.pclusters, cudaStreams[0]);
 		if (measureTemperature) {
 			const auto& boxparams = sim.simulation->box->boxparams;
-			const float temperature = batch->thermostat->Temperature(boxparams, sim.device.pclusters, cudaStreams[0]);
+			const float temperature = Thermostat::Temperature(boxparams, kineticEnergy);
 			sim.simulation->temperature_buffer.push_back(temperature);
 			sim.runstatus.current_temperature = temperature;
 			if (params.apply_thermostat) {
@@ -379,6 +401,21 @@ bool Engine::hostMaster() {
 				thermostatScalarsChanged |= sim.device.thermostatScalar != scalar;
 				sim.device.thermostatScalar = scalar;
 			}
+		}
+		if (measurePressure) {
+			const auto& boxparams = sim.simulation->box->boxparams;
+			const Float3 boxLength = boxparams.BoxSizeFloat();
+			const double volume = double(boxLength.x) * boxLength.y * boxLength.z;
+			constexpr double pressureUnit = 1e22 / AVOGADROSNUMBER; // (J/mol)/nm^3 to bar
+			const double pressure = (2.0 * kineticEnergy + virial) / (3.0 * volume) * pressureUnit;
+			sim.simulation->pressure_buffer.push_back(static_cast<float>(pressure));
+			sim.runstatus.current_pressure = static_cast<float>(pressure);
+			const double couplingTime = params.steps_per_pressure_measurement * double(params.dt);
+			const double tau = params.tau_p * PICO_TO_NANO;
+			const double volumeScale = 1.0 + params.compressibility * couplingTime / tau * (pressure - params.ref_p);
+			if (!(volumeScale > 0.0) || !std::isfinite(volumeScale))
+				throw std::runtime_error("Barostat produced a non-positive or non-finite volume scale");
+			barostatCoordinateScale = static_cast<float>(std::cbrt(volumeScale));
 		}
 		HandleEarlyStoppingInEM(sim);
 		sim.runstatus.current_step = step;
@@ -395,7 +432,39 @@ bool Engine::hostMaster() {
 	}
 	if (thermostatScalarsChanged)
 		UploadIntegrationSimulationData();
+	if (measurePressure && !IsFinished())
+		return ApplyBarostat(barostatCoordinateScale);
 	return false;
+}
+
+bool Engine::ApplyBarostat(float coordinateScale) {
+	const Float3 oldLength = batch->boxLength;
+	const Float3 newLength = oldLength * coordinateScale;
+	if (!(newLength.x > 2.f * (batch->params.cutoff_nm + batch->listBuffer)
+		&& newLength.y > 2.f * (batch->params.cutoff_nm + batch->listBuffer)
+		&& newLength.z > 2.f * (batch->params.cutoff_nm + batch->listBuffer)))
+		throw std::runtime_error("Barostat shrank the box below twice the neighbor-list radius");
+	const int slots = batch->nSuperclusters * SuperCluster::maxParticles;
+	ScaleBoxKernel<<<(slots + 255) / 256, 256, 0, cudaStreams[0]>>>(
+		batch->superClustersControl->scData, batch->nSuperclusters, coordinateScale);
+	auto& boxparams = batch->simulations.front().simulation->box->boxparams;
+	batch->positionsConstrained = false;
+	const bool engineGridNeedsRebuild = GridSizeRequiresRebuild(batch->boxSize, BoxParams::GridSizeForLength(newLength));
+	const bool dimensionsChanged = engineGridNeedsRebuild
+		|| (batch->pmeController && batch->pmeController->RequiresRebuild(newLength));
+	if (dimensionsChanged) {
+		boxparams.SetBoxLength(newLength);
+		RebuildActiveBatch();
+		return true;
+	}
+	boxparams.boxLength = newLength;
+	batch->boxLength = newLength;
+	if (batch->pmeController)
+		batch->pmeController->UpdateBoxLength(newLength);
+	batch->superClustersControl->Reset(batch->nGridnodes, cudaStreams[0]);
+	RunClustering(cudaStreams[0]);
+	MakeSuperClusterTasksGPU(cudaStreams[0]);
+	return true;
 }
 
 void Engine::UploadIntegrationSimulationData() {
@@ -669,7 +738,7 @@ void Engine::UpdateEnergyMinimization(Float3 boxSize) {
 	cudaMemcpyAsync(batch->emStatesHost.data(), batch->emStates.Get(), sizeof(EM::SimState) * nSimulations, cudaMemcpyDeviceToHost, cudaStreams[0]);
 }
 
-template <typename BoundaryCondition, bool emvariant, bool logData>
+template <typename BoundaryCondition, bool emvariant, bool logData, bool computeVirial>
 void Engine::_deviceMaster() {
 	if (emvariant != tasksBuiltForEm)
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
@@ -697,29 +766,38 @@ void Engine::_deviceMaster() {
 		forceAcc = ForceAccumulator{ base, base + n, base + 2 * n, logData ? base + 3 * n : nullptr };
 		primaryBondForces = ForceAccumulator{ base + 4 * n, base + 5 * n, base + 6 * n, logData ? base + 7 * n : nullptr };
 	}
+	if constexpr (computeVirial)
+		batch->pmeVirialPartials.Expand(batch->pmeController ? batch->pmeController->VirialPartialCount() : 0);
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
 		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
-			nScs, batch->forceEnergyInterims->pme, forceAcc);
+			nScs, batch->forceEnergyInterims->pme, forceAcc, computeVirial ? batch->pmeVirialPartials.Get() : nullptr);
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
+		if constexpr (computeVirial)
+			batch->nbVirialPartials.Expand(nScs);
 		// Blocksize must be 64, 2 superclusters per block, see the kernel
-		NbNonlocalKernel<BoundaryCondition, emvariant, logData><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
+		NbNonlocalKernel<BoundaryCondition, emvariant, logData, computeVirial><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
 			batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
-			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs);
+			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs,
+			computeVirial ? batch->nbVirialPartials.Get() : nullptr);
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);
 	if (batch->nBondgroups > 0) {
+		if constexpr (computeVirial)
+			batch->bondVirialPartials.Expand(batch->nBondgroups);
 		const CompactBondGroupsDevice bondGroups{
 			batch->bondgroupDescriptors.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
 			batch->bondgroupAnglebonds.Get(), batch->bondgroupDihedralbonds.Get(), batch->bondgroupImproperdihedralbonds.Get(),
 			batch->bondgroupCmapbonds.Get(), batch->cmapGridPoints.Get(), batch->cmapGridSpacing
 		};
 		const Float3 boxSizeInv = boxSize.Inv();
-		const auto kernel = batch->cmapGridSpacing > 0 ? BondgroupsKernel<BoundaryCondition, emvariant, logData, true> : BondgroupsKernel<BoundaryCondition, emvariant, logData, false>;
+		const auto kernel = batch->cmapGridSpacing > 0 ? BondgroupsKernel<BoundaryCondition, emvariant, logData, computeVirial, true>
+			: BondgroupsKernel<BoundaryCondition, emvariant, logData, computeVirial, false>;
 		kernel<<<(batch->nBondgroups + BONDGROUPS_PER_BLOCK - 1) / BONDGROUPS_PER_BLOCK, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
 			bondGroups, batch->nBondgroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, primaryBondForces, extraBondForces, batch->bondgroupExtraResultIndices.Get(), batch->superClustersControl->scData,
-			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv, ENABLE_ES_LR && batch->params.enable_electrostatics ? batch->ewaldKappa : 0.f);
+			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv, ENABLE_ES_LR && batch->params.enable_electrostatics ? batch->ewaldKappa : 0.f,
+			computeVirial ? batch->bondVirialPartials.Get() : nullptr);
 	}
 	if (nScs == 0) {
 		Synchronize();
@@ -744,12 +822,15 @@ void Engine::_deviceMaster() {
 				batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
 				batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr };
 			if (batch->hasConstraints) {
+				if constexpr (computeVirial)
+					batch->constraintVirialPartials.Expand(nScs);
 				// forcePrev includes the constraint force, so the kernel writes the measured force magnitudes itself
 				batch->forceMagnitudesInStates = false;
-				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
+				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData, computeVirial><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterTransfermodule->overflow, batch->step);
+					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterTransfermodule->overflow, batch->step,
+					computeVirial ? batch->constraintVirialPartials.Get() : nullptr);
 			}
 			else {
 				// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
@@ -769,40 +850,44 @@ void Engine::_deviceMaster() {
 
 void Engine::deviceMaster() {
 	const bool logData = batch->params.data_logging_interval != 0 && batch->step % batch->params.data_logging_interval == 0;
+	const bool pressureStep = batch->params.apply_barostat
+		&& (batch->step + 1) % batch->params.steps_per_pressure_measurement == 0;
 	switch (batch->params.bc_select) {
 	case NoBC:
 		if (batch->params.em_variant) {
 			if (logData) {
-				_deviceMaster<NoBoundaryCondition, true, true>();
+				_deviceMaster<NoBoundaryCondition, true, true, false>();
 			}
 			else {
-				_deviceMaster<NoBoundaryCondition, true, false>();
+				_deviceMaster<NoBoundaryCondition, true, false, false>();
 			}
 		}
 		else {
 			if (logData) {
-				_deviceMaster<NoBoundaryCondition, false, true>();
+				_deviceMaster<NoBoundaryCondition, false, true, false>();
 			}
 			else {
-				_deviceMaster<NoBoundaryCondition, false, false>();
+				_deviceMaster<NoBoundaryCondition, false, false, false>();
 			}
 		}
 		break;
 	case PBC:
 		if (batch->params.em_variant) {
 			if (logData) {
-				_deviceMaster<PeriodicBoundaryCondition, true, true>();
+				_deviceMaster<PeriodicBoundaryCondition, true, true, false>();
 			}
 			else {
-				_deviceMaster<PeriodicBoundaryCondition, true, false>();
+				_deviceMaster<PeriodicBoundaryCondition, true, false, false>();
 			}
 		}
 		else {
 			if (logData) {
-				_deviceMaster<PeriodicBoundaryCondition, false, true>();
+				if (pressureStep) _deviceMaster<PeriodicBoundaryCondition, false, true, true>();
+				else _deviceMaster<PeriodicBoundaryCondition, false, true, false>();
 			}
 			else {
-				_deviceMaster<PeriodicBoundaryCondition, false, false>();
+				if (pressureStep) _deviceMaster<PeriodicBoundaryCondition, false, false, true>();
+				else _deviceMaster<PeriodicBoundaryCondition, false, false, false>();
 			}
 		}
 		break;

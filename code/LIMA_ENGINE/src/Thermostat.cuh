@@ -43,11 +43,18 @@ public:
 	}
 
 	// Keep each simulation's reduction order and degrees of freedom independent.
-	// [K]. The thermostat's factor is computed from it by VRescale
-	float Temperature(const BoxParams& boxparams, BatchRange pclusters, cudaStream_t stream) {
+	// [J/mol]. The same reduction feeds temperature and pressure when their coupling steps coincide.
+	double KineticEnergy(BatchRange pclusters, cudaStream_t stream) {
 		const float* begin = intermediate + pclusters.offset * PersistentCluster::maxParticles;
-		const double totalKineticEnergy = CubWrappers::Sum(begin, begin + pclusters.count * PersistentCluster::maxParticles, stream);
-		return PhysicsUtils::kineticEnergyToTemperature(totalKineticEnergy, boxparams.degreesOfFreedom);
+		return CubWrappers::Sum(begin, begin + pclusters.count * PersistentCluster::maxParticles, stream);
+	}
+
+	static float Temperature(const BoxParams& boxparams, double kineticEnergy) {
+		return PhysicsUtils::kineticEnergyToTemperature(kineticEnergy, boxparams.degreesOfFreedom);
+	}
+
+	const float* KineticEnergyValues(BatchRange pclusters) const {
+		return intermediate + pclusters.offset * PersistentCluster::maxParticles;
 	}
 
 	~Thermostat() {

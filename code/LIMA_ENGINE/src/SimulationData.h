@@ -163,6 +163,10 @@ struct EngineBatchData {
 	int nQuarterEntries = 0;
 	CudaBuffer<SCResult> scResultsDevice;					// EM only
 	CudaBuffer<unsigned long long> forceAccumulatorDevice;	// MD only: four atomic planes, then four primary bonded planes, each nSuperclusters*16
+	CudaBuffer<long long> nbVirialPartials;					// One deterministic fixed-point scalar per supercluster on pressure steps
+	CudaBuffer<long long> bondVirialPartials;				// One per bond group
+	CudaBuffer<long long> constraintVirialPartials;		// One per supercluster
+	CudaBuffer<long long> pmeVirialPartials;				// One per reciprocal-space kernel block
 	CudaBuffer<int> pclusterParticleSlots;					// Slot (scId * 16 + index) of each pcluster particle in the current superclusters, -1 if none
 	CudaBuffer<ulonglong4> extraBondForceResults; // Only secondary bondgroup appearances
 	CudaBuffer<int> bondgroupExtraResultIndices; // -1 for primary appearances, otherwise an extra result index

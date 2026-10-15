@@ -30,6 +30,33 @@ namespace {
 		for (size_t i = blockIdx.x * size_t(blockDim.x) + threadIdx.x; i < count; i += size_t(gridDim.x) * blockDim.x)
 			data[i] = sqrtf(data[i]);
 	}
+	__global__ void PressureSumsKernel(const float* kineticEnergy, int nKinetic,
+		const long long* nonbonded, int nNonbonded, const long long* bonded, int nBonded,
+		const long long* constraints, int nConstraints, const long long* reciprocal, int nReciprocal,
+		CubWrappers::PressureSums* result) {
+		__shared__ double kineticPartial[256];
+		__shared__ long long virialPartial[256];
+		double kinetic = 0.0;
+		for (int i = threadIdx.x; i < nKinetic; i += blockDim.x)
+			kinetic += kineticEnergy[i];
+		long long virial = 0;
+		for (int i = threadIdx.x; i < nNonbonded; i += blockDim.x) virial += nonbonded[i];
+		for (int i = threadIdx.x; i < nBonded; i += blockDim.x) virial += bonded[i];
+		for (int i = threadIdx.x; i < nConstraints; i += blockDim.x) virial += constraints[i];
+		for (int i = threadIdx.x; i < nReciprocal; i += blockDim.x) virial += reciprocal[i];
+		kineticPartial[threadIdx.x] = kinetic;
+		virialPartial[threadIdx.x] = virial;
+		__syncthreads();
+		for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+			if (threadIdx.x < offset) {
+				kineticPartial[threadIdx.x] += kineticPartial[threadIdx.x + offset];
+				virialPartial[threadIdx.x] += virialPartial[threadIdx.x + offset];
+			}
+			__syncthreads();
+		}
+		if (threadIdx.x == 0)
+			*result = { kineticPartial[0], virialPartial[0] };
+	}
 	// Every call synchronizes before returning, so one grow-only buffer can be reused
 	// and steady-state steps do no allocation
 	void* TempStorage(size_t bytes, const char* what) {
@@ -86,6 +113,18 @@ double CubWrappers::Sum(const float* first, const float* last, cudaStream_t stre
 	double result = 0.0;
 	Check(cudaMemcpyAsync(&result, resultDevice, sizeof(double), cudaMemcpyDeviceToHost, stream), "Sum");
 	SyncAndCheck(stream, "Sum");
+	return result;
+}
+
+CubWrappers::PressureSums CubWrappers::SumPressure(const float* kineticEnergy, int nKinetic,
+	const long long* nonbonded, int nNonbonded, const long long* bonded, int nBonded,
+	const long long* constraints, int nConstraints, const long long* reciprocal, int nReciprocal, cudaStream_t stream) {
+	PressureSums* resultDevice = static_cast<PressureSums*>(TempStorage(sizeof(PressureSums), "Pressure sum"));
+	PressureSumsKernel<<<1, 256, 0, stream>>>(kineticEnergy, nKinetic, nonbonded, nNonbonded, bonded, nBonded,
+		constraints, nConstraints, reciprocal, nReciprocal, resultDevice);
+	PressureSums result{};
+	Check(cudaMemcpyAsync(&result, resultDevice, sizeof(result), cudaMemcpyDeviceToHost, stream), "Pressure sum");
+	SyncAndCheck(stream, "Pressure sum");
 	return result;
 }
 

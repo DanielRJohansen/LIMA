@@ -65,8 +65,8 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 - **Missing:** Nose-Hoover, Langevin/stochastic dynamics, per-group coupling (eg. protein vs solvent).
 
 ## Constant pressure (NPT)
-- No barostat: C-rescale/Berendsen for equilibration, Parrinello-Rahman/MTTK for production.
-- Needs box rescaling on the GPU, a virial (the fixed-point force accumulation would also have to sum pair virials), and the grid/PME to follow the box size.
+- **Done:** isotropic Berendsen coupling, 2026-10-15. Deterministic fixed-point virials cover nonbonded, bonded, constraints and reciprocal PME; GPU box scaling updates the neighbor grid and PME, with hysteresis around grid-size changes. Align `steps_per_pressure_measurement` with `stepsPerNlistupdate` to reuse its rebuild.
+- **Missing:** stochastic cell rescaling / a canonical NPT barostat, anisotropic or semi-isotropic coupling, and independently barostatted simulations in one batch.
 
 ## Restraints and pulling
 - Position restraints are skipped (posre includes ignored in `Topologyfile.cpp`), so no restrained equilibration.

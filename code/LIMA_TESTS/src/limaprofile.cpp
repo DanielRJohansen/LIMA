@@ -109,11 +109,13 @@ int main(int argc, char** argv) {
 		return result.success ? 0 : 1;
 	}
 	int stmvSteps = 1000;
-	if (argc > 1 && std::string_view(argv[1]) == "--stmv") {
-		if (argc != 3) { std::cerr << "Usage: limaprofile --stmv steps\n"; return 1; }
+	bool barostat = false;
+	if (argc > 1 && (std::string_view(argv[1]) == "--stmv" || std::string_view(argv[1]) == "--stmv-barostat")) {
+		if (argc != 3) { std::cerr << "Usage: limaprofile --stmv[-barostat] steps\n"; return 1; }
+		barostat = std::string_view(argv[1]) == "--stmv-barostat";
 		stmvSteps = std::stoi(argv[2]);
 	}
-	auto result = Benchmarks::STMV(Environment::Get(), EnvMode::Headless, stmvSteps, 1, true).RunToCompletion();
+	auto result = Benchmarks::STMV(Environment::Get(), EnvMode::Headless, stmvSteps, 1, true, barostat).RunToCompletion();
 	result.printStatus();
 	return result.success ? 0 : 1;
 }

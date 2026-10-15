@@ -105,7 +105,7 @@ namespace Benchmarks {
 
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
-		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps, bool printPerformance) {
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps, bool printPerformance, bool barostat) {
 		const auto MakeJob = [&](int steps) {
 			SimulationJob job;
 			job.workDir = workDir;
@@ -114,10 +114,11 @@ namespace Benchmarks {
 			job.simParams.emplace(simParamsPath);
 			job.mode = EnvMode::Headless;
 			job.mustRunAlone = true;
-			job.preprocess = [steps](GroFile&, TopologyFile&, SimParams& params) {
+			job.preprocess = [steps, barostat](GroFile&, TopologyFile&, SimParams& params) {
 				params.data_logging_interval = 20;
 				params.enable_electrostatics = true;
 				params.n_steps = steps;
+				params.apply_barostat = barostat;
 			};
 			return job;
 		};
@@ -141,6 +142,9 @@ namespace Benchmarks {
 			if (printPerformance)
 				std::cout << StringUtils::FormatPerformance(std::chrono::duration<double>(completed.engineTime).count(),
 					static_cast<double>(nSteps) * completed.simulation->simParams.dt);
+			if (printPerformance && barostat && !completed.simulation->pressure_buffer.empty())
+				std::cout << Lima::Format("Pressure: {:.1f} bar, box: {} nm\n", completed.simulation->pressure_buffer.back(),
+					completed.simulation->box->boxparams.BoxSizeFloat().toString());
 		}
 
 		const auto [fastest, slowest] = std::minmax_element(timesPerStep.begin(), timesPerStep.end());
@@ -151,11 +155,11 @@ namespace Benchmarks {
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}
 
-	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance) {
+	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance, bool barostat) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
 			workDir / "sim_params.txt", { std::chrono::microseconds{ 3500 }, std::chrono::microseconds{ 7500 } },
-			nSteps, nRuns, 0, printPerformance);
+			nSteps, nRuns, 0, printPerformance, barostat);
 	}
 
 	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance) {

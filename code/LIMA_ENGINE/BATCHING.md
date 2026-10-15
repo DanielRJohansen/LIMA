@@ -40,8 +40,8 @@ the small amount of simulation-specific state used by kernels.
 
 All members must start at step zero, have equal box dimensions and agree on
 `SimParams` except `dt`, `n_steps`, thermostat `ref_t`, `initial_temperature` and the analysis switches. Particle counts, topology, degrees of freedom
-and PME self-energy corrections are simulation-specific. The engine and scheduler
-use the same compatibility check in `BatchCompatibility.h`.
+and PME self-energy corrections are simulation-specific. Pressure-coupled jobs run alone because a batch currently shares one box and spatial grid. The engine and scheduler
+use the compatibility check in `BatchCompatibility.h`; the scheduler additionally applies standalone-job rules before forming a batch.
 
 ## Execution and completion
 

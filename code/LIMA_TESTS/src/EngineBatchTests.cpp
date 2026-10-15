@@ -15,6 +15,7 @@
 #include <chrono>
 #include <fstream>
 #include <map>
+#include <numeric>
 
 namespace EngineBatchTests {
 	void Require(bool value, const char* message) {
@@ -76,6 +77,51 @@ namespace EngineBatchTests {
 		engine.terminateSimulation();
 	}
 
+	double PotentialEnergyAtScale(bool electrostatics, double volumeScale) {
+		auto simulation = MakeSimulation(29, 1, 1e-8f, electrostatics, false, 1);
+		simulation->simParams.apply_thermostat = false;
+		const float coordinateScale = static_cast<float>(std::cbrt(volumeScale));
+		for (size_t pc = 0; pc < simulation->box->persistentClusters.size(); ++pc)
+			for (int lane = 0; lane < simulation->box->persistentClustersMetadata[pc].nParticles; ++lane)
+				simulation->box->persistentClusters[pc].pqd[lane].position *= coordinateScale;
+		simulation->box->boxparams.SetBoxLength(simulation->box->boxparams.BoxSizeFloat() * coordinateScale);
+		Run(*simulation);
+		return std::accumulate(simulation->potE_buffer->GetBuffer().begin(), simulation->potE_buffer->GetBuffer().end(), 0.0);
+	}
+
+	double MeasuredPotentialPressure(bool electrostatics) {
+		auto simulation = MakeSimulation(29, 1, 1e-8f, electrostatics, false, 1);
+		simulation->simParams.apply_thermostat = false;
+		simulation->simParams.steps_per_temperature_measurement = 1;
+		simulation->simParams.apply_barostat = true;
+		simulation->simParams.steps_per_pressure_measurement = 1;
+		simulation->simParams.tau_p = 1.f;
+		simulation->simParams.compressibility = 1e-12f;
+		const Float3 length = simulation->box->boxparams.BoxSizeFloat();
+		const double volume = double(length.x) * length.y * length.z;
+		const int64_t degreesOfFreedom = simulation->box->boxparams.degreesOfFreedom;
+		Run(*simulation);
+		Require(simulation->pressure_buffer.size() == 1 && simulation->temperature_buffer.size() == 1,
+			"Pressure finite-difference test did not get one pressure and temperature");
+		constexpr double gasConstant = BOLTZMANNCONSTANT * AVOGADROSNUMBER;
+		constexpr double pressureUnit = 1e22 / AVOGADROSNUMBER;
+		const double kineticEnergy = 0.5 * degreesOfFreedom * gasConstant * simulation->temperature_buffer.front();
+		return simulation->pressure_buffer.front() / pressureUnit - 2.0 * kineticEnergy / (3.0 * volume);
+	}
+
+	void CheckPressureAgainstFiniteDifference(bool electrostatics) {
+		constexpr double epsilon = 0.005;
+		constexpr double volume = 4.0 * 4.0 * 4.0;
+		const double lowerEnergy = PotentialEnergyAtScale(electrostatics, 1.0 - epsilon);
+		const double upperEnergy = PotentialEnergyAtScale(electrostatics, 1.0 + epsilon);
+		const double expected = -(upperEnergy - lowerEnergy) / (2.0 * epsilon * volume);
+		const double actual = MeasuredPotentialPressure(electrostatics);
+		const double relativeError = std::abs(actual - expected) / (std::max)(1.0, std::abs(expected));
+		if (relativeError > 0.05)
+			throw std::runtime_error(Lima::Format("{} pressure virial differs from finite-difference energy: {} vs {} ({:.1f}%)",
+				electrostatics ? "PME" : "Non-PME", actual, expected, relativeError * 100.0));
+	}
+
 	void Compare(Simulation& a, Simulation& b) {
 		Require(a.getStep() == b.getStep(), "Batch changed simulation step count");
 		for (size_t pc = 0; pc < a.box->persistentClusters.size(); ++pc) {
@@ -98,6 +144,7 @@ namespace EngineBatchTests {
 		}
 		Require(a.forceBuffer->GetBuffer() == b.forceBuffer->GetBuffer(), "Batch changed logged forces");
 		Require(a.temperature_buffer == b.temperature_buffer, "Batch mixed temperature reductions");
+		Require(a.pressure_buffer == b.pressure_buffer, "Batch changed pressure reductions");
 	}
 
 	// The synthetic systems above are smaller than the cutoff and barely move, so re-clustering never changes their
@@ -153,6 +200,44 @@ namespace EngineBatchTests {
 
 	void RunAll() {
 		RetirementOffNlistStep();
+		const Int3 awkwardGrid = BoxParams::GridSizeForLength({2.8f, 3.8f, 4.9f});
+		Require(awkwardGrid == Int3{2, 3, 4} && !GridSizeRequiresRebuild(awkwardGrid, awkwardGrid),
+			"A freshly selected engine grid requested another rebuild");
+		Require(GridSizeRequiresRebuild({2, 3, 4}, {3, 3, 4}), "Engine grid hysteresis retained a substantially undersized grid");
+		CheckPressureAgainstFiniteDifference(false);
+		CheckPressureAgainstFiniteDifference(true);
+		{
+			auto noPressure = MakeSimulation(5, 1, 0.00001f, false);
+			noPressure->simParams.apply_barostat = false;
+			noPressure->simParams.steps_per_pressure_measurement = -1;
+			Run(*noPressure);
+		}
+		{
+			auto first = MakeSimulation(29, 20, 0.000002f, true);
+			auto second = MakeSimulation(29, 20, 0.000002f, true);
+			for (Simulation* simulation : {first.get(), second.get()}) {
+				simulation->simParams.apply_barostat = true;
+				simulation->simParams.steps_per_pressure_measurement = 2;
+				simulation->simParams.tau_p = 0.2f;
+				simulation->simParams.compressibility = 4.5e-5f;
+				simulation->simParams.constraints = ConstraintsSelect::HBonds;
+				auto& box = *simulation->box;
+				box.builtConstraints = ConstraintsSelect::HBonds;
+				box.pclusterConstraints.resize(box.persistentClusters.size());
+				box.pclusterConstraints[0].nConstraints = 1;
+				box.pclusterConstraints[0].particles[0] = 0 | (1 << 2);
+				box.pclusterConstraints[0].distance[0] = 0.3f;
+			}
+			const Float3 initialLength = first->box->boxparams.BoxSizeFloat();
+			Run(*first);
+			Run(*second);
+			Require(first->pressure_buffer.size() == 10, "Barostat did not measure pressure at its own cadence");
+			Require(std::ranges::all_of(first->pressure_buffer, [](float pressure) { return std::isfinite(pressure); }),
+				"Barostat produced non-finite pressure");
+			Require(first->box->boxparams.BoxSizeFloat() != initialLength, "Barostat did not scale the box");
+			Require(first->box->boxparams.BoxSizeFloat() == second->box->boxparams.BoxSizeFloat(), "Barostat box scaling was not deterministic");
+			Compare(*first, *second);
+		}
 		{
 			auto simulation = MakeSimulation(5, 1, 0.00001f, false);
 			RenderDataPipe renderDataPipe;
@@ -260,6 +345,14 @@ namespace EngineBatchTests {
 			engine.step();
 			Require(interactive->getStep() == 3 && !engine.IsFinished(), "Live editing stopped at an EM or step limit");
 			engine.terminateSimulation();
+		}
+		{
+			auto pressureInteractive = MakeSimulation(5, 0, 0.00001f, false, false, 0);
+			pressureInteractive->simParams.apply_barostat = true;
+			bool rejected = false;
+			try { Engine engine({pressureInteractive.get()}, EngineRunMode::Interactive); }
+			catch (const std::invalid_argument&) { rejected = true; }
+			Require(rejected, "Interactive pressure coupling was not rejected at construction");
 		}
 		// A zero-step member must not acquire a PME slot or advance another member.
 		{

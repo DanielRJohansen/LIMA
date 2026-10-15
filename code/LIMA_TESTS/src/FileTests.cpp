@@ -102,10 +102,24 @@ tcoupl = v-rescale
 nsttcouple = 50
 tau-t = 0.1
 ref-t = 300
+pcoupl = berendsen
+pcoupltype = ISOTROPIC
+nstpcouple = 5
+tau-p = 2.5
+ref-p = 1.2
+compressibility = 4.6e-5
 )");
 		const SimParams velocityVerlet{ dir / "velocity-verlet.mdp" };
 		if (velocityVerlet.em_variant || !velocityVerlet.apply_thermostat || velocityVerlet.steps_per_temperature_measurement != 1)
 			co_return LimaUnittestResult::Fail("md-vv did not select velocity Verlet with thermostat coupling every step", envmode == Full);
+		if (!velocityVerlet.apply_barostat || velocityVerlet.steps_per_pressure_measurement != 5
+			|| velocityVerlet.tau_p != 2.5f || velocityVerlet.ref_p != 1.2f || velocityVerlet.compressibility != 4.6e-5f)
+			co_return LimaUnittestResult::Fail("MDP did not parse isotropic Berendsen pressure coupling", envmode == Full);
+
+		WriteTextFile(dir / "no-pressure.mdp", "integrator = md-vv\npcoupl = no\nnstpcouple = -1\n");
+		const SimParams noPressure{ dir / "no-pressure.mdp" };
+		if (noPressure.apply_barostat || noPressure.steps_per_pressure_measurement != -1)
+			co_return LimaUnittestResult::Fail("MDP did not preserve disabled automatic pressure coupling", envmode == Full);
 
 		WriteTextFile(dir / "leap-frog.mdp", "integrator = md\n");
 		try {

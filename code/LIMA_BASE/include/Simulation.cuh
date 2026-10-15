@@ -22,8 +22,8 @@ struct BoxImage;
 // precision of a .gro box (1e-5) and of a float length of up to ~100 nm, far below anything physical [nm]
 constexpr float boxLengthRoundingTolerance = 1e-4f;
 
-// A rectangular box of any size. The engine bins particles in a grid of equal cells, boxSize of them per axis: the box length
-// rounded down, so the cells are 1 nm in an integer box and slightly larger otherwise
+// A rectangular box of any size. The engine bins particles in a grid of equal cells, boxSize of them per axis. A newly built
+// grid rounds the box length down; pressure coupling may retain that count across small size changes to avoid reallocating it.
 struct BoxParams {
 	Int3 boxSize{};		// Grid cells per axis
 	Float3 boxLength{};	// [nm]
@@ -31,13 +31,24 @@ struct BoxParams {
 	int totalParticles = 0;
 	int64_t degreesOfFreedom=0;
 
+	__host__ static Int3 GridSizeForLength(Float3 length) {
+		const auto Cells = [](float l) { return (std::max)(1, static_cast<int>(std::floor(l + boxLengthRoundingTolerance))); };
+		return Int3{ Cells(length.x), Cells(length.y), Cells(length.z) };
+	}
 	__host__ void SetBoxLength(Float3 length) {
 		boxLength = length;
-		const auto Cells = [](float l) { return (std::max)(1, static_cast<int>(std::floor(l + boxLengthRoundingTolerance))); };
-		boxSize = Int3{ Cells(length.x), Cells(length.y), Cells(length.z) };
+		boxSize = GridSizeForLength(length);
 	}
 	__host__ Float3 BoxSizeFloat() const { return boxLength; }
 };
+
+inline bool GridSizeRequiresRebuild(Int3 current, Int3 preferred) {
+	const auto Outside = [](int existing, int desired) {
+		const float ratio = static_cast<float>(existing) / static_cast<float>(desired);
+		return ratio < 0.8f || ratio > 1.2f;
+	};
+	return Outside(current.x, preferred.x) || Outside(current.y, preferred.y) || Outside(current.z, preferred.z);
+}
 
 
 template <typename T>
@@ -168,6 +179,7 @@ public:
 	std::unique_ptr<ParticleDataBuffer<Float3>> forceBuffer;	// [J/mol/nm] // For debug only
 
 	std::vector<float> temperature_buffer;	
+	std::vector<float> pressure_buffer;		// [bar], one entry per pressure-coupling step
 	std::vector<std::pair<int64_t,float>> maxForceBuffer; // {step,force} The maximum force experienced by any particle in the system
 	struct EmLogEntry {
 		int64_t step;

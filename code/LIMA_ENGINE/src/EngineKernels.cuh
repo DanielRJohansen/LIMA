@@ -12,6 +12,7 @@
 //#include <cuda/pipeline>
 #include "LennardJonesInteractions.cuh"
 #include "ForceAccumulator.cuh"
+#include "Virial.cuh"
 
 
 
@@ -126,10 +127,10 @@ static constexpr int BONDGROUP_MAX_PARTICLES = 64;
 static_assert(BONDGROUP_MAX_PARTICLES <= 64, "Compact bond records reserve 6 bits per atom id");
 static_assert(LimaForcecalc::FixedPointBondAccumulator::scale == ForceAccumulator::scale, "Integration combines bonded and nonbonded sums in the same fixed point");
 // withCmap: the CMAP code raises the kernel from 62 to 84 registers, which cuts occupancy, so batches without CMAP use a variant without it
-template <typename BoundaryCondition, bool emVariant, bool computePotE, bool withCmap>
+template <typename BoundaryCondition, bool emVariant, bool computePotE, bool computeVirial, bool withCmap>
 __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int nBondgroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut /*EM only*/,
 	const ForceAccumulator primaryBondForces, ulonglong4* const extraBondForces, const int* const extraResultIndices /*MD only*/, const SuperCluster* const superClusters, const int* const particleSlots, Float3 boxSize, Float3 boxSizeInv,
-	float ewaldKappa /*0 without PME*/) {
+	float ewaldKappa /*0 without PME*/, long long* const virialPartials /*MD pressure steps only*/) {
 	const int groupInBlock = threadIdx.x / 32;
 	const int groupId = blockIdx.x * BONDGROUPS_PER_BLOCK + groupInBlock;
 	if (groupId >= nBondgroups) return; // Uniform per warp; no block barriers below
@@ -167,6 +168,15 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 		}
 	}
 	acc.Sync();
+	if constexpr (computeVirial) {
+#pragma unroll
+		for (int i = 0; i < 2; i++) {
+			const int pid = lane + i * 32;
+			if (pid > 0 && pid < bondGroup->nParticles)
+				BoundaryCondition::applyHyperposNM(positions[0], positions[pid], boxSize);
+		}
+		acc.Sync();
+	}
 
 	
 	{
@@ -254,18 +264,28 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 		}
 	}
 
+	float virialLocal = 0.f;
 #pragma unroll
 	for (int i = 0; i < 2; i++) {
 		const int pid = lane + i * 32;
 		if (pid < bondGroup->nParticles) {
+			const ForceEnergy result = acc.Get(pid);
+			if constexpr (computeVirial)
+				virialLocal += (positions[pid] - positions[0]).dot(result.force);
 			if constexpr (emVariant)
-				forceEnergiesOut[bondGroup->indexOfFirstParticle + pid] = acc.Get(pid);
+				forceEnergiesOut[bondGroup->indexOfFirstParticle + pid] = result;
 			else {
 				const int extra = extraResultIndices[bondGroup->indexOfFirstParticle + pid];
 				if (extra < 0) acc.StorePrimary(primaryBondForces, pid, slots[i]);
 				else acc.StoreTo(extraBondForces, pid, extra);
 			}
 		}
+	}
+	if constexpr (computeVirial) {
+		for (int offset = 16; offset > 0; offset >>= 1)
+			virialLocal += __shfl_down_sync(0xFFFFFFFFu, virialLocal, offset);
+		if (lane == 0)
+			virialPartials[groupId] = Virial::ToFixed(virialLocal);
 	}
 }
 
@@ -330,11 +350,12 @@ namespace NbNonlocal {
 //
 // __launch_bounds__: 64 registers avoid spills (16 blocks per SM), the potE variants need 80 (12 blocks per SM).
 // After larger changes, check ncu for local memory traffic and revisit the bounds.
-template <typename BoundaryCondition, bool energyMinimize, bool computePotE>
+template <typename BoundaryCondition, bool energyMinimize, bool computePotE, bool computeVirial>
 __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(const SuperCluster* const superClusters,
 	const QuarterEntryTask* const tasks, const QuarterEntry* const entries,
 	const ForceAccumulator forceAcc /*MD only*/, SCResult* const results /*EM only*/, const int* const entryResultIndices /*EM only*/,
-	const SuperClusterMeta* const scMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa, float cutoffSq, int nSuperclusters)
+	const SuperClusterMeta* const scMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa, float cutoffSq, int nSuperclusters,
+	long long* const virialPartials /*MD pressure steps only*/)
 {
 	using namespace NbNonlocal;
 	constexpr int nGroups = 8;
@@ -365,6 +386,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 
 	const Float3 reference{ ownPosCharge[warpInBlock][0].x, ownPosCharge[warpInBlock][0].y, ownPosCharge[warpInBlock][0].z };
 	ForceEnergy accOwn[4]{};
+	float virialLocal = 0.f;
 
 	const int end = task.firstEntry + task.nEntries;
 	for (int base = task.firstEntry; base < end; base += nGroups) {
@@ -404,6 +426,8 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
 					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
 					ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewaldKappa);
+					if constexpr (computeVirial)
+					virialLocal -= diff.dot(fe.force);
 					accJ[k] += fe;
 					accOwn[ownQuarter] += fe.InvertForce();
 				}
@@ -480,6 +504,13 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 			results[scMeta[scId].resultsStartIndex].Store<computePotE>(q * 4 + lane, accOwn[q]);
 		else if (superClusters[scId].Valid(q * 4 + lane))
 			forceAcc.Add<computePotE>(scId * SuperCluster::maxParticles + q * 4 + lane, accOwn[q]);
+	}
+
+	if constexpr (computeVirial) {
+		for (int offset = 16; offset > 0; offset >>= 1)
+			virialLocal += __shfl_down_sync(0xFFFFFFFFu, virialLocal, offset);
+		if (laneInWarp == 0)
+			virialPartials[scId] = Virial::ToFixed(virialLocal);
 	}
 }
 
@@ -824,11 +855,11 @@ __global__ void ConstrainPositionsKernel(SuperCluster* const superClusters, cons
 // the constraint force, so the next step's half kick includes it, while the stored velocity stays the constrained full-step
 // velocity. A constrained group never spans pclusters, and each pcluster's constraints are solved by the thread of its first
 // particle in a fixed order, so the result is deterministic. One supercluster per 16 threads, blockDim = (16, 4, 1)
-template<typename BoundaryCondition, bool logData>
+template<typename BoundaryCondition, bool logData, bool computeVirial>
 __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
 	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints,
-	const CapacityOverflow overflow, int64_t stepIndex)
+	const CapacityOverflow overflow, int64_t stepIndex, long long* const virialPartials)
 {
 	constexpr int n = SuperCluster::maxParticles;
 	__shared__ Float3 positions[4][n];	// Before the step
@@ -933,14 +964,22 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 		Constraints::ConstrainSteps(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
 	__syncthreads();
 
-	if (!active)
-		return;
 	const Float3 constrainedStep = velocities[scInBlock][threadIdx.x];
 	const Float3 posNext = pos + constrainedStep;
 	if (active && !(constrainedStep.lenSquared() < CapacityOverflow::maxStep * CapacityOverflow::maxStep) && !liveEdit.Any())
 		overflow.Report(CapacityOverflow::Unstable, scMeta[scId].globalParticleIds[threadIdx.x], static_cast<int>(stepIndex), 0);
 	// The correction to the step is dt^2/2m of the constraint force. Fixed particles are not corrected, so they get none
-	const Float3 constraintForce = (constrainedStep - step) * (2.f * state.mass / (simulation->dt * simulation->dt));
+	const Float3 constraintForce = active
+		? (constrainedStep - step) * (2.f * state.mass / (simulation->dt * simulation->dt)) : Float3{};
+	float constraintVirial = active ? (pos - p0).dot(constraintForce) : 0.f;
+	if constexpr (computeVirial) {
+		for (int offset = 8; offset > 0; offset >>= 1)
+			constraintVirial += __shfl_down_sync(0xFFFFFFFFu, constraintVirial, offset, 16);
+		if (inRange && threadIdx.x == 0)
+			virialPartials[scId] = Virial::ToFixed(constraintVirial);
+	}
+	if (!active)
+		return;
 
 	state.velocity = velocity * simulation->thermostatScalar;
 	state.forcePrev = fe.force + constraintForce;
@@ -950,6 +989,18 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 		log.Log(*simulation, pcId, indexInPc, posNext, fe, state.velocity.len());
 
 	superClusters[scId].SetPosition(threadIdx.x, posNext);
+}
+
+// Isotropic pressure coupling preserves fractional coordinates. Integration states stay in the same slots and velocities are
+// unchanged; the following neighbor-list rebuild moves the scaled particles to their new grid cells.
+__global__ void ScaleBoxKernel(SuperCluster* superClusters, int nSuperclusters, float coordinateScale) {
+	const int slot = blockIdx.x * blockDim.x + threadIdx.x;
+	if (slot >= nSuperclusters * SuperCluster::maxParticles)
+		return;
+	const int scId = slot / SuperCluster::maxParticles;
+	const int lane = slot % SuperCluster::maxParticles;
+	Float3 position = superClusters[scId].Position(lane);
+	superClusters[scId].SetPosition(lane, position * coordinateScale);
 }
 
 // EM: sums each particle's forces from the force kernels into emForces, for EM::UpdateKernel to move the particles once the

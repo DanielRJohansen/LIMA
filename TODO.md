@@ -206,7 +206,15 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
    - Done (2026-10-15): dead CUDA code outside Engine removed; `LIMA_BASE/include/GpuRuntime.h` (CUDA branch only) replaces every `cuda_runtime.h`/`cuda_profiler_api.h` include, SASS unchanged.
    - Still direct: `cuda_fp16.h` in `Bodies.cuh` (HIP: `hip_fp16.h`), CUB/cuFFT in Engine.
    - Keep `CudaBuffer`, `RenderDataPipe`, `genericErrorCheck`, `GenericCopyToHost` where they are; they build for HIP through the shim. A rename (e.g. `GpuBuffer`) is optional and separate.
-2. hipify report, confirm card/OS support
+2. Confirm card/OS support, then hipify report. Done on the laptop (780M); spike first, as it decides go/no-go:
+   - Setup: install AMD's HIP SDK for Windows (the latest release; it bundles hipcc, hipify-clang, hipFFT/rocFFT, hipCUB). Run `hipInfo`: it must list the 780M as gfx1103. If it doesn't, or the spike below fails to load its code object, look for community gfx1103 builds of the ROCm libraries (rocFFT especially) before giving up.
+   - Spike, not part of the LIMA build (e.g. `tests/hipspike/`, built with plain `hipcc --offload-arch=gfx1103`):
+     - A kernel where each thread writes `threadIdx.x * blockIdx.x`, one 256-thread block x 4, copied back and checked on the host. Also print `warpSize` (must be 32 for our wave32 plan; RDNA defaults to wave32 for HIP but confirm).
+     - hipFFT the way PME uses cuFFT (`PME.cu`, `cufftPlanMany` 3D R2C forward + C2R inverse, batched): a 32^3 grid, batch 2, random input. Check the round trip matches the input (scaled by N) to ~1e-5 relative, and one forward output mode against a direct host DFT.
+     - Record: SDK version, driver version, pass/fail, and any env vars or community libs needed.
+   - hipify report: needs the CUDA toolkit headers on the laptop (install the toolkit without the driver). Run `hipify-clang --examine` (or `hipify-perl -examine` if clang setup fights back) over `code/LIMA_ENGINE` and `code/LIMA_BASE`, with the same include dirs as the CMake build. Save the output as `docs/hip/hipify_report.txt`.
+   - From the report, list here: runtime APIs used (-> the `GpuRuntime.h` mapping list), CUB/cuFFT calls, and everything flagged as unsupported (inline PTX, `__shfl_*_sync`/ballot masks, `__launch_bounds__`, intrinsics).
+   - No-go (no gfx1103 support at all): note it here and stop the port until a supported card is available.
 3. Build preset + shim
 4. Engine without PME (headless EM, vacuum MD)
 5. Warp-level kernels (neighbor search, NB) + determinism tests

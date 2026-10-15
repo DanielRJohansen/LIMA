@@ -7,6 +7,7 @@ Sections:
 4. Performance
 5. Tooling, CLI and codebase
 6. Ideas and research
+7. AMD GPU support (HIP)
 
 ---
 
@@ -176,3 +177,50 @@ Find and solve TODOs spread around the codebase.
 - **Possible plan:**
   1. Plain GB-Neck2 in LIMA (Born radii from the supercluster neighbor lists, GB term in or beside NbNonlocalKernel). Measure against the 5x dry bound and check stability/accuracy vs explicit (eg. T4).
   2. Only if worthwhile, add the GNN per-atom correction (local neighborhoods, which the neighbor lists already provide). Its inference cost on large systems is unmeasured anywhere we found.
+
+---
+
+# 7. AMD GPU support (HIP)
+Goal: run simulations on AMD GPUs via HIP, from the same source.
+
+## Rules
+- CUDA is the source of truth. Optimize for CUDA only; AMD gets what falls out.
+- Zero NVIDIA impact: HIP plumbing compiles away under nvcc.
+- Separate HIP build preset; NVIDIA builds need no ROCm.
+- Only LIMA_ENGINE knows the vendor. All other projects are platform agnostic.
+- An AMD break never blocks a CUDA commit.
+
+## Design
+- One shim header (`GpuRuntime.h`) maps the CUDA runtime names to HIP. Use hipify only as a report of what to map.
+- Library wrappers in Engine: CUB -> hipCUB, cuFFT -> hipFFT.
+- Vendor-specific bits (inline PTX, launch bounds, lane masks) behind a few named macros.
+- Support RDNA wave32 only at first; wave64 (MI-series) would need generic warp-size handling.
+
+## Tests
+- Determinism is within-backend: bitwise/batched tests compare AMD to AMD.
+- Cross-vendor results won't be bitwise equal: exact references and VC/drift targets are kept per backend.
+- Perf limits are keyed by GPU; GPUs without limits run perf tests report-only.
+
+## Porting order
+1. Make all projects except LIMA_ENGINE platform agnostic (worth doing on its own, before any HIP work):
+   - Shared host/device types (`LimaTypes.cuh`, `Bodies.cuh`, `BoxGrid.cuh`...): `__host__ __device__` -> a `LIMA_HOST_DEVICE` macro.
+   - Device memory and runtime calls (`CudaBuffer`, `MoleculeHull`, `LimaTypes`, `RenderDataPipe`, `utilities.cpp`, `Environment.cpp`) -> Engine-owned API.
+   - Rendering's CUDA-GL interop and `cudaProfilerStart/Stop` -> Engine API.
+   - Tests: the `AlgorithmTests.cu` kernel moves to Engine; the `LimitTesting.h` device query -> `GpuInfo` from Engine.
+   - ConvexHullEngine: stays CUDA-only for now (exception to the rule).
+2. hipify report, confirm card/OS support
+3. Build preset + shim
+4. Engine without PME (headless EM, vacuum MD)
+5. Warp-level kernels (neighbor search, NB) + determinism tests
+6. PME (hipFFT), test suite (small systems)
+7. Remaining features, rendering interop
+
+## Decisions (2026-10-15)
+- Target: Radeon 780M (gfx1103, RDNA3 iGPU, wave32) on Windows HIP SDK. Not officially supported by AMD, but community builds run; start with a spike (one kernel + a small hipFFT transform) before any refactor.
+- Shim header, not a hipify-generated tree.
+- AMD validated manually on the laptop, before releases and after big engine changes.
+- First milestone: headless (`lima mdrun` + tests); rendering later.
+- No HIP binaries shipped until it runs well.
+- No HIP-only tuning for now.
+- ConvexHullEngine stays CUDA-only; merging it into Engine is a later sprint.
+- Small systems only on AMD (no STMV/3J3Q); per-GPU test limits skip the large ones.

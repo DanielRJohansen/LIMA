@@ -1,0 +1,17 @@
+#include "charmm27.ff/forcefield.itp"
+
+
+[ moleculetype ]
+pool 3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 MET rtp MET  q +1.0
+     1          C      1    lxx      C      1       0.0      14.007
+     2          C      2    lxx      C      2       0.0      14.007
+
+[ system ]
+pool
+
+[ molecules ]
+pool 1

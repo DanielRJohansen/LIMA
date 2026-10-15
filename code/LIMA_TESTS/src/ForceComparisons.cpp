@@ -12,8 +12,7 @@ namespace ForceComparisons {
 	using namespace TestUtils;
 
 	TestRoutine DoAllForceComparisons(Environment& environment, EnvMode envmode) {
-		// TODO: Can't these all use automatedtestsdir? 
-		const fs::path heavyDir = HeavyTestsDir() / "CompareWithOtherMdEngines/Forcecomparison1step";
+		const fs::path heavyDir = AutomatedTestsDir() / "ForceComparisons";
 		// Each atom must match to 1e-3, or with rmsTolerance the forces as a whole, as PME differs per atom between the engines by up
 		// to ~0.4%. A reference with rmsTolerance may cover only the first atoms, the others must cover all
 		struct Comparison {

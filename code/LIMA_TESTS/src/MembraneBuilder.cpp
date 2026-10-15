@@ -52,7 +52,7 @@ namespace TestMembraneBuilder {
 	}
 
 	TestRoutine TestSphericalMembraneBuilder(Environment&, EnvMode envmode) {
-		const fs::path workDir = HeavyTestsDir() / "BuildMembraneSphere";
+		const fs::path workDir = AutomatedTestsDir() / "BuildMembraneSphere";
 		Lipids::Selection lipids;
 		lipids.emplace_back(Lipids::Select{ "DMPC", workDir, 100. });
 

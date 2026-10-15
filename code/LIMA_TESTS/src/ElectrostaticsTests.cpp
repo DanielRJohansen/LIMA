@@ -313,7 +313,7 @@ namespace ElectrostaticsTests {
 	// (~0.7 kJ/mol/nm for 1e at 0.125 nm spacing), which dominates the error of a lone pair but averages out in a system
 	TestRoutine TestPmeMatchesEwaldSum(Environment& environment, EnvMode envmode) {
 		const float boxLen = 5.f;
-		const fs::path workDir = HeavyTestsDir() / "PmeMatchesEwaldSum";
+		const fs::path workDir = AutomatedTestsDir() / "PmeMatchesEwaldSum";
 		const AtomsSelection atoms{
 			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lp", 0, 1.f, 12.011f}, 50},
 			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "ln", 0, -1.f, 12.011f}, 50},

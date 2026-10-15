@@ -1,0 +1,19 @@
+// Main params
+n_steps=1
+dt=2 # [fs]
+em=false # Is an energy-minimization sim
+em_force_tolerance=1000 # [kJ/mol/nm]
+
+// Physics params
+boundarycondition=PBC # (PBC, NoBC)
+enable_electrostatics=true
+cutoff_nm=1.2 # [nm]
+
+// Output params
+data_logging_interval=1 # [steps]
+save_energy=false # (Save kinetic and potential energy to file)
+
+// Temperature params
+steps_per_temperature_measurement=200 # [steps]
+apply_thermostat=false # will speed up or slow down particles to achieve the desired temperature
+# desired_temperature - not currently available forced to be 300 [k]

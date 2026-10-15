@@ -247,6 +247,13 @@ One Engine source tree for both backends; every kernel is written once (no hipif
      2. `LIMA_EM_LABEL=hip780m agenttesting.exe --energy-minimization-tests`: compare results_hip780m with the CUDA baseline (not bitwise).
      3. `limatest.exe` (RunAllUnitTests), report only: exact references and VC/drift targets are CUDA's, so mismatches are expected; note which fail and by how much (per-backend references come later).
      4. If something crashes or hangs: first suspects are `LoadCoherent` (EM), `BlockCopyAsync` (clustering), and warp-mask/`__match_any_sync` semantics.
+   - **First run on the 780M (2026-10-15, 3293b308): it runs.** Configure + build from scratch worked as written above (1091 warnings, 0 errors). No crashes or hangs.
+     1. `--engine-batch-tests`: **pass**, bitwise within HIP (315 s).
+     2. EM tests: not run. `LIMA_data/EnergyMinimizationTests` exists only on the desktop (not in the LIMA_data repo); copy it over to run them.
+     3. `limatest.exe`: 27/39 pass (369 s). Pass: all force/potential sanity tests, **Deterministic Simulations**, Constraints, T4Lysozyme VC 2.851e-06 / 2.844e-06, PME vs Ewald (force 0.10%, energy 0.06%), angle/dihedral/Met/8Res VC within targets, the builder/ToGmx/topology tests.
+        - Energy-gradient targets exceeded (CUDA-calibrated, expected): Pool 3.421e-08 / 3.421e-08 (equal to the CUDA value), PoolCompSol 2.31e-07 / 1.02e-07, Singlebond 4.04e-07 / 2.62e-07, ImproperDihedral 4.59e-05 / 4.47e-05, Solvent 7.91e-08 / 7.62e-08. PoolCompSol (2.3x) and Singlebond (1.5x) are the largest; worth a look when per-backend targets are set.
+        - Perf: four batched T4 1.19x vs single (56.1 vs 47.1 ns/day), limit 1.25x. Needs a per-GPU limit.
+        - Laptop data, not HIP: ForceComparisons, LoadT4, T4 throw "Unknown simulation parameter 'save_trajectory=false'" (in `LIMA_data/benchmarking/sim_params.txt` and `CompareWithOtherMdEngines/Forcecomparison1step/sim_params.txt`: the LIMA_data repo is behind the desktop's data). 3J3Q/STMV inputs missing (large systems are skipped on AMD anyway).
 5. Warp-level kernels (neighbor search, NB) + determinism tests
 6. PME (hipFFT), test suite (small systems)
 7. Remaining features, rendering interop

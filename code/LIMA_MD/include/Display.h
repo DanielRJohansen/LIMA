@@ -56,7 +56,6 @@ struct RenderContext {
 	Rendering::Task currentRenderTask = Rendering::NoTask{};
 	std::deque<Rendering::Task> incomingRenderTasks;
 
-	cudaGraphicsResource* renderAtomsBufferCudaResource = nullptr;
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;

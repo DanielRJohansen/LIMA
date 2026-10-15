@@ -33,7 +33,6 @@ target_link_libraries(LIMA_TESTCASES PUBLIC LIMA_BASE LIMA_MD)
 lima_pch(LIMA_TESTCASES)
 
 set(SOURCE_FILES
-    #src/AlgorithmTests.cu
     src/main.cpp
     
 )

@@ -9,7 +9,6 @@
 #include "RenderCommons.h"
 #include "SSBO.h"
 
-#include <cuda_gl_interop.h>
 
 #include <mutex>
 #include <condition_variable>

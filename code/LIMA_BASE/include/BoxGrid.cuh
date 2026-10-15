@@ -43,19 +43,6 @@ namespace BoxGrid {
 
 
 
-	/// <summary>
-	/// Create a BoxGrid of NodeTyoe. This function assumes the type NodeType does not need to be initialized
-	/// </summary>
-	template <typename NodeType>
-	__host__ static NodeType* MallocOnDevice(int boxSizeNM) {
-		const int blocksTotal = BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM) * BoxGrid::NodesPerDim(boxSizeNM);
-
-		NodeType* grid_dev = nullptr;
-		cudaMalloc(&grid_dev, sizeof(NodeType) * blocksTotal);
-		cudaMemset(grid_dev, 0, sizeof(NodeType) * blocksTotal);
-		return grid_dev;
-	}
-
 	// This function assumes the user has used PBC
 	template <typename NodeType>
 	__device__ __host__ inline NodeType* GetNodePtr(NodeType* grid, const int index1d) {
@@ -96,10 +83,6 @@ namespace BoxGrid {
 			int nSequences = 0;
 		};
 
-
-		// Returns a cudapointer to the data
-        BlockRef* PrecomputeNeabyBlockIds(Int3 boxlenNM, float ljCutoffNm);
-		NearbyBlocksSequences* PrecomputeNearbyBlockSequences(Int3 boxlenNM);
 
 		__device__ inline const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
 			return &nearbyBlockIdsData[blockId * nNearbyBlocks];

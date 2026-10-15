@@ -18,7 +18,6 @@ add_library(LIMA_BASE STATIC
     src/Geometry.cpp
     src/MoleculeUtils.cpp 
     src/Topologyfile.cpp
-    src/BoxGrid.cpp
     src/PlotUtils.cpp
     src/SimParams.cpp
 	 src/RenderDataPipe.cpp

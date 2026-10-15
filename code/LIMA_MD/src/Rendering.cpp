@@ -310,28 +310,10 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, const Rendering
 	if (!drawFacetsShader)
 		drawFacetsShader = std::make_unique<DrawFacetsShader>();
 
-	/*if (!drawAtomsFromCudaShader || drawAtomsFromCudaShader->numAtomsReservedInRenderatomsBuffer < task.molCollection.nParticles)
-		drawAtomsFromCudaShader = std::make_unique<DrawAtomsShader<true>>(task.molCollection.nParticles, &renderAtomsBufferCudaResource, windowSize);*/
-
 	if (!drawNormalsShader)
 		drawNormalsShader = std::make_unique<DrawNormalsShader>();
 
 	renderContext.camera->Update(task.boxSize);
-
-	if (renderContext.renderAtoms) {
-		// Map buffer object for writing from CUDA
-		RenderAtom* renderAtomsBuffer;
-		cudaGraphicsMapResources(1, &renderContext.renderAtomsBufferCudaResource, 0);
-		size_t num_bytes = 0;
-
-		cudaGraphicsResourceGetMappedPointer((void**)&renderAtomsBuffer, &num_bytes, renderContext.renderAtomsBufferCudaResource);
-		assert(num_bytes >= task.molCollection.nParticles * sizeof(RenderAtom));
-
-		cudaMemcpy(renderAtomsBuffer, task.molCollection.particles, sizeof(RenderAtom) * task.molCollection.nParticles, cudaMemcpyDeviceToDevice);
-
-		// Release buffer object from CUDA
-		cudaGraphicsUnmapResources(1, &renderContext.renderAtomsBufferCudaResource, 0);
-	}
 }
 
 
@@ -341,9 +323,6 @@ void Display::_Render(const RenderContext& renderContext, const MoleculeHullColl
 	const glm::mat4 V = renderContext.camera->View();
 	const glm::mat4 P = renderContext.camera->Projection();
 	const glm::mat4 VP = renderContext.camera->ViewProjection();
-
-	/*if (renderAtoms)
-		drawAtomsFromCudaShader->Draw(*renderAtomsBuffer, V, P, molCollection.nParticles);*/
 
 	if (renderContext.renderFacets)
 		drawFacetsShader->Draw(VP, molCollection.facets, molCollection.nFacets, FacetDrawMode::EDGES, boxSize);

@@ -23,6 +23,17 @@ target_include_directories(LIMA_ENGINE PUBLIC
 ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+if (LIMA_GPU_BACKEND STREQUAL "HIP")
+    # The same .cu sources, compiled as HIP
+    get_target_property(engineSources LIMA_ENGINE SOURCES)
+    list(FILTER engineSources INCLUDE REGEX "\\.cu$")
+    set_source_files_properties(${engineSources} PROPERTIES LANGUAGE HIP)
+    find_package(hipfft REQUIRED CONFIG)
+    find_package(hipcub REQUIRED CONFIG)
+    target_link_libraries(LIMA_ENGINE LIMA_BASE hip::hipfft hip::hipcub)
+    return()	# The rest is the CUDA build's flags
+endif()
+
 # Static on Linux, so the packages only need the NVIDIA driver and no CUDA libraries.
 # Windows has no static cuFFT; its DLL is shipped next to lima.exe
 if (UNIX)

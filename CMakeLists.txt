@@ -12,8 +12,25 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES "89")
 endif()
 
+# CUDA (NVIDIA) or HIP (AMD). Both compile the same sources; GpuRuntime.h maps the CUDA runtime names to HIP. HIP needs the
+# ROCm SDK (-DCMAKE_HIP_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_PREFIX_PATH=<ROCm>), see the x64-Release-HIP configuration
+set(LIMA_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA or HIP")
+set_property(CACHE LIMA_GPU_BACKEND PROPERTY STRINGS CUDA HIP)
+if (NOT LIMA_GPU_BACKEND MATCHES "^(CUDA|HIP)$")
+	message(FATAL_ERROR "LIMA_GPU_BACKEND must be CUDA or HIP, was ${LIMA_GPU_BACKEND}")
+endif()
+if (LIMA_GPU_BACKEND STREQUAL "HIP" AND NOT DEFINED CMAKE_HIP_ARCHITECTURES)
+	set(CMAKE_HIP_ARCHITECTURES "gfx1103")	# The dev AMD GPU (Radeon 780M)
+endif()
+set(GPU_TARGETS ${CMAKE_HIP_ARCHITECTURES})	# For ROCm's package configs, which otherwise probe for a GPU
+
 # The single source of the release version. distribution/release.bat publishes whatever is set here
-project(lima VERSION 1.4.0 LANGUAGES CXX CUDA C)
+project(lima VERSION 1.4.0 LANGUAGES CXX ${LIMA_GPU_BACKEND} C)
+
+# CMake can't mix Clang and MSVC, so HIP builds compile all C/C++ with ROCm's clang (on the MSVC STL and ABI)
+if (LIMA_GPU_BACKEND STREQUAL "HIP" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" AND CMAKE_CXX_SIMULATE_VERSION VERSION_GREATER_EQUAL 19.50)
+	message(FATAL_ERROR "ROCm 7.2's clang can't parse the MSVC 14.5x STL: configure from a VS 2022 (14.44) developer shell")
+endif()
 
 if (MSVC)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:preprocessor /Zc:__cplusplus")
@@ -25,6 +42,8 @@ endif()
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 23)
+# Not 23: from C++23 the MSVC STL makes isinf/isnan/... constexpr, which HIP treats as host+device, clashing with its own
+set(CMAKE_HIP_STANDARD 20)
 #set(CMAKE_BUILD_TYPE Debug)
 
 #set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -52,7 +71,17 @@ endif()
 
 
 find_package(OpenGL REQUIRED)
-find_package(CUDAToolkit REQUIRED)
+if (LIMA_GPU_BACKEND STREQUAL "HIP")
+	find_package(hip REQUIRED CONFIG)
+	# hip::device (linked through hipFFT/hipCUB) would compile every C++ file as HIP (-x hip). CMake's HIP language already
+	# compiles the .cu files as HIP for CMAKE_HIP_ARCHITECTURES, so the plain C++ files stay C++
+	set_property(TARGET hip::device PROPERTY INTERFACE_COMPILE_OPTIONS "")
+	add_compile_definitions(LIMA_HIP)
+	set(LIMA_GPU_INCLUDE_DIRS "")			# hip::host, linked by LIMA_BASE, brings the HIP headers
+else()
+	find_package(CUDAToolkit REQUIRED)
+	set(LIMA_GPU_INCLUDE_DIRS ${CUDAToolkit_INCLUDE_DIRS})
+endif()
 #find_package(PythonLibs REQUIRED)
 
 if (UNIX)

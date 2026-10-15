@@ -21,6 +21,17 @@
       "buildCommandArgs": "",
       "ctestCommandArgs": "",
       "inheritEnvironments": [ "msvc_x64_x64" ]
+    },
+    {
+      "name": "x64-Release-HIP",
+      "generator": "Ninja",
+      "configurationType": "RelWithDebInfo",
+      "buildRoot": "${projectDir}\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "-DLIMA_GPU_BACKEND=HIP -DCMAKE_HIP_COMPILER=\"C:/Program Files/AMD/ROCm/7.2/bin/clang++.exe\" -DCMAKE_PREFIX_PATH=\"C:/Program Files/AMD/ROCm/7.2\"",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x64_x64" ]
     }
   ]
 }

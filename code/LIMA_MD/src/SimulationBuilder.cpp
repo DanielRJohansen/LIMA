@@ -257,7 +257,7 @@ struct ParticlePlaceholder {
 template<typename T>
 class BoxGrid_ {	// TODO: Rename
 	std::vector<std::vector<T>> nodes;
-	Int3 nodesPerDim = 0;
+	Int3 nodesPerDim{};
 
 public:
 	BoxGrid_(Int3 nodesPerDim) : nodesPerDim(nodesPerDim) {

@@ -1,8 +1,6 @@
 #include "CubWrappers.h"
 
-#include <cub/device/device_reduce.cuh>
-#include <cub/device/device_scan.cuh>
-#include <cuda/std/functional>
+#include "platform/GpuCubDevice.cuh"
 
 #include <stdexcept>
 #include <string>

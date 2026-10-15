@@ -2,9 +2,14 @@
 
 # Do NOT add any other .cu files, the engine should be a single compilation unit
 # in order to access __constant__ memory
-add_library(LIMA_CONVEXHULLENGINE STATIC
-    src/ConvexHullEngine.cu
-)
+if (LIMA_GPU_BACKEND STREQUAL "HIP")
+    # Not ported to HIP: a stub that throws when used
+    add_library(LIMA_CONVEXHULLENGINE STATIC src/ConvexHullEngineUnavailable.cpp)
+else()
+    add_library(LIMA_CONVEXHULLENGINE STATIC
+        src/ConvexHullEngine.cu
+    )
+endif()
 
 target_include_directories(LIMA_CONVEXHULLENGINE PRIVATE
 ${CMAKE_CURRENT_SOURCE_DIR}/src

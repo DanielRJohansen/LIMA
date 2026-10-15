@@ -144,7 +144,7 @@ namespace MDFiles {
 
 	// Maybe add simparams here too?
 	struct SimulationFilesCollection {
-		SimulationFilesCollection() {};
+		SimulationFilesCollection() = default;	// Not {}: that needs ~TopologyFile here, where it is incomplete
 		SimulationFilesCollection(const fs::path& workDir);
 		std::unique_ptr<GroFile> grofile;
 		std::unique_ptr<TopologyFile> topfile;
@@ -168,7 +168,7 @@ public:
 	struct CmapBond;
 	struct Moleculetype {
 		Moleculetype() = default;
-		Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath=std::nullopt ) : name(name), includePath(includePath), nrexcl(nrexcl) {};
+		Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath=std::nullopt);	// Defined below the entry types, which it needs complete
 		std::string name{};
 		std::optional<fs::path> includePath;	// Not present if the moleculetype is defined inline in the topology file
 		int nrexcl{}; // How many consecutive bonds before LJ is enabled again
@@ -449,3 +449,6 @@ struct TopologyFile::AngleBond : GenericBond<3, Bondtypes::AngleUreyBradleyBond:
 struct TopologyFile::DihedralBond : GenericBond<4, Bondtypes::DihedralBond::Parameters> {};
 struct TopologyFile::ImproperDihedralBond : GenericBond<4, Bondtypes::ImproperDihedralBond::Parameters> {};
 struct TopologyFile::CmapBond : GenericBond<5, std::array<float, 0>> {};
+
+inline TopologyFile::Moleculetype::Moleculetype(const std::string& name, int nrexcl, std::optional<fs::path> includePath)
+	: name(name), includePath(includePath), nrexcl(nrexcl) {}

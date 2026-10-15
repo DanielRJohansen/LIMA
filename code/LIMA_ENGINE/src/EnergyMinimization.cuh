@@ -6,7 +6,7 @@
 #include "BatchLayout.cuh"
 #include "Bodies.cuh"
 
-#include <cub/block/block_reduce.cuh>
+#include "platform/GpuCubBlock.cuh"
 
 namespace EM {
 	// Solves I w = torque for a 3x3 inertia tensor, regularized for linear and single-atom bodies

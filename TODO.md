@@ -163,6 +163,7 @@ Possibly done by commit 78acee8b ("Solvate by tiling an equilibrated water box")
 
 ## Codebase TODOs
 Find and solve TODOs spread around the codebase.
+- `BoundaryConditionPublic.cpp`: the switches on `BoundaryConditionSelect` use `case None:`, which is `SupernaturalForcesSelect::None`; it only works because both are 0. Should be `NoBC` (clang warns: -Wenum-compare-switch).
 
 ---
 
@@ -191,9 +192,20 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
 - An AMD break never blocks a CUDA commit.
 
 ## Design
-- One shim header (`GpuRuntime.h`) maps the CUDA runtime names to HIP. Use hipify only as a report of what to map.
-- Library wrappers in Engine: CUB -> hipCUB, cuFFT -> hipFFT.
-- Vendor-specific bits (inline PTX, launch bounds, lane masks) behind a few named macros.
+One Engine source tree for both backends; every kernel is written once (no hipified copy, no `LIMA_ENGINE_HIP`).
+- Files:
+  - `LIMA_BASE/include/GpuRuntime.h`: host runtime names (malloc/memcpy, streams, events, errors, profiler, fp16 header). The HIP branch maps the CUDA names to HIP; grow it from `tests/hipspike/GpuCompat.h` + the report's runtime list.
+  - `LIMA_ENGINE/src/platform/DeviceIntrinsics.cuh`: named device helpers for what hipify flagged: `LIMA_FULL_WARP_MASK` (52 sites), `LimaTrap()` (2), `LimaExp2Approx()` (1), `LimaLoadCoherent()` for `__ldcg` (6, EM), `LimaBlockCopy()` for `memcpy_async` (1).
+  - `LIMA_ENGINE/src/platform/GpuCub.cuh`: `namespace gpucub` = `cub` / `hipcub`.
+  - `LIMA_ENGINE/src/platform/GpuFft.h`: the 5 cuFFT names PME uses -> hipFFT.
+- Rules:
+  - CUDA builds compile to identical SASS: each helper expands to today's code under CUDA; verify every step with `cuobjdump -sass` before/after.
+  - No vendor `#if` inside kernels; if a function needs two versions, both go in the platform header.
+  - HIP-only paths only where needed to compile or be correct, never for tuning.
+  - HIP checks at startup that the device's warpSize is 32 and throws otherwise; the hardcoded 32s stay.
+- CMake: cache var `LIMA_GPU_BACKEND` = `CUDA` (default) | `HIP`; enable only that language. Under HIP the `.cu` files keep their names with `LANGUAGE HIP`, Engine links `hip::hipfft` + `hip::hipcub`, flags per backend (fast-math under HIP: decide later, determinism first).
+- Preset `x64-Release-HIP`: own build dir, VS 2022 v143 (14.44) toolset, gfx1103. Same exe names. `x64-Release` (CUDA) untouched.
+- ConvexHullEngine: left out of HIP builds (stub that throws "not available on HIP"); MD's hull features are CUDA only for now.
 - Support RDNA wave32 only at first; wave64 (MI-series) would need generic warp-size handling.
 
 ## Tests
@@ -219,8 +231,20 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
      - **`cooperative_groups::memcpy_async`/`wait`** (`ParticleClusters.cu:499`) don't exist in HIP: plain block-strided copy + `__syncthreads`.
      - OK as is: all other `*_sync` warp ops incl. `__match_any_sync` and `__reduce_*_sync`, `__syncwarp`, `__popc`, `__ffs`, `__ldg`, `__half2float`, `__launch_bounds__`.
    - Runtime API list for `GpuRuntime.h`: the "converted references" table in the report (malloc/memcpy/memset (+Async), streams, events, `cudaStreamWaitEvent`, mapped host alloc, `cudaMallocManaged`, device props, errors, profiler). Libraries: CUB `DeviceReduce`/`DeviceScan`/`BlockReduce` -> hipCUB; cuFFT `PlanMany`/`SetStream`/`ExecR2C`/`ExecC2R`/`Destroy` -> hipFFT (proven by the spike).
-3. Build preset + shim
-4. Engine without PME (headless EM, vacuum MD)
+3. Done (2026-10-15): build preset + shim. CUDA build: SASS identical, batch tests pass.
+   - `LIMA_GPU_BACKEND` (CUDA|HIP) in the top-level CMake; `x64-Release-HIP` in CMakeSettings.json. Configure from a VS 2022 14.44 shell (`vcvars64.bat -vcvars_ver=14.44`); ROCm 7.2 also compiles on the Windows 10 desktop (no AMD GPU needed to build).
+   - CMake can't mix MSVC and Clang, so HIP builds compile all C/C++ with ROCm's clang++ (MSVC STL/ABI). `hip::device`'s `-x hip` is cleared so only the .cu files compile as HIP.
+   - HIP .cu files are C++20 (`CMAKE_HIP_STANDARD`): from C++23 the MSVC STL's constexpr isinf/isnan clash with HIP's device overloads. Engine uses no C++23 features so far.
+   - `GpuRuntime.h` HIP branch, `platform/GpuFft.h`, `platform/GpuCubBlock.cuh` + `GpuCubDevice.cuh` (split so the CUDA SASS stays identical: the device headers add a kernel). ConvexHullEngine is a throwing stub under HIP.
+   - Under HIP, everything compiles except the engine kernels: BASE, TOOLS, MD, TESTCASES, Engine's .cpp and CubWrappers.cu. Clang-only fixes in host code: `MDFiles.h` (inline ctors needing incomplete types), `SimulationBuilder.cpp` (`Int3 = 0`).
+   - Noise to silence later: `hipError_t` is `[[nodiscard]]` (~60 warnings).
+4. Engine without PME (headless EM, vacuum MD). Remaining HIP compile errors in Engine's .cu files (2026-10-15):
+   - Warp masks: 13 errors (52 sites) need `LIMA_FULL_WARP_MASK` (64-bit under HIP).
+   - `cooperative_groups.h` (`EngineUtils.cuh`, `ParticleClusters.cu`): `memcpy_async` -> `LimaBlockCopy()`.
+   - PTX `asm`: `ex2.approx` (`DeviceAlgorithmsPrivate.cuh`), `trap` (2).
+   - `#ifdef __CUDACC__` (3, e.g. `CapacityOverflow::Report`): hipcc defines `__HIPCC__` instead; needs a LIMA "device compiler" macro.
+   - `PME.cu:158`: ternary of `NodeIndex` and `Int3` is ambiguous for clang (each converts to the other): wrap in `NodeIndex(...)`.
+   - Then `__ldcg` (6, EM): a coherent load.
 5. Warp-level kernels (neighbor search, NB) + determinism tests
 6. PME (hipFFT), test suite (small systems)
 7. Remaining features, rendering interop
@@ -232,5 +256,5 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
 - First milestone: headless (`lima mdrun` + tests); rendering later.
 - No HIP binaries shipped until it runs well.
 - No HIP-only tuning for now.
-- ConvexHullEngine stays CUDA-only; merging it into Engine is a later sprint.
+- ConvexHullEngine stays CUDA-only and is left out of HIP builds (2026-10-15); merging it into Engine is a later sprint.
 - Small systems only on AMD (no STMV/3J3Q); per-GPU test limits skip the large ones.

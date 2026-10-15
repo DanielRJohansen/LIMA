@@ -31,7 +31,7 @@ target_include_directories(LIMA_BASE PRIVATE
 target_include_directories(LIMA_BASE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/code/dependencies/cereal/include
-    ${CUDAToolkit_INCLUDE_DIRS}
+    ${LIMA_GPU_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/code/dependencies/
     ${CMAKE_SOURCE_DIR}/code/dependencies/glm/
 
@@ -47,6 +47,9 @@ else()
 target_link_libraries(LIMA_BASE PUBLIC
         LIMA_DEPENDS
     )
+endif()
+if (LIMA_GPU_BACKEND STREQUAL "HIP")
+    target_link_libraries(LIMA_BASE PUBLIC hip::host)
 endif()
 
 if (UNIX)

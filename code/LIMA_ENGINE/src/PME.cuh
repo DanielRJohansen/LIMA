@@ -7,7 +7,7 @@
 #include "ForceAccumulator.cuh"
 namespace ChargeBlock { struct ChargeblockBuffers; }
 
-#include <cufft.h>
+#include "platform/GpuFft.h"
 #include <memory>
 
 // TODO: Do i need to account for e0, vacuum/spaceial permitivity here? Probably....

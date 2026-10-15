@@ -4,7 +4,7 @@
 #include "BoxGrid.cuh"
 #include "CapacityOverflow.cuh"
 
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 //#include <cuda_fp8.h>
 
 

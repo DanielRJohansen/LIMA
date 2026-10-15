@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <mutex>
 
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 
 class RenderDataPipe {
 public:

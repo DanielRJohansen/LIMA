@@ -20,8 +20,7 @@
 #include "SimulationBuilder.h"
 #include "MoleculeUtils.h"
 #include "Workflow.h"
-#include <cuda_profiler_api.h>
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 #include <cstdlib>
 
 namespace lfs = FileUtils;

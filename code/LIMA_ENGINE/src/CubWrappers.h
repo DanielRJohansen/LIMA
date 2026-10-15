@@ -5,7 +5,7 @@
 // long to compile.
 // Like the thrust calls they replace, each call synchronizes its stream and throws on CUDA errors, except ExclusiveScan and GatherInts.
 
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 #include <cstddef>
 
 #include "CudaBuffer.h"

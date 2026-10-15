@@ -1,7 +1,6 @@
 #pragma once
 
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
+#include "GpuRuntime.h"
 #include <math.h>
 #include <cmath>
 #include <cstdio>

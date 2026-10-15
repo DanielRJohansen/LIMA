@@ -30,7 +30,7 @@
 #include <vector>
 
 // Third party
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 #include <glm.hpp>
 
 // LIMA headers included by most files. Changing one of these recompiles every C++ file, which is close to what

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 
 namespace LAL {
 	__device__ __host__ constexpr int32_t ceil(float num) {

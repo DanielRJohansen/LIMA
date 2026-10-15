@@ -203,8 +203,8 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
 
 ## Porting order
 1. Prep, no Engine changes:
-   - Remove dead CUDA code outside Engine (unused `BoxGrid` device helpers, `AlgorithmTests.cu`, Rendering's unregistered CUDA-GL interop).
-   - Add `GpuRuntime.h` (CUDA branch only, includes `cuda_runtime.h`) and include it instead of `cuda_runtime.h` everywhere; Engine diff is include lines only.
+   - Done (2026-10-15): dead CUDA code outside Engine removed; `LIMA_BASE/include/GpuRuntime.h` (CUDA branch only) replaces every `cuda_runtime.h`/`cuda_profiler_api.h` include, SASS unchanged.
+   - Still direct: `cuda_fp16.h` in `Bodies.cuh` (HIP: `hip_fp16.h`), CUB/cuFFT in Engine.
    - Keep `CudaBuffer`, `RenderDataPipe`, `genericErrorCheck`, `GenericCopyToHost` where they are; they build for HIP through the shim. A rename (e.g. `GpuBuffer`) is optional and separate.
    - Pre-existing bugs found in review: `CudaBuffer::Expand` ignores `cudaMalloc` failure but still records the new size (later kernels write through null); `MoleculeHullCollection::WritePositionsToGrofile` throws a `const char*` instead of a `std::exception`.
 2. hipify report, confirm card/OS support

@@ -2,7 +2,7 @@
 
 #include "EngineBodies.cuh"
 
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 
 class SuperclusterStagingControl {
 public:

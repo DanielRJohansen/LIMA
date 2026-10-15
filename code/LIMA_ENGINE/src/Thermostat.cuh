@@ -6,7 +6,7 @@
 
 #include "CubWrappers.h"
 
-#include <cuda_runtime.h>
+#include "GpuRuntime.h"
 
 namespace _Thermostat {
 

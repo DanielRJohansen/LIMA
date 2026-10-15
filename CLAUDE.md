@@ -4,6 +4,13 @@
 
 - Never use `std::format`. Use `Lima::Format` from `Format.h` instead; `std::format` costs ~3 s of compile time per translation unit (see the header comment). In `.cu` files avoid both, since nvcc can hit an internal compiler error on `<format>`; build strings with `std::to_string` there.
 
+## Normal workflow
+
+- Push back! If im asking you to do something, and there's a change i might not have thought through all consequences or you simply think it's a bad idea, push back and explain why. 
+- If a given task is simple go ahead and implement it. Otherwise lay out a plan first for how you will solve and validate.
+- Never commit. When a task is done, give a short commit message; the user reviews and commits. 
+- If we're in the middle of a session with multiple items, also lay out the next item and how you'd like to proceed after writing the commit.
+
 ## Profiling & benchmarking
 
 Workflow for GPU performance work: measure, change one isolated thing, measure again, validate.

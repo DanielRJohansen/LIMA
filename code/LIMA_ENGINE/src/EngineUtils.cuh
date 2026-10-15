@@ -12,8 +12,8 @@
 #include "BoxGrid.cuh"
 #include "KernelWarnings.cuh"
 
-#include <cooperative_groups.h>
-#include <cooperative_groups/memcpy_async.h>
+#include "platform/BlockCopy.cuh"
+#include "platform/DeviceIntrinsics.cuh"
 
 namespace EngineUtils {
 
@@ -85,7 +85,7 @@ namespace EngineUtils {
 
 		if (isnan(force.lenSquared())) {
 			force.print('A');
-			asm("trap;"); // Force the kernel to crash
+			DeviceIntrinsics::Trap(); // Force the kernel to crash
 		}
 
 		// 1000 [kJ/mol/nm] is a good target for EM. For EM we will scale the forces below this value * 200

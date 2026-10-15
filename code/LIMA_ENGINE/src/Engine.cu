@@ -51,6 +51,18 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		batch->simulations.front().runstatus.simulation_finished = false;
 	}
 	verifyEngine();
+#if defined(LIMA_HIP)
+	// The kernels assume 32-wide warps. AMD's wave64 GPUs (MI-series, older GCN) would compute wrong results silently
+	static const int warpSize = [] {
+		int device = 0;
+		cudaDeviceProp properties{};
+		LIMA_UTILS::genericErrorCheck(cudaGetDevice(&device));
+		LIMA_UTILS::genericErrorCheck(cudaGetDeviceProperties(&properties, device));
+		return properties.warpSize;
+	}();
+	if (warpSize != 32)
+		throw std::runtime_error("LIMA requires a GPU with 32-wide warps, this one has " + std::to_string(warpSize));
+#endif
 	try {
 		if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
@@ -904,11 +916,11 @@ bool Engine::TestAlgorithms() {
 			cudaMemcpy(dIds, hIds.data(), totalValues * sizeof(int), cudaMemcpyHostToDevice);
 
 			if (nBins == 1)
-				TestSortKernel32<1, 64> << <1, 32 >> > (dKeys, dIds);
+				TestSortKernel32<1, 64> <<<1, 32 >>> (dKeys, dIds);
 			else if (nBins == 4)
-				TestSortKernel32<4, 16> << <1, 32 >> > (dKeys, dIds);
+				TestSortKernel32<4, 16> <<<1, 32 >>> (dKeys, dIds);
 			else if (nBins == 8)
-				TestSortKernel32<8, 8> << <1, 32 >> > (dKeys, dIds);
+				TestSortKernel32<8, 8> <<<1, 32 >>> (dKeys, dIds);
 
 
 			cudaStreamSynchronize(nullptr);
@@ -939,7 +951,7 @@ bool Engine::TestAlgorithms() {
 }
 
 namespace EngineLimitTesting {
-	__global__ void DeviceFailureKernel() { asm("trap;"); }
+	__global__ void DeviceFailureKernel() { DeviceIntrinsics::Trap(); }
 }
 
 void Engine::TestLimit(EngineLimitProbe probe, int count) {

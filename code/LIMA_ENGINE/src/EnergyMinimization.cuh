@@ -7,6 +7,7 @@
 #include "Bodies.cuh"
 
 #include "platform/GpuCubBlock.cuh"
+#include "platform/DeviceIntrinsics.cuh"
 
 namespace EM {
 	// Solves I w = torque for a 3x3 inertia tensor, regularized for linear and single-atom bodies
@@ -191,12 +192,12 @@ namespace EM {
 		for (int block = threadIdx.x; block < gridDim.x; block += BlockSize) {
 			const Sums* const source = &simulationBlockSums[block];
 			Sums other;
-			other.forceDotVelocity = __ldcg(&source->forceDotVelocity);
-			other.velocityDotVelocity = __ldcg(&source->velocityDotVelocity);
-			other.gDotVelocity = __ldcg(&source->gDotVelocity);
-			other.gDotG = __ldcg(&source->gDotG);
-			other.maxForceSq = __ldcg(&source->maxForceSq);
-			other.nParticles = __ldcg(&source->nParticles);
+			other.forceDotVelocity = DeviceIntrinsics::LoadCoherent(&source->forceDotVelocity);
+			other.velocityDotVelocity = DeviceIntrinsics::LoadCoherent(&source->velocityDotVelocity);
+			other.gDotVelocity = DeviceIntrinsics::LoadCoherent(&source->gDotVelocity);
+			other.gDotG = DeviceIntrinsics::LoadCoherent(&source->gDotG);
+			other.maxForceSq = DeviceIntrinsics::LoadCoherent(&source->maxForceSq);
+			other.nParticles = DeviceIntrinsics::LoadCoherent(&source->nParticles);
 			partial = CombineSums{}(partial, other);
 		}
 		__syncthreads(); // tempStorage is reused
@@ -215,7 +216,7 @@ namespace EM {
 		constexpr int nScsPerBlock = 4;
 		const int scIdGlobal = (blockIdx.x * nScsPerBlock + threadIdx.y) < nSuperclusters ? static_cast<int>(blockIdx.x * nScsPerBlock + threadIdx.y) : -1;
 
-		__shared__ Float3 p0s[nScsPerBlock];
+		LIMA_SHARED_UNINIT(Float3, p0s, [nScsPerBlock]);
 		if (threadIdx.x == 0) {
 			p0s[threadIdx.y] = scIdGlobal == -1 ? Float3{} : superClusters[scIdGlobal].Position(0);
 			BoundaryCondition::applyBCNM(p0s[threadIdx.y], boxSize);

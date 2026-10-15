@@ -13,8 +13,8 @@
 #include "PME.cuh"
 #include "LimaPositionSystem.cuh"
 
-#include <cooperative_groups.h>
-#include <cooperative_groups/memcpy_async.h>
+#include "platform/BlockCopy.cuh"
+#include "platform/DeviceIntrinsics.cuh"
 #include <numeric>
 #include <limits>
 
@@ -97,7 +97,7 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 // blockDim = 32,1,1
 __global__ void SortPClusterIndicesInBlocks(PClusterTransfermodule transferModule) {
 	__shared__ int ids[PClusterTransfermodule::maxClustersPerBlock];
-	__shared__ Float3 positions[PClusterTransfermodule::maxClustersPerBlock];
+	LIMA_SHARED_UNINIT(Float3, positions, [PClusterTransfermodule::maxClustersPerBlock]);
 
 	const int nPclustersToSort = min(transferModule.nPClustersPerBlock[blockIdx.x], PClusterTransfermodule::maxClustersPerBlock);
 
@@ -319,7 +319,7 @@ __device__ void StableSortInBins(const Float3* const positions, int dim, int* co
 __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl, 
 	const PersistentClusterMeta* const persistentClusterMeta, Int3 boxSize, Float3 boxSizeFloat)
 {
-	__shared__ Float3 meanPositionsOfPClusters[PClusterTransfermodule::maxClustersPerBlock];
+	LIMA_SHARED_UNINIT(Float3, meanPositionsOfPClusters, [PClusterTransfermodule::maxClustersPerBlock]);
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int nPclustersInBlock;
 
@@ -495,10 +495,9 @@ __global__ void CompressSuperclusters(SuperClustersControl scControl, const Supe
 	const int dstStartIndex = scStagingControl.nClustersPrefixSum[srcBlockId];
 
 	if (nClusters > 0) {
-		auto tb = cooperative_groups::this_thread_block();
-		cooperative_groups::memcpy_async(tb, &scControl.scData[dstStartIndex], &scStagingControl.scData[srcStartIndex], sizeof(SuperCluster) * nClusters);
-		cooperative_groups::memcpy_async(tb, &scControl.scMeta[dstStartIndex], &scStagingControl.scMeta[srcStartIndex], sizeof(SuperClusterMeta) * nClusters);
-		cooperative_groups::wait(tb);
+		DeviceIntrinsics::BlockCopyAsync(&scControl.scData[dstStartIndex], &scStagingControl.scData[srcStartIndex], sizeof(SuperCluster) * nClusters);
+		DeviceIntrinsics::BlockCopyAsync(&scControl.scMeta[dstStartIndex], &scStagingControl.scMeta[srcStartIndex], sizeof(SuperClusterMeta) * nClusters);
+		DeviceIntrinsics::BlockCopyWait();
 	}
 
 	// The dstIndex is implicitly the SC id. Now assign that to the blocks for taskbuilding
@@ -681,7 +680,7 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	//DebugUtils::VerifyIdentical(pClusters, "PClustersBeforeClustering" + std::to_string(batch->step));
 	//DebugUtils::VerifyIdentical(batch->pClusterDevice, nPclusters, "PClustersBeforeClustering", batch->step);
 
-	if (nPclusters > 0) ApplyBoundaryCondition << <(nPclusters + 31) / 32, 32, 0, stream >> > (
+	if (nPclusters > 0) ApplyBoundaryCondition <<<(nPclusters + 31) / 32, 32, 0, stream >>> (
 		batch->pClusterDevice.Get(), nPclusters, boxSizeF, boxSizeFInv);
 
 	if (getPclusters && nPclusters > 0) {

@@ -10,6 +10,7 @@
 #include "Utilities.h"
 
 //#include <cuda/pipeline>
+#include "platform/DeviceIntrinsics.cuh"
 #include "LennardJonesInteractions.cuh"
 #include "ForceAccumulator.cuh"
 
@@ -134,7 +135,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	const int groupId = blockIdx.x * BONDGROUPS_PER_BLOCK + groupInBlock;
 	if (groupId >= nBondgroups) return; // Uniform per warp; no block barriers below
 	const int lane = threadIdx.x & 31;
-	__shared__ Float3 positionsBuffer[BONDGROUPS_PER_BLOCK][BONDGROUP_MAX_PARTICLES];
+	LIMA_SHARED_UNINIT(Float3, positionsBuffer, [BONDGROUPS_PER_BLOCK][BONDGROUP_MAX_PARTICLES]);
 	Float3* const positions = positionsBuffer[groupInBlock];
 
 	// MD accumulates in parallel with deterministic fixed point atomics, EM serially in float, since its forces may exceed the fixed point range
@@ -289,11 +290,11 @@ namespace NbNonlocal {
 	template <bool withPotE>
 	__device__ inline ForceEnergy ShuffleForceEnergy(const ForceEnergy& fe, int srcLane) {
 		ForceEnergy out{};
-		out.force.x = __shfl_sync(0xFFFFFFFFu, fe.force.x, srcLane, 4);
-		out.force.y = __shfl_sync(0xFFFFFFFFu, fe.force.y, srcLane, 4);
-		out.force.z = __shfl_sync(0xFFFFFFFFu, fe.force.z, srcLane, 4);
+		out.force.x = __shfl_sync(LIMA_FULL_WARP_MASK, fe.force.x, srcLane, 4);
+		out.force.y = __shfl_sync(LIMA_FULL_WARP_MASK, fe.force.y, srcLane, 4);
+		out.force.z = __shfl_sync(LIMA_FULL_WARP_MASK, fe.force.z, srcLane, 4);
 		if constexpr (withPotE)
-			out.potE = __shfl_sync(0xFFFFFFFFu, fe.potE, srcLane, 4);
+			out.potE = __shfl_sync(LIMA_FULL_WARP_MASK, fe.potE, srcLane, 4);
 		return out;
 	}
 
@@ -384,7 +385,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 		jSigmaEpsilon[warpInBlock][group][lane] = seJ;
 		__syncwarp();
 
-		const uint32_t unionMask = __reduce_or_sync(0xFFFFFFFFu, ownQuarterMask);
+		const uint32_t unionMask = __reduce_or_sync(LIMA_FULL_WARP_MASK, ownQuarterMask);
 		ForceEnergy jForce{}; // On j particle jIndex
 
 		if constexpr (!energyMinimize) {
@@ -464,11 +465,11 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 #pragma unroll
 	for (int q = 0; q < 4; q++) {
 		for (int offset = 4; offset < 32; offset <<= 1) {
-			accOwn[q].force.x += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.x, offset);
-			accOwn[q].force.y += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.y, offset);
-			accOwn[q].force.z += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].force.z, offset);
+			accOwn[q].force.x += __shfl_xor_sync(LIMA_FULL_WARP_MASK, accOwn[q].force.x, offset);
+			accOwn[q].force.y += __shfl_xor_sync(LIMA_FULL_WARP_MASK, accOwn[q].force.y, offset);
+			accOwn[q].force.z += __shfl_xor_sync(LIMA_FULL_WARP_MASK, accOwn[q].force.z, offset);
 			if constexpr (computePotE)
-				accOwn[q].potE += __shfl_xor_sync(0xFFFFFFFFu, accOwn[q].potE, offset);
+				accOwn[q].potE += __shfl_xor_sync(LIMA_FULL_WARP_MASK, accOwn[q].potE, offset);
 		}
 	}
 	// Group q writes own quarter q
@@ -772,8 +773,8 @@ __global__ void ConstrainPositionsKernel(SuperCluster* const superClusters, cons
 	const PclusterConstraints* const pclusterConstraints, int nSuperclusters, Float3 boxSize)
 {
 	constexpr int n = SuperCluster::maxParticles;
-	__shared__ Float3 positions[4][n];
-	__shared__ Float3 steps[4][n];
+	LIMA_SHARED_UNINIT(Float3, positions, [4][n]);
+	LIMA_SHARED_UNINIT(Float3, steps, [4][n]);
 	__shared__ float invMasses[4][n];
 	__shared__ int pclusterParticles[4][n];
 	const int scInBlock = threadIdx.y;
@@ -831,8 +832,8 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	const CapacityOverflow overflow, int64_t stepIndex)
 {
 	constexpr int n = SuperCluster::maxParticles;
-	__shared__ Float3 positions[4][n];	// Before the step
-	__shared__ Float3 velocities[4][n];	// Then the steps
+	LIMA_SHARED_UNINIT(Float3, positions, [4][n]);	// Before the step
+	LIMA_SHARED_UNINIT(Float3, velocities, [4][n]);	// Then the steps
 	__shared__ float invMasses[4][n];
 	__shared__ int pclusterParticles[4][n];
 	const int scInBlock = threadIdx.y;

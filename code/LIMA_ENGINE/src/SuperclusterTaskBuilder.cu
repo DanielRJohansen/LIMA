@@ -10,6 +10,7 @@
 #include "SimulationData.h"
 #include "BoundaryCondition.cuh"
 #include "DeviceAlgorithms.cuh"
+#include "platform/DeviceIntrinsics.cuh"
 #include "LimaPositionSystem.cuh"
 #include "Utilities.h"
 
@@ -25,7 +26,7 @@ namespace {
 }
 
 __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const SuperClusterMeta& sc1, const PclustersBondedToPcluster* const pclustersBondedToPcluster) {
-	constexpr unsigned int mask = 0xFFFFFFFFu;
+	constexpr WarpMask mask = LIMA_FULL_WARP_MASK;
 
 	const int lane = threadIdx.x & 31;
 	const int nPairs = sc0.nUniquePcIds * sc1.nUniquePcIds;
@@ -63,16 +64,16 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 		Float3 sum = valid ? p : Float3{};
 		float count = valid ? 1.f : 0.f;
 		for (int offset = 8; offset > 0; offset >>= 1) {
-			sum.x += __shfl_xor_sync(0xFFFFFFFFu, sum.x, offset);
-			sum.y += __shfl_xor_sync(0xFFFFFFFFu, sum.y, offset);
-			sum.z += __shfl_xor_sync(0xFFFFFFFFu, sum.z, offset);
-			count += __shfl_xor_sync(0xFFFFFFFFu, count, offset);
+			sum.x += __shfl_xor_sync(LIMA_FULL_WARP_MASK, sum.x, offset);
+			sum.y += __shfl_xor_sync(LIMA_FULL_WARP_MASK, sum.y, offset);
+			sum.z += __shfl_xor_sync(LIMA_FULL_WARP_MASK, sum.z, offset);
+			count += __shfl_xor_sync(LIMA_FULL_WARP_MASK, count, offset);
 		}
 		const Float3 center = sum * (1.f / fmaxf(count, 1.f));
 		float radius = valid ? (p - center).len() : 0.f;
 		for (int offset = 8; offset > 0; offset >>= 1)
-			radius = fmaxf(radius, __shfl_xor_sync(0xFFFFFFFFu, radius, offset));
-		const uint32_t validMask = __ballot_sync(0xFFFFFFFFu, valid) & 0xFFFF;
+			radius = fmaxf(radius, __shfl_xor_sync(LIMA_FULL_WARP_MASK, radius, offset));
+		const uint32_t validMask = __ballot_sync(LIMA_FULL_WARP_MASK, valid) & 0xFFFF;
 		if (lane == 0) {
 			scSpheres[scId] = float4{ center.x, center.y, center.z, radius };
 			scCells[scId] = cell;
@@ -84,13 +85,13 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 		const int ownPcluster = lane < nUnique ? scControl.scMeta[scId].uniquePclusterIds[lane] : -1;
 		bool externalBond = false;
 		for (int u = 0; u < nUnique; u++) {
-			const int bondedPcluster = pclustersBondedToPcluster[__shfl_sync(0xFFFFFFFFu, ownPcluster, u)].Get(lane);
+			const int bondedPcluster = pclustersBondedToPcluster[__shfl_sync(LIMA_FULL_WARP_MASK, ownPcluster, u)].Get(lane);
 			bool internal = !PclustersBondedToPcluster::IsValue(bondedPcluster);
 			for (int v = 0; v < nUnique; v++)
-				internal |= __shfl_sync(0xFFFFFFFFu, ownPcluster, v) == bondedPcluster;
+				internal |= __shfl_sync(LIMA_FULL_WARP_MASK, ownPcluster, v) == bondedPcluster;
 			externalBond |= !internal;
 		}
-		externalBond = __any_sync(0xFFFFFFFFu, externalBond);
+		externalBond = __any_sync(LIMA_FULL_WARP_MASK, externalBond);
 		if (lane == 0)
 			scExternalBonds[scId] = externalBond;
 
@@ -100,12 +101,12 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 		}
 	}
 	for (int offset = 16; offset > 0; offset >>= 1) {
-		lo.x = fminf(lo.x, __shfl_xor_sync(0xFFFFFFFFu, lo.x, offset));
-		lo.y = fminf(lo.y, __shfl_xor_sync(0xFFFFFFFFu, lo.y, offset));
-		lo.z = fminf(lo.z, __shfl_xor_sync(0xFFFFFFFFu, lo.z, offset));
-		hi.x = fmaxf(hi.x, __shfl_xor_sync(0xFFFFFFFFu, hi.x, offset));
-		hi.y = fmaxf(hi.y, __shfl_xor_sync(0xFFFFFFFFu, hi.y, offset));
-		hi.z = fmaxf(hi.z, __shfl_xor_sync(0xFFFFFFFFu, hi.z, offset));
+		lo.x = fminf(lo.x, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.x, offset));
+		lo.y = fminf(lo.y, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.y, offset));
+		lo.z = fminf(lo.z, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.z, offset));
+		hi.x = fmaxf(hi.x, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.x, offset));
+		hi.y = fmaxf(hi.y, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.y, offset));
+		hi.z = fmaxf(hi.z, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.z, offset));
 	}
 	if (lane == 0) {
 		cellMin[cell] = float4{ lo.x, lo.y, lo.z, 0.f };
@@ -182,11 +183,11 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 			}
 		}
 
-		uint32_t cellHits = __ballot_sync(0xFFFFFFFFu, cellHit);
+		uint32_t cellHits = __ballot_sync(LIMA_FULL_WARP_MASK, cellHit);
 		while (cellHits) {
 			const int src = __ffs(cellHits) - 1;
 			cellHits &= cellHits - 1;
-			const int candidateCell = __shfl_sync(0xFFFFFFFFu, targetCell, src);
+			const int candidateCell = __shfl_sync(LIMA_FULL_WARP_MASK, targetCell, src);
 			const int nCandidates = scControl.nSuperclustersInBlocks[candidateCell];
 
 			int candidateId = -1;
@@ -204,20 +205,20 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 				}
 			}
 
-			uint32_t candidates = __ballot_sync(0xFFFFFFFFu, coarseHit);
+			uint32_t candidates = __ballot_sync(LIMA_FULL_WARP_MASK, coarseHit);
 			while (candidates) {
 				const int k = __ffs(candidates) - 1;
 				candidates &= candidates - 1;
-				const int queryId = __shfl_sync(0xFFFFFFFFu, candidateId, k);
+				const int queryId = __shfl_sync(LIMA_FULL_WARP_MASK, candidateId, k);
 				const bool selfTask = queryId == scId;
 
 				// Most candidates passing the sphere test have no pair in range. No pair is possible unless an own particle is within
 				// reach of the candidate's sphere, which costs one test per own particle rather than loading the candidate's particles.
 				// The slack keeps it conservative under rounding, so the lists are unchanged
-				const Float3 candidateCenter{ __shfl_sync(0xFFFFFFFFu, candidateSphere.x, k), __shfl_sync(0xFFFFFFFFu, candidateSphere.y, k),
-					__shfl_sync(0xFFFFFFFFu, candidateSphere.z, k) };
-				const float candidateReach = listRadius + __shfl_sync(0xFFFFFFFFu, candidateSphere.w, k) + 1e-4f;
-				if (!__any_sync(0xFFFFFFFFu, ownValid && (ownPos - candidateCenter).lenSquared() < candidateReach * candidateReach))
+				const Float3 candidateCenter{ __shfl_sync(LIMA_FULL_WARP_MASK, candidateSphere.x, k), __shfl_sync(LIMA_FULL_WARP_MASK, candidateSphere.y, k),
+					__shfl_sync(LIMA_FULL_WARP_MASK, candidateSphere.z, k) };
+				const float candidateReach = listRadius + __shfl_sync(LIMA_FULL_WARP_MASK, candidateSphere.w, k) + 1e-4f;
+				if (!__any_sync(LIMA_FULL_WARP_MASK, ownValid && (ownPos - candidateCenter).lenSquared() < candidateReach * candidateReach))
 					continue;
 
 				if (lane < SuperCluster::maxParticles) {
@@ -240,7 +241,7 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 #pragma unroll
 				for (int jq = 0; jq < 4; jq++)
 					if (inRange & (3u << (2 * jq))) bits |= ownQuarterBit << jq;
-				bits = __reduce_or_sync(0xFFFFFFFFu, bits);
+				bits = __reduce_or_sync(LIMA_FULL_WARP_MASK, bits);
 				__syncwarp(); // Before the stage is reused
 
 				if (bits) {
@@ -382,7 +383,7 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 
 		for (int jq = 0; jq < 4; jq++) {
 			const uint32_t maskClass = validNeighbor ? EntryClass(ownMasks, jq, queryScId) : noEntry;
-			const uint32_t sameClass = __match_any_sync(0xFFFFFFFFu, maskClass);
+			const uint32_t sameClass = __match_any_sync(LIMA_FULL_WARP_MASK, maskClass);
 			const int rank = __popc(sameClass & ((1u << lane) - 1));
 			const int dst = maskClass != noEntry ? classOffsets[maskClass] + rank : 0;
 			__syncwarp();

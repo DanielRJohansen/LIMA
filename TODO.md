@@ -195,7 +195,7 @@ Goal: run simulations on AMD GPUs via HIP, from the same source.
 One Engine source tree for both backends; every kernel is written once (no hipified copy, no `LIMA_ENGINE_HIP`).
 - Files:
   - `LIMA_BASE/include/GpuRuntime.h`: host runtime names (malloc/memcpy, streams, events, errors, profiler, fp16 header). The HIP branch maps the CUDA names to HIP; grow it from `tests/hipspike/GpuCompat.h` + the report's runtime list.
-  - `LIMA_ENGINE/src/platform/DeviceIntrinsics.cuh`: named device helpers for what hipify flagged: `LIMA_FULL_WARP_MASK` (52 sites), `LimaTrap()` (2), `LimaExp2Approx()` (1), `LimaLoadCoherent()` for `__ldcg` (6, EM), `LimaBlockCopy()` for `memcpy_async` (1).
+  - `LIMA_ENGINE/src/platform/DeviceIntrinsics.cuh` + `BlockCopy.cuh`: named device helpers for what differs (see step 4).
   - `LIMA_ENGINE/src/platform/GpuCub.cuh`: `namespace gpucub` = `cub` / `hipcub`.
   - `LIMA_ENGINE/src/platform/GpuFft.h`: the 5 cuFFT names PME uses -> hipFFT.
 - Rules:
@@ -238,13 +238,15 @@ One Engine source tree for both backends; every kernel is written once (no hipif
    - `GpuRuntime.h` HIP branch, `platform/GpuFft.h`, `platform/GpuCubBlock.cuh` + `GpuCubDevice.cuh` (split so the CUDA SASS stays identical: the device headers add a kernel). ConvexHullEngine is a throwing stub under HIP.
    - Under HIP, everything compiles except the engine kernels: BASE, TOOLS, MD, TESTCASES, Engine's .cpp and CubWrappers.cu. Clang-only fixes in host code: `MDFiles.h` (inline ctors needing incomplete types), `SimulationBuilder.cpp` (`Int3 = 0`).
    - Noise to silence later: `hipError_t` is `[[nodiscard]]` (~60 warnings).
-4. Engine without PME (headless EM, vacuum MD). Remaining HIP compile errors in Engine's .cu files (2026-10-15):
-   - Warp masks: 13 errors (52 sites) need `LIMA_FULL_WARP_MASK` (64-bit under HIP).
-   - `cooperative_groups.h` (`EngineUtils.cuh`, `ParticleClusters.cu`): `memcpy_async` -> `LimaBlockCopy()`.
-   - PTX `asm`: `ex2.approx` (`DeviceAlgorithmsPrivate.cuh`), `trap` (2).
-   - `#ifdef __CUDACC__` (3, e.g. `CapacityOverflow::Report`): hipcc defines `__HIPCC__` instead; needs a LIMA "device compiler" macro.
-   - `PME.cu:158`: ternary of `NodeIndex` and `Int3` is ambiguous for clang (each converts to the other): wrap in `NodeIndex(...)`.
-   - Then `__ldcg` (6, EM): a coherent load.
+4. HIP compile done (2026-10-15): every target builds and links under HIP; CUDA SASS identical, batch tests pass.
+   - `platform/DeviceIntrinsics.cuh`: `WarpMask`/`LIMA_FULL_WARP_MASK` (52 masks), `DeviceIntrinsics::Trap`, `Exp2Approx` (PTX ex2), `LoadCoherent` (`__ldcg`; HIP: agent-scope relaxed atomic load, so a stale per-CU L1 line can't be read), `LIMA_SHARED_UNINIT` (8 `__shared__ Float3` arrays: nvcc ignores their initializers, clang rejects them). `platform/BlockCopy.cuh`: `memcpy_async` (separate header: cooperative_groups adds device globals, which shifted PME's SASS constant bank offsets).
+   - `LIMA_GPU_COMPILER` (in `GpuRuntime.h`) replaces `#ifdef __CUDACC__`. Kernel launches written `<< <` / `>> >` (VS autoformat) became `<<<` / `>>>`: clang needs the tokens.
+   - HIP only: Engine's constructor throws unless the GPU's warpSize is 32.
+   - Next, on the laptop (780M). Pull (`git fetch` + `git reset --hard origin/HIPport`), then from a VS 2022 14.44 developer shell configure `x64-Release-HIP` (VS configuration, or `cmake -S . -B build/x64-Release-HIP -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIMA_GPU_BACKEND=HIP -DCMAKE_CXX_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_C_COMPILER=<ROCm>/bin/clang.exe -DCMAKE_HIP_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_PREFIX_PATH=<ROCm>`) and build. Run with `%HIP_PATH%bin` on PATH. In order, recording pass/fail, crashes and timings here:
+     1. `agenttesting.exe --engine-batch-tests`: batched vs standalone, bitwise within HIP. The first determinism check on AMD.
+     2. `LIMA_EM_LABEL=hip780m agenttesting.exe --energy-minimization-tests`: compare results_hip780m with the CUDA baseline (not bitwise).
+     3. `limatest.exe` (RunAllUnitTests), report only: exact references and VC/drift targets are CUDA's, so mismatches are expected; note which fail and by how much (per-backend references come later).
+     4. If something crashes or hangs: first suspects are `LoadCoherent` (EM), `BlockCopyAsync` (clustering), and warp-mask/`__match_any_sync` semantics.
 5. Warp-level kernels (neighbor search, NB) + determinism tests
 6. PME (hipFFT), test suite (small systems)
 7. Remaining features, rendering interop

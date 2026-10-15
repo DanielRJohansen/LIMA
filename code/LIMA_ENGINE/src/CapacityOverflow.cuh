@@ -23,7 +23,7 @@ struct CapacityOverflow {
 	}
 	__host__ void Free() { cudaFree(status); status = nullptr; }
 
-#ifdef __CUDACC__
+#ifdef LIMA_GPU_COMPILER
 	__device__ void Report(Code code, int block, int count, int capacity) const {
 		if (atomicCAS(status, static_cast<int>(None), static_cast<int>(code)) == None) {
 			status[1] = block;

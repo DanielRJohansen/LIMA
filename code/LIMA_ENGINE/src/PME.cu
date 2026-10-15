@@ -10,6 +10,7 @@
 #include "DeviceAlgorithms.cuh"
 #include "BoundaryCondition.cuh"
 #include "Filehandling.h"
+#include "platform/DeviceIntrinsics.cuh"
 #include "Utilities.h"
 #include "LimitTesting.cuh"
 
@@ -141,8 +142,8 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	const Int3 floorIndexAbs = FloorIndex3d(pos);
 	Int3 lo = charged ? floorIndexAbs : Int3{ INT_MAX, INT_MAX, INT_MAX };
 	Int3 hi = charged ? floorIndexAbs : Int3{ INT_MIN, INT_MIN, INT_MIN };
-	lo = Int3{ __reduce_min_sync(0xFFFFFFFFu, lo.x), __reduce_min_sync(0xFFFFFFFFu, lo.y), __reduce_min_sync(0xFFFFFFFFu, lo.z) };
-	hi = Int3{ __reduce_max_sync(0xFFFFFFFFu, hi.x), __reduce_max_sync(0xFFFFFFFFu, hi.y), __reduce_max_sync(0xFFFFFFFFu, hi.z) };
+	lo = Int3{ __reduce_min_sync(LIMA_FULL_WARP_MASK, lo.x), __reduce_min_sync(LIMA_FULL_WARP_MASK, lo.y), __reduce_min_sync(LIMA_FULL_WARP_MASK, lo.z) };
+	hi = Int3{ __reduce_max_sync(LIMA_FULL_WARP_MASK, hi.x), __reduce_max_sync(LIMA_FULL_WARP_MASK, hi.y), __reduce_max_sync(LIMA_FULL_WARP_MASK, hi.z) };
 	if (lo.x == INT_MAX)	// No charges
 		return;
 	// The block along an axis whose reach covers the floor indices lo to hi, or INT_MIN if none does
@@ -155,7 +156,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	};
 	const NodeIndex sharedBlock{ SharedBlock(lo.x, hi.x), SharedBlock(lo.y, hi.y), SharedBlock(lo.z, hi.z) };
 	const bool shared = sharedBlock.x != INT_MIN && sharedBlock.y != INT_MIN && sharedBlock.z != INT_MIN;
-	const NodeIndex ownBlock = shared ? sharedBlock : pos.Floor().ToInt3();
+	const NodeIndex ownBlock = shared ? sharedBlock : NodeIndex(pos.Floor().ToInt3());
 	const Float3 relPos = pos - ownBlock.toFloat3();
 
 	// List the particle once in the block owning its grid floor index, which interpolates its force
@@ -163,13 +164,13 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	// Wrapped first, as a position just below 0 can come out of ApplyBC, and integer division would round its floor index -1 up to block 0
 	const NodeIndex ownerBlock = PeriodicBoundaryCondition::applyBC(FloorIndex3d(pos), blocksPerDim * gridpointsPerNm) / gridpointsPerNm;
 	const int ownerBlockIndex = charged ? blockOffset + BoxGrid::Get1dIndex(ownerBlock, blocksPerDim) : -1;
-	const uint32_t sameOwner = __match_any_sync(0xFFFFFFFFu, ownerBlockIndex);
+	const uint32_t sameOwner = __match_any_sync(LIMA_FULL_WARP_MASK, ownerBlockIndex);
 	if (charged) {
 		const int firstLane = __ffs(sameOwner) - 1;
 		int offsetInOwner = 0;
 		if (lane == firstLane)
 			offsetInOwner = atomicAdd(&chargeblockBuffers.nOwnedInBlock[ownerBlockIndex], __popc(sameOwner));
-		const int indexInOwner = __shfl_sync(sameOwner, offsetInOwner, firstLane) + __popc(sameOwner & ((1u << lane) - 1));
+		const int indexInOwner = __shfl_sync(WarpMask(sameOwner), offsetInOwner, firstLane) + __popc(sameOwner & ((1u << lane) - 1));
 		if (indexInOwner >= ChargeBlock::maxParticlesInBlock) {
 			chargeblockBuffers.overflow.Report(CapacityOverflow::ChargeBlock, ownerBlockIndex, indexInOwner + 1, ChargeBlock::maxParticlesInBlock);
 		}
@@ -184,13 +185,13 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 	const uint32_t yDirections = DirectionsAlongAxis(floorIndex3d.y);
 	const uint32_t zDirections = DirectionsAlongAxis(floorIndex3d.z);
 
-	uint32_t pending = __ballot_sync(0xFFFFFFFFu, charged);
+	uint32_t pending = __ballot_sync(LIMA_FULL_WARP_MASK, charged);
 	while (pending != 0) {
 		const int leader = __ffs(pending) - 1;
-		const NodeIndex groupBlock{ __shfl_sync(0xFFFFFFFFu, ownBlock.x, leader), __shfl_sync(0xFFFFFFFFu, ownBlock.y, leader),
-			__shfl_sync(0xFFFFFFFFu, ownBlock.z, leader) };
+		const NodeIndex groupBlock{ __shfl_sync(LIMA_FULL_WARP_MASK, ownBlock.x, leader), __shfl_sync(LIMA_FULL_WARP_MASK, ownBlock.y, leader),
+			__shfl_sync(LIMA_FULL_WARP_MASK, ownBlock.z, leader) };
 		const bool inGroup = charged && ownBlock.x == groupBlock.x && ownBlock.y == groupBlock.y && ownBlock.z == groupBlock.z;
-		pending &= ~__ballot_sync(0xFFFFFFFFu, inGroup);
+		pending &= ~__ballot_sync(LIMA_FULL_WARP_MASK, inGroup);
 
 		// Lane d collects which particles of the group go in direction d, and reserves space for them in that block. The reservations
 		// are independent, so all 27 atomics are in flight at once
@@ -198,7 +199,7 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 		for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
 			const Direction3 direction = device_tables::sIndexToDirection[directionIndex];
 			const bool goes = inGroup && ((xDirections >> (direction.x() + 1)) & (yDirections >> (direction.y() + 1)) & (zDirections >> (direction.z() + 1)) & 1);
-			const uint32_t mask = __ballot_sync(0xFFFFFFFFu, goes);
+			const uint32_t mask = __ballot_sync(LIMA_FULL_WARP_MASK, goes);
 			if (lane == directionIndex)
 				goingMask = mask;
 		}
@@ -211,9 +212,9 @@ __global__ void DistributeCompoundchargesToBlocksKernel(const SuperCluster* cons
 		}
 
 		for (int directionIndex = 0; directionIndex < 27; directionIndex++) {
-			const uint32_t mask = __shfl_sync(0xFFFFFFFFu, goingMask, directionIndex);
-			const int target = __shfl_sync(0xFFFFFFFFu, targetBlockIndex, directionIndex);
-			const int offset = __shfl_sync(0xFFFFFFFFu, offsetInTarget, directionIndex);
+			const uint32_t mask = __shfl_sync(LIMA_FULL_WARP_MASK, goingMask, directionIndex);
+			const int target = __shfl_sync(LIMA_FULL_WARP_MASK, targetBlockIndex, directionIndex);
+			const int offset = __shfl_sync(LIMA_FULL_WARP_MASK, offsetInTarget, directionIndex);
 			if (!((mask >> lane) & 1))
 				continue;
 			const int indexInTarget = offset + __popc(mask & ((1u << lane) - 1));

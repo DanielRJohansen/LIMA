@@ -3,6 +3,11 @@
 // The GPU runtime, included everywhere instead of cuda_runtime.h. All projects use the CUDA runtime names (cudaMalloc,
 // cudaStream_t, ...); a HIP build (LIMA_GPU_BACKEND=HIP, which defines LIMA_HIP) maps them to HIP here, so the code
 // using them stays the same. Only the names LIMA uses are mapped: add one here when the HIP build reports it missing
+// Compiling a .cu file (nvcc or hipcc), so __device__ code and device intrinsics are available
+#if defined(__CUDACC__) || defined(__HIPCC__)
+#define LIMA_GPU_COMPILER
+#endif
+
 #if defined(LIMA_HIP)
 #include <hip/hip_runtime.h>
 

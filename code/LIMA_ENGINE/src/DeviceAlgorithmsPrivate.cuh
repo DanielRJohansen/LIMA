@@ -2,6 +2,7 @@
 
 #include "DeviceAlgorithms.cuh"
 #include "PhysicsUtils.cuh"
+#include "platform/DeviceIntrinsics.cuh"
 
 #include <algorithm>
 
@@ -64,9 +65,7 @@ namespace PhysicsUtilsDevice {
 // If we're gonna use this we need to deal with the license. But we dont need 0-4, so rather remake it for out purposes..
 	__forceinline__ __device__ float raw_ex2(float a)
 	{
-		float r;
-		asm("ex2.approx.ftz.f32 %0,%1;" : "=f"(r) : "f"(a));
-		return r;
+		return DeviceIntrinsics::Exp2Approx(a);
 	}
 	/* Approximate erfc(x) on [0, 4] with maximum absolute error of 1.15291e-7,
 	   maximum relative error of 3.36619e-4, and maximum ulp error of 5621.588.

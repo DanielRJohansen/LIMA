@@ -82,6 +82,7 @@ namespace EngineBatchTests {
 
 // FileTests.cpp
 namespace FileTests {
+	TestRoutine TestMdpIntegrator(Environment&, EnvMode);
 	namespace fs = std::filesystem;
 	LimaUnittestResult TestFilesAreCachedAsBinaries(EnvMode envmode);
 	TestRoutine TestTopologyPreprocessor(Environment&, EnvMode envmode);

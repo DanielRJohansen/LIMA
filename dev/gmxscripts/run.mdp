@@ -1,5 +1,5 @@
 ; RUN CONTROL PARAMETERS
-integrator        = md
+integrator        = md-vv
 nsteps            = 1000  ; number of steps
 dt                = 0.001  ; time step in ps
 

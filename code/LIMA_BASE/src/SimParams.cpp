@@ -204,9 +204,14 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
             ParseValue(key, found->second, target);
     };
 
+    bool velocityVerlet = false;
     if (const auto found = mdp.find("integrator"); found != mdp.end()) {
-        if (found->second == "md-vv") params.em_variant.value = false;
-        else if (found->second == "md") params.em_variant.value = false; // TODO: warn users that leap-frog runs as velocity Verlet: same trajectories, but the kinetic energy is at full rather than averaged half steps
+        if (found->second == "md-vv") {
+            params.em_variant.value = false;
+            velocityVerlet = true;
+        }
+        else if (found->second == "md")
+            throw std::runtime_error("Unsupported integrator: md is GROMACS leap-frog; LIMA uses velocity Verlet, set integrator = md-vv");
         else if (found->second == "steep") params.em_variant.value = true;
         else throw std::runtime_error("Unsupported integrator: " + found->second);
     }
@@ -295,6 +300,10 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
     };
     parseSeed("ld-seed", params.thermostat_seed.value);
     parseSeed("gen-seed", params.velocity_seed.value);
+
+    // GROMACS couples every step with velocity Verlet, irrespective of nsttcouple.
+    if (velocityVerlet && params.apply_thermostat)
+        params.steps_per_temperature_measurement.value = 1;
 }
 
 } // namespace

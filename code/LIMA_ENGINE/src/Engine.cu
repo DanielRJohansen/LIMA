@@ -361,17 +361,21 @@ bool Engine::hostMaster() {
 		const auto& params = sim.simulation->simParams;
 		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval))
 			OffloadLoggingData(sim);
+		// v-rescale is one impulse on a coupling step, not a factor spread over the interval.
+		if ((!measureTemperature || !params.apply_thermostat) && sim.device.thermostatScalar != 1.f) {
+			sim.device.thermostatScalar = 1.f;
+			thermostatScalarsChanged = true;
+		}
 		if (measureTemperature) {
 			const auto& boxparams = sim.simulation->box->boxparams;
 			const float temperature = batch->thermostat->Temperature(boxparams, sim.device.pclusters, cudaStreams[0]);
 			sim.simulation->temperature_buffer.push_back(temperature);
 			sim.runstatus.current_temperature = temperature;
 			if (params.apply_thermostat) {
-				// The integration applies the factor to the velocities every step, so its nsttcouple-th root, until the next coupling
 				const int64_t interval = params.steps_per_temperature_measurement;
 				const double tauInCouplings = params.tau_t * PICO_TO_NANO / (interval * double(params.dt));
 				const double factor = sim.thermostat.Factor(temperature, params.ref_t, boxparams.degreesOfFreedom, tauInCouplings);
-				const float scalar = static_cast<float>(std::pow(factor, 1.0 / interval));
+				const float scalar = static_cast<float>(factor);
 				thermostatScalarsChanged |= sim.device.thermostatScalar != scalar;
 				sim.device.thermostatScalar = scalar;
 			}

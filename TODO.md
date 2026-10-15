@@ -61,7 +61,7 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 
 ## Thermostats
 - **Done:** v-rescale (Bussi), 2026-10-13. Deterministic (seeded, own deviates). T4 in water: mean 299.8 K, fluctuations 1.598 K vs 1.600 canonical.
-- **Compatibility check:** Salad uses `tcoupl = v-rescale`, `tau_t = 0.1`, `ref_t = 300`. Compare LIMA's behavior with GROMACS v-rescale and make compatible if needed; it depends on the kinetic-energy convention used by the integrator.
+- **Done:** GROMACS v-rescale compatibility, 2026-10-15. LIMA explicitly supports `integrator = md-vv` and rejects leap-frog `md`; velocity Verlet couples every step and applies each stochastic rescaling as one impulse.
 - **Missing:** Nose-Hoover, Langevin/stochastic dynamics, per-group coupling (eg. protein vs solvent).
 
 ## Constant pressure (NPT)

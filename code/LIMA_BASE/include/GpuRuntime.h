@@ -36,8 +36,10 @@
 #define cudaDriverGetVersion hipDriverGetVersion
 #define cudaRuntimeGetVersion hipRuntimeGetVersion
 #define cudaDeviceSynchronize hipDeviceSynchronize
-#define cudaProfilerStart hipProfilerStart
-#define cudaProfilerStop hipProfilerStop
+// hipProfilerStart/Stop return hipErrorNotSupported on Windows, which then sticks as the last error and fails the next
+// error check. Profilers attach without them, so they do nothing under HIP
+inline hipError_t cudaProfilerStart() { return hipSuccess; }
+inline hipError_t cudaProfilerStop() { return hipSuccess; }
 
 // Memory
 #define cudaMalloc hipMalloc

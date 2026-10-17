@@ -995,8 +995,9 @@ TestRoutine TestSelfTest(fs::path workDir) {
 	co_return LimaUnittestResult{ true, "", false };
 }
 
-// GPU commands without -d go through the lima daemon. main() points LIMA_DAEMON_DIR at a private directory, so
-// this test never touches the user's own daemon, and the job object kills its daemon when limaclitest exits
+// GPU commands started with --async go through the lima daemon; without it they run in-process. main() points
+// LIMA_DAEMON_DIR at a private directory, so this test never touches the user's own daemon, and the job object kills
+// its daemon when limaclitest exits
 TestRoutine TestDaemon(fs::path workDir) {
 	Banner("lima daemon");
 	RunOptions quiet{ .timeout = 600s, .captureStdout = true, .echo = false };
@@ -1016,51 +1017,38 @@ TestRoutine TestDaemon(fs::path workDir) {
 	RequireSuccess(Run(workDir, { "daemon", "stop" }, quiet));	// Left over from an aborted run
 	ASSERT(!daemonRunning(), "'lima daemon status' reports a daemon after 'lima daemon stop'");
 
-	// Separate lima processes started together run on one daemon, with the same results as on their own
+	// Without --async, GPU commands run in-process and start no daemon
 	const fs::path reference = makeRunDir("reference", 2000);
-	RequireSuccess(Run(reference, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top" }, quiet));
+	RequireSuccess(Run(reference, { "mdrun", "-c", "metsol.gro", "-t", "metsol.top" }, quiet));
+	ASSERT(!daemonRunning(), "'lima mdrun' without --async started a daemon");
+
+	// --async commands submitted together run on one daemon, with the same results as on their own
 	constexpr int nConcurrent = 3;
-	std::vector<std::unique_ptr<ChildProcess>> children;
 	for (int i = 0; i < nConcurrent; i++)
-		children.push_back(std::make_unique<ChildProcess>(std::vector<std::string>{ "mdrun", "-c", "metsol.gro", "-t", "metsol.top" },
-			makeRunDir("concurrent" + std::to_string(i), 2000), true, false));
-	int batched = 0;
-	for (int i = 0; i < nConcurrent; i++) {
-		const auto code = children[i]->WaitFor(600s);
-		const std::string output = children[i]->Output();
-		ASSERT(code == 0, Lima::Format("Concurrent 'lima mdrun' {} exited with {}. Output:\n{}", i,
-			code ? DescribeExitCode(*code) : "a timeout", Tail(output)));
+		RequireSuccess(Run(makeRunDir("concurrent" + std::to_string(i), 2000), { "mdrun", "--async", "-c", "metsol.gro", "-t", "metsol.top" }, quiet));
+	ASSERT(daemonRunning(), "No daemon is running after --async commands were sent to it");
+	RequireSuccess(Run(workDir, { "wait" }, quiet));
+	for (int i = 0; i < nConcurrent; i++)
 		ASSERT(ReadBytes(workDir / ("concurrent" + std::to_string(i)) / "out.gro") == ReadBytes(reference / "out.gro"),
-			Lima::Format("Concurrent 'lima mdrun' {} gave different coordinates than the same run without the daemon", i));
-		batched += output.find("Ran in a batch of") != std::string::npos;
-	}
-	children.clear();
-	ASSERT(daemonRunning(), "No daemon is running after GPU commands were sent to it");
+			Lima::Format("--async 'lima mdrun' {} gave different coordinates than the same run in-process", i));
 
-	// Errors come back with the same exit codes as in-process
-	RequireExitCode(Run(reference, { "em", "-c", "missing.gro", "-t", "metsol.top" }, quiet), 1);
-	RequireExitCode(Run(reference, { "mdrun", "--notanoption" }, quiet), 2);
-
-	// A client that is killed does not stop its command: it completes and writes its output.
-	// 'daemon stop' waits for it
-	const fs::path orphan = makeRunDir("orphan", 20000);
-	{
-		ChildProcess client({ "mdrun", "-c", "metsol.gro", "-t", "metsol.top" }, orphan, true, false);
-		std::this_thread::sleep_for(1500ms);
-		client.Kill();
-	}
+	// 'daemon stop' lets a running command complete and write its output
+	const fs::path longRun = makeRunDir("long", 20000);
+	RequireSuccess(Run(longRun, { "mdrun", "--async", "-c", "metsol.gro", "-t", "metsol.top" }, quiet));
+	std::this_thread::sleep_for(1500ms);
 	RequireSuccess(Run(workDir, { "daemon", "stop" }, quiet));
-	ASSERT(fs::exists(orphan / "out.gro"), "The command of a killed client did not complete");
-	RequireFinite(ReadGro(orphan / "out.gro"), "out.gro of the killed client");
+	ASSERT(fs::exists(longRun / "out.gro"), "'daemon stop' did not let the running command complete");
+	RequireFinite(ReadGro(longRun / "out.gro"), "out.gro of the command running at 'daemon stop'");
 	ASSERT(!daemonRunning(), "The daemon is still running after 'lima daemon stop'");
 
 	// It exits by itself after LIMA_DAEMON_IDLE seconds without work
-	RequireSuccess(Run(reference, { "em", "-c", "metsol.gro", "-t", "metsol.top", "--conf-out", "em.gro" }, quiet));
-	ASSERT(daemonRunning(), "'lima em' did not start a daemon");
+	RequireSuccess(Run(reference, { "em", "--async", "-c", "metsol.gro", "-t", "metsol.top", "--conf-out", "em.gro" }, quiet));
+	ASSERT(daemonRunning(), "'lima em --async' did not start a daemon");
+	RequireSuccess(Run(workDir, { "wait" }, quiet));
 	std::this_thread::sleep_for(std::chrono::seconds(daemonIdleSeconds + 3));
 	ASSERT(!daemonRunning(), Lima::Format("The daemon was still running {} s after its last command", daemonIdleSeconds + 3));
 
-	co_return LimaUnittestResult{ true, OneLineMessage("{}/{} batched, identical, idle exit", batched, nConcurrent), false };
+	co_return LimaUnittestResult{ true, OneLineMessage("{} async identical, idle exit", nConcurrent), false };
 }
 
 // Commands started with --async return at once; 'lima wait' collects their results

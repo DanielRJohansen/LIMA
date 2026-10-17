@@ -854,13 +854,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (!noDaemon && Cli::Daemon::ShouldUse(args)) {
-        try {
-            if (const auto exitCode = Cli::Daemon::RunRemote(args)) return *exitCode;
-        }
-        catch (const std::exception& error) {
-            std::cerr << "lima: the lima daemon is unavailable (" << error.what() << "), running in this process instead\n";
-        }
-    }
+    // Without --async every command runs in this process; only --async commands use the daemon
     return RunCommand(Cli::Context{ fs::current_path(), std::cout, std::cerr }, args);
 }

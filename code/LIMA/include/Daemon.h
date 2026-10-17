@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-// The lima daemon is a background lima process that owns one Environment. GPU commands are sent to it, so
-// commands started at the same time, eg. 'lima mdrun ... &' in a loop, are batched on the GPU together.
+// The lima daemon is a background lima process that owns one Environment. GPU commands started with --async are
+// sent to it, so commands submitted together, eg. 'lima mdrun --async ...' in a loop, are batched on the GPU.
 // It is started by the first command that needs it and exits after a period without work.
 // Only the lima CLI uses it; everything else uses Environment directly.
 namespace Cli::Daemon {
@@ -16,7 +16,7 @@ namespace Cli::Daemon {
 // Runs a command line in the calling thread and returns its exit code. Must not throw.
 using CommandRunner = std::function<int(const Context&, const std::vector<std::string>& args)>;
 
-// Whether this command line should be sent to the daemon instead of running in this process
+// Whether this command line can run on the daemon (with --async)
 bool ShouldUse(const std::vector<std::string>& args);
 
 // Runs the command on the daemon, starting one if none is running, and relays its output. Returns the exit code,

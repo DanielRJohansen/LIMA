@@ -163,12 +163,13 @@ namespace LJ {
 			// Repulsive for equal charges, hence the negation
 			float coulombScalar = -chargeProductTimesK * distInv * distSqInv;
 			if constexpr (ENABLE_ERFC_FOR_EWALD) {
-				// As CalcErfcScalar, but keeping erfc for the potential
-				const float dist = distSq * distInv;
-				const float erfcTerm = PhysicsUtilsDevice::fasterfc(dist * ewaldKappa);
-				coulombScalar *= erfcTerm + 2.f * ewaldKappa / PI_sqrt * dist * exp(-ewaldKappa * ewaldKappa * distSq);
+				// As CalcErfcScalar, sharing the gaussian with erfc for the potential
+				const float x = distSq * distInv * ewaldKappa;
+				const float gaussian = PhysicsUtilsDevice::EwaldGaussian(distSq, ewaldKappa);
+				const float forcePoly = PhysicsUtilsDevice::EwaldForcePoly(x);
+				coulombScalar *= gaussian * forcePoly;
 				if constexpr (computePotE)
-					fe.potE += chargeProductTimesK * distInv * erfcTerm * 0.5f; // 0.5 to account for splitting the potential between the 2 particles
+					fe.potE += chargeProductTimesK * distInv * gaussian * PhysicsUtilsDevice::ErfcxFromForcePoly(forcePoly, x) * 0.5f; // erfc(x) * 0.5, the 0.5 to account for splitting the potential between the 2 particles
 			}
 			else {
 				if constexpr (computePotE)

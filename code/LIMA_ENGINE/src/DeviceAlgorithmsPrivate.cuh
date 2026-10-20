@@ -87,6 +87,33 @@ namespace PhysicsUtilsDevice {
 		return raw_ex2(t);
 	}
 
+	// Ewald real space force scalar with x = kappa*dist: erfc(x) + 2x/sqrt(pi) * exp(-x^2) = exp(-x^2) * R(x), R(x) = erfcx(x) + 2x/sqrt(pi),
+	// with erfcx(x) = exp(x^2) * erfc(x). So a single ex2 serves both terms, and erfc for the potential is exp(-x^2) * (R(x) - 2x/sqrt(pi)).
+	// erfcx is smooth, so a polynomial fits R on x in [0, 3.05] (kappa*cutoff = 3, see CalcEwaldkappa). Beyond that it is wrong,
+	// so the cutoff must mask those pairs. R(0) = 1 exactly, so kappa = 0 (no PME) gives plain Coulomb.
+	__device__ inline float EwaldGaussian(float distSq, float ewaldKappa) {
+		constexpr float log2e = 1.4426950408889634f;
+		return raw_ex2(distSq * (-ewaldKappa * ewaldKappa * log2e)); // The product of constants is hoisted out of the pair loops
+	}
+	// R(x). Minimax (Lawson-iterated Chebyshev) fit of (R(x)-1)/x, weighted for the relative error of R.
+	// Max relative error of the force scalar 5.4e-6 (fasterfc + exp: 2.9e-6)
+	__device__ inline float EwaldForcePoly(float x) {
+		float r = -1.642438147e-4f;
+		r = fmaf(r, x, 2.629942494e-3f);
+		r = fmaf(r, x, -1.860453375e-2f);
+		r = fmaf(r, x, 7.769382000e-2f);
+		r = fmaf(r, x, -2.180595994e-1f);
+		r = fmaf(r, x, 4.498292804e-1f);
+		r = fmaf(r, x, -7.343890071e-1f);
+		r = fmaf(r, x, 9.968287945e-1f);
+		r = fmaf(r, x, 1.945109834e-4f);
+		return fmaf(r, x, 1.f);
+	}
+	// erfc(x) = EwaldGaussian * ErfcxFromForcePoly. Max relative error of erfc 1.0e-4, near the cutoff where erfc ~ 2e-5 (fasterfc: 7.0e-5)
+	__device__ inline float ErfcxFromForcePoly(float forcePoly, float x) {
+		return fmaf(x, -2.f / PI_sqrt, forcePoly);
+	}
+
 	//static_assert(USE_PRECOMPUTED_ERFCSCALARS == false, "Precomputed ERFC scalar LUT is disabled. Please set USE_PRECOMPUTED_ERFCSCALARS to false.");
 	__device__ inline float CalcErfcScalar(float dist, float distSq, float ewaldKappa) {
 		/*
@@ -103,13 +130,7 @@ namespace PhysicsUtilsDevice {
 			
 		}
 		*/
-		
-
-		float erfcTerm = fasterfc(dist * ewaldKappa);
-		//const float erfcTerm = erfc(dist * kappa);
-		float scalar = erfcTerm + 2.f * ewaldKappa / PI_sqrt * dist * exp(-ewaldKappa * ewaldKappa * distSq);
-
-		return scalar;
+		return EwaldGaussian(distSq, ewaldKappa) * EwaldForcePoly(dist * ewaldKappa);
 	}
 
 	__device__ inline Float3 CalcCoulumbForceTrueImplementation(const float chargeProduct, const Float3& diff, const float distSq, const float ewaldKappa)

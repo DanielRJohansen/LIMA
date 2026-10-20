@@ -472,12 +472,21 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 		std::istringstream iss(line);
 
 		AnglebondType anglebondtype{};
-		float t0, kT, ub0, kUB;
+		float t0{}, kT{}, ub0{}, kUB{};
 		iss >> anglebondtype.bonded_typenames[0] >> anglebondtype.bonded_typenames[1] >> anglebondtype.bonded_typenames[2] >> anglebondtype.func
 			>> t0		// [degrees]
-			>> kT		// [kJ/mol/rad^2]
-			>> ub0		// [nm]
-			>> kUB;		// [kJ/mol/nm^2]
+			>> kT;		// [kJ/mol/rad^2]
+		if (!iss)
+			throw std::runtime_error(Lima::Format("Invalid [ angletypes ] line: {}", line));
+		// funct 1 is harmonic, 5 harmonic plus Urey-Bradley. Others (G96, quartic, ...) would silently become harmonic
+		if (anglebondtype.func == 5) {
+			iss >> ub0		// [nm]
+				>> kUB;		// [kJ/mol/nm^2]
+			if (!iss)
+				throw std::runtime_error(Lima::Format("[ angletypes ] funct 5 without Urey-Bradley parameters: {}", line));
+		}
+		else if (anglebondtype.func != 1)
+			throw std::runtime_error(Lima::Format("Unsupported angle funct {} in [ angletypes ]: {}", anglebondtype.func, line));
 
 		anglebondtype.params = AngleUreyBradleyBond::Parameters::CreateFromCharmm(t0, kT, ub0, kUB, anglebondtype.func);
 

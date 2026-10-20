@@ -74,6 +74,16 @@ constraints = h-bonds (SHAKE/RATTLE per pcluster) and SETTLE are done. Left:
 - `SimulationBuilder::InsertSystem` merges forcefields anyway (used by the large-EM showcase).
 - Fix: per-moleculetype 1-4 scaling, or explicit `[ pairs ]` parameters with the scaling baked in.
 
+## Topology sections that are silently skipped
+`Topologyfile.cpp` maps `[ exclusions ]` and `[ nonbond_params ]` to `notimplemented`, so their entries are dropped without a message.
+- `[ exclusions ]`: parse into the per-moleculetype exclusion lists that already drive the LJ skip and the Ewald exclusion correction. In CHARMM36 water files they duplicate what `[ settles ]` gives, so those are harmless today.
+- `[ nonbond_params ]` (CHARMM NBFIX, eg. in `LIMA_data/benchmarking/aqp_ensemble`'s charmm36): the NB kernel only has per-particle combination rules, so per-pair overrides need a pair-type table (performance work). Until then, warn with the number of ignored pairs.
+
+## NoBC is only non-periodic in the force kernels
+With `boundarycondition = NoBC` the force kernels use `NoBoundaryCondition`, but the rest of the pipeline stays periodic: `ApplyBoundaryCondition` (`ParticleClusters.cu`) wraps positions, `GetPclusterPositions` wraps the cluster centers, `ClusteringPretransferKernel` hyperpositions, and the neighbor search (`SuperclusterTaskBuilder.cu`) wraps cells and uses periodic images. A particle crossing the box edge is teleported to the other side, and its neighbors across the edge are listed but get no force. No test uses NoBC.
+- Either make clustering and neighbor search BC-aware end to end (no wrap, edge cells absorb out-of-box clusters via `CellOf`'s clamp, no periodic cell images), or reject NoBC for MD with a clear error.
+- Templating only `ApplyBoundaryCondition` is not enough: an unwrapped cluster would still be placed by its wrapped center.
+
 ## Exclusions differ from GROMACS in edge cases
 - Exclusions come from the listed bonds/angles/dihedrals/impropers, not GROMACS' bond graph with nrexcl.
 - Same result for normal topologies, but differs without angle lines, or for impropers spanning atoms more than 3 bonds apart.
@@ -94,6 +104,7 @@ Measure whether the default 0.05 nm buffer causes real drift before doing anythi
 ## 3J3Q benchmarks got slower; limits raised to keep them green (2026-10-14)
 Profile both, then put the limits back.
 - **"3j3q load benchmark"** build step ~5.4 -> 7.5-8.9 s (limit 7.0 -> 10.0). Likely the Ewald exclusion-correction pair entries (~3x the pair entries) going through BondGroupFactory, plus building the exclusion lists per moleculetype in SuperTopology.
+  - Also check: `BoxImageBuilder.cpp` copies the whole `GroFile` into `BoxImage` (millions of atoms for 3J3Q). Move it if the caller doesn't need it afterwards.
 - **"ToGmx large CIF benchmark"** ~8.5 -> 10.2 s (limit 10 -> 12). Cause not investigated (ToGmx builds no box, so maybe the topology parser changes, or noise).
 
 ## Startup latency for small systems
@@ -141,9 +152,10 @@ Compiling takes forever. Can we optimize a bit?
 - The analyses behind ShowcaseMultisim (`SimAnalysis::WaterSelfDiffusion`) need the same before the showcase can be reproduced with lima commands.
 
 ## Codebase TODOs
-Find and solve TODOs spread around the codebase.
-- `BoundaryConditionPublic.cpp`: the switches on `BoundaryConditionSelect` use `case None:`, which is `SupernaturalForcesSelect::None`; it only works because both are 0. Should be `NoBC` (clang warns: -Wenum-compare-switch).
-- The build script should, after creating the release draft and copying release notes, clear the "Whats new" section, so we wont write the same "whats new" in subsequent releases.
+Left from the 2026-10-20 sweep of TODO comments:
+- `TestBoxIsSavedCorrectlyBetweenSimulations` (`SetupTests.cpp`) only checks that the continued simulation exists. Make it compare frame 0 of the second run with the last frame of the first.
+- `TestFilesAreCachedAsBinaries` (`FileTests.cpp`) is not registered, its data (`LIMA_data/filetests`) is gone, and topologies are no longer cached. Keep the .gro check on a temp copy of an automated-test .gro and register it.
+- `Float3::rotateAroundOrigo` (`LimaTypes.cuh`) is marked "proven wrong"; it composes rotations about the fixed x, y, z axes, which is valid, but the pitch/yaw/roll naming is muddled. Only `ForceCorrectness.cpp` uses it: inline it there as `rodriguesRotatation` calls and remove it from `Float3`.
 
 ---
 

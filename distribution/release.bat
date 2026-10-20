@@ -138,9 +138,13 @@ if %DRY_RUN%==1 (
 echo.
 echo ### Uploading draft release v%VERSION%
 wsl -d %WSL_DISTRO% -- gh release create v%VERSION% --repo %GITHUB_REPO% --draft --target %COMMIT% --title "LIMA %VERSION%" --notes-file "%OUT_WSL%/release-notes.md" --generate-notes %ASSETS% || (call :fail "Uploading the release failed" & exit /b 1)
+
+rem The notes are in the release now (and in %OUT%), so the next release starts with an empty "What's new"
+powershell -NoProfile -Command "$p = '%REPO%\distribution\release-notes.md'; $t = [IO.File]::ReadAllText($p); $t = $t -replace '(?s)(## What.s new\r?\n).*?(?=## Downloads)', ('$1' + [Environment]::NewLine); [IO.File]::WriteAllText($p, $t)" || (call :fail "Clearing What's new in release-notes.md failed" & exit /b 1)
 echo.
 echo ### Draft release v%VERSION% is uploaded. Review and publish it at:
 echo     https://github.com/%GITHUB_REPO%/releases
+echo     The "What's new" section of distribution\release-notes.md is cleared; commit that for the next release.
 
 :done
 echo Started %START%, finished %TIME%

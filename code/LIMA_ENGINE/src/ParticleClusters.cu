@@ -26,7 +26,7 @@ __global__ void ApplyBoundaryCondition(PersistentCluster* const pClusters, int n
 
 
 	PersistentCluster pcluster = pClusters[pcId];
-	PeriodicBoundaryCondition::ApplyBC(pcluster.pqd[0].position, boxSize, boxSizeInv); // TODO: Templated BC
+	PeriodicBoundaryCondition::ApplyBC(pcluster.pqd[0].position, boxSize, boxSizeInv); // Periodic also under NoBC, see TODO.md (NoBC is only non-periodic in the force kernels)
 
 	for (int i = 1; i < PersistentCluster::maxParticles; i++) {
 		PeriodicBoundaryCondition::ApplyHyperpos(pcluster.pqd[0].position, pcluster.pqd[i].position, boxSize, boxSizeInv);
@@ -65,9 +65,11 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	}
 	meanPos = meanPos / static_cast<float>(count);
 
-	for (int i = 0; i < count; i++) {
-		if ((meanPos - pClustersData[pcId].pqd[i].position).len() > 1.f) {
-			printf("meanpos %f %f %f mypos %f %f %f\n", meanPos.x, meanPos.y, meanPos.z, pClustersData[pcId].pqd[i].position.x, pClustersData[pcId].pqd[i].position.y, pClustersData[pcId].pqd[i].position.z);	// TODO: Put this in constexper
+	if constexpr (POSITION_CHECKS) {
+		for (int i = 0; i < count; i++) {
+			if ((meanPos - pClustersData[pcId].pqd[i].position).len() > 1.f) {
+				printf("meanpos %f %f %f mypos %f %f %f\n", meanPos.x, meanPos.y, meanPos.z, pClustersData[pcId].pqd[i].position.x, pClustersData[pcId].pqd[i].position.y, pClustersData[pcId].pqd[i].position.z);
+			}
 		}
 	}
 

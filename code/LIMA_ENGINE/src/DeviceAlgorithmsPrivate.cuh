@@ -118,10 +118,10 @@ namespace PhysicsUtilsDevice {
 		const float invLenCubed = invLen * invLen * invLen;       // Computes (1 / |diff|^3)
 
 		Float3 force = diff * chargeProduct * invLenCubed * modifiedCoulombConstant;
-#ifdef FORCE_NAN_CHECK
-		if (force.isNan())
-			force.print('E');
-#endif
+		if constexpr (FORCE_CHECKS) {
+			if (force.isNan())
+				force.print('E');
+		}
 		if constexpr (ENABLE_ERFC_FOR_EWALD) {
 			float len = 1.f / invLen;
 			force *= CalcErfcScalar(len, distSq, ewaldKappa);

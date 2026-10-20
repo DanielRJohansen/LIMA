@@ -2,6 +2,7 @@
 
 #include "Engine.cuh"
 #include "TestUtils.h"
+#include "Format.h"
 
 #include <cerrno>
 #include <chrono>
@@ -42,15 +43,15 @@ namespace LimitTesting {
 	inline std::vector<Case> Cases() {
 		std::vector<Case> cases;
 		// Capacities are probed at the limit and one past it
-		for (int count : {16, 17}) cases.push_back({std::format("transfer-{}", count), Kind::Transfer, count});
+		for (int count : {16, 17}) cases.push_back({Lima::Format("transfer-{}", count), Kind::Transfer, count});
 		for (int count : {128, 129}) {
-			cases.push_back({std::format("runtime-occupancy-{}", count), Kind::Occupancy, count});
-			cases.push_back({std::format("bootstrap-occupancy-{}", count), Kind::Bootstrap, count});
+			cases.push_back({Lima::Format("runtime-occupancy-{}", count), Kind::Occupancy, count});
+			cases.push_back({Lima::Format("bootstrap-occupancy-{}", count), Kind::Bootstrap, count});
 		}
-		for (int count : {384, 385}) cases.push_back({std::format("pme-entries-{}", count), Kind::ChargeBlock, count});
-		for (int separation : {200, 10}) cases.push_back({std::format("pair-md-{}pm", separation), Kind::Pair, separation});
+		for (int count : {384, 385}) cases.push_back({Lima::Format("pme-entries-{}", count), Kind::ChargeBlock, count});
+		for (int separation : {200, 10}) cases.push_back({Lima::Format("pair-md-{}pm", separation), Kind::Pair, separation});
 		cases.push_back({"invalid-input", Kind::InvalidInput});
-		for (int steps : {0, 1, 15, 16, 31}) cases.push_back({std::format("logging-steps-{}", steps), Kind::Logging, steps});
+		for (int steps : {0, 1, 15, 16, 31}) cases.push_back({Lima::Format("logging-steps-{}", steps), Kind::Logging, steps});
 		cases.push_back({"thermostat-logging-independent", Kind::Thermostat});
 		cases.push_back({"cuda-failure-unwind", Kind::Unwind});
 		return cases;
@@ -118,8 +119,8 @@ namespace LimitTesting {
 			const auto& state = simulation.box->pclusterInterimStates[pc];
 			for (int lane = 0; lane < simulation.box->persistentClustersMetadata[pc].nParticles; ++lane) {
 				Require(clusters[pc].pqd[lane].Valid(), "Particle disappeared");
-				Require(Finite(clusters[pc].pqd[lane].position), std::format("Nonfinite position at step {}, cluster {}", simulation.getStep(), pc));
-				Require(Finite(state.vels_prev[lane]) && Finite(state.forces_prev[lane]), std::format("Nonfinite velocity/force at step {}, cluster {}", simulation.getStep(), pc));
+				Require(Finite(clusters[pc].pqd[lane].position), Lima::Format("Nonfinite position at step {}, cluster {}", simulation.getStep(), pc));
+				Require(Finite(state.vels_prev[lane]) && Finite(state.forces_prev[lane]), Lima::Format("Nonfinite velocity/force at step {}, cluster {}", simulation.getStep(), pc));
 			}
 		}
 		const auto forceMagnitudes = engine.OffloadForcesMagnitudeBuffer().GetData();
@@ -132,7 +133,7 @@ namespace LimitTesting {
 		{
 			Engine engine({&simulation});
 			while (!engine.IsFinished()) {
-				Phase(std::format("step {}", simulation.getStep() + 1));
+				Phase(Lima::Format("step {}", simulation.getStep() + 1));
 				engine.step();
 				VerifyState(engine, simulation);
 			}
@@ -417,7 +418,7 @@ namespace LimitTesting {
 		std::ofstream report(directory / "results.csv", std::ios::app);
 		Require(static_cast<bool>(report), "Cannot append limit test results");
 		report << test.name << ',' << passed << ',' << result.timedOut << ',' << result.exitCode << ',' << seconds << ',' << log.filename().string() << '\n';
-		const std::string summary = std::format("{}: {} (exit {}). Log: {}", test.name, passed ? "passed" : result.timedOut ? "timed out" : "FAILED", result.exitCode, log.string());
+		const std::string summary = Lima::Format("{}: {} (exit {}). Log: {}", test.name, passed ? "passed" : result.timedOut ? "timed out" : "FAILED", result.exitCode, log.string());
 		if (!passed) std::cout << output.substr(output.size() > 2000 ? output.size() - 2000 : 0) << std::endl;
 		if (!passed)
 			co_return TestUtils::LimaUnittestResult::Fail(summary, false);

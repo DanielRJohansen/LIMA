@@ -5,11 +5,7 @@
 #include "MoleculeUtils.h"
 #include "MoleculeGraph.h"
 
-// TODO: These shoudlnt be here
-#include "Environment.h"
-#include "Display.h"
-
-#include <format>
+#include "Display.h"	// _MakeLipid shows the lipid
 
 Lipids::Select::Select(const std::string& lipidname, const fs::path& workDir, double percentage) :
 	userSupplied(fs::exists(workDir / (lipidname + ".gro")) && fs::exists(workDir / (lipidname + ".itp"))),

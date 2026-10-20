@@ -12,8 +12,6 @@ constexpr bool POSITION_CHECKS = false;		// Check if near overflow when switchin
 constexpr bool DETERMINISTIC_CHECKS = false;	// Check if results are deterministic (only used for debugging non-determinism, since it is expensive)
 constexpr bool IS_FAST_MODE = !(INDEXING_CHECKS || SYNC_ALL_KERNELS || FORCE_CHECKS || POSITION_CHECKS || DETERMINISTIC_CHECKS);
 
-//#define FORCE_NAN_CHECK // TODO: make this a const instead
-
 const bool ENABLE_LJ = true;
 const bool ENABLE_INTEGRATEPOSITION = true;
 

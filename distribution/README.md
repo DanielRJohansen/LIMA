@@ -19,7 +19,8 @@ When it finishes, review the draft on GitHub and publish it. Publishing creates 
 3. Linux, in WSL: builds the same commit, packages `lima-<version>-linux-x86_64.tar.gz`, and smoke tests it on the GPU.
 4. Builds `lima_<version>_amd64.deb` and test-installs it in a clean Ubuntu container.
 5. Writes a `PKGBUILD` for the tarball and test-builds and installs it in a clean Arch container.
-6. Uploads all of it as a draft release, with `release-notes.md` and GitHub's generated changelog.
+6. Uploads all of it as a draft release, with `release-notes.md` and GitHub's generated changelog, then clears the
+   "What's new" section of `release-notes.md` (commit that).
 
 Everything ends up in `distribution\out\<version>`.
 

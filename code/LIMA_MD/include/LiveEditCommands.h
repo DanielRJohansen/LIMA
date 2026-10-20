@@ -17,7 +17,7 @@ namespace LiveEdit {
 		std::optional<Float3> position = std::nullopt;
 	};
 
-	struct MoveMolecule { // TODO: Rename to MoveSelection
+	struct MoveSelection {	// Drags and rotates the active selection
 		Float3 draggingForce{};
 		Float3 rotation{};
 	};
@@ -55,7 +55,7 @@ namespace LiveEdit {
 		//float targetMaxforce = 1e+3; // [kJ/mol/nm]
 	};
 
-	using Command = std::variant<Invalid, InsertMolecule, MoveMolecule, BuildMembrane,
+	using Command = std::variant<Invalid, InsertMolecule, MoveSelection, BuildMembrane,
 		TogglePause, AtomSelected, SelectAtomsBasedOnQualifier, AddForcemaskToSelection, ElasticPosition, EnergyMinimize, StepOnce>;
 
 

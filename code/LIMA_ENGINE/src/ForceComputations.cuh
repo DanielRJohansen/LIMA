@@ -188,7 +188,6 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 
 		const float k = -torque / cos_phi;
 
-		// TODO: This is ugly, fix it
 		f1 = Float3{
 			((r23.y * r23.y + r23.z * r23.z) * dsindC.x - r23.x * r23.y * dsindC.y - r23.x * r23.z * dsindC.z),
 			((r23.z * r23.z + r23.x * r23.x) * dsindC.y - r23.y * r23.z * dsindC.z - r23.y * r23.x * dsindC.x),

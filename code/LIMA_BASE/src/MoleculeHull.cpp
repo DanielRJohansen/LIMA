@@ -152,8 +152,6 @@ void ConvexHull::CullSmallTriangles() {
 
 
 
-// TODO: If we receive a set of points from the same molecule as we have seen here before, just with a new rotation and translation, 
-// we should be able to reuse the old convex hull, simply by applying the old rotation+translation as used before
 
 ConvexHull::ConvexHull(const std::vector<Float3>& points) {
     constexpr size_t dim = 3;
@@ -185,7 +183,6 @@ ConvexHull::ConvexHull(const std::vector<Float3>& points) {
 
 
 
-// TODO: Move to a GeometryUtils file
 std::vector<Float3> GenerateSpherePoints(const Float3& origo, float radius, int numPoints) {
     std::vector<Float3> points;
     points.reserve(numPoints);

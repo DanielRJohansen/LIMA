@@ -83,18 +83,31 @@ void Lipids::OrientLipidhead(GroFile& grofile, Float3 desiredOrientation) {
 	const Float3 lipidbodyCenter = LipidbodyGeometricCenter(grofile);
 
 	if ((headCenter- lipidbodyCenter).len() < 0.1f) {
-		return; // Our estimate of the head relative to the body is too weak to orient. We wont panic but simply hope it is oriented correctly
-		// TODO: We need to have a warning system in place for this for the user
+		// The estimate of the head relative to the body is too weak to orient, so the lipid keeps its orientation
+		std::cerr << Lima::Format("Warning: could not find the head of lipid {}, using it as oriented in its .gro file\n",
+			grofile.m_path.stem().string());
+		return;
 	}
 
 	const Float3 lipidOrientation = (headCenter - lipidbodyCenter).norm();	
 
-	if (std::abs(lipidOrientation.dot(desiredOrientation)) > 0.98f) {
+	const float alignment = lipidOrientation.dot(desiredOrientation);
+	if (alignment > 0.98f) {
 		return; // Already oriented correctly
 	}
 
-	const Float3 rotationAxis = lipidOrientation.cross(desiredOrientation).norm();
-	const float rotationAngle = std::acos(lipidOrientation.dot(desiredOrientation));
+	Float3 rotationAxis;
+	float rotationAngle;
+	if (alignment < -0.98f) {
+		// Upside down: the cross product vanishes, so turn half a revolution around any axis perpendicular to the lipid
+		const Float3 helper = std::abs(lipidOrientation.x) < 0.9f ? Float3{ 1, 0, 0 } : Float3{ 0, 1, 0 };
+		rotationAxis = lipidOrientation.cross(helper).norm();
+		rotationAngle = PI;
+	}
+	else {
+		rotationAxis = lipidOrientation.cross(desiredOrientation).norm();
+		rotationAngle = std::acos(alignment);
+	}
 	const Float3 rotationPoint = MoleculeUtils::GeometricCenter(grofile);
 
 	for (auto& atom : grofile.atoms) {

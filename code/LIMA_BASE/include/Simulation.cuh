@@ -114,7 +114,6 @@ private:
 	std::vector<T> buffer;
 };
 
-// TODO: Temp, i dont like this being here
 namespace LIMALOGSYSTEM {
 	// Same as below, but we dont expect to be an even interval
 	static constexpr int64_t getMostRecentDataentryIndex(int64_t step, int loggingInterval) {

@@ -579,10 +579,10 @@ std::optional<LiveEdit::Command> Display::GetLiveEditCommand() {
 	if (gizmoEnabled && activeRenderContext && activeRenderContext->activeGizmo
 		&& (activeRenderContext->activeGizmo->pullForce || activeRenderContext->activeGizmo->rotateForce)) {
 		auto& gizmo = *activeRenderContext->activeGizmo;
-        return LiveEdit::MoveMolecule(Convert(gizmo.pullForce.value_or(glm::vec3{})), Convert(gizmo.rotateForce.value_or(glm::vec3{})));
+        return LiveEdit::MoveSelection(Convert(gizmo.pullForce.value_or(glm::vec3{})), Convert(gizmo.rotateForce.value_or(glm::vec3{})));
     }
     if (bool stopMove = stopMovingLiveeditCmd.exchange(false)) {
-		return LiveEdit::MoveMolecule{};
+		return LiveEdit::MoveSelection{};
     }
     {
         std::lock_guard<std::mutex> lock2(liveEditCommandsQueueMutex);

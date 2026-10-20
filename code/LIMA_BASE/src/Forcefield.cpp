@@ -586,7 +586,6 @@ const std::vector<typename GenericBond::Parameters>& LIMAForcefield::_GetBondPar
 			const AtomType left = *ljParameters->GetAtomType(query[0]);
 			const AtomType right = *ljParameters->GetAtomType(query[1]);
 
-			// TODO: Would prefer to have this computation in a file specialized for it..
 			// Generated pairs are scaled by fudgeLJ, as GROMACS' gen-pairs. Explicit [ pairtypes ] are not
 			const float sigma = left.parameters.sigmaHalf + right.parameters.sigmaHalf;
 			const float epsilon = left.parameters.epsilonSqrt * right.parameters.epsilonSqrt * fudgeLJ;

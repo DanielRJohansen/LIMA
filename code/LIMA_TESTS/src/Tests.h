@@ -152,6 +152,7 @@ namespace TestMembraneBuilder {
 	TestRoutine TestBuildmembraneSmall(Environment& environment, EnvMode envmode, bool do_em);
 	TestRoutine TestBuildmembraneWithCustomlipidAndCustomForcefield(Environment& environment, EnvMode envmode);
 	TestRoutine TestAllStockholmlipids(Environment& environment, EnvMode envmode);
+	TestRoutine TestLipidOrientation(Environment&, EnvMode envmode);
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode);
 }
 

@@ -68,9 +68,6 @@ void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, const Int3& boxlenNM
 	}
 	}
 }
-void BoundaryConditionPublic::applyBC(NodeIndex& nodeindex, const Int3& nNodesPerDim) {
-	PeriodicBoundaryCondition::applyBC(nodeindex, nNodesPerDim);
-}
 
 void BoundaryConditionPublic::applyBCNM(Float3& pos_nm, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
 	switch (bc) {

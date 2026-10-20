@@ -152,6 +152,8 @@ class BondGroupFactory {
 	static constexpr int maxParticlesPerBondgroup = 64;
 	BondGroups bondgroups;
 	std::vector<int> particleGlobalIds;	// The global id of each particle in bondgroups.particles
+	bool pclusterRefsAdded = false;
+	bool bondgroupsTaken = false;
 
 public:
 	BondGroupFactory(const LIMA_MOLECULEBUILD::SuperTopology& topology);
@@ -161,6 +163,7 @@ public:
 
 	// Adds a reference to each particle's pcluster, for each bondgroup the particle is in, in order of bondgroup
 	void AddBondgroupRefsToPclusters(const ParticleToPclusterMap& particleToPclusterMap, std::vector<PersistentClusterMeta>& pclusterMetas) const;
+	// Moves the bondgroups out, so it can be called once, after AddPclusterRefs
 	BondGroups GetBondgroups();
 };
 

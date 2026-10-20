@@ -126,7 +126,6 @@ namespace LiveEdit {
 
 	Command ParseCommand(const std::string& commandString) {
 
-		// TODO: Handle capitization for all params, except filenames, since linux cares there.
 		std::stringstream commandStream(commandString);
 		if (commandString.starts_with("insertmolecule ")) {
 			return ParseInsertMolecule(commandString);

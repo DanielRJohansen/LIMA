@@ -201,7 +201,7 @@ public:
 private:
 	void InsertMolecule(LiveEditData*, GroFile& grofile, TopologyFile& topfile, LiveEdit::InsertMolecule& insertionCmd, SimParams simparams);
 	void BuildMembrane(LiveEditData*, const LiveEdit::BuildMembrane& cmd, GroFile& grofile, TopologyFile& topfile);
-	void HandleMoveMoleculeCommand(LiveEditData*, const LiveEdit::MoveMolecule& newMoveCommand);
+	void HandleMoveSelectionCommand(LiveEditData*, const LiveEdit::MoveSelection& newMoveCommand);
 	void UpdateForcemask(LiveEditData*, const LiveEdit::AddForcemaskToSelection&);
 	void UpdateSelection(LiveEditData*, const LiveEdit::AtomSelected&);
 	void UpdateSelection(LiveEditData*, const LiveEdit::SelectAtomsBasedOnQualifier&);

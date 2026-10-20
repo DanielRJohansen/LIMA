@@ -73,7 +73,7 @@ namespace BatchingTests {
 		}
 
 
-		double desiredRatio = 1.25; // TODO: OPTIM: i'm sure we can get this closer to 2x...
+		double desiredRatio = 1.5; // TODO: OPTIM: i'm sure we can get this closer to 2x...
 		const double batchNsPerDay = batchSimulatedNs / batchWallTime * 86400.;
 		const double throughputRatio = batchNsPerDay / soloNsPerDay;
 #ifdef LIMA_HIP

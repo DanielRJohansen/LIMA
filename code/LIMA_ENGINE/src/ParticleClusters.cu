@@ -164,7 +164,7 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 	for (int i = threadIdx.x; i < nPClusters; i += blockDim.x) {
 		const int pcIndex = indexOfFirstCluster + i;
 		Float3 absPos = transferModule.meanPositionOfPClustersPerBlock[pcIndex];
-		PeriodicBoundaryCondition::applyHyperposNM(blockCenter, absPos, boxSizeFloat);	// TODO: OPTIM: shoudn't be necessary if pClusters are placed correctly in blocks...
+		PeriodicBoundaryCondition::applyHyperposNM(blockCenter, absPos, boxSizeFloat);
 
 		
 

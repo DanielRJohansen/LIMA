@@ -22,7 +22,7 @@ struct LiveEditData {
 	std::optional<Rendering::MoleculeInfo> selectedMolecule;
 
 	// MoleculeDragging
-	LiveEdit::MoveMolecule prevDragmoleculeCmd{};
+	LiveEdit::MoveSelection prevMoveSelectionCmd{};
 	std::vector<Float3> fixedMovements;
 	std::vector<Rotation> fixedRotations;
 	std::vector<Float3> forceMask;
@@ -85,7 +85,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	if (!liveeditData->elasticPositions.empty())
 		liveeditData->elasticPositions.resize(simulation->box->boxparams.totalParticles, Float3(NAN));
 
-	liveeditData->prevDragmoleculeCmd = LiveEdit::MoveMolecule{};
+	liveeditData->prevMoveSelectionCmd = LiveEdit::MoveSelection{};
 	
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
@@ -104,7 +104,7 @@ void GatherPositionsIntoVector(std::vector<Float3>& dst, CudaBuffer<PersistentCl
 	}
 }
 
-void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const LiveEdit::MoveMolecule& cmd) {
+void Environment::HandleMoveSelectionCommand(LiveEditData* liveeditData, const LiveEdit::MoveSelection& cmd) {
 	SimulationSession& session = LiveEditSession();
 	auto& simulation = session.simulation;
 	auto& engine = session.engine;
@@ -112,7 +112,7 @@ void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const Li
 	if (cmd.draggingForce.len() > 0 || cmd.rotation.len() > 0)
 		liveeditData->remainingStepsCount = 1;
 
-	if (cmd.draggingForce == liveeditData->prevDragmoleculeCmd.draggingForce && cmd.rotation == liveeditData->prevDragmoleculeCmd.rotation) {
+	if (cmd.draggingForce == liveeditData->prevMoveSelectionCmd.draggingForce && cmd.rotation == liveeditData->prevMoveSelectionCmd.rotation) {
 		return;
 	}
 
@@ -141,7 +141,7 @@ void Environment::HandleMoveMoleculeCommand(LiveEditData* liveeditData, const Li
 	simulation->simParams.em_variant = false;
 	engine->SetFixedParticleMovementBuffer(liveeditData->fixedMovements);
 	engine->SetFixedParticleRotationBuffer(liveeditData->fixedRotations);
-	liveeditData->prevDragmoleculeCmd = cmd;
+	liveeditData->prevMoveSelectionCmd = cmd;
 }
 
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::AtomSelected& cmd) {
@@ -337,11 +337,16 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						else if constexpr (std::is_same_v<T, LiveEdit::InsertMolecule>) {
 							InsertMolecule(&liveeditData, grofile, topfile, cmd, simulation->simParams);
 						}
-						else if constexpr (std::is_same_v<T, LiveEdit::MoveMolecule>) {
-							HandleMoveMoleculeCommand(&liveeditData, cmd);
+						else if constexpr (std::is_same_v<T, LiveEdit::MoveSelection>) {
+							HandleMoveSelectionCommand(&liveeditData, cmd);
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::BuildMembrane>) {
-							assert(simulation->box->boxparams.totalParticles == 0); // TODO: Change this to a user warning msg or something, and bail
+							// The membrane builder places lipids without checking for atoms already in the box
+							if (simulation->box->boxparams.totalParticles != 0) {
+								std::cerr << "buildmembrane needs an empty box, this one has "
+									<< simulation->box->boxparams.totalParticles << " atoms. Command ignored\n";
+								return;
+							}
 							BuildMembrane(&liveeditData, cmd, grofile, topfile);
 						}
 						else if constexpr (std::is_same_v<T, LiveEdit::TogglePause>) {

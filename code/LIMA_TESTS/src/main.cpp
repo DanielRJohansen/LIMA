@@ -284,6 +284,7 @@ int RunAllUnitTests() {
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder);
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield);
 	ADD_TEST("TestAllStockholmlipids", TestAllStockholmlipids);
+	ADD_TEST("LipidOrientation", TestLipidOrientation);
 
 	// Gromacs correctness
 	ADD_TEST("ForceComparisons", ForceComparisons::DoAllForceComparisons);

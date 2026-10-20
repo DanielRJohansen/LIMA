@@ -1,7 +1,9 @@
 #include "Tests.h"
 #include "Format.h"
 
+#include <array>
 #include <filesystem>
+#include <functional>
 #include <numeric>
 
 #include "Statistics.h"
@@ -331,6 +333,42 @@ namespace TestMembraneBuilder {
 		ASSERT(emResult.simulation->maxForceBuffer.back().second < emtol, "Failed to EM membrane");
 
 		co_return LimaUnittestResult{ true , "", envmode == Full };
+	}
+
+	// Turns a stock lipid upside down and sideways, and checks that OrientLipidhead points its head along +z again.
+	// The head direction is measured as OrientLipidhead estimates it: non C/H atoms vs the bounding box center. The
+	// bounding box changes as the lipid rotates, so the measure is ~0.98 after orienting, and ~-0.98 for a lipid left upside down
+	TestRoutine TestLipidOrientation(Environment&, EnvMode envmode) {
+		const auto headAlignment = [](const GroFile& grofile) {
+			Float3 headSum{}, lo{ FLT_MAX }, hi{ -FLT_MAX };
+			int nHead = 0;
+			for (const auto& atom : grofile.atoms) {
+				if (atom.atomName[0] != 'C' && atom.atomName[0] != 'H') {
+					headSum += atom.position;
+					nHead++;
+				}
+				lo = Float3::ElementwiseMin(lo, atom.position);
+				hi = Float3::ElementwiseMax(hi, atom.position);
+			}
+			return (headSum / static_cast<float>(nHead) - (lo + hi) * 0.5f).norm().z;
+		};
+
+		const GroFile stock{ FileUtils::GetLimaDir() / "resources/Slipids/DMPC.gro" };
+		// (x, y, z) -> (x, -y, -z) is upside down, (x, y, z) -> (x, -z, y) lies the lipid on its side
+		const std::array<std::pair<std::string, std::function<Float3(Float3)>>, 2> turns{ {
+			{ "upside down", [](Float3 p) { return Float3{ p.x, -p.y, -p.z }; } },
+			{ "sideways", [](Float3 p) { return Float3{ p.x, -p.z, p.y }; } },
+		} };
+		for (const auto& [name, turn] : turns) {
+			GroFile grofile = stock;
+			for (auto& atom : grofile.atoms)
+				atom.position = turn(atom.position);
+			Lipids::OrientLipidhead(grofile);
+			const float alignment = headAlignment(grofile);
+			ASSERT(alignment > 0.9f, Lima::Format("DMPC turned {}: head alignment with +z after orienting is {:.3f}", name, alignment));
+		}
+
+		co_return LimaUnittestResult{ true, "", envmode == Full };
 	}
 
 	LimaUnittestResult BuildAndRelaxVesicle(EnvMode envmode) {

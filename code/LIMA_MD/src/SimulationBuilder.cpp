@@ -245,6 +245,7 @@ void SimulationBuilder::DistributeParticlesInBox(GroFile& grofile, TopologyFile&
 
 
 
+namespace {
 struct ParticlePlaceholder {
 	Float3 relPos{};	// [nm]
 	bool presentInInputfile = false;	// We need to know the difference between the particles already present, and the ones we just added
@@ -252,35 +253,40 @@ struct ParticlePlaceholder {
 	int waterIndex = -1;	// Which water of the equilibrated water box a new water is a copy of
 };
 
-// TODO: remove this temp class
-
+// 1 nm cells of atoms, for finding clashes between new waters and the atoms around them. Periodic: a cell index
+// at most one box length outside the grid wraps around
 template<typename T>
-class BoxGrid_ {	// TODO: Rename
+class SolvationGrid {
 	std::vector<std::vector<T>> nodes;
 	Int3 nodesPerDim{};
 
 public:
-	BoxGrid_(Int3 nodesPerDim) : nodesPerDim(nodesPerDim) {
+	SolvationGrid(Int3 nodesPerDim) : nodesPerDim(nodesPerDim) {
 		nodes.resize(nodesPerDim.x * nodesPerDim.y * nodesPerDim.z);
 	}
-	
-	int GetIndex(const NodeIndex& nodeindex) {
+
+	NodeIndex Wrap(NodeIndex index3d) const {
+		index3d.x += nodesPerDim.x * ((index3d.x < 0) - (index3d.x >= nodesPerDim.x));
+		index3d.y += nodesPerDim.y * ((index3d.y < 0) - (index3d.y >= nodesPerDim.y));
+		index3d.z += nodesPerDim.z * ((index3d.z < 0) - (index3d.z >= nodesPerDim.z));
+		return index3d;
+	}
+
+	int GetIndex(const NodeIndex& nodeindex) const {
 		return nodeindex.z * nodesPerDim.x * nodesPerDim.y + nodeindex.y * nodesPerDim.x + nodeindex.x;
 	}
 
 	std::vector<T>& operator[](NodeIndex index3d) {
-		BoundaryConditionPublic::applyBC(index3d, nodesPerDim);
-		return nodes[GetIndex(index3d)];
+		return nodes[GetIndex(Wrap(index3d))];
 	}
 	const std::vector<T>& operator[](NodeIndex index3d) const {
-		BoundaryConditionPublic::applyBC(index3d, nodesPerDim);
-		return nodes[GetIndex(index3d)];
+		return nodes[GetIndex(Wrap(index3d))];
 	}
 };
 
 
 
-void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, const GroFile& grofile) {
+void DistributeGrofileparticlesInGrid(SolvationGrid<ParticlePlaceholder>& boxgrid, const GroFile& grofile) {
 	for (const auto& atom : grofile.atoms) {
 		Float3 absPosHyper = atom.position;
 		BoundaryConditionPublic::applyBCNM(absPosHyper, grofile.box_size, BoundaryConditionSelect::PBC);
@@ -298,6 +304,7 @@ void DistributeGrofileparticlesInGrid(BoxGrid_<ParticlePlaceholder>& boxgrid, co
 		boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, true });
 	}
 }
+} // namespace
 
 
 // The moleculetype of a water model given as an .itp path, or as a model name looked up in LIMA's forcefields
@@ -465,10 +472,10 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	const int nAtomsInput = grofile.atoms.size();
 	const int startResidueId = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
 
-	BoxGrid_<ParticlePlaceholder> boxgrid{ gridDim };
+	SolvationGrid<ParticlePlaceholder> boxgrid{ gridDim };
 
 
-	//BoxGrid_<Float3> nonSolventPositions{ gridDim };	// This is used to store the positions of the particles that are not solvents, so we can remove them later
+	//SolvationGrid<Float3> nonSolventPositions{ gridDim };	// This is used to store the positions of the particles that are not solvents, so we can remove them later
 	//for (auto elem : grofile.atoms) {				
 	//	NodeIndex nodeindex = NodeIndex{ static_cast<int>(std::floor(elem.position.x)), static_cast<int>(std::floor(elem.position.y)), static_cast<int>(std::floor(elem.position.z)) };
 	//	Float3 relpos = elem.position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
@@ -553,8 +560,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 							if (offsetX == 0 && offsetY == 0 && offsetZ == 0)
 								continue;
 
-							NodeIndex otherNodeIndex = NodeIndex{ x + offsetX, y + offsetY, z + offsetZ };
-							BoundaryConditionPublic::applyBC(otherNodeIndex, gridDim);
+							const NodeIndex otherNodeIndex = boxgrid.Wrap(NodeIndex{ x + offsetX, y + offsetY, z + offsetZ });
 
 							const Float3 relPosOffsetOther = Float3{ static_cast<float>(offsetX), static_cast<float>(offsetY), static_cast<float>(offsetZ) };
 

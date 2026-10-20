@@ -396,7 +396,11 @@ BondGroupFactory::BondGroupFactory(const LIMA_MOLECULEBUILD::SuperTopology& topo
 }
 
 BondGroups BondGroupFactory::GetBondgroups() {
-	// TODO Add safety checks here that addpclusterinfo has been called, and that this hasnt been called before.
+	if (!pclusterRefsAdded)
+		throw std::runtime_error("BondGroupFactory::GetBondgroups called before AddPclusterRefs");
+	if (bondgroupsTaken)
+		throw std::runtime_error("BondGroupFactory::GetBondgroups called twice");
+	bondgroupsTaken = true;
 	return std::move(bondgroups);
 }
 
@@ -405,6 +409,7 @@ void BondGroupFactory::AddPclusterRefs(const ParticleToPclusterMap& particleToPc
 		const ParticleToPclusterMapping& mapping = particleToPclusterMap[particleGlobalIds[i]];
 		bondgroups.particles[i] = BondGroup::ParticleRef{ mapping.pcid, mapping.pid };
 		});
+	pclusterRefsAdded = true;
 }
 
 void BondGroupFactory::AddBondgroupRefsToPclusters(const ParticleToPclusterMap& particleToPclusterMap, std::vector<PersistentClusterMeta>& pclusterMetas) const {

@@ -50,7 +50,7 @@ struct DatabuffersDeviceController {
 	DatabuffersDeviceController(int nPclusters, int loggingInterval);
 	~DatabuffersDeviceController();
 
-	static const int nStepsInBuffer = 5; // TODO: I want this to be dynamic.
+	static const int nStepsInBuffer = 5;
 
 	static bool IsBufferFull(size_t step, int loggingInterval) {
 		if (loggingInterval == 0)

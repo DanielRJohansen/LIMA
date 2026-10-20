@@ -17,7 +17,7 @@ namespace ChargeBlock {
 		constexpr bool operator!= (const ChargePos& a) const { return (a.pos != pos || a.charge != charge); }
 	};
 
-	// The particles a chargeblock owns, whose grid floor index is in the block. Their forces are interpolated by the block
+	// The particles a chargeblock owns, whose grid floor index is in the block. The block spreads their charges and interpolates their forces
 	struct OwnedParticles {
 		ChargePos* particles;	// pos is absolute, inside the box [nm]
 		int* slots;				// Supercluster slot (scId * 16 + index)
@@ -25,35 +25,24 @@ namespace ChargeBlock {
 
 	struct ChargeblockBuffers {
 		ChargeblockBuffers(int nChargeblocks) {
-			cudaMalloc(&nParticlesInBlock, nChargeblocks * sizeof(uint32_t));
-			cudaMalloc(&chargeposBuffer, ChargeBlock::maxParticlesInBlock * sizeof(ChargePos) * nChargeblocks);
 			cudaMalloc(&nOwnedInBlock, nChargeblocks * sizeof(uint32_t));
 			cudaMalloc(&owned.particles, ChargeBlock::maxParticlesInBlock * sizeof(ChargePos) * nChargeblocks);
 			cudaMalloc(&owned.slots, ChargeBlock::maxParticlesInBlock * sizeof(int) * nChargeblocks);
 
-			cudaMemset(nParticlesInBlock, 0, nChargeblocks * sizeof(uint32_t));
-			cudaMemset(chargeposBuffer, 0, nChargeblocks * maxParticlesInBlock * sizeof(ChargePos));
 			cudaMemset(nOwnedInBlock, 0, nChargeblocks * sizeof(uint32_t));
+			cudaMemset(owned.particles, 0, nChargeblocks * maxParticlesInBlock * sizeof(ChargePos));
 			overflow = CapacityOverflow::Create();
 		}
 
 		void Free() const {
-			cudaFree(nParticlesInBlock);
-			cudaFree(chargeposBuffer);
 			cudaFree(nOwnedInBlock);
 			cudaFree(owned.particles);
 			cudaFree(owned.slots);
 			CapacityOverflow{ overflow }.Free();
 		}
-		uint32_t* nParticlesInBlock;
-		ChargePos* chargeposBuffer;		// Particles spreading charge to the block's grid, including from neighbor blocks
 		uint32_t* nOwnedInBlock;
 		OwnedParticles owned;
 		CapacityOverflow overflow;
 	};
 
-
-	__device__ ChargePos* GetParticles(const ChargeblockBuffers buffers, int blockIndex) {
-		return &buffers.chargeposBuffer[blockIndex * maxParticlesInBlock];
-	}
 };

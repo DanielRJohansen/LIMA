@@ -34,6 +34,7 @@ namespace PME {
 
 		// FFT
 		float* realspaceGrid = nullptr;
+		int* fixedPointGrid = nullptr;		// The charges spread to the grid, in fixed point so their sums are deterministic, see SpreadChargesKernel
 		cufftComplex* fourierspaceGrid = nullptr;
 		float* greensFunctionScalars;
 		float* reciprocalVirialScalars;

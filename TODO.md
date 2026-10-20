@@ -120,6 +120,14 @@ Not set-in-stone todos; concepts worth exploring. Some make the most sense toget
 - **nstlist vs list-buffer tuning:** a bigger buffer and fewer rebuilds may be cheaper overall. A parameter/accuracy decision.
 - **NB kernel flattened entries:** known ~4% SIMT gain left over from densetasks.
 
+## NB kernel: explored and rejected (2026-10-20)
+Measured on STMV; don't retry without a new angle. Any idea that removes work below entry granularity must be judged by the warp-union cost (a warp runs its 8 entries over the union of their own-quarter masks), not per entry.
+- **Combining j forces in shared memory before the atomics:** per block it would cut atomic requests ~3x, but needs ~40-55 KB smem per block (16 blocks/SM). Infeasible.
+- **Ordering entries by neighbor instead of mask class:** -31% atomic requests, but +18-25% pair computations from union waste.
+- **Quarter-AoS force accumulator layout:** ~2-3% ceiling, touches every ForceAccumulator user.
+- **4x2 j-granularity:** packing two j-halves into a virtual quarter: NB +1%, atomics +17%. True per-(own quarter, j half) execution saves 10.9% per entry but only 0.6% under the warp union; sorting entries by the finer class makes it worse.
+- **Dynamic pruning:** with compacted lists, pruning every ~5 steps at rc + 0.0125 nm saves ~7% pair work, but re-emitting the lists (~0.5 ms) costs about as much. In-place mask pruning without compaction: -0.6%.
+
 ## Kernel graphs (prototyped, see stash "Tried cuda graph...")
 Result: T4 -11%, STMV +2.5%.
 

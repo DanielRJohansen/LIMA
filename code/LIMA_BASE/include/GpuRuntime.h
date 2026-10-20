@@ -71,6 +71,10 @@ inline hipError_t cudaHostGetDevicePointer(T** devicePtr, void* hostPtr, unsigne
 #define cudaEventRecord hipEventRecord
 #define cudaEventSynchronize hipEventSynchronize
 
+// Graphs. Engine captures steps into graphs on CUDA only, HIP just needs the type
+#define cudaGraphExec_t hipGraphExec_t
+#define cudaGraphExecDestroy hipGraphExecDestroy
+
 #else
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>	// threadIdx etc. for host compilers, which also parse __device__ functions

@@ -103,6 +103,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		if (logCopyStream) cudaStreamDestroy(logCopyStream);
 		for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 		if (stepStartEvent) cudaEventDestroy(stepStartEvent);
+		for (auto& graphs : stepGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
 		throw;
 	}
 }
@@ -117,6 +118,7 @@ Engine::~Engine() {
 	if (logCopyStream) cudaStreamDestroy(logCopyStream);
 	for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 	if (stepStartEvent) cudaEventDestroy(stepStartEvent);
+	for (auto& graphs : stepGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
 	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
 }
 
@@ -142,6 +144,36 @@ void Engine::ForkStreamsFromMainStream() {
 	for (size_t i = 1; i < cudaStreams.size(); i++)
 		cudaStreamWaitEvent(cudaStreams[i], stepStartEvent);
 }
+
+// Graphs remove the WDDM submit batching that idles the GPU on small systems' short steps (T4 -15-18%, STMV
+// neutral). Encoding a launch order (NB after PME's spreading, bonds after NB) was slower on both. On HIP steps are launched
+// directly; it only needs to be correct
+#if defined(LIMA_HIP)
+void Engine::BeginStepCapture() {}
+void Engine::LaunchCapturedStep(bool, bool) {}
+#else
+// ThreadLocal, so the log drain thread's CUDA calls are not affected by the capture
+void Engine::BeginStepCapture() {
+	LIMA_UTILS::genericErrorCheck(cudaStreamBeginCapture(cudaStreams[0], cudaStreamCaptureModeThreadLocal));
+}
+void Engine::LaunchCapturedStep(bool logData, bool computeVirial) {
+	cudaGraph_t graph = nullptr;
+	LIMA_UTILS::genericErrorCheck(cudaStreamEndCapture(cudaStreams[0], &graph));
+	cudaGraphExec_t& exec = stepGraphs[logData][computeVirial];
+	if (exec) {
+		cudaGraphExecUpdateResultInfo updateInfo{};
+		if (cudaGraphExecUpdate(exec, graph, &updateInfo) != cudaSuccess) {
+			cudaGetLastError(); // A changed topology is expected after a task rebuild, the graph is then instantiated anew
+			cudaGraphExecDestroy(exec);
+			exec = nullptr;
+		}
+	}
+	if (!exec)
+		LIMA_UTILS::genericErrorCheck(cudaGraphInstantiate(&exec, graph, 0));
+	LIMA_UTILS::genericErrorCheck(cudaGraphLaunch(exec, cudaStreams[0]));
+	cudaGraphDestroy(graph);
+}
+#endif
 
 const RunStatus& Engine::GetRunStatus(size_t simulationId) const {
 	return batch->simulations.at(simulationId).runstatus;
@@ -761,6 +793,20 @@ void Engine::_deviceMaster() {
 				*batch->superClustersControl, batch->integrationStates.Get(), batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), boxSize);
 		batch->positionsConstrained = true;
 	}
+	// Allocations can't be captured, so the buffers are expanded first. All are noops once allocated
+	if constexpr (emvariant)
+		batch->scResultsDevice.Expand(batch->nResults, 1.2); // Not allocated at all in MD, where it would be ~1GB for large systems
+	if constexpr (computeVirial) {
+		batch->pmeVirialPartials.Expand(batch->pmeController ? batch->pmeController->VirialPartialCount() : 0);
+		batch->nbVirialPartials.Expand(nScs);
+		batch->bondVirialPartials.Expand(batch->nBondgroups);
+		if (batch->hasConstraints)
+			batch->constraintVirialPartials.Expand(nScs);
+	}
+	// EM synchronizes within the step. SNFs are not checked for capturability
+	const bool captureStep = useStepGraphs && !emvariant && nScs > 0 && batch->params.snf_select.empty();
+	if (captureStep)
+		BeginStepCapture();
 	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
 	ForkStreamsFromMainStream();
 	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
@@ -768,25 +814,18 @@ void Engine::_deviceMaster() {
 	ForceAccumulator forceAcc{};
 	ForceAccumulator primaryBondForces{};
 	ulonglong4* const extraBondForces = batch->extraBondForceResults.Get();
-	if constexpr (emvariant) {
-		batch->scResultsDevice.Expand(batch->nResults, 1.2); // Noop once allocated. Not allocated at all in MD, where it would be ~1GB for large systems
-	}
-	else {
+	if constexpr (!emvariant) {
 		const size_t n = size_t(nScs) * SuperCluster::maxParticles;
 		unsigned long long* const base = batch->forceAccumulatorDevice.Get();
 		forceAcc = ForceAccumulator{ base, base + n, base + 2 * n, logData ? base + 3 * n : nullptr };
 		primaryBondForces = ForceAccumulator{ base + 4 * n, base + 5 * n, base + 6 * n, logData ? base + 7 * n : nullptr };
 	}
-	if constexpr (computeVirial)
-		batch->pmeVirialPartials.Expand(batch->pmeController ? batch->pmeController->VirialPartialCount() : 0);
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
 		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
 			nScs, batch->forceEnergyInterims->pme, forceAcc, computeVirial ? batch->pmeVirialPartials.Get() : nullptr);
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
-		if constexpr (computeVirial)
-			batch->nbVirialPartials.Expand(nScs);
 		// Blocksize must be 64, 2 superclusters per block, see the kernel
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, computeVirial><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
 			batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
@@ -796,8 +835,6 @@ void Engine::_deviceMaster() {
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);
 	if (batch->nBondgroups > 0) {
-		if constexpr (computeVirial)
-			batch->bondVirialPartials.Expand(batch->nBondgroups);
 		const CompactBondGroupsDevice bondGroups{
 			batch->bondgroupDescriptors.Get(), batch->bondgroupSinglebonds.Get(), batch->bondgroupPairbonds.Get(),
 			batch->bondgroupAnglebonds.Get(), batch->bondgroupDihedralbonds.Get(), batch->bondgroupImproperdihedralbonds.Get(),
@@ -834,8 +871,6 @@ void Engine::_deviceMaster() {
 				batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
 				batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr };
 			if (batch->hasConstraints) {
-				if constexpr (computeVirial)
-					batch->constraintVirialPartials.Expand(nScs);
 				// forcePrev includes the constraint force, so the kernel writes the measured force magnitudes itself
 				batch->forceMagnitudesInStates = false;
 				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData, computeVirial><<<batch->nGridnodes, dim3(SuperCluster::maxParticles, SuperClustersControl::maxClustersPerBlock, 1), 0, cudaStreams[0]>>>(
@@ -856,6 +891,8 @@ void Engine::_deviceMaster() {
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster
 		if constexpr (emvariant)
 			cudaStreamSynchronize(cudaStreams[0]);
+		if (captureStep)
+			LaunchCapturedStep(logData, computeVirial);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 }

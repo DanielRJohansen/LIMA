@@ -143,6 +143,15 @@ private:
 	// Recorded on cudaStreams[0] at the start of each step, so the other streams wait for the previous step on the GPU
 	cudaEvent_t stepStartEvent = nullptr;
 	void ForkStreamsFromMainStream();
+	// MD steps are captured into a graph and launched as one unit, so the GPU sees the whole step at once rather than as launches
+	// the driver submits in batches. Captured every step and applied to the instantiated graph with cudaGraphExecUpdate, so changed
+	// arguments and buffers need no tracking. Anything launched in a captured step must be capturable: no syncs, no allocations,
+	// and only on the forked streams. Ignored on HIP
+	static constexpr bool useStepGraphs = true;
+	// [logData][computeVirial]
+	std::array<std::array<cudaGraphExec_t, 2>, 2> stepGraphs{};
+	void BeginStepCapture();
+	void LaunchCapturedStep(bool logData, bool computeVirial);
 	// Must be called after changing any field that IntegrationSimulationData is built from
 	void UploadIntegrationSimulationData();
 	bool ApplyBarostat(float coordinateScale);

@@ -118,7 +118,6 @@ Not set-in-stone todos; concepts worth exploring. Some make the most sense toget
   - Issue-bound (~68% issue active), so latency tricks don't help: 2 candidates per warp iteration and a candidate-particles vs own-sphere filter were both slower.
   - Left: cell enumeration (~74 cells/SC, ~7 of 32 lanes active) and the bonded check (~8%).
 - **nstlist vs list-buffer tuning:** a bigger buffer and fewer rebuilds may be cheaper overall. A parameter/accuracy decision.
-- **NB kernel flattened entries:** known ~4% SIMT gain left over from densetasks.
 
 ## NB kernel: explored and rejected (2026-10-20)
 Measured on STMV; don't retry without a new angle. Any idea that removes work below entry granularity must be judged by the warp-union cost (a warp runs its 8 entries over the union of their own-quarter masks), not per entry.
@@ -127,25 +126,11 @@ Measured on STMV; don't retry without a new angle. Any idea that removes work be
 - **Quarter-AoS force accumulator layout:** ~2-3% ceiling, touches every ForceAccumulator user.
 - **4x2 j-granularity:** packing two j-halves into a virtual quarter: NB +1%, atomics +17%. True per-(own quarter, j half) execution saves 10.9% per entry but only 0.6% under the warp union; sorting entries by the finer class makes it worse.
 - **Dynamic pruning:** with compacted lists, pruning every ~5 steps at rc + 0.0125 nm saves ~7% pair work, but re-emitting the lists (~0.5 ms) costs about as much. In-place mask pruning without compaction: -0.6%.
+- **Flattened entries:** each group loops over its own mask's quarters (the warp runs max popcount, not the union), entries sorted by popcount, own forces per group in shared memory. Pair work -4.7%, but the per-iteration overhead (runtime quarter, shared adds, rolled loop) costs more: NB +3% (1.66 -> 1.70 ms). Unrolling the loop spills at 64 registers: 3.4 ms. The ceiling is under 5% of the instructions and NB is half L2-bound, so not worth a cheaper variant either.
 
-## Kernel graphs (prototyped, see stash "Tried cuda graph...")
-Result: T4 -11%, STMV +2.5%.
-
-**Recipe:**
-- `Engine.cuh`: `std::array<cudaGraphExec_t, 2> stepGraphs{}` (indexed by logData) + `void LaunchStepGraph(cudaGraph_t, bool logData)`. Destroy the execs in ~Engine.
-- `_deviceMaster`: after the `MakeSuperClusterTasksGPU` check and before `ForkStreamsFromMainStream()`, if `!emvariant && nSuperclusters > 0 && snf_select.empty()` (EM syncs mid-step, SNF unchecked): `cudaStreamBeginCapture(cudaStreams[0], cudaStreamCaptureModeThreadLocal)`. ThreadLocal so the log-drain thread's CUDA calls don't break the capture.
-- The existing fork/join events pull the side streams (PME, bonds) into the capture; cuFFT exec captures fine. After the integrate launch: `cudaStreamEndCapture(cudaStreams[0], &graph)` -> LaunchStepGraph.
-- LaunchStepGraph: if an exec exists try `cudaGraphExecUpdate(exec, graph, &info)`; on failure (topology changed after a task rebuild) `cudaGetLastError()`, destroy and re-instantiate. Then `cudaGraphLaunch(exec, cudaStreams[0])`, `cudaGraphDestroy(graph)`. Capturing every step means changed args (step, buffer pointers after Expand, live edits) need no tracking; ~10 us host/step, only ~4 re-instantiations per 2000 T4 steps.
-
-**Measuring:** nsys needs `--cuda-graph-trace=node` to show graph kernels, but node tracing perturbs scheduling (STMV looked faster under nsys, was slower in wall-clock). Trust wall-clock A/B (`--t4 2000 1`, `--stmv 300`) of the same binary.
-
-**Findings:**
-- Launch overhead is not the issue (host runs 0.25-41 ms ahead).
-- Graphs fix WDDM submit batching that idled T4 normal steps: 24/90 us -> 54 us steps.
-- STMV loses because NB, PME spreading and bonds truly overlap and slow NB, which already fills the GPU (CUDA_DEVICE_MAX_CONNECTIONS=1: graph == no graph).
-- Reordering launches (NB before PME) without graphs changed nothing.
-
-**Next:** encode the order (NB waits for an event after PME's ChargeblockDistributeToGrid, bonds wait for NB) so STMV is neutral and T4 keeps most of the gain; or use graphs only below a system size.
+## Kernel graphs: done (2026-10-20)
+MD steps are captured into a CUDA graph every step: T4 -18%, STMV neutral. Measured and rejected: encoding a launch order (NB waits for PME's spreading, bonds wait for NB) is slower on both, T4 0.082 -> 0.086/0.107 ms/step, STMV +0.8/+1.3%.
+nsys needs `--cuda-graph-trace=node` to show graph kernels, but node tracing perturbs scheduling; trust wall-clock A/B.
 
 ---
 

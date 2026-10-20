@@ -757,8 +757,8 @@ void Engine::_deviceMaster() {
 	const int nScs = batch->nSuperclusters;
 	if constexpr (!emvariant) {
 		if (batch->hasConstraints && !batch->positionsConstrained && nScs > 0)
-			ConstrainPositionsKernel<BoundaryCondition><<<(nScs + 3) / 4, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-				batch->superClustersControl->scData, batch->integrationStates.Get(), batch->pclusterConstraintsDevice.Get(), nScs, boxSize);
+			ConstrainPositionsKernel<BoundaryCondition><<<batch->nGridnodes, dim3(SuperCluster::maxParticles, SuperClustersControl::maxClustersPerBlock, 1), 0, cudaStreams[0]>>>(
+				*batch->superClustersControl, batch->integrationStates.Get(), batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), boxSize);
 		batch->positionsConstrained = true;
 	}
 	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
@@ -838,10 +838,10 @@ void Engine::_deviceMaster() {
 					batch->constraintVirialPartials.Expand(nScs);
 				// forcePrev includes the constraint force, so the kernel writes the measured force magnitudes itself
 				batch->forceMagnitudesInStates = false;
-				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData, computeVirial><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
-					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
+				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData, computeVirial><<<batch->nGridnodes, dim3(SuperCluster::maxParticles, SuperClustersControl::maxClustersPerBlock, 1), 0, cudaStreams[0]>>>(
+					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), *batch->superClustersControl, batch->integrationStates.Get(),
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterTransfermodule->overflow, batch->step,
+					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), batch->pclusterTransfermodule->overflow, batch->step,
 					computeVirial ? batch->constraintVirialPartials.Get() : nullptr);
 			}
 			else {

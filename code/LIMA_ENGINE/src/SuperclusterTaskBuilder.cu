@@ -37,12 +37,25 @@ __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const Super
 		const int i = pairId / sc1.nUniquePcIds;
 		const int j = pairId % sc1.nUniquePcIds;
 
-		// The same pcluster in both: a pcluster split over the superclusters, see ClusteringKernel
-		bonded |= sc0.uniquePclusterIds[i] == sc1.uniquePclusterIds[j] || pclustersBondedToPcluster[sc0.uniquePclusterIds[i]].Contains(sc1.uniquePclusterIds[j]);
+		bonded |= pclustersBondedToPcluster[sc0.uniquePclusterIds[i]].Contains(sc1.uniquePclusterIds[j]);
 	}
 
 	return __any_sync(mask, bonded);
 }
+
+// Whether a pcluster is split over both superclusters, see ClusteringKernel
+__device__ inline bool Warp_ScsSharePcluster(const SuperClusterMeta& sc0, const SuperClusterMeta& sc1) {
+	const int lane = threadIdx.x & 31;
+	const int own = lane < sc0.nUniquePcIds ? sc0.uniquePclusterIds[lane] : -1;
+	bool shared = false;
+	for (int j = 0; j < sc1.nUniquePcIds; j++)
+		shared |= own == sc1.uniquePclusterIds[j];
+	return __any_sync(LIMA_FULL_WARP_MASK, shared);
+}
+
+// Bits of TaskBuilderControl::scExternalBonds
+constexpr uint8_t bondsToOtherScs = 1;		// A pcluster of the supercluster is bonded to a pcluster outside it
+constexpr uint8_t splitPclusters = 2;		// A pcluster of the supercluster is split over it and other superclusters of its cell
 
 
 
@@ -84,7 +97,7 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 		// over superclusters. Superclusters with neither are bonded to no other supercluster, so FindNeighborsKernel can skip checking their pairs
 		const int nUnique = scControl.scMeta[scId].nUniquePcIds;
 		const int ownPcluster = lane < nUnique ? scControl.scMeta[scId].uniquePclusterIds[lane] : -1;
-		bool externalBond = false;
+		bool externalBond = false, split = false;
 		for (int u = 0; u < nUnique; u++) {
 			const int bondedPcluster = pclustersBondedToPcluster[__shfl_sync(LIMA_FULL_WARP_MASK, ownPcluster, u)].Get(lane);
 			bool internal = !PclustersBondedToPcluster::IsValue(bondedPcluster);
@@ -94,11 +107,11 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 		}
 		const int pclusterOfSlot = valid && lane < SuperCluster::maxParticles ? scControl.scMeta[scId]._pclusterIds[i] : -1;
 		const uint32_t samePcluster = __match_any_sync(LIMA_FULL_WARP_MASK, pclusterOfSlot);
-		if (pclusterOfSlot >= 0 && __popc(samePcluster) < pclusterMeta[pclusterOfSlot].nParticles)
-			externalBond = true;
+		split = pclusterOfSlot >= 0 && __popc(samePcluster) < pclusterMeta[pclusterOfSlot].nParticles;
 		externalBond = __any_sync(LIMA_FULL_WARP_MASK, externalBond);
+		split = __any_sync(LIMA_FULL_WARP_MASK, split);
 		if (lane == 0)
-			scExternalBonds[scId] = externalBond;
+			scExternalBonds[scId] = (externalBond ? bondsToOtherScs : 0) | (split ? splitPclusters : 0);
 
 		if (valid) {
 			lo = Float3{ fminf(lo.x, p.x), fminf(lo.y, p.y), fminf(lo.z, p.z) };
@@ -142,7 +155,8 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 	const bool ownValid = scControl.scData[scId].Valid(ownIndex);
 	const float4 ownSphere = scSpheres[scId];
 	const Float3 ownCenter{ ownSphere.x, ownSphere.y, ownSphere.z };
-	const bool ownExternalBonds = scExternalBonds[scId];
+	const uint8_t ownExternalBonds = scExternalBonds[scId];
+	const int ownCell = scCells[scId];
 	const float listRadiusSq = listRadius * listRadius;
 	// Padding is placed far away, own at +1e18 and staged candidates at -1e18, so the pair test needs no validity checks
 	const Float3 ownTestPos = ownValid ? ownPos : Float3{ 1e18f };
@@ -250,7 +264,10 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 				__syncwarp(); // Before the stage is reused
 
 				if (bits) {
-					const bool bonded = selfTask || (ownExternalBonds && Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryId], pclustersBondedToPcluster));
+					// The pclusters split over superclusters are all within a cell
+					const bool bonded = selfTask
+						|| ((ownExternalBonds & bondsToOtherScs) && Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryId], pclustersBondedToPcluster))
+						|| ((ownExternalBonds & splitPclusters) && scCells[queryId] == ownCell && Warp_ScsSharePcluster(scControl.scMeta[scId], scControl.scMeta[queryId]));
 					if (lane == 0 && count < maxNeighborsPerSc)
 						neighbors[scId * maxNeighborsPerSc + count] = ScNeighbor{ queryId, static_cast<uint16_t>(bits), static_cast<uint16_t>(bonded) };
 					count++;

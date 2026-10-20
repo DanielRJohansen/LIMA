@@ -282,10 +282,8 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 
 // Called with 32 threads
 __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl, 
-	const PersistentClusterMeta* const persistentClusterMeta, const PclusterConstraints* const pclusterConstraints /*nullptr without constraints*/,
-	Int3 boxSize, Float3 boxSizeFloat)
+	const PersistentClusterMeta* const persistentClusterMeta, Int3 boxSize, Float3 boxSizeFloat)
 {
-	LIMA_SHARED_UNINIT(Float3, meanPositionsOfPClusters, [PClusterTransfermodule::maxClustersPerBlock]);
 	__shared__ int idsOfPclustersInBlock[PClusterTransfermodule::maxClustersPerBlock];
 	__shared__ int nPclustersInBlock;
 
@@ -298,24 +296,19 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		nPclustersInBlock = min(transferModule.nPClustersPerBlock[blockIdx.x], PClusterTransfermodule::maxClustersPerBlock);
 	}
 
-	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x) {
-		meanPositionsOfPClusters[i] = Float3{ std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity() };
+	for (int i = threadIdx.x; i < PClusterTransfermodule::maxClustersPerBlock; i += blockDim.x)
 		idsOfPclustersInBlock[i] = -1;
-	}
 
 	__syncthreads();
 
-	// Load 
-	for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
-		meanPositionsOfPClusters[i] = transferModule.meanPositionOfPClustersPerBlock[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
+	// Load
+	for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x)
 		idsOfPclustersInBlock[i] = transferModule.idsOfPclustersInBlocks[blockIdx.x * PClusterTransfermodule::maxClustersPerBlock + i];
-	}
 	for (int dir = 0; dir < 6; dir++){
 		const int incomingBaseIndex = (blockIdx.x * 6 + dir) * PClusterTransfermodule::maxOutgoingClusters;
 		const int nIncoming = transferModule.nIncomingClusters[blockIdx.x * 6 + dir];
 		if (threadIdx.x < nIncoming && nPclustersInBlock + threadIdx.x < PClusterTransfermodule::maxClustersPerBlock) {
 			const int indexInBlock = nPclustersInBlock + threadIdx.x;
-			meanPositionsOfPClusters[indexInBlock] = transferModule.meanpositionsOfIncomingClusters[incomingBaseIndex + threadIdx.x];
 			idsOfPclustersInBlock[indexInBlock] = transferModule.idsOfIncomingClusters[incomingBaseIndex + threadIdx.x];
 		}
 		__syncthreads();
@@ -328,198 +321,157 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 		}
 		__syncthreads();
 	}
-	// We've loaded positions from this a neighboring blocks, make sure there at the same hyperpos
-	{
-		for (int i = threadIdx.x; i < nPclustersInBlock; i += blockDim.x) {
-			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, meanPositionsOfPClusters[i], boxSizeFloat);
-		}
-		__syncthreads();
-	}
-
-
 	const int nPclusters = nPclustersInBlock;
 
-	// Group the particles into superclusters by recursive bisection: sort each segment of the cell's units along the longest axis of
-	// its bounding box, and split it so the first part has a multiple of 16 particles, until each segment fits a supercluster.
-	// A unit is a single particle, or a whole pcluster with constraints, as SuperclusterIntegrateConstrainedKernel solves those within
-	// a supercluster. Other pclusters may be split over superclusters, as nothing else needs their particles together, and splitting
-	// them both removes most padding and makes the superclusters compact, so NbNonlocalKernel computes fewer 4x4 blocks.
-	// The units are sorted through a permutation, ties broken by their particle ids, so the result does not depend on the load order
+	// Group the cell's particles into superclusters, and each supercluster's particles into quarters, by recursive bisection: sort each
+	// segment along the longest axis of its bounding box, and split it so the first part gets half of the superclusters (quarters) it
+	// needs, rounded up, until each segment fits one. NbNonlocalKernel computes the 4x4 blocks of quarters with any pair in range,
+	// so compact superclusters and quarters without padding make it compute fewer. Pclusters are split over superclusters freely,
+	// as only the constrained integration needs a pcluster's particles together, and it takes a whole cell, which has all of them,
+	// see SuperclusterIntegrateConstrainedKernel. The particles are sorted through a permutation, with ties broken by particle, so
+	// the result does not depend on the order the pclusters were loaded in
 	constexpr int maxScs = SuperClustersControl::maxClustersPerBlock;
-	constexpr int maxUnits = maxScs * SuperCluster::maxParticles;
-	constexpr int maxSegments = 2 * maxScs;
-	__shared__ int slotSources[maxScs * SuperCluster::maxParticles];	// Pcluster index in block * 4 + index in pcluster, -1 for padding
-	__shared__ int uniquePclusterIds[maxScs * SuperCluster::maxParticles];
+	constexpr int maxParticles = maxScs * SuperCluster::maxParticles;
+	constexpr int quarterSize = 4;
+	constexpr int maxSegments = maxParticles / quarterSize;
+	__shared__ int slotSources[maxParticles];	// Pcluster index in block * 4 + index in pcluster, -1 for padding
+	__shared__ int uniquePclusterIds[maxParticles];
 	__shared__ int scNParticles[maxScs];
 	__shared__ int scNUniquePcIds[maxScs];
-	LIMA_SHARED_UNINIT(Float3, unitPositions, [maxUnits]);
-	__shared__ int unitIds[maxUnits];				// Global pcluster id * 4 + index in pcluster of the unit's first particle
-	__shared__ int16_t unitFirstSources[maxUnits];	// Pcluster index in block * 4 + index in pcluster of the first particle, the others follow
-	__shared__ uint8_t unitSizes[maxUnits];
-	__shared__ int16_t order[2][maxUnits];
-	__shared__ uint64_t sortKeys[maxUnits];		// Of the units in the current order: the position along the segment's axis, then the unit id
-	__shared__ int unitOffsets[PClusterTransfermodule::maxClustersPerBlock + 1];	// The first unit of each pcluster
-	__shared__ int segmentBegins[maxSegments + 1];	// Units [segmentBegins[s], segmentBegins[s + 1]) of the order are segment s
-	__shared__ int segmentAxes[maxSegments];		// -1 for segments that fit a supercluster
-	__shared__ int segmentCounts[maxSegments];		// Particles
-	__shared__ int segmentMaxUnitSizes[maxSegments];
-	__shared__ int nSegments;
+	LIMA_SHARED_UNINIT(Float3, particlePositions, [maxParticles]);
+	__shared__ int particleIds[maxParticles];			// Global pcluster id * 4 + index in pcluster
+	__shared__ int16_t particleSources[maxParticles];	// Pcluster index in block * 4 + index in pcluster
+	__shared__ int16_t order[2][maxParticles];
+	__shared__ uint64_t sortKeys[maxParticles];		// Of the particles in the current order: the position along the segment's axis, then the id
+	__shared__ int particleOffsets[PClusterTransfermodule::maxClustersPerBlock + 1];	// The first particle of each pcluster
+	__shared__ int segmentBegins[maxSegments + 1];	// Particles [segmentBegins[s], segmentBegins[s + 1]) of the order are segment s
+	__shared__ int segmentAxes[maxSegments];		// -1 for segments that need no split
+	__shared__ int scBegins[maxScs + 1];
+	__shared__ int nSegments, nScs;
 	__shared__ bool anyToSplit;
 
-	// The units of each pcluster: one if it is constrained, else one per particle
-	auto IsWhole = [&](int pcId) { return pclusterConstraints != nullptr && pclusterConstraints[pcId].nConstraints > 0; };
-	for (int i = threadIdx.x; i < nPclusters; i += blockDim.x) {
-		const int pcId = idsOfPclustersInBlock[i];
-		unitOffsets[i + 1] = IsWhole(pcId) ? 1 : persistentClusterMeta[pcId].nParticles;
-	}
+	for (int i = threadIdx.x; i < nPclusters; i += blockDim.x)
+		particleOffsets[i + 1] = persistentClusterMeta[idsOfPclustersInBlock[i]].nParticles;
 	__syncthreads();
 	if (threadIdx.x == 0) {
-		unitOffsets[0] = 0;
+		particleOffsets[0] = 0;
 		for (int i = 0; i < nPclusters; i++)
-			unitOffsets[i + 1] += unitOffsets[i];
+			particleOffsets[i + 1] += particleOffsets[i];
 	}
 	__syncthreads();
-	const int nUnits = unitOffsets[nPclusters];
-	if (nUnits > maxUnits) {
+	const int nParticles = particleOffsets[nPclusters];
+	if (nParticles > maxParticles) {
 		if (threadIdx.x == 0)
-			transferModule.overflow.Report(CapacityOverflow::SuperclusterOccupancy, blockIdx.x, nUnits, maxUnits);
+			transferModule.overflow.Report(CapacityOverflow::SuperclusterOccupancy, blockIdx.x, nParticles, maxParticles);
 		return;
 	}
 	for (int i = threadIdx.x; i < nPclusters; i += blockDim.x) {
 		const int pcId = idsOfPclustersInBlock[i];
-		const int nParticles = persistentClusterMeta[pcId].nParticles;
-		const bool whole = IsWhole(pcId);
-		for (int u = unitOffsets[i]; u < unitOffsets[i + 1]; u++) {
-			const int k = u - unitOffsets[i];
-			Float3 position = whole ? meanPositionsOfPClusters[i] : pClusters[pcId].pqd[k].position;
+		for (int p = particleOffsets[i]; p < particleOffsets[i + 1]; p++) {
+			const int k = p - particleOffsets[i];
+			Float3 position = pClusters[pcId].pqd[k].position;
 			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, position, boxSizeFloat);
-			unitPositions[u] = position;
-			unitIds[u] = pcId * PersistentCluster::maxParticles + k;
-			unitFirstSources[u] = static_cast<int16_t>(i * PersistentCluster::maxParticles + k);
-			unitSizes[u] = static_cast<uint8_t>(whole ? nParticles : 1);
+			particlePositions[p] = position;
+			particleIds[p] = pcId * PersistentCluster::maxParticles + k;
+			particleSources[p] = static_cast<int16_t>(i * PersistentCluster::maxParticles + k);
 		}
 	}
-	for (int u = threadIdx.x; u < nUnits; u += blockDim.x)
-		order[0][u] = static_cast<int16_t>(u);
+	for (int p = threadIdx.x; p < nParticles; p += blockDim.x)
+		order[0][p] = static_cast<int16_t>(p);
 	if (threadIdx.x == 0) {
 		segmentBegins[0] = 0;
-		segmentBegins[1] = nUnits;
-		nSegments = nUnits > 0 ? 1 : 0;
+		segmentBegins[1] = nParticles;
+		nSegments = nParticles > 0 ? 1 : 0;
 	}
 	__syncthreads();
 
 	int current = 0;
-	while (true) {
-		// The axis of each segment that must be split
-		if (threadIdx.x == 0) anyToSplit = false;
-		__syncthreads();
-		for (int s = threadIdx.x; s < nSegments; s += blockDim.x) {
-			const int begin = segmentBegins[s], end = segmentBegins[s + 1];
-			int count = 0, maxUnitSize = 0;
-			Float3 lo = unitPositions[order[current][begin]], hi = lo;
-			for (int v = begin; v < end; v++) {
-				const int u = order[current][v];
-				count += unitSizes[u];
-				maxUnitSize = max(maxUnitSize, static_cast<int>(unitSizes[u]));
-				const Float3 p = unitPositions[u];
-				lo = Float3{ fminf(lo.x, p.x), fminf(lo.y, p.y), fminf(lo.z, p.z) };
-				hi = Float3{ fmaxf(hi.x, p.x), fmaxf(hi.y, p.y), fmaxf(hi.z, p.z) };
-			}
-			const Float3 extent = hi - lo;
-			segmentAxes[s] = count <= SuperCluster::maxParticles ? -1 : extent.x >= extent.y && extent.x >= extent.z ? 0 : extent.y >= extent.z ? 1 : 2;
-			segmentCounts[s] = count;
-			segmentMaxUnitSizes[s] = maxUnitSize;
-			if (segmentAxes[s] >= 0) anyToSplit = true;
-		}
-		__syncthreads();
-		if (!anyToSplit)
-			break;
-
-		// Sort the units of each such segment along its axis, by counting the units before each. The keys are the position's float bits
-		// made to order as unsigned integers, followed by the unit id, so no two are equal
-		const int next = current ^ 1;
-		for (int v = threadIdx.x; v < nUnits; v += blockDim.x) {
-			int s = 0;
-			while (segmentBegins[s + 1] <= v) s++;
-			const int u = order[current][v];
-			const Float3 p = unitPositions[u];
-			const uint32_t bits = __float_as_uint(segmentAxes[s] == 0 ? p.x : segmentAxes[s] == 1 ? p.y : p.z);
-			const uint32_t orderedBits = bits & 0x80000000u ? ~bits : bits | 0x80000000u;
-			sortKeys[v] = uint64_t(orderedBits) << 32 | static_cast<uint32_t>(unitIds[u]);
-		}
-		__syncthreads();
-		for (int v = threadIdx.x; v < nUnits; v += blockDim.x) {
-			int s = 0;
-			while (segmentBegins[s + 1] <= v) s++;
-			int rank = v;
-			if (segmentAxes[s] >= 0) {
-				const uint64_t key = sortKeys[v];
-				rank = segmentBegins[s];
-				for (int w = segmentBegins[s]; w < segmentBegins[s + 1]; w++)
-					rank += sortKeys[w] < key;
-			}
-			order[next][rank] = order[current][v];
-		}
-		current = next;
-		__syncthreads();
-
-		// Split each sorted segment so the first part gets half the superclusters the segment needs, rounded up. A supercluster holds
-		// at most a multiple of the largest unit size, eg. 5 rigid waters, so counting with that capacity avoids leftover superclusters
-		if (threadIdx.x == 0) {
-			int newBegins[maxSegments + 1];
-			int n = 0;
-			bool overflow = false;
-			for (int s = 0; s < nSegments; s++) {
+	// Splits the segments until each has at most granularity particles
+	auto Bisect = [&](int granularity) {
+		while (true) {
+			if (threadIdx.x == 0) anyToSplit = false;
+			__syncthreads();
+			for (int s = threadIdx.x; s < nSegments; s += blockDim.x) {
 				const int begin = segmentBegins[s], end = segmentBegins[s + 1];
-				newBegins[n++] = begin;
-				if (segmentAxes[s] < 0)
-					continue;
-				const int count = segmentCounts[s];
-				const int capacity = SuperCluster::maxParticles - SuperCluster::maxParticles % segmentMaxUnitSizes[s];
-				const int nScsNeeded = (count + capacity - 1) / capacity;
-				const int target = (nScsNeeded + 1) / 2 * capacity;	// Particles in the first part
-				int split = begin;
-				if (count == end - begin)	// Only single particles
-					split = begin + target;
-				else {
-					int firstCount = 0;
-					while (split < end - 1 && firstCount + unitSizes[order[current][split]] <= target)
-						firstCount += unitSizes[order[current][split++]];
+				Float3 lo = particlePositions[order[current][begin]], hi = lo;
+				for (int v = begin + 1; v < end; v++) {
+					const Float3 p = particlePositions[order[current][v]];
+					lo = Float3{ fminf(lo.x, p.x), fminf(lo.y, p.y), fminf(lo.z, p.z) };
+					hi = Float3{ fmaxf(hi.x, p.x), fmaxf(hi.y, p.y), fmaxf(hi.z, p.z) };
 				}
-				if (n < maxSegments) newBegins[n++] = split;
-				else overflow = true;
+				const Float3 extent = hi - lo;
+				segmentAxes[s] = end - begin <= granularity ? -1 : extent.x >= extent.y && extent.x >= extent.z ? 0 : extent.y >= extent.z ? 1 : 2;
+				if (segmentAxes[s] >= 0) anyToSplit = true;
 			}
-			for (int s = 0; s < n; s++)
-				segmentBegins[s] = newBegins[s];
-			segmentBegins[n] = nUnits;
-			nSegments = overflow ? -1 : n;
-			if (overflow)
-				transferModule.overflow.Report(CapacityOverflow::SuperclusterOccupancy, blockIdx.x, nUnits, maxUnits);
-		}
-		__syncthreads();
-		if (nSegments < 0)
-			return;
-	}
+			__syncthreads();
+			if (!anyToSplit)
+				return;
 
-	// Each segment is a supercluster
-	if (nSegments > maxScs) {
-		if (threadIdx.x == 0)
-			transferModule.overflow.Report(CapacityOverflow::SuperclusterOccupancy, blockIdx.x, nUnits, maxUnits);
-		return;
-	}
-	const int nScs = nSegments;
-	if (threadIdx.x == 0)
+			// Sort the particles of each segment to split along its axis, by counting the particles before each. The keys are the
+			// position's float bits made to order as unsigned integers, followed by the particle id, so no two are equal
+			for (int v = threadIdx.x; v < nParticles; v += blockDim.x) {
+				int s = 0;
+				while (segmentBegins[s + 1] <= v) s++;
+				const int p = order[current][v];
+				const Float3 position = particlePositions[p];
+				const uint32_t bits = __float_as_uint(segmentAxes[s] == 0 ? position.x : segmentAxes[s] == 1 ? position.y : position.z);
+				const uint32_t orderedBits = bits & 0x80000000u ? ~bits : bits | 0x80000000u;
+				sortKeys[v] = uint64_t(orderedBits) << 32 | static_cast<uint32_t>(particleIds[p]);
+			}
+			__syncthreads();
+			const int next = current ^ 1;
+			for (int v = threadIdx.x; v < nParticles; v += blockDim.x) {
+				int s = 0;
+				while (segmentBegins[s + 1] <= v) s++;
+				int rank = v;
+				if (segmentAxes[s] >= 0) {
+					const uint64_t key = sortKeys[v];
+					rank = segmentBegins[s];
+					for (int w = segmentBegins[s]; w < segmentBegins[s + 1]; w++)
+						rank += sortKeys[w] < key;
+				}
+				order[next][rank] = order[current][v];
+			}
+			current = next;
+			__syncthreads();
+
+			if (threadIdx.x == 0) {
+				int newBegins[maxSegments + 1];
+				int n = 0;
+				for (int s = 0; s < nSegments; s++) {
+					const int begin = segmentBegins[s], count = segmentBegins[s + 1] - begin;
+					newBegins[n++] = begin;
+					if (segmentAxes[s] >= 0)
+						newBegins[n++] = begin + ((count + granularity - 1) / granularity + 1) / 2 * granularity;
+				}
+				for (int s = 0; s < n; s++)
+					segmentBegins[s] = newBegins[s];
+				segmentBegins[n] = nParticles;
+				nSegments = n;
+			}
+			__syncthreads();
+		}
+	};
+	Bisect(SuperCluster::maxParticles);
+	// Each segment is a supercluster, which the quarters then split further. At most 256 particles make at most 16 superclusters and 64 quarters
+	if (threadIdx.x == 0) {
+		nScs = nSegments;
+		for (int s = 0; s <= nSegments; s++)
+			scBegins[s] = segmentBegins[s];
 		scStagingControl.nClustersPerBlock[blockIdx.x] = nScs;
+	}
+	__syncthreads();
+	Bisect(quarterSize);
+
 	for (int scId = threadIdx.x; scId < nScs; scId += blockDim.x) {
 		int n = 0, nUnique = 0;
-		for (int v = segmentBegins[scId]; v < segmentBegins[scId + 1]; v++) {
-			const int u = order[current][v];
-			for (int k = 0; k < unitSizes[u]; k++)
-				slotSources[scId * SuperCluster::maxParticles + n++] = unitFirstSources[u] + k;
-			const int pcId = unitIds[u] / PersistentCluster::maxParticles;
+		for (int v = scBegins[scId]; v < scBegins[scId + 1]; v++) {
+			const int p = order[current][v];
+			slotSources[scId * SuperCluster::maxParticles + n++] = particleSources[p];
+			const int pcId = particleIds[p] / PersistentCluster::maxParticles;
 			bool seen = false;
-			for (int w = 0; w < nUnique; w++)
-				seen |= uniquePclusterIds[scId * SuperCluster::maxParticles + w] == pcId;
+			for (int u = 0; u < nUnique; u++)
+				seen |= uniquePclusterIds[scId * SuperCluster::maxParticles + u] == pcId;
 			if (!seen)
 				uniquePclusterIds[scId * SuperCluster::maxParticles + nUnique++] = pcId;
 		}
@@ -529,49 +481,6 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 			uniquePclusterIds[scId * SuperCluster::maxParticles + i] = 0;
 		scNParticles[scId] = n;
 		scNUniquePcIds[scId] = nUnique;
-	}
-	__syncthreads();
-
-	// Order each supercluster's particles into spatially compact quarters, as NbNonlocalKernel computes 4x4 blocks of quarters
-	// with any pair in range: compact quarters have fewer such blocks. Recursive bisection: sort all particles along their longest
-	// axis, then each half along its own. The particles stay first, so only the last quarter can hold padding
-	for (int scId = threadIdx.x; scId < nScs; scId += blockDim.x) {
-		int* const sources = &slotSources[scId * SuperCluster::maxParticles];
-		const int n = scNParticles[scId];
-		Float3 positions[SuperCluster::maxParticles];
-		for (int i = 0; i < n; i++) {
-			const int source = sources[i];
-			positions[i] = pClusters[idsOfPclustersInBlock[source / PersistentCluster::maxParticles]].pqd[source % PersistentCluster::maxParticles].position;
-			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, positions[i], boxSizeFloat);
-		}
-		// Stable insertion sort of [begin, end) along the longest axis of its bounding box. Ties keep their order, so it is deterministic
-		auto SortAlongLongestAxis = [&](int begin, int end) {
-			if (end - begin < 2) return;
-			Float3 lo = positions[begin], hi = positions[begin];
-			for (int i = begin + 1; i < end; i++) {
-				lo = Float3{ fminf(lo.x, positions[i].x), fminf(lo.y, positions[i].y), fminf(lo.z, positions[i].z) };
-				hi = Float3{ fmaxf(hi.x, positions[i].x), fmaxf(hi.y, positions[i].y), fmaxf(hi.z, positions[i].z) };
-			}
-			const Float3 extent = hi - lo;
-			const int dim = extent.x >= extent.y && extent.x >= extent.z ? 0 : extent.y >= extent.z ? 1 : 2;
-			for (int i = begin + 1; i < end; i++) {
-				const Float3 p = positions[i];
-				const int source = sources[i];
-				const float key = dim == 0 ? p.x : dim == 1 ? p.y : p.z;
-				int j = i;
-				for (; j > begin; j--) {
-					const Float3 q = positions[j - 1];
-					if ((dim == 0 ? q.x : dim == 1 ? q.y : q.z) <= key) break;
-					positions[j] = q;
-					sources[j] = sources[j - 1];
-				}
-				positions[j] = p;
-				sources[j] = source;
-			}
-		};
-		SortAlongLongestAxis(0, n);
-		SortAlongLongestAxis(0, min(n, 8));
-		SortAlongLongestAxis(8, n);
 	}
 	__syncthreads();
 
@@ -833,8 +742,7 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel <<<nBlocks, 32, 0, stream>>> (*batch->pclusterTransfermodule, batch->pClusterDevice.Get(), *batch->superclusterStagingControl, batch->pClusterMetaDevice.Get(),
-		batch->hasConstraints ? batch->pclusterConstraintsDevice.Get() : nullptr, boxSize, boxSizeF);
+	ClusteringKernel <<<nBlocks, 32, 0, stream>>> (*batch->pclusterTransfermodule, batch->pClusterDevice.Get(), *batch->superclusterStagingControl, batch->pClusterMetaDevice.Get(), boxSize, boxSizeF);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 	//DebugUtils::VerifyIdentical(batch->superclusterStagingControl->scData, nBlocks * SuperClustersControl::maxClustersPerBlock, "RunClustering_SCData", batch->step);
 
@@ -1011,7 +919,7 @@ namespace EngineLimitTesting {
 		metadataDevice.SetData(metadata);
 		std::unique_ptr<SuperclusterStagingControl, FreeDeviceMembers<SuperclusterStagingControl>> staging(new SuperclusterStagingControl(1));
 		CheckCuda();
-		ClusteringKernel<<<1, 32>>>(*transfer, clustersDevice.Get(), *staging, metadataDevice.Get(), nullptr, Int3{1, 1, 1}, Float3{1.f});
+		ClusteringKernel<<<1, 32>>>(*transfer, clustersDevice.Get(), *staging, metadataDevice.Get(), Int3{1, 1, 1}, Float3{1.f});
 		CheckCuda();
 		transfer->overflow.Check();
 		Require(count <= PClusterTransfermodule::maxClustersPerBlock, "Runtime clustering accepted more than 128 clusters without rejecting the overflow");

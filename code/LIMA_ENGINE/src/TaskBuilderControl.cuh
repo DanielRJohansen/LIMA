@@ -41,7 +41,7 @@ public:
 	CudaBuffer<float4> scSpheres;			// Bounding sphere of each supercluster
 	CudaBuffer<int> scCells;				// The grid cell each supercluster belongs to
 	CudaBuffer<uint16_t> scValidMasks;		// Bit i set if particle i is not padding
-	CudaBuffer<uint8_t> scExternalBonds;	// 1 if a pcluster of the supercluster is bonded to a pcluster of another supercluster
+	CudaBuffer<uint8_t> scExternalBonds;	// Bits bondsToOtherScs and splitPclusters, see SuperclusterBoundsKernel
 	CudaBuffer<float4> cellMin;				// AABB of the particles of each cell's superclusters
 	CudaBuffer<float4> cellMax;
 	CudaBuffer<ScNeighbor> neighbors;		// maxTasksPerSc per supercluster

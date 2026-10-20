@@ -799,82 +799,112 @@ namespace Constraints {
 	}
 }
 
-// Puts the positions on the constraints before the first MD step, like GROMACS constrains the starting coordinates. Otherwise
-// the first step would, and its jump in energy would show in the energy of the run. blockDim = (16, 4, 1)
-template<typename BoundaryCondition>
-__global__ void ConstrainPositionsKernel(SuperCluster* const superClusters, const ParticleIntegrationState* const states,
-	const PclusterConstraints* const pclusterConstraints, int nSuperclusters, Float3 boxSize)
-{
+namespace ConstrainedCell {
 	constexpr int n = SuperCluster::maxParticles;
-	LIMA_SHARED_UNINIT(Float3, positions, [4][n]);
-	LIMA_SHARED_UNINIT(Float3, steps, [4][n]);
-	__shared__ float invMasses[4][n];
-	__shared__ int pclusterParticles[4][n];
-	const int scInBlock = threadIdx.y;
-	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
-	const bool inRange = scId < nSuperclusters;
+	constexpr int maxScs = SuperClustersControl::maxClustersPerBlock;
+
+	// The particles of one pcluster are all in the superclusters of one cell, see ClusteringKernel, so the constrained kernels take a
+	// cell per block, with thread (i, k) on particle i of the cell's k'th supercluster. The cell's superclusters have consecutive ids
+	struct Cell {
+		int firstScId = 0;
+		int nScs = 0;
+		__device__ Cell(const SuperClustersControl& scControl, int cell)
+			: nScs(scControl.nSuperclustersInBlocks[cell]) {
+			firstScId = nScs > 0 ? scControl.scIdsInBlocks[cell * maxScs] : 0;
+		}
+	};
+
+	// The pcluster's particles as indices into the cell's arrays, ordered as in the pcluster. Returns false, after reporting it,
+	// if a constrained particle is not in the cell, which only a broken layout would do
+	__device__ inline bool FindGroup(const PclusterConstraints& constraints, int pcId, const int* const pclusterParticleSlots, const Cell& cell,
+		Constraints::Group& group) {
+		for (int k = 0; k < PersistentCluster::maxParticles; k++) {
+			const int local = pclusterParticleSlots[pcId * PersistentCluster::maxParticles + k] - cell.firstScId * n;
+			group.slots[k] = local >= 0 && local < cell.nScs * n ? local : -1;
+		}
+		for (int c = 0; c < constraints.nConstraints; c++)
+			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0) {
+				printf("Constrained particles of pcluster %d are not in the same cell\n", pcId);
+				return false;
+			}
+		return true;
+	}
+}
+
+// Puts the positions on the constraints before the first MD step, like GROMACS constrains the starting coordinates. Otherwise
+// the first step would, and its jump in energy would show in the energy of the run. gridDim = nGridnodes, blockDim = (16, 16, 1),
+// see ConstrainedCell
+template<typename BoundaryCondition>
+__global__ void ConstrainPositionsKernel(const SuperClustersControl scControl, const ParticleIntegrationState* const states,
+	const PclusterConstraints* const pclusterConstraints, const int* const pclusterParticleSlots, Float3 boxSize)
+{
+	using namespace ConstrainedCell;
+	LIMA_SHARED_UNINIT(Float3, positions, [maxScs * n]);
+	LIMA_SHARED_UNINIT(Float3, steps, [maxScs * n]);
+	__shared__ float invMasses[maxScs * n];
+	const Cell cell(scControl, blockIdx.x);
+	if (cell.nScs == 0)
+		return;
+	const int local = threadIdx.y * n + threadIdx.x;
+	const int scId = cell.firstScId + threadIdx.y;
+	const bool inRange = threadIdx.y < cell.nScs;
 	ParticleIntegrationState state{};
 	state.mass = 0.f;
 	if (inRange)
 		state = states[scId * n + threadIdx.x];
 	const bool active = inRange && state.mass != 0.f;
 
-	Float3 pos{}, p0{};
+	// The cell is kept in the periodic image of its first particle
+	Float3 pos{};
 	if (active) {
-		p0 = superClusters[scId].Position(0);
+		Float3 p0 = scControl.scData[cell.firstScId].Position(0);
 		BoundaryCondition::applyBCNM(p0, boxSize);
-		pos = superClusters[scId].Position(threadIdx.x);
+		pos = scControl.scData[scId].Position(threadIdx.x);
 		BoundaryCondition::applyHyperposNM(p0, pos, boxSize);
 	}
-	positions[scInBlock][threadIdx.x] = pos;
-	steps[scInBlock][threadIdx.x] = Float3{};
-	invMasses[scInBlock][threadIdx.x] = active ? 1.f / state.mass : 0.f;
-	pclusterParticles[scInBlock][threadIdx.x] = active ? state.pclusterParticle : -1;
+	positions[local] = pos;
+	steps[local] = Float3{};
+	invMasses[local] = active ? 1.f / state.mass : 0.f;
 	__syncthreads();
 
 	const int pcId = state.pclusterParticle / PersistentCluster::maxParticles;
 	if (active && state.pclusterParticle % PersistentCluster::maxParticles == 0) {
-		PclusterConstraints constraints = pclusterConstraints[pcId];
-		Constraints::Group group{ { -1, -1, -1, -1 } };
-		for (int i = 0; i < n; i++) {
-			const int particle = pclusterParticles[scInBlock][i];
-			if (particle >= 0 && particle / PersistentCluster::maxParticles == pcId)
-				group.slots[particle % PersistentCluster::maxParticles] = i;
-		}
-		for (int c = 0; c < constraints.nConstraints; c++)
-			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0)
-				constraints.nConstraints = 0;
-		if (constraints.nConstraints > 0)
-			Constraints::ConstrainSteps(constraints, group, positions[scInBlock], steps[scInBlock], invMasses[scInBlock]);
+		const PclusterConstraints constraints = pclusterConstraints[pcId];
+		Constraints::Group group{};
+		if (constraints.nConstraints > 0 && FindGroup(constraints, pcId, pclusterParticleSlots, cell, group))
+			Constraints::ConstrainSteps(constraints, group, positions, steps, invMasses);
 	}
 	__syncthreads();
 
 	if (active)
-		superClusters[scId].SetPosition(threadIdx.x, pos + steps[scInBlock][threadIdx.x]);
+		scControl.scData[scId].SetPosition(threadIdx.x, pos + steps[local]);
 }
 
 // SuperclusterIntegrateKernel with distance constraints (settled water, constraints = h-bonds), as RATTLE: the velocities are made
 // orthogonal to the constraints, and SETTLE (water) or SHAKE puts the positions after the step back on them. The position correction is added to forcePrev as
 // the constraint force, so the next step's half kick includes it, while the stored velocity stays the constrained full-step
 // velocity. A constrained group never spans pclusters, and each pcluster's constraints are solved by the thread of its first
-// particle in a fixed order, so the result is deterministic. One supercluster per 16 threads, blockDim = (16, 4, 1)
+// particle in a fixed order, so the result is deterministic. gridDim = nGridnodes, blockDim = (16, 16, 1), see ConstrainedCell
 template<typename BoundaryCondition, bool logData, bool computeVirial>
-__global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
-	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
+__global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences,
+	const SuperClustersControl scControl, ParticleIntegrationState* const states, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints,
-	const CapacityOverflow overflow, int64_t stepIndex, long long* const virialPartials)
+	const int* const pclusterParticleSlots, const CapacityOverflow overflow, int64_t stepIndex, long long* const virialPartials)
 {
-	constexpr int n = SuperCluster::maxParticles;
-	LIMA_SHARED_UNINIT(Float3, positions, [4][n]);	// Before the step
-	LIMA_SHARED_UNINIT(Float3, velocities, [4][n]);	// Then the steps
-	__shared__ float invMasses[4][n];
-	__shared__ int pclusterParticles[4][n];
-	const int scInBlock = threadIdx.y;
-	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
+	using namespace ConstrainedCell;
+	LIMA_SHARED_UNINIT(Float3, positions, [maxScs * n]);	// Before the step
+	LIMA_SHARED_UNINIT(Float3, velocities, [maxScs * n]);	// Then the steps
+	__shared__ float invMasses[maxScs * n];
+	const Cell cell(scControl, blockIdx.x);
+	if (cell.nScs == 0)
+		return;
+	const int local = threadIdx.y * n + threadIdx.x;
+	const int scId = cell.firstScId + threadIdx.y;
 	const int slot = scId * n + threadIdx.x;
+	const SuperClusterMeta* const scMeta = scControl.scMeta;
 
 	// No early returns, as the threads synchronize below
-	const bool inRange = scId < nSuperclusters;
+	const bool inRange = threadIdx.y < cell.nScs;
 	ParticleIntegrationState state{};
 	state.mass = 0.f;
 	if (inRange)
@@ -890,10 +920,10 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	ForceEnergy fe{};
 	Float3 p0{};
 	if (active) {
-		// The supercluster is kept in the periodic image of its first particle
-		p0 = superClusters[scId].Position(0);
+		// The cell is kept in the periodic image of its first particle. Its thread writes that position only after the syncs below
+		p0 = scControl.scData[cell.firstScId].Position(0);
 		BoundaryCondition::applyBCNM(p0, boxSize);
-		pos = superClusters[scId].Position(threadIdx.x);
+		pos = scControl.scData[scId].Position(threadIdx.x);
 		BoundaryCondition::applyHyperposNM(p0, pos, boxSize);
 
 		fe = forceAcc.Take<logData>(slot, primaryBondForces, extraBondForces, bondReferences, nSuperclusters * n);
@@ -912,37 +942,27 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 		fe.force = Float3{};
 		velocity = Float3{};
 	}
-	positions[scInBlock][threadIdx.x] = pos;
-	velocities[scInBlock][threadIdx.x] = velocity;
-	invMasses[scInBlock][threadIdx.x] = active && !fixed ? 1.f / state.mass : 0.f;
-	pclusterParticles[scInBlock][threadIdx.x] = active ? state.pclusterParticle : -1;
+	positions[local] = pos;
+	velocities[local] = velocity;
+	invMasses[local] = active && !fixed ? 1.f / state.mass : 0.f;
 	__syncthreads();
 
 	PclusterConstraints constraints{};
-	Constraints::Group group{ { -1, -1, -1, -1 } };
+	Constraints::Group group{};
 	Constraints::Water water{};
 	bool isWater = false;
 	if (active && indexInPc == 0) {
 		constraints = pclusterConstraints[pcId];
-		for (int i = 0; i < n; i++) {
-			const int particle = pclusterParticles[scInBlock][i];
-			if (particle >= 0 && particle / PersistentCluster::maxParticles == pcId)
-				group.slots[particle % PersistentCluster::maxParticles] = i;
-		}
-		// Pclusters with constraints are placed in superclusters whole (see ClusteringKernel), so this only guards against a broken layout
-		for (int c = 0; c < constraints.nConstraints; c++)
-			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0) {
-				printf("Constrained particles of pcluster %d are not in the same supercluster\n", pcId);
-				constraints.nConstraints = 0;
-			}
+		if (constraints.nConstraints > 0 && !FindGroup(constraints, pcId, pclusterParticleSlots, cell, group))
+			constraints.nConstraints = 0;
 		if (constraints.nConstraints > 0) {
-			Constraints::ConstrainVelocities(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
-			isWater = Constraints::FindWater(constraints, group, invMasses[scInBlock], water);
+			Constraints::ConstrainVelocities(constraints, group, positions, velocities, invMasses);
+			isWater = Constraints::FindWater(constraints, group, invMasses, water);
 		}
 	}
 	__syncthreads();
 
-	velocity = velocities[scInBlock][threadIdx.x];
+	velocity = velocities[local];
 	Float3 step{};
 	if (active)	// As IntegratePositionVVS, but without adding pos, which would cost the step most of its precision
 		step = velocity * simulation->dt + fe.force * (0.5f / state.mass * simulation->dt * simulation->dt);
@@ -959,25 +979,25 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 		step = posNext - pos;
 	}
 	__syncthreads();	// Everyone has read their velocity before the steps replace them
-	velocities[scInBlock][threadIdx.x] = step;
+	velocities[local] = step;
 	__syncthreads();
 
 	// SETTLE for rigid water, SHAKE for the rest, and for a water whose step is too large for SETTLE, which then reports it
-	if (constraints.nConstraints > 0 && !(isWater && Constraints::Settle(water, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock])))
-		Constraints::ConstrainSteps(constraints, group, positions[scInBlock], velocities[scInBlock], invMasses[scInBlock]);
+	if (constraints.nConstraints > 0 && !(isWater && Constraints::Settle(water, positions, velocities, invMasses)))
+		Constraints::ConstrainSteps(constraints, group, positions, velocities, invMasses);
 	__syncthreads();
 
-	const Float3 constrainedStep = velocities[scInBlock][threadIdx.x];
+	const Float3 constrainedStep = velocities[local];
 	const Float3 posNext = pos + constrainedStep;
 	if (active && !(constrainedStep.lenSquared() < CapacityOverflow::maxStep * CapacityOverflow::maxStep) && !liveEdit.Any())
-		overflow.Report(CapacityOverflow::Unstable, scMeta[scId].globalParticleIds[threadIdx.x], static_cast<int>(stepIndex), 0);
+		overflow.Report(CapacityOverflow::Unstable, pidGlobal, static_cast<int>(stepIndex), 0);
 	// The correction to the step is dt^2/2m of the constraint force. Fixed particles are not corrected, so they get none
 	const Float3 constraintForce = active
 		? (constrainedStep - step) * (2.f * state.mass / (simulation->dt * simulation->dt)) : Float3{};
 	float constraintVirial = active ? (pos - p0).dot(constraintForce) : 0.f;
 	if constexpr (computeVirial) {
 		for (int offset = 8; offset > 0; offset >>= 1)
-			constraintVirial += __shfl_down_sync(0xFFFFFFFFu, constraintVirial, offset, 16);
+			constraintVirial += __shfl_down_sync(LIMA_FULL_WARP_MASK, constraintVirial, offset, 16);
 		if (inRange && threadIdx.x == 0)
 			virialPartials[scId] = Virial::ToFixed(constraintVirial);
 	}
@@ -991,7 +1011,7 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	if constexpr (logData)
 		log.Log(*simulation, pcId, indexInPc, posNext, fe, state.velocity.len());
 
-	superClusters[scId].SetPosition(threadIdx.x, posNext);
+	scControl.scData[scId].SetPosition(threadIdx.x, posNext);
 }
 
 // Isotropic pressure coupling preserves fractional coordinates. Integration states stay in the same slots and velocities are

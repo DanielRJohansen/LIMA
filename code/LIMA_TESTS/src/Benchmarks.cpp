@@ -158,14 +158,14 @@ namespace Benchmarks {
 	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance, bool barostat) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
-			workDir / "sim_params.txt", { std::chrono::microseconds{ 3500 }, std::chrono::microseconds{ 7500 } },
+			workDir / "sim_params.txt", { std::chrono::microseconds{ 3300 }, std::chrono::microseconds{ 7500 } },
 			nSteps, nRuns, 0, printPerformance, barostat);
 	}
 
 	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance) {
 		const fs::path workDir = TestsDir() / "benchmarking/t4";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
-			workDir / "../sim_params.txt", { std::chrono::microseconds{ 100 }, std::chrono::microseconds{ 400 } },
+			workDir / "../sim_params.txt", { std::chrono::microseconds{ 90 }, std::chrono::microseconds{ 400 } },
 			nSteps, nRuns, 2000, printPerformance);
 	}
 }

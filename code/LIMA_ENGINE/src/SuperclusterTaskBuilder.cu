@@ -290,8 +290,8 @@ __device__ inline uint32_t BondedQueryMask(const StaticSet<size>& set, const int
 __constant__ uint8_t quarterMaskEmitOrder[16] = { 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8, 0 };
 
 // gridDim = nSuperclusters, blockDim = 32. Writes the QuarterEntries of each supercluster: one per quarter of a neighbor with a pair
-// within the list radius. Sorted by ownQuarterMask in quarterMaskEmitOrder, and within a class by (chunk of 32 neighbors, query
-// quarter, neighbor), so the result is deterministic.
+// within the list radius. Sorted by ownQuarterMask in quarterMaskEmitOrder, and within a class by (chunk of 32 neighbors, neighbor,
+// query quarter), so the result is deterministic.
 // EM (allQuarters) also writes entries for the quarters of other superclusters without pairs in range, so every quarter of their
 // result gets written, the index of each entry's result, and the result range of each supercluster
 template <bool allQuarters>
@@ -381,15 +381,37 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 			}
 		}
 
+		// Within a class, order by (neighbor, query quarter), so a warp's groups get the quarters of the same neighbor and their
+		// force atomics share a cache line (the accumulator is SoA, a supercluster's 16 x components are one line)
+		// classLanes[c][jq]: the lanes whose entry for query quarter jq has class c
+		__shared__ uint32_t classLanes[noEntry + 1][4];
+		for (int i = lane; i < (noEntry + 1) * 4; i += 32)
+			classLanes[i / 4][i % 4] = 0;
+		__syncwarp();
+		uint32_t classes[4];
 		for (int jq = 0; jq < 4; jq++) {
-			const uint32_t maskClass = validNeighbor ? EntryClass(ownMasks, jq, queryScId) : noEntry;
-			const uint32_t sameClass = __match_any_sync(LIMA_FULL_WARP_MASK, maskClass);
-			const int rank = __popc(sameClass & ((1u << lane) - 1));
-			const int dst = maskClass != noEntry ? classOffsets[maskClass] + rank : 0;
-			__syncwarp();
-			if (maskClass != noEntry && rank == 0)
-				classOffsets[maskClass] += __popc(sameClass);
-			__syncwarp();
+			classes[jq] = validNeighbor ? EntryClass(ownMasks, jq, queryScId) : noEntry;
+			const uint32_t sameClass = __match_any_sync(LIMA_FULL_WARP_MASK, classes[jq]);
+			if (lane == __ffs(sameClass) - 1)
+				classLanes[classes[jq]][jq] = sameClass;
+		}
+		__syncwarp();
+		const uint32_t lowerLanes = (1u << lane) - 1;
+		int dsts[4];
+		for (int jq = 0; jq < 4; jq++) {
+			int rank = 0;
+			for (int jq2 = 0; jq2 < 4; jq2++)
+				rank += __popc(classLanes[classes[jq]][jq2] & lowerLanes) + (jq2 < jq && classes[jq2] == classes[jq]);
+			dsts[jq] = classes[jq] != noEntry ? classOffsets[classes[jq]] + rank : 0;
+		}
+		__syncwarp();
+		if (lane < 16)
+			classOffsets[lane] += __popc(classLanes[lane][0]) + __popc(classLanes[lane][1]) + __popc(classLanes[lane][2]) + __popc(classLanes[lane][3]);
+		__syncwarp();
+
+		for (int jq = 0; jq < 4; jq++) {
+			const uint32_t maskClass = classes[jq];
+			const int dst = dsts[jq];
 			if (maskClass == noEntry)
 				continue;
 

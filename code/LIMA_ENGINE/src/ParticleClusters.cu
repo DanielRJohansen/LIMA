@@ -72,7 +72,6 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	}
 
 
-	//const Float3 pos = pClustersData[pcId].pqd[0].position; // TODO: use actual mean pos?
 	PeriodicBoundaryCondition::ApplyBC(meanPos, boxSizeFloat, boxSizeFloatInv);
 	const NodeIndex blockId = CellOf(meanPos, boxSize, boxSizeFloat);
 	if constexpr (INDEXING_CHECKS) {
@@ -89,7 +88,7 @@ __global__ void GetPclusterPositions(PClusterTransfermodule transferModule, Pers
 	int index = blockIndex * PClusterTransfermodule::maxClustersPerBlock + indexInBlock;
 
 	transferModule.idsOfPclustersInBlocks[index] = pcId;
-	transferModule.meanPositionOfPClustersPerBlock[index] = meanPos; // TODO: THis is not even the actual meanposition is it?
+	transferModule.meanPositionOfPClustersPerBlock[index] = meanPos;
 }
 
 

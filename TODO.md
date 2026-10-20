@@ -14,9 +14,6 @@ Sections:
 # 1. Priority: GROMACS parity (Salad benchmark)
 
 ## Villin (Salad, AMBER99SB) vs GROMACS 2024.2: remaining issues (2026-10-14)
-- **Now matching:** bonded terms, LJ, 1-4 pairs (fudgeLJ/fudgeQQ), periodic impropers and electrostatics (1-4 Coulomb, Ewald exclusion correction).
-  - Forces to 1e-4, electrostatic forces to 0.04% RMS.
-  - Coulomb energy -4779.8 vs -4780.9 kJ/mol.
 - **Left:** fixture `tests/automatedtests/ForceComparisons/VillinAmber` has zero charges. A charged fixture needs an RMS rather than a per-atom criterion, as PME differs by up to 0.4% per atom.
 - Smaller issue (exclusions) found on the way: see [Correctness issues](#3-correctness-issues).
 
@@ -31,8 +28,7 @@ Compare both outcome and speed.
 - **Performance:** Salad lists GROMACS ns/day, but measure GROMACS on this PC too (WSL, GPU build).
   - Match settings: dt, cutoff, PME, nstlist, constraints, output frequency.
   - LIMA via `lima mdrun`, which prints the same ns/day table.
-- **Blockers** observed in single 100 ps Villin/RNase runs (2026-10-13):
-  - Once timestamps and boxes are correct, run the common RMSD/RMSF/Rg/RDF/H-bond/DSSP analyses on one LIMA and one GROMACS trajectory per system before adding replicate ensembles.
+- Run the common RMSD/RMSF/Rg/RDF/H-bond/DSSP analyses on one LIMA and one GROMACS trajectory per system before adding replicate ensembles.
 
 ---
 
@@ -41,18 +37,11 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 
 ## Topology / input
 - **`[ constraints ]` sections:** not read yet. constraints = h-bonds and `[ settles ]` are handled (see Constraints below), but topologies that list their constraints explicitly lose them.
-- **MDP validation:** explicitly validate/reject unsupported settings instead of silently ignoring them: `rvdw`, PME grid settings, neighbor-list behavior, constraints, thermostat parameters, output cadence, seeds.
+- **MDP validation:** integrator, pbc, coulombtype, rvdw, output cadence, thermostat/barostat and seeds are validated. Still silently ignored: PME grid settings (`fourierspacing`, `pme-order`), `comm-mode`, and unknown keys in general.
 - **Regression coverage:** add a small AMBER99SB/TIP3P constrained-water fixture with tests for topology loading, constraint preservation, short-run stability, and readable `.trr` output. Validate against GROMACS observables, not frame-by-frame coordinates.
 
 ## Constraints
-**Done** for constraints = h-bonds (2026-10-13):
-- Bonds to hydrogens, and 3-atom water made rigid via its H-H distance.
-- Groups (<=4 atoms, <=3 constraints) are kept within one pcluster; `SuperclusterIntegrateConstrainedKernel` solves them per pcluster with SHAKE/RATTLE (deterministic, one thread per pcluster).
-- Constrained bonds stay in the bond lists (0 energy at the constrained length), so EM and MD can share a box.
-- T4 in water: constraint error < 1e-5, energy conservation better than flexible at 2 fs.
-- SETTLE for water done 2026-10-13 (constrained integrate kernel 36 -> 15 us on T4 in water).
-
-**Left:**
+constraints = h-bonds (SHAKE/RATTLE per pcluster) and SETTLE are done. Left:
 - **LINCS / constraints = all-bonds:** postponed, h-bonds covers the usual CHARMM/AMBER setups. Needs coupled constraints across pclusters, ie. across superclusters, so a separate deterministic solver.
 - **Position precision limits all constraints:** positions are absolute float coordinates in the box, so a 0.1 nm bond holds only to ~6e-6 relative whatever the solver. SETTLE assumes the water is exactly rigid before each step, so it re-snaps the rounding every step: T4 VC over 10k steps 1.50e-5 vs 1.33e-5 with SHAKE. Fix: store positions relative to the supercluster (or cell), as GROMACS keeps coordinates local. Would also help everything else.
 - **Hydrogen mass repartitioning** for 4-5 fs steps. With constraints = h-bonds, T4 (vacuum and water) already runs 2000 steps at 4 fs without it; check energy conservation there first.
@@ -60,12 +49,9 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 - Not yet compared with a constrained GROMACS run (bond lengths, water RDF, energy drift).
 
 ## Thermostats
-- **Done:** v-rescale (Bussi), 2026-10-13. Deterministic (seeded, own deviates). T4 in water: mean 299.8 K, fluctuations 1.598 K vs 1.600 canonical.
-- **Done:** GROMACS v-rescale compatibility, 2026-10-15. LIMA explicitly supports `integrator = md-vv` and rejects leap-frog `md`; velocity Verlet couples every step and applies each stochastic rescaling as one impulse.
 - **Missing:** Nose-Hoover, Langevin/stochastic dynamics, per-group coupling (eg. protein vs solvent).
 
 ## Constant pressure (NPT)
-- **Done:** isotropic Berendsen coupling, 2026-10-15. Deterministic fixed-point virials cover nonbonded, bonded, constraints and reciprocal PME; GPU box scaling updates the neighbor grid and PME, with hysteresis around grid-size changes. Align `steps_per_pressure_measurement` with `stepsPerNlistupdate` to reuse its rebuild.
 - **Missing:** stochastic cell rescaling / a canonical NPT barostat, anisotropic or semi-isotropic coupling, and independently barostatted simulations in one batch.
 
 ## Restraints and pulling
@@ -77,7 +63,6 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 - Free-energy perturbation (lambda coupling)
 - Center-of-mass motion removal
 - Energy groups
-- .edr-style energy output
 
 ---
 
@@ -119,7 +104,6 @@ Not set-in-stone todos; concepts worth exploring. Some make the most sense toget
 - **Engine on its own thread:** instead of Env having a thread dedicated to RunSimulation, Engine gets its own thread, so an mdrun only steps and updates the renderpipeline/simstatus. Engine would persist, so slightly lower setup latency. Engine must free its memory when idle, so we're not hogging 10 GB VRAM while Env just does preprocessing.
 - **EmitQuarterEntriesKernel:** now ~0.77 ms per STMV rebuild (was 1.37). The cost was the bonded-pair exclusions (~1 active lane, dependent global loads): own particle ids now in shared memory, query ids loaded once per quarter, one pass over each bonded set for all 4 query particles. Rejected: int4 reads of the set (slower). What's left is mostly writing ~300 MB of QuarterEntries; shrinking that means changing NB's entry format.
 - **FindNeighborsKernel:** now ~2.7 ms per STMV rebuild (was 3.9).
-  - Done: own-particle vs candidate-sphere prefilter (196 -> 140 pair-tested candidates/SC, 90 become neighbors), branch-free pair test, `__launch_bounds__(128, 8)` for 64 regs.
   - Issue-bound (~68% issue active), so latency tricks don't help: 2 candidates per warp iteration and a candidate-particles vs own-sphere filter were both slower.
   - Left: cell enumeration (~74 cells/SC, ~7 of 32 lanes active) and the bonded check (~8%).
 - **nstlist vs list-buffer tuning:** a bigger buffer and fewer rebuilds may be cheaper overall. A parameter/accuracy decision.
@@ -156,11 +140,6 @@ Compiling takes forever. Can we optimize a bit?
 - Undecided shape: a gmx-style `lima density -c conf.gro -f traj.trr` from files, an `mdrun --density` flag, and how to compare/average groups of runs (eg. LABEL=GLOB arguments).
 - The analyses behind ShowcaseMultisim (`SimAnalysis::WaterSelfDiffusion`) need the same before the showcase can be reproduced with lima commands.
 
-## Solvate by tiling a pre-equilibrated water box
-Possibly done by commit 78acee8b ("Solvate by tiling an equilibrated water box"); verify and remove.
-- Like gmx solvate with spc216.gro, instead of a jittered cubic lattice (`SimulationBuilder::SolvateGrofile`).
-- Faster, the water starts with a realistic structure, and needs less EM/equilibration. The lattice still shows faintly as a sawtooth in water density profiles of short runs.
-
 ## Codebase TODOs
 Find and solve TODOs spread around the codebase.
 - `BoundaryConditionPublic.cpp`: the switches on `BoundaryConditionSelect` use `case None:`, which is `SupernaturalForcesSelect::None`; it only works because both are 0. Should be `NoBC` (clang warns: -Wenum-compare-switch).
@@ -183,95 +162,28 @@ Find and solve TODOs spread around the codebase.
 ---
 
 # 7. AMD GPU support (HIP)
-Goal: run simulations on AMD GPUs via HIP, from the same source.
+Runs on the Radeon 780M (gfx1103, RDNA3 iGPU, wave32) with Windows HIP SDK 7.2, from the same source: `GpuRuntime.h` + `LIMA_ENGINE/src/platform/`. Rules for kernel code are in CLAUDE.md.
 
-## Rules
-- CUDA is the source of truth. Optimize for CUDA only; AMD gets what falls out.
-- Zero NVIDIA impact: HIP plumbing compiles away under nvcc.
-- Separate HIP build preset; NVIDIA builds need no ROCm.
-- Hybrid: every project may use the CUDA runtime names (`cudaMalloc`, `cudaStream_t`, `CudaBuffer`...) through the shim; nothing outside Engine needs to be vendor free. Engine stays largely unchanged.
-- An AMD break never blocks a CUDA commit.
+## Building on the laptop
+- Configure from a VS 2022 14.44 developer shell (`vcvars64.bat -vcvars_ver=14.44`): hipcc 7.2 can't parse the VS 2026 (14.5x) STL. VS configuration `x64-Release-HIP`, or `cmake -S . -B build/x64-Release-HIP -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIMA_GPU_BACKEND=HIP -DCMAKE_CXX_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_C_COMPILER=<ROCm>/bin/clang.exe -DCMAKE_HIP_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_PREFIX_PATH=<ROCm>`.
+- Run with `%HIP_PATH%bin` on PATH (else 0xC0000135, DLL not found).
+- ROCm 7.2 also compiles on the Windows 10 desktop, so compile checks need no AMD GPU.
 
-## Design
-One Engine source tree for both backends; every kernel is written once (no hipified copy, no `LIMA_ENGINE_HIP`).
-- Files:
-  - `LIMA_BASE/include/GpuRuntime.h`: host runtime names (malloc/memcpy, streams, events, errors, profiler, fp16 header). The HIP branch maps the CUDA names to HIP; grow it from `tests/hipspike/GpuCompat.h` + the report's runtime list.
-  - `LIMA_ENGINE/src/platform/DeviceIntrinsics.cuh` + `BlockCopy.cuh`: named device helpers for what differs (see step 4).
-  - `LIMA_ENGINE/src/platform/GpuCub.cuh`: `namespace gpucub` = `cub` / `hipcub`.
-  - `LIMA_ENGINE/src/platform/GpuFft.h`: the 5 cuFFT names PME uses -> hipFFT.
-- Rules:
-  - CUDA builds compile to identical SASS: each helper expands to today's code under CUDA; verify every step with `cuobjdump -sass` before/after.
-  - No vendor `#if` inside kernels; if a function needs two versions, both go in the platform header.
-  - HIP-only paths only where needed to compile or be correct, never for tuning.
-  - HIP checks at startup that the device's warpSize is 32 and throws otherwise; the hardcoded 32s stay.
-- CMake: cache var `LIMA_GPU_BACKEND` = `CUDA` (default) | `HIP`; enable only that language. Under HIP the `.cu` files keep their names with `LANGUAGE HIP`, Engine links `hip::hipfft` + `hip::hipcub`, flags per backend (fast-math under HIP: decide later, determinism first).
-- Preset `x64-Release-HIP`: own build dir, VS 2022 v143 (14.44) toolset, gfx1103. Same exe names. `x64-Release` (CUDA) untouched.
-- ConvexHullEngine: left out of HIP builds (stub that throws "not available on HIP"); MD's hull features are CUDA only for now.
-- Support RDNA wave32 only at first; wave64 (MI-series) would need generic warp-size handling.
-
-## Tests
-- Determinism is within-backend: bitwise/batched tests compare AMD to AMD.
-- Cross-vendor results won't be bitwise equal: exact references and VC/drift targets are kept per backend.
-- Perf limits are keyed by GPU; GPUs without limits run perf tests report-only.
-
-## Porting order
-1. Prep, no Engine changes:
-   - Done (2026-10-15): dead CUDA code outside Engine removed; `LIMA_BASE/include/GpuRuntime.h` (CUDA branch only) replaces every `cuda_runtime.h`/`cuda_profiler_api.h` include, SASS unchanged.
-   - Still direct: `cuda_fp16.h` in `Bodies.cuh` (HIP: `hip_fp16.h`), CUB/cuFFT in Engine.
-   - Keep `CudaBuffer`, `RenderDataPipe`, `genericErrorCheck`, `GenericCopyToHost` where they are; they build for HIP through the shim. A rename (e.g. `GpuBuffer`) is optional and separate.
-2. Done (2026-10-15): **go**. Card/OS support confirmed, hipify report in `docs/hip/hipify_report.txt`.
-   - Setup: HIP SDK for Windows 7.2 (`C:\Program Files\AMD\ROCm\7.2`), Radeon driver 32.0.13022.3006. `hipInfo` lists the 780M as gfx1103, warpSize 32. Stock ROCm libraries, no community builds or env vars needed.
-   - Spike (`tests/hipspike/`): SPIKE_PASS. R2C mode error 3.3e-8, round trip 5.4e-7.
-     - hipcc 7.2 (clang 21) can't parse the VS 2026 STL (MSVC 14.51 made `isgreater` etc. `constexpr`, which HIP takes as host+device): build in a VS 2022 (14.44) developer shell (`vcvars64.bat`), then `hipcc -x hip --offload-arch=gfx1103 -O2 spike.cu -o spike.exe -lhipfft`. Run with `%HIP_PATH%bin` on PATH (else 0xC0000135, DLL not found). Don't pass `-L"%HIP_PATH%lib"`: hipcc splits it on the space.
-     - The HIP preset (step 3) needs the same: the v143 (14.44) toolset, until a ROCm release supports 14.5x.
-     - `__HIP_PLATFORM_AMD__` is only defined by the HIP headers, so detect hipcc with `__HIP__` (clang's own) before including anything.
-   - hipify report: `hipify-clang --examine` needed workarounds for CUDA 13.1 (it supports <= 12.8); see the report header. No unconverted names. Compile probes for what hipify doesn't judge:
-     - **Warp masks must be 64-bit** under HIP (static_assert): the 52 `0xFFFFFFFFu` masks need a named full-warp mask macro. `__ballot_sync` returns 64 bits; storing it in `uint32_t` is fine on wave32.
-     - **`__ldcg`** exists only for half types: 6 uses in `EnergyMinimization.cuh:194`. Needs a load that is coherent across CUs, not a plain load.
-     - **PTX:** `asm("trap;")` (2) -> `__builtin_trap()`; `ex2.approx.ftz.f32` in `DeviceAlgorithmsPrivate.cuh:68` -> `exp2f`/`__builtin_amdgcn_exp2f`.
-     - **`cooperative_groups::memcpy_async`/`wait`** (`ParticleClusters.cu:499`) don't exist in HIP: plain block-strided copy + `__syncthreads`.
-     - OK as is: all other `*_sync` warp ops incl. `__match_any_sync` and `__reduce_*_sync`, `__syncwarp`, `__popc`, `__ffs`, `__ldg`, `__half2float`, `__launch_bounds__`.
-   - Runtime API list for `GpuRuntime.h`: the "converted references" table in the report (malloc/memcpy/memset (+Async), streams, events, `cudaStreamWaitEvent`, mapped host alloc, `cudaMallocManaged`, device props, errors, profiler). Libraries: CUB `DeviceReduce`/`DeviceScan`/`BlockReduce` -> hipCUB; cuFFT `PlanMany`/`SetStream`/`ExecR2C`/`ExecC2R`/`Destroy` -> hipFFT (proven by the spike).
-3. Done (2026-10-15): build preset + shim. CUDA build: SASS identical, batch tests pass.
-   - `LIMA_GPU_BACKEND` (CUDA|HIP) in the top-level CMake; `x64-Release-HIP` in CMakeSettings.json. Configure from a VS 2022 14.44 shell (`vcvars64.bat -vcvars_ver=14.44`); ROCm 7.2 also compiles on the Windows 10 desktop (no AMD GPU needed to build).
-   - CMake can't mix MSVC and Clang, so HIP builds compile all C/C++ with ROCm's clang++ (MSVC STL/ABI). `hip::device`'s `-x hip` is cleared so only the .cu files compile as HIP.
-   - HIP .cu files are C++20 (`CMAKE_HIP_STANDARD`): from C++23 the MSVC STL's constexpr isinf/isnan clash with HIP's device overloads. Engine uses no C++23 features so far.
-   - `GpuRuntime.h` HIP branch, `platform/GpuFft.h`, `platform/GpuCubBlock.cuh` + `GpuCubDevice.cuh` (split so the CUDA SASS stays identical: the device headers add a kernel). ConvexHullEngine is a throwing stub under HIP.
-   - Under HIP, everything compiles except the engine kernels: BASE, TOOLS, MD, TESTCASES, Engine's .cpp and CubWrappers.cu. Clang-only fixes in host code: `MDFiles.h` (inline ctors needing incomplete types), `SimulationBuilder.cpp` (`Int3 = 0`).
-   - Noise to silence later: `hipError_t` is `[[nodiscard]]` (~60 warnings).
-4. HIP compile done (2026-10-15): every target builds and links under HIP; CUDA SASS identical, batch tests pass.
-   - `platform/DeviceIntrinsics.cuh`: `WarpMask`/`LIMA_FULL_WARP_MASK` (52 masks), `DeviceIntrinsics::Trap`, `Exp2Approx` (PTX ex2), `LoadCoherent` (`__ldcg`; HIP: agent-scope relaxed atomic load, so a stale per-CU L1 line can't be read), `LIMA_SHARED_UNINIT` (8 `__shared__ Float3` arrays: nvcc ignores their initializers, clang rejects them). `platform/BlockCopy.cuh`: `memcpy_async` (separate header: cooperative_groups adds device globals, which shifted PME's SASS constant bank offsets).
-   - `LIMA_GPU_COMPILER` (in `GpuRuntime.h`) replaces `#ifdef __CUDACC__`. Kernel launches written `<< <` / `>> >` (VS autoformat) became `<<<` / `>>>`: clang needs the tokens.
-   - HIP only: Engine's constructor throws unless the GPU's warpSize is 32.
-   - Next, on the laptop (780M). Pull (`git fetch` + `git reset --hard origin/HIPport`), then from a VS 2022 14.44 developer shell configure `x64-Release-HIP` (VS configuration, or `cmake -S . -B build/x64-Release-HIP -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLIMA_GPU_BACKEND=HIP -DCMAKE_CXX_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_C_COMPILER=<ROCm>/bin/clang.exe -DCMAKE_HIP_COMPILER=<ROCm>/bin/clang++.exe -DCMAKE_PREFIX_PATH=<ROCm>`) and build. Run with `%HIP_PATH%bin` on PATH. In order, recording pass/fail, crashes and timings here:
-     1. `agenttesting.exe --engine-batch-tests`: batched vs standalone, bitwise within HIP. The first determinism check on AMD.
-     2. `LIMA_EM_LABEL=hip780m agenttesting.exe --energy-minimization-tests`: compare results_hip780m with the CUDA baseline (not bitwise).
-     3. `limatest.exe` (RunAllUnitTests), report only: exact references and VC/drift targets are CUDA's, so mismatches are expected; note which fail and by how much (per-backend references come later).
-     4. If something crashes or hangs: first suspects are `LoadCoherent` (EM), `BlockCopyAsync` (clustering), and warp-mask/`__match_any_sync` semantics.
-   - **First run on the 780M (2026-10-15, 3293b308): it runs.** Configure + build from scratch worked as written above (1091 warnings, 0 errors). No crashes or hangs.
-     1. `--engine-batch-tests`: **pass**, bitwise within HIP (315 s).
-     2. EM tests: not run. `LIMA_data/EnergyMinimizationTests` exists only on the desktop (not in the LIMA_data repo); copy it over to run them.
-     3. `limatest.exe`: 27/39 pass (369 s). Pass: all force/potential sanity tests, **Deterministic Simulations**, Constraints, T4Lysozyme VC 2.851e-06 / 2.844e-06, PME vs Ewald (force 0.10%, energy 0.06%), angle/dihedral/Met/8Res VC within targets, the builder/ToGmx/topology tests.
-        - Energy-gradient targets exceeded (CUDA-calibrated, expected): Pool 3.421e-08 / 3.421e-08 (equal to the CUDA value), PoolCompSol 2.31e-07 / 1.02e-07, Singlebond 4.04e-07 / 2.62e-07, ImproperDihedral 4.59e-05 / 4.47e-05, Solvent 7.91e-08 / 7.62e-08. PoolCompSol (2.3x) and Singlebond (1.5x) are the largest; worth a look when per-backend targets are set.
-        - Perf: four batched T4 1.19x vs single (56.1 vs 47.1 ns/day), limit 1.25x. Needs a per-GPU limit.
-        - Laptop data, not HIP: ForceComparisons, LoadT4, T4 throw "Unknown simulation parameter 'save_trajectory=false'" (in `LIMA_data/benchmarking/sim_params.txt` and `CompareWithOtherMdEngines/Forcecomparison1step/sim_params.txt`: the LIMA_data repo is behind the desktop's data). 3J3Q/STMV inputs missing (large systems are skipped on AMD anyway).
-   - **T4 speed on the 780M (2026-10-16), 48 ns/day:** not memory placement (hipMalloc and host memory both 75-80 GB/s, ~300 ns latency) and not the CPU (same speed pinned to 1 core). Found:
-     - HIP had no fast math (CUDA uses `-use_fast_math`): IEEE division/exp expansions in NB and integrate. **Fixed**: `-fgpu-flush-denormals-to-zero -fno-hip-fp32-correctly-rounded-divide-sqrt -fapprox-func` on Engine's HIP sources, +16%. Batch tests still bitwise; limatest drift: Pool/PoolCompSol/Improper now pass, Anglebond 7.2e-07 / 2.5e-07 now over, Singlebond/Met/Solvent still slightly over.
-     - Stream fork/join costs ~300 us/step under Windows HIP (event waits, independent of stream count); one stream: +11%. Not fixed.
-     - NB `__launch_bounds__(64, 16)` caps it at 64 VGPRs with 48 B/lane scratch spills; without the min-blocks hint +5%. Not fixed (HIP-only tuning).
-     - Not the cause: NB's 64-bit atomics (tripling them costs ~0.05 ms), dead printf, shuffles (few).
-     - The iGPU's clocks ramp up under load (FMA bench 1.95 -> 4.4 TFLOP/s over 3 runs).
-   - limatest on HIP skips the performance section and only reports the batched-T4 throughput ratio (the limits are the CUDA machine's). It still takes ~260 s on the 780M: the physics tests dominate.
-5. Warp-level kernels (neighbor search, NB) + determinism tests
-6. PME (hipFFT), test suite (small systems)
-7. Remaining features, rendering interop
+## Open
+- EM tests not run on HIP: `LIMA_data/EnergyMinimizationTests` exists only on the desktop; copy it over, then `LIMA_EM_LABEL=hip780m agenttesting.exe --energy-minimization-tests` and compare with the CUDA baseline (not bitwise).
+- Per-backend VC/drift targets: on HIP (fast math) Anglebond 7.2e-07 / 2.5e-07 is over, Singlebond/Met/Solvent slightly over.
+- Per-GPU perf limits: batched T4 on the 780M is 1.19x vs single, limit 1.25x.
+- The laptop's LIMA_data is behind the desktop's (`save_trajectory=false` unknown in ForceComparisons/LoadT4/T4 sim_params).
+- Silence the ~60 `[[nodiscard]]` `hipError_t` warnings.
+- Remaining features and rendering interop (first milestone was headless).
+- Known HIP-only performance issues, not addressed (no HIP-only tuning for now):
+  - Stream fork/join costs ~300 us/step under Windows HIP (event waits, independent of stream count); one stream: +11%.
+  - NB `__launch_bounds__(64, 16)` caps it at 64 VGPRs with 48 B/lane scratch spills; without the min-blocks hint +5%.
 
 ## Decisions (2026-10-15)
-- Target: Radeon 780M (gfx1103, RDNA3 iGPU, wave32) on Windows HIP SDK. Not officially supported by AMD, but community builds run; start with a spike (one kernel + a small hipFFT transform) before any refactor.
-- Shim header, not a hipify-generated tree.
 - AMD validated manually on the laptop, before releases and after big engine changes.
-- First milestone: headless (`lima mdrun` + tests); rendering later.
 - No HIP binaries shipped until it runs well.
-- No HIP-only tuning for now.
-- ConvexHullEngine stays CUDA-only and is left out of HIP builds (2026-10-15); merging it into Engine is a later sprint.
+- ConvexHullEngine stays CUDA-only and is left out of HIP builds; merging it into Engine is a later sprint.
 - Small systems only on AMD (no STMV/3J3Q); per-GPU test limits skip the large ones.
+- Determinism is within-backend; cross-vendor results are not bitwise equal, so exact references and VC/drift targets are kept per backend.
+- RDNA wave32 only; wave64 (MI-series) would need generic warp-size handling.

@@ -105,39 +105,11 @@ namespace PhysicsUtilsDevice {
 		*/
 		
 
-		if constexpr (ERFC_USE_CHEBYSHEV_APPROXIMATION) {
-			constexpr float a0 = 1.0021710689;
-			constexpr float a1 = -0.1573428973;
-			constexpr float a2 = 2.6808707411;
-			constexpr float a3 = -29.9956062655;
-			constexpr float a4 = 57.2335637829;
-			constexpr float a5 = -28.4043932874;
-			constexpr float a6 = -22.0595037569;
-			constexpr float a7 = 27.4957110932;
-			constexpr float a8 = -7.7900877300;
+		float erfcTerm = fasterfc(dist * ewaldKappa);
+		//const float erfcTerm = erfc(dist * kappa);
+		float scalar = erfcTerm + 2.f * ewaldKappa / PI_sqrt * dist * exp(-ewaldKappa * ewaldKappa * distSq);
 
-			float x = dist;
-
-			float scalar =  (((((((a8 * x + a7) * x + a6) * x + a5) * x + a4) * x + a3) * x + a2) * x + a1) * x + a0;
-
-			// TODO: WARNING: DANGER: This is being called with dist > 2, figure out where that comes from!!
-			//if constexpr (FORCE_CHECKS) {
-			//	if (scalar < -0.1f || scalar > 1.1f)
-			//		printf("Scalar out of bounds: %f  dist: %f\n", scalar, dist);
-			//}
-
-			// handle small numeric errors
-			scalar = std::clamp(scalar, 0.f, 1.f);
-
-			return scalar;
-		}
-		else {
-			float erfcTerm = fasterfc(dist * ewaldKappa);
-			//const float erfcTerm = erfc(dist * kappa);
-			float scalar = erfcTerm + 2.f * ewaldKappa / PI_sqrt * dist * exp(-ewaldKappa * ewaldKappa * distSq);
-
-			return scalar;
-		}
+		return scalar;
 	}
 
 	__device__ inline Float3 CalcCoulumbForceTrueImplementation(const float chargeProduct, const Float3& diff, const float distSq, const float ewaldKappa)
@@ -159,7 +131,6 @@ namespace PhysicsUtilsDevice {
 	}
 
 
-	// TODO: Include modified coulumb constant here
 	__device__ inline Float3 CalcCoulumbForce(const float chargeProduct, const Float3& diff, float distSq, const float ewaldKappa) {
 		return CalcCoulumbForceTrueImplementation(chargeProduct, diff, diff.lenSquared(), ewaldKappa);
 	}

@@ -13,8 +13,6 @@
 #include "Constants.h"
 #include <array>
 
-// TODO: EASY: LARGE: Its a huge waste that the boxsize is a Int3, when it really should be a packed into a single 32 bit DWORD..
-// 1024 nm boxsize is a reasonable limitation. However we cant use the same type for PME grid obviously
 struct Int3 {
 	constexpr Int3() {}
 	constexpr Int3(const int& x, const int& y, const int& z) : x(x), y(y), z(z) {}

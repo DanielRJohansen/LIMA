@@ -231,13 +231,6 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 	std::vector<int> instanceMoleculetype;
 	int nParticles = 0;
 	for (const TopologyFile::MoleculeEntry& molecule : system.Instances()) {
-
-#if ENABLE_SOLVENTS != 1
-		if (molecule.name == "SOL" || molecule.name == "TIP3") {// TODO: Add the other Solvent labels
-			continue;
-		}
-#endif
-
 		const TopologyFile::Moleculetype& molType = *molecule.moleculetype;
 		if (molType.atoms.empty())
 			throw std::runtime_error("Molecule has no atoms");
@@ -338,12 +331,10 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			activeLJParamIndices[i].push_back(typeIndices[type]);
 	}
 
-#if ENABLE_SOLVENTS == 1	// Otherwise solvents are skipped above, and the counts legitimately differ
 	// Every particle below indexes the coordinates, so a mismatch would read past their end
 	if (nParticles != static_cast<int>(grofile.atoms.size()))
 		throw std::runtime_error(Lima::Format("The topology describes {} atoms, but the coordinates contain {}",
 			nParticles, grofile.atoms.size()));
-#endif
 
 	particles.reserve(nParticles);
 	for (size_t instanceId = 0; instanceId < moleculeInstances.size(); instanceId++) {

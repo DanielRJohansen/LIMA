@@ -142,14 +142,6 @@ namespace MDFiles {
 		std::shared_ptr<TopologyFile> topfile;
 	};
 
-	// Maybe add simparams here too?
-	struct SimulationFilesCollection {
-		SimulationFilesCollection() = default;	// Not {}: that needs ~TopologyFile here, where it is incomplete
-		SimulationFilesCollection(const fs::path& workDir);
-		std::unique_ptr<GroFile> grofile;
-		std::unique_ptr<TopologyFile> topfile;
-	};
-	
 	void Dump(Trajectory& trajectory, const fs::path& path);
 }
 
@@ -401,8 +393,6 @@ struct TopologyFile::GenericBond{
 	int funct{};
 
 	std::optional<ParametersType> parameters = std::nullopt;
-
-	//std::string sourceLine{};	// used for debugging	TODO: remove
 
 	void composeString(std::ostringstream & oss) const {
 		const int width = 10;

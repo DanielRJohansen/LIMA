@@ -25,7 +25,6 @@ const bool ENABLE_UREYBRADLEY = true;
 const bool ENABLE_ERFC_FOR_EWALD = true;
 const bool USE_PRECOMPUTED_BSPLINES = false;
 const bool USE_PRECOMPUTED_ERFCSCALARS = false;
-const bool ERFC_USE_CHEBYSHEV_APPROXIMATION = false;
 
 
 const bool ALL_PHYSICS_ENABLED = ENABLE_ES_SR && ENABLE_ES_LR && ENABLE_LJ && ENABLE_UREYBRADLEY && ENABLE_INTEGRATEPOSITION;
@@ -73,7 +72,6 @@ constexpr float elementaryChargeToKiloCoulombPerMole = ELEMENTARYCHARGE * AVOGAD
 
 
 // -------------------------------------------- Solvation Parameters -------------------------------------------- //
-#define ENABLE_SOLVENTS 1				// Enables Explicit Solvents
 constexpr float DEFAULT_TINYMOL_START_TEMPERATURE = 310.f;	// [K]
 constexpr bool AllAtom = true;
 // -------------------------------------------------------------------------------------------------------------- //

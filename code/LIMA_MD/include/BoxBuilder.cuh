@@ -14,6 +14,4 @@ namespace BoxBuilder
 
 
 	BackboneChains InterpretBackboneChains(const GroFile& grofile);
-
-	bool verifyAllParticlesIsInsideBox(Simulation& sim, float padding = 0.f, bool verbose = true);
 };

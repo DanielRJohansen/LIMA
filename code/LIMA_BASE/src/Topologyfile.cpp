@@ -970,8 +970,9 @@ GenericItpFile::GenericItpFile(const fs::path& path) {
 		// Check if current line is commented
 		if (firstNonspaceCharIs(line, TopologyFile::commentChar) && current_section != TopologySection::title && current_section != TopologySection::atoms) { continue; }	// Only title-sections + atoms reads the comments
 
-		// Check if this line contains another illegal keyword
-		if (firstNonspaceCharIs(line, '#')) {// Skip ifdef, include etc TODO: this needs to be implemented at some point
+		// Preprocessor directives are not evaluated here, so both branches of an #ifdef are read. Only tests read files
+		// directly with this constructor; topologies and their forcefields go through TopologyFile's preprocessor
+		if (firstNonspaceCharIs(line, '#')) {
 			continue;
 		}
 
@@ -1093,8 +1094,7 @@ void TopologyFile::AppendMoleculetype(const std::shared_ptr<const Moleculetype> 
 		if (inputForcefieldInclude.has_value()) {
 			if (!forcefieldInclude.has_value())
 				forcefieldInclude.emplace(inputForcefieldInclude.value());
-			/*else 
-				assert(forcefieldInclude->filename == inputForcefieldInclude->filename);			*/ // TODO: Handle this somehow?? For now its not an issue since it occurs when i've given appropriate forcefields.. 
+			// A second, different forcefield is not merged here; see TODO.md (forcefields with different 1-4 scaling)
 		}
 	}
 	AppendMolecule(moleculetype->name);
@@ -1129,7 +1129,6 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 		
 		file << "; " << title << "\n\n";
 
-		// TODO: Have multiple forcefields, just only 1 with the [ defaults ] directive
 		{				
 			if (forcefieldInclude) {
 				bool usesInternalForcefield = fs::exists(GetLimaDir() / "resources/forcefields" / forcefieldInclude->filename);

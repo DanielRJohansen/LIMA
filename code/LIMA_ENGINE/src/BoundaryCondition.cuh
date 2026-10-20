@@ -87,7 +87,6 @@ public:
 		currentPosition.z -= boxSize.z * floorf(currentPosition.z * boxSizeInv.z);
 	}
 
-// TODO: CHECK ALL THESE! Most are wrong, its CRITICAL we do >= not just >!!!
 	__device__ constexpr static void applyBCNM(Float3& currentPosition, const Float3& boxSize) {	// Only changes position if position is outside of box;
 		currentPosition.x += boxSize.x * (currentPosition.x < 0.f);
 		currentPosition.x -= boxSize.x * (currentPosition.x >= boxSize.x);

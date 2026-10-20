@@ -4,10 +4,10 @@
 #include "TestUtils.h"
 #include "Environment.h"
 #include "LimaTypes.cuh"
-#include "LimaPositionSystem.cuh"
 #include "Statistics.h"
 #include "PhysicsUtils.cuh"
 #include "PlotUtils.h"
+#include "BoundaryConditionPublic.h"
 
 #include <iostream>
 #include <string>
@@ -25,47 +25,6 @@ namespace ElectrostaticsTests {
 			co_return LimaUnittestResult::Fail(Lima::Format("Expected {:.2e} Actual {:.2e}", expectedForce, calcedForce), envmode == Full);
 		// TODO: add potE to this also
 		co_return LimaUnittestResult{ true, "Success", envmode == Full};
-	}
-
-	//static ForceEnergy CalcImmediateMirrorForceEnergy(const Float3& diff, const float chargeProduct, Float3 boxSize) {
-	//	ForceEnergy forceEnergy{};
-	//	for (int zOffset = -1; zOffset <= 1; zOffset += 1) {
-	//		for (int yOffset = -1; yOffset <= 1; yOffset += 1) {
-	//			for (int xOffset = -1; xOffset <= 1; xOffset += 1) {
-	//				if (xOffset == 0 && yOffset == 0 && zOffset == 0)
-	//					continue;
-
-	//				const Float3 diffMirror = diff + Float3{ xOffset, yOffset, zOffset } *boxSize;
-	//				forceEnergy.force += PhysicsUtils::CalcCoulumbForce(chargeProduct, 1, diffMirror);
-	//				forceEnergy.potE += PhysicsUtils::CalcCoulumbPotential(chargeProduct, 1, diffMirror.len()) * 0.5f;
-	//			}
-	//		}
-	//	}
-	//		return forceEnergy;
-	//}
-
-
-
-
-	Float3 GetPositionOfParticleRelativeToSelfUsingTheWierdLogicOfTheKernel(const Float3& posOtherAbs, const NodeIndex nodeindexSelf) {
-		// We cant use hyperdist, since the engine will hyperpos the block, and not individual particles
-		//BoundaryConditionPublic::applyHyperposNM(posSelf, posOther, sim->simParams.box_size, PBC);
-		// Instead we do this bullshit. Figure out the relative nodeindex compared to the self nodeindex
-		// 
-		// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
-		const NodeIndex nodeindexOther = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(posOtherAbs);
-		const Float3 posOtherRel = posOtherAbs - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexOther);
-
-		NodeIndex nodeindexOtherHyper = nodeindexOther;
-		BoundaryConditionPublic::applyHyperpos(nodeindexSelf, nodeindexOtherHyper, Int3(3, 3, 3), PBC);
-		const NodeIndex nodeindexOfOtherRelativeToSelf = nodeindexOtherHyper - nodeindexSelf;
-
-
-		if (nodeindexOfOtherRelativeToSelf.largestMagnitudeElement() > 1)
-			throw std::runtime_error("Expected to get a relative nodeindex that was immediately adjacent to nodeindexSelf");		
-
-		const Float3 posOtherRelativeToSelf = (posOtherRel + LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexOfOtherRelativeToSelf));
-		return posOtherRelativeToSelf;
 	}
 
 
@@ -108,13 +67,11 @@ namespace ElectrostaticsTests {
 		topfile.SetSystem("MySystem");
 		topfile.path = workDir / "topol.top";
 
-		//MDFiles::SimulationFilesCollection simfiles(env.getWorkdir());
 		for (const auto& atom : atomsSelection) {
 			auto moltype = std::make_shared<TopologyFile::Moleculetype>( atom.atomtype.atomname, 3);
 			moltype->atoms.push_back(atom.atomtype);
 			topfile.moleculetypes.insert({ atom.atomtype.atomname, moltype });
 		}
-		//simfiles.topfile->SetSystem("ElectroStatic Field Test");
 		SimulationBuilder::DistributeParticlesInBox(grofile, topfile, atomsSelection, 0.24f, particlesPerNm3);
 
 		// Overwrite the forcefield
@@ -167,18 +124,12 @@ namespace ElectrostaticsTests {
 		std::map<float, std::vector<float>> velDistributions;
 
 		// Go through each particle in each compound, and assert that their velocities are as we expect in this horizontal electric field
-		// TODO!!!
-		//for (int cid = 0; cid < sim->box->boxparams.n_compounds; cid++) {
-		//	const auto& compound = sim->box->compounds[cid];
-		//	const auto& compoundInterimState = sim->box->pclusterInterimStates[cid];
 		for (int pcId = 0; pcId < sim->box->persistentClusters.size(); pcId++){
 			for (int pid = 0; pid < PersistentCluster::maxParticles; pid++) {
 				if (!sim->box->persistentClusters[pcId].pqd[pid].Valid())
 					continue;
 				const float charge = sim->box->persistentClusters[pcId].pqd[pid].params.charge;
 				const float velHorizontal = sim->box->pclusterInterimStates[pcId].vels_prev[pid].x;
-
-				//const float velHorizontal = compoundInterimState.vels_prev[pid].x;
 
 				velDistributions[charge].push_back(velHorizontal);
 			}
@@ -221,90 +172,6 @@ namespace ElectrostaticsTests {
 
 		co_return LimaUnittestResult{ true, OneLineMessage("R2 Value: {:.2f}", r2), envmode == Full};
 	}
-
-	//static LimaUnittestResult TestElectrostaticsManyParticles(EnvMode envmode) {
-	//	MakeChargeParticlesSim("ShortrangeElectrostaticsCompoundOnly", 5.f,
-	//		AtomsSelection{
-	//			{TopologyFile::AtomsEntry{";residue_X", 0, "lt1", 0, "lxx", "lxx", 0, 5.f, 12.011}, 100}, // by naming the residue lxx we let these particles be full molecules, instead of tinymols, is that ideal? Does it matter? 
-	//		},
-	//		2.f // TODO: If we set this density to 32 as it should be, the result diverge too much. I should look into that later. And do a similar stresstest for a simple LJ system
-	//	);
-
-	//	const int nSteps = 1000;
-
-	//	SimParams simparams;
-	//	simparams.n_steps = nSteps;
-	//	simparams.dt = 1.f * FEMTO_TO_NANO;
-	//	simparams.coloring_method = ColoringMethod::Charge;
-	//	simparams.data_logging_interval = 1;
-	//	simparams.stepsPerNlistupdate = 1;
-	//	simparams.enable_electrostatics = true;
-	//	simparams.cutoff_nm = 2.f;
-	//	auto env = basicSetup("ShortrangeElectrostaticsCompoundOnly", { simparams }, envmode);
-
-	//	env->run();
-
-	//	auto sim = env->GetSim();
-
-	//	//LIMA_Print::plotEnergies(env->getAnalyzedPackage()->pot_energy, env->getAnalyzedPackage()->kin_energy, env->getAnalyzedPackage()->total_energy);
-
-	//	
-	//	//ASSERT(sim->boxparams_host.boxSize == BoxGrid::blocksizeNM * 3, "This test assumes entire BoxGrid is in Shortrange range");
-
-	//	// First check that the potential energy is calculated as we would expect if we do it the simple way
-	//	float maxForceError = 0.f;
-	//	for (int cidSelf = 0; cidSelf < sim->box->boxparams.n_compounds; cidSelf++) {
-	//		double potESum{};
-	//		Float3 forceSum{};
-
-	//		const Compound& compoundSelf = sim->box->compounds[cidSelf];
-	//		const CompoundInterimState& compoundInterimSelf = sim->box->compoundInterimStates[cidSelf];
-	//		const float chargeSelf = compoundSelf.atom_charges[0];
-
-	//		// The final Coulomb force is calculated using the position from the second-to-last step, thus -2 not -1
-	//		//const Float3 posSelfAbs = sim->traj_buffer->GetMostRecentCompoundparticleDatapoint(cidSelf, 0, simparams.n_steps - 2);
-	//		const Float3 posSelfAbs = sim->traj_buffer->getCompoundparticleDatapointAtIndex(cidSelf, 0, simparams.n_steps - 2);	// We MUST have the position at this index, to get accurate forces
-	//		const NodeIndex nodeindexSelf = LIMAPOSITIONSYSTEM::PositionToNodeIndexNM(posSelfAbs);
-	//		const Float3 posSelfRel = posSelfAbs - LIMAPOSITIONSYSTEM::nodeIndexToAbsolutePosition(nodeindexSelf);
-
-	//		for (int cidOther = 0; cidOther < sim->box->boxparams.n_compounds; cidOther++) {
-	//			if (cidSelf == cidOther)
-	//				continue;
-	//			
-	//			const auto& compoundOther = sim->box->compounds[cidOther];
-	//			const float chargeOther = compoundOther.atom_charges[0];
-	//			const Float3 posOtherAbs = sim->traj_buffer->getCompoundparticleDatapointAtIndex(cidOther, 0, simparams.n_steps - 2);
-	//			const Float3 posOtherRelativeToSelf = GetPositionOfParticleRelativeToSelfUsingTheWierdLogicOfTheKernel(posOtherAbs, nodeindexSelf);
-
-	//			const Float3 diff = posSelfRel - posOtherRelativeToSelf;
-
-	//			potESum += PhysicsUtils::CalcCoulumbPotential(chargeSelf, chargeOther, diff.len()) * 0.5f;
-	//			forceSum += PhysicsUtils::CalcCoulumbForce(chargeSelf, chargeOther, diff);
-	//		}
-	//		
-	//		// Need a expected error because in the test we do true hyperdist, but in sim we do no hyperdist
-	//		// The error arises because a particle is moved 1 boxlen, not when it is correct for hyperPos, but when it moves into the next node in the boxgrid
-	//		// Thus this error arises only when the box is so small that a particle go directly from nodes such as (-1, 0 0) to (1,0,0)
-	//		//const float potEError = std::abs(compoundInterimSelf.sumPotentialenergy(0) - potESum) / potESum;
-	//		const float forceError = std::abs((compoundInterimSelf.forces_prev[0] - forceSum).len()) / forceSum.len();
-	//		maxForceError = std::max(maxForceError, forceError);
-
-	//		//ASSERT(potEError < 1e-4, Lima::Format("Actual PotE {:.7e} Expected potE: {:.7e} Error {:.7e}", compoundSelf.potE_interim[0], potESum, potEError));
-	//		//ASSERT(forceError < 1e-4, Lima::Format("Actual Force {:.7e} Expected force {:.7e} Error {:.7e}", compoundSelf.forces_interim[0].len(), forceSum.len(), forceError));
-	//	}
-
-	//	// Now do the normal VC check
-	//	const float targetVarCoeff = 8.66e-3f;
-	//	auto analytics = SimAnalysis::analyzeEnergy(sim.get());
-
-
-	//	ASSERT(analytics.variance_coefficient < targetVarCoeff, Lima::Format("VC {:.3e} / {:.3e}", analytics.variance_coefficient, targetVarCoeff));
-
-	//	return LimaUnittestResult{ 
-	//		true, 
-	//		Lima::Format("VC {:.3e} / {:.3e} Max F error {:.3e}", analytics.variance_coefficient, targetVarCoeff, maxForceError),
-	//		envmode == Full };
-	//}
 
 
 	// The electrostatic forces and energy of random +-1e ions (no LJ) against an exact Ewald sum in double precision: the realspace sum within

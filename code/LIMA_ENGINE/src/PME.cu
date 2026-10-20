@@ -450,175 +450,10 @@ __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(co
 	}
 }
 
-/// ------------------------------
-/// Tiled version
-/// ------------------------------
-//
-//constexpr int tilePadding = 2;
-//constexpr int tileSize = 11 + tilePadding * 2;
-//__device__ int GetIndexInTile(
-//	const NodeIndex& tileStartGlobal,
-//	NodeIndex queryIndex)
-//{
-//	PeriodicBoundaryCondition::applyHyperpos(tileStartGlobal, queryIndex);
-//	NodeIndex relativeIndex = queryIndex - tileStartGlobal;
-//	
-//	// clamp index between 0 and tileSize-1
-//	relativeIndex.x = std::clamp(relativeIndex.x, 0, tileSize - 1);
-//	relativeIndex.y = std::clamp(relativeIndex.y, 0, tileSize - 1);
-//	relativeIndex.z = std::clamp(relativeIndex.z, 0, tileSize - 1);
-//	return (relativeIndex.z * tileSize + relativeIndex.y) * tileSize + relativeIndex.x;
-//}
-//
-//__device__ ForceEnergy InterpolateForceEnergyFromGrid1(const float* _, const float* const tile, Float3 gridPos, Int3 gridDim, NodeIndex tileStart) {
-//	int ix = static_cast<int>(floorf(gridPos.x));
-//	int iy = static_cast<int>(floorf(gridPos.y));
-//	int iz = static_cast<int>(floorf(gridPos.z));
-//
-//	float fx = gridPos.x - static_cast<float>(ix);
-//	float fy = gridPos.y - static_cast<float>(iy);
-//	float fz = gridPos.z - static_cast<float>(iz);
-//
-//	float wx[4], wy[4], wz[4];
-//	LAL::CalcBspline(fx, wx);
-//	LAL::CalcBspline(fy, wy);
-//	LAL::CalcBspline(fz, wz);
-//
-//	ForceEnergy fe{};
-//
-//	for (int dz = 0; dz < 4; dz++) {
-//		int Z = iz - 1 + dz;
-//		float wzCur = wz[dz];
-//		for (int dy = 0; dy < 4; dy++) {
-//			int Y = iy - 1 + dy;
-//			float wyzCur = wzCur * wy[dy];
-//			for (int dx = 0; dx < 4; dx++) {
-//				int X = ix - 1 + dx;
-//				float wxyzCur = wyzCur * wx[dx];
-//
-//				NodeIndex node = PeriodicBoundaryCondition::applyBC(NodeIndex{ X, Y, Z }, gridDim);
-//				int plusX = GetIndexInTile(tileStart, PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x + 1, node.y,     node.z }, gridDim));
-//				int minusX = GetIndexInTile(tileStart, PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x - 1, node.y,     node.z }, gridDim));
-//				int plusY = GetIndexInTile(tileStart, PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y + 1, node.z }, gridDim));
-//				int minusY = GetIndexInTile(tileStart, PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y - 1, node.z }, gridDim));
-//				int plusZ = GetIndexInTile(tileStart, PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z + 1 }, gridDim));
-//				int minusZ = GetIndexInTile(tileStart, PeriodicBoundaryCondition::applyBC(NodeIndex{ node.x,     node.y,     node.z - 1 }, gridDim));
-//				int center = GetIndexInTile(tileStart, node);
-//
-//				float phi_plusX = tile[plusX];
-//				float phi_minusX = tile[minusX];
-//				float phi_plusY = tile[plusY];
-//				float phi_minusY = tile[minusY];
-//				float phi_plusZ = tile[plusZ];
-//				float phi_minusZ = tile[minusZ];
-//				float phi = tile[center];
-//
-//				float E_x = -(phi_plusX - phi_minusX) * (gridpointsPerNm / 2.0f);
-//				float E_y = -(phi_plusY - phi_minusY) * (gridpointsPerNm / 2.0f);
-//				float E_z = -(phi_plusZ - phi_minusZ) * (gridpointsPerNm / 2.0f);
-//
-//				fe.force += Float3{ E_x, E_y, E_z } *wxyzCur;
-//				fe.potE += phi * wxyzCur;				
-//			}
-//		}
-//	}
-//
-//	return fe;
-//}
-//
-//
-//// ================================================================
-//// Kernel with shared realspace tile per solvent block
-//// ================================================================
-//__global__ void InterpolateForcesAndPotentialSolventsTiledVersion( // TODO: OPTIM: We could take a dynamic approach where we launch both this and the simple kernel, and this SM heavy one one runs for dense solvetnblocks?
-//	const BoxConfig  config,
-//	const BoxState   state,
-//	const float* __restrict__ realspaceGrid,
-//	Int3             gridDim,               // charge grid dimensions
-//	ForceEnergy* __restrict__ forceEnergies,
-//	float            selfenergyCorrection,  // [J/mol]
-//	Int3             blocksPerDim           // solvent blocks grid (1 nm^3 per block)
-//)
-//{
-//	__shared__ float tile[tileSize * tileSize * tileSize];
-//	__shared__ NodeIndex tileStart;
-//	__shared__ int nParticles;
-//	
-//	if (threadIdx.x == 0) {
-//		nParticles = state.nParticlesInSolventblock[blockIdx.x];
-//
-//		//const Float3 gridPos = absPos * gridpointsPerNm_f;
-//		NodeIndex tileStart = BoxGrid::Get3dIndex(blockIdx.x % blocksPerDim.InnerProduct(), blocksPerDim) * gridpointsPerNm - NodeIndex{tilePadding, tilePadding , tilePadding };
-//		tileStart = PeriodicBoundaryCondition::applyBC(tileStart, gridDim);
-//	}
-//	__syncthreads();
-//
-//
-//	if (nParticles < 96)
-//		return;
-//
-//	// Cooperative load of realspace tile into shared memory
-//	//for (int relIndex = threadIdx.x; relIndex < tileSize * tileSize * tileSize; relIndex += blockDim.x) {
-//	if (threadIdx.x < tileSize) {
-//		for (int z = 0; z < tileSize; z++) {
-//			for (int y = 0; y < tileSize; y++) {
-//				NodeIndex globalIndex3d = tileStart + NodeIndex{ threadIdx.x, y, z };
-//				globalIndex3d = PeriodicBoundaryCondition::applyBC(globalIndex3d, gridDim);
-//
-//				int globalIndex = BoxGrid::Get1dIndex(globalIndex3d, gridDim);
-//				int indexInTile = BoxGrid::Get1dIndex(NodeIndex{ threadIdx.x, y, z }, Int3{ tileSize, tileSize, tileSize });
-//
-//				tile[indexInTile] = realspaceGrid[globalIndex];
-//			}
-//		}
-//	}
-//	__syncthreads();
-//
-//
-//
-//	if (threadIdx.x >= nParticles) {
-//		return;
-//	}
-//
-//	const ParticleQuickData pqd = state.solventsParticleQuickData[blockIdx.x * SolventBlock::maxParticles + threadIdx.x];
-//	const float charge = pqd.params.charge;
-//	if (charge == 0.f)
-//		return;
-//
-//	const NodeIndex origo = BoxGrid::Get3dIndex(blockIdx.x, blocksPerDim);
-//	const Float3 relpos = pqd.relPos;
-//	Float3 absPos = relpos + origo.toFloat3();
-//	PeriodicBoundaryCondition::applyBCNM(absPos);
-//
-//	const Float3 gridPos = absPos * gridpointsPerNm_f;
-//	ForceEnergy fe = InterpolateForceEnergyFromGrid1(realspaceGrid + gridOffset, tile, gridPos, gridDim, tileStart);
-//
-//	// Now add self charge to calculations
-//	fe.force *= charge;
-//	fe.potE *= charge;
-//
-//	// Ewald self-energy correction
-//	fe.potE += selfenergyCorrections[simulationId];
-//
-//	fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
-//
-//#ifdef FORCE_NAN_CHECK
-//	if (force.isNan()) {
-//		printf("PME computed NaN force\n");
-//		asm("trap;");
-//	}
-//#endif
-//
-//	forceEnergies[blockIdx.x * SolventBlock::maxParticles + threadIdx.x] = fe;
-//
-//}
-
-
-
-
-
-
-
+// Revisit: tiling by density. InterpolateForcesKernel always loads its block's grid tile into shared memory. A removed
+// variant (in git history, "Tiled version" in PME.cu) used the tile only for dense blocks (>= 96 particles) and left sparse
+// blocks to a kernel reading the grid directly, so sparse blocks skip the tile load. Measure on a system with mostly
+// sparse chargeblocks (eg. a membrane or vacuum-padded box) before trying it.
 
 __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, float* reciprocalVirialScalars, Int3 gridpointsPerDim,
 	double boxLenX, double boxLenY, double boxLenZ,		// [nm]
@@ -679,7 +514,7 @@ __global__ void ApplyGreensFunctionKernel(
 	long long* const virialPartials
 )
 {
-	int nGridpointsHalfdim = gridpointsPerDim.x / 2 + 1;// TODO: add comment here
+	int nGridpointsHalfdim = gridpointsPerDim.x / 2 + 1;	// R2C keeps only x/2+1 frequencies along x, the rest follow by Hermitian symmetry
 	const int index1D = blockIdx.x * blockDim.x + threadIdx.x;
 	const int gridSize = nGridpointsHalfdim * gridpointsPerDim.y * gridpointsPerDim.z;
 	const bool active = index1D < size_t(gridSize) * batchCount;

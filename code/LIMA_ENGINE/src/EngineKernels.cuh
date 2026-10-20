@@ -252,7 +252,6 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 
 	{
 		acc.Sync();
-		// TODO: i have no clue if pairbonds should also compute SR electrostatics?
 		PairBond* bondsBuffer = reinterpret_cast<PairBond*>(_bondsBuffer);
 		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += batchSize) {
 			if (batchStart + lane < bondGroup->nPairbonds) {

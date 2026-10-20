@@ -9,7 +9,6 @@
 #include "LimaPositionSystem.cuh"
 #include "PME.cuh"
 #include "SimulationData.h"
-#include "SupernaturalForces.cuh"
 #include "Thermostat.cuh"
 #include "Statistics.h"
 #include "Utilities.h"

@@ -478,9 +478,6 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 
 	DistributeGrofileparticlesInGrid(boxgrid, grofile);
 
-	// TODO: Josiah, is this a problem that our pressure is not precise? If so, we can remove more solvents untill we reach the correct pressure, 
-	// but it will be slightly more complex code
-
 	// Minimum distance from a new water to another new water. Below the closest O-O distance in the equilibrated water
 	// box (0.251 nm), so it only removes waters that clash where the tiles meet and across the box's periodic boundary
 	const float distanceThreshold = 0.23f;	// [nm]

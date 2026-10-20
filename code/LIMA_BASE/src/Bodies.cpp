@@ -46,7 +46,7 @@ ImproperDihedralBond::ImproperDihedralBond(std::array<uint8_t, nAtoms> ids, cons
 	}
 }
 ImproperDihedralBond::Parameters ImproperDihedralBond::Parameters::CreateFromCharmm(float phi0, float kPhi) {
-	return Parameters{ phi0 * DEG_TO_RAD, kPhi * KILO }; //TODO: Move the /2 from here to the force calculation to save an op there? Still need??
+	return Parameters{ phi0 * DEG_TO_RAD, kPhi * KILO };
 }
 
 //__host__ Float3 CompoundInterimState::sumForce(int particleIndex) const {

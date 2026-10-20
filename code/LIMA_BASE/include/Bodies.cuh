@@ -475,7 +475,7 @@ struct alignas(16) SuperClusterMeta {
 	int16_t simulationId = 0;
 
 	// Set by taskbuilder kernel
-	int resultsStartIndex; // TODO: Is int always safe here??
+	int resultsStartIndex;
 	int nResults;
 	
 	

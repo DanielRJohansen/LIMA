@@ -46,7 +46,7 @@ void AtomtypeDatabase::insert(AtomType element) {
 	if (finished)
 		throw std::runtime_error("Cannot insert after finishing");
 
-	// Only add a type the first time we see it. TODO: We should also do this for all bonded types
+	// Only add a type the first time we see it
 	if (!atomTypes.contains(element.name))
 		atomTypes.insert({ element.name, element });
 }

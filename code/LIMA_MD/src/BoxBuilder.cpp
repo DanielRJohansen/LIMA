@@ -92,41 +92,6 @@ void BoxBuilder::copyBoxState(Simulation& simulation, std::unique_ptr<Box> boxsr
 		//	CompoundCoords* dest_t0 = simulation.box->compoundcoordsCircularQueue->getCoordarrayRef(i, 0);
 		//	memcpy(dest_t0, coords_t0.data(), bytesize);
 		//}
-
-		// TODO ERROR: we dont copy CompoundInterimState, so it is not a true state copy
 	}
 
 }
-
-bool BoxBuilder::verifyAllParticlesIsInsideBox(Simulation& sim, float padding, bool verbose) {
-//TODO!	
-	//for (int cid = 0; cid < sim.box->boxparams.n_compounds; cid++) {
-	//	for (int pid = 0; pid < sim.box->compounds[cid].n_particles; pid++) 
-	//	{
-	//		const int index = LIMALOGSYSTEM::getMostRecentDataentryIndex(sim.getStep() - 1, sim.simParams.data_logging_interval);
-
-	//		Float3 pos = sim.traj_buffer->getCompoundparticleDatapointAtIndex(cid, pid, index);
-	//		BoundaryConditionPublic::applyBCNM(pos, sim.box->boxparams.BoxSizeFloat(), sim.simParams.bc_select);
-
-	//		for (int i = 0; i < 3; i++) {
-	//			if (pos[i] < padding || pos[i] > (sim.box->boxparams.BoxSizeFloat()[i] - padding)) {
-	//				//m_logger->print(std::format("Found particle not inside the appropriate pdding of the box {}", pos.toString()));
-	//				return false;
-	//			}
-	//		}
-	//	}
-	//}
-
-	// Handle solvents somehow
-
-	return true;
-}
-
-
-
-
-
-
-
-
-

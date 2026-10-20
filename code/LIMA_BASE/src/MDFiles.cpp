@@ -174,13 +174,6 @@ void GroFile::printToFile(const std::filesystem::path& path) const {
 
 
 
-// TODO: Remove this
-SimulationFilesCollection::SimulationFilesCollection(const fs::path& workDir) {
-	grofile = std::make_unique<GroFile>(workDir / "molecule/conf.gro");
-	topfile = std::make_unique<TopologyFile>(workDir / "molecule/topol.top");
-}
-
-
 PDBfile::PDBfile(const fs::path& path) : mPath(path) {
 	if (!(path.extension().string() == std::string{ ".pdb" }))
 		throw std::runtime_error("Expected .pdb extension");

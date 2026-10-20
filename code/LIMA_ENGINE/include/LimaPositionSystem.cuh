@@ -138,22 +138,3 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 };
-
-
-// gcc is being a bitch with threadIdx and blockIdx in .cuh files that are also included by .c++ files.
-// This workaround is to have these functions as static class fucntinos instead of namespace, which avoid the issue somehow. fuck its annoying tho
-class LIMAPOSITIONSYSTEM_HACK{
-public:
-
-
-	/*__device__ static Coord GetRelShiftFromOrigoShift_Coord(const NodeIndex& from, const NodeIndex& to) {
-		EngineUtilsWarnings::verifyOrigoShiftIsValid(from, to);
-
-		const NodeIndex origo_shift = from - to;
-		return Coord{ origo_shift };
-	}*/
-    __device__ static constexpr Float3 GetRelShiftFromOrigoShift_Float3(const NodeIndex& from, const NodeIndex& to) {
-        return NodeIndex{from-to}.toFloat3();
-    }
-
-};

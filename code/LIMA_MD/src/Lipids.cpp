@@ -257,24 +257,6 @@ void Lipids::_MakeLipid(const std::string& name) {
 	{
 		std::unique_ptr<Display> display = std::make_unique<Display>();
 		display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(grofile, true), true);
-
-
-		//Environment env{ grofile.m_path.parent_path(), Headless };
-		//SimParams params;
-		//params.n_steps = 2;
-		//params.dt = 0;
-		//params.data_logging_interval = 1;
-		//params.em_variant = true;
-		//env.CreateSimulation(grofile, topfile, params);
-		//env.run();
-		//auto sim = env.GetSim();
-
-		//if (true) {
-		//	std::unique_ptr<Display> display = true ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
-		//	display->Render(
-		//		std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box->compounds, sim->box->boxparams, "", ColoringMethod::PersistentClusterId),
-		//		true);
-		//}
 	}
 
 	if (true) {
@@ -282,53 +264,3 @@ void Lipids::_MakeLipid(const std::string& name) {
 		topfile.printToFile();
 	}
 }
-
-void Lipids::_MakeLipids(bool writeToFile, bool displayEachLipidAndHalt) {
-	// TODO!!
-	//fs::path dir = "C:/Users/Daniel/git_repo/LIMA/resources/Slipids/";
-
-	//std::vector<std::array<fs::path, 2>> lipidFiles = FileUtils::GetAllGroItpFilepairsInDir(dir);
-
-	//for (auto [gropath, itppath] : lipidFiles) {
-	//	printf("Organizing %s\n", gropath.stem().string().c_str());
-	//	GroFile grofile{ gropath};
-	//	TopologyFile topfile{ itppath };
-
-	//	// Use the internal forcefield, so it wont matter when we end up copying the forcefield into the target dir
-	//	/*assert(topfile.forcefieldInclude);
-	//	topfile.forcefieldInclude = TopologyFile::ForcefieldInclude("Slipids_2020.ff/forcefield.itp", FileUtils::GetLimaDir()/"resources"/"forcefields"/"charmm27.ff");*/
-
-	//	grofile.box_size = Float3{ 5.f };
-	///*	if (grofile.box_size.x != grofile.box_size.y || grofile.box_size.x != grofile.box_size.z) {
-	//		grofile.box_size = Float3{ std::max(std::max(grofile.box_size.x, grofile.box_size.y), grofile.box_size.z) };
-	//	}*/
-
-	//	OrganizeLipidIntoCompoundsizedSections(grofile, topfile.GetMoleculeType());
-
-	//	// Now load the lipid into a simulation. This will catch most errors we might have made in the lipid
-	//	// Chicken before egg issue, cant load the lipid as it is not correctly part of the ff yet?
-	//	{
-	//		Environment env{ grofile.m_path.parent_path(), Headless};
-	//		SimParams params;
-	//		params.n_steps = 2;
-	//		params.dt = 0;
-	//		params.data_logging_interval = 1;
-	//		params.em_variant = true;
-	//		env.CreateSimulation(grofile, topfile, params);
-	//		env.run();
-	//		auto sim = env.GetSim();
-
-	//		if (displayEachLipidAndHalt) {
-	//			std::unique_ptr<Display> display = displayEachLipidAndHalt ? std::make_unique<Display>() : nullptr; // TODO: move to top so we dont reinit every time
-	//			display->Render(
-	//				std::make_unique<Rendering::SimulationTask>(sim->traj_buffer->GetBufferAtStep(0), sim->box->compounds, sim->box->boxparams, "", ColoringMethod::PersistentClusterId),
-	//				true);
-	//		}
-	//	}
-
-	//	if (writeToFile) {
-	//		grofile.printToFile();
-	//		topfile.printToFile();
-	//	}
-	//}
-}  

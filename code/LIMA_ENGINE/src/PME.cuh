@@ -10,9 +10,6 @@ namespace ChargeBlock { struct ChargeblockBuffers; }
 #include "platform/GpuFft.h"
 #include <memory>
 
-// TODO: Do i need to account for e0, vacuum/spaceial permitivity here? Probably....
-
-
 namespace PME {
 	// 0.125 nm grid spacing. With 4th order B-splines this gives ~0.3% RMS reciprocal force error on a solvated protein,
 	// measured against an exact Ewald sum (0.14% at 0.1 nm)
@@ -24,7 +21,7 @@ namespace PME {
 	class Controller {
 		Int3 gridpointsPerDim{};
 		size_t nGridpointsRealspace = 0;
-		int nGridpointsReciprocalspace = -1;	// TODO: Does this also need to be size_t?
+		int nGridpointsReciprocalspace = -1;
 		const float ewaldKappa;
 		Float3 boxlenNm{};
 		Int3 blocksPerDim{};	// The box length rounded up, independent of the engine's cells

@@ -174,7 +174,7 @@ __global__ void FixedPointGridToDensityKernel(int* const fixedPointGrid, float* 
 
 // B-spline interpolation of the potential at gridPos, and of the field from the B-splines' derivatives (standard SPME).
 // phi(X, Y, Z) returns the potential at a gridpoint, which may be outside the grid
-template <typename Phi>
+template <bool computePotE, typename Phi>
 __device__ ForceEnergy InterpolateForceEnergy(Float3 gridPos, Phi phi) {
 	const int ix = static_cast<int>(floorf(gridPos.x));
 	const int iy = static_cast<int>(floorf(gridPos.y));
@@ -204,7 +204,8 @@ __device__ ForceEnergy InterpolateForceEnergy(Float3 gridPos, Phi phi) {
 				gradient.x += dwx[dx] * wy[dy] * wz[dz] * p;
 				gradient.y += wx[dx] * dwy[dy] * wz[dz] * p;
 				gradient.z += wx[dx] * wy[dy] * dwz[dz] * p;
-				potential += wx[dx] * wy[dy] * wz[dz] * p;
+				if constexpr (computePotE)
+					potential += wx[dx] * wy[dy] * wz[dz] * p;
 			}
 		}
 	}
@@ -212,8 +213,9 @@ __device__ ForceEnergy InterpolateForceEnergy(Float3 gridPos, Phi phi) {
 }
 
 // Interpolates the forces on the particles a chargeblock owns, from a tile of the grid around the block in shared memory.
-// One chargeblock per block, blockDim = interpolateThreads
+// One chargeblock per block, blockDim = interpolateThreads. computePotE: in EM, and on MD steps that log data (forceAcc.potE set)
 constexpr int interpolateThreads = 128;
+template <bool computePotE>
 __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(const ChargeblockBuffers chargeblockBuffers, const float* const realspaceGrid,
 	Int3 blocksPerDim, Int3 gridDim, const SuperClusterMeta* const scMeta, float ewaldKappa /*[nm^-1]*/,
 	ForceEnergy* const forceEnergies /*EM only*/, const ForceAccumulator forceAcc /*MD only, forceAcc.fx == nullptr in EM*/,
@@ -257,7 +259,7 @@ __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(co
 		const Float3 gridPos = particle.pos * gridpointsPerNm_f;
 
 		const NodeIndex wrap = tileInfo.Wrap(particle.pos, gridDim);
-		ForceEnergy fe = InterpolateForceEnergy(gridPos, [&](int X, int Y, int Z) {
+		ForceEnergy fe = InterpolateForceEnergy<computePotE>(gridPos, [&](int X, int Y, int Z) {
 			return tile[Z - tileOrigin.z + wrap.z][Y - tileOrigin.y + wrap.y][X - tileOrigin.x + wrap.x];
 			});
 
@@ -271,12 +273,13 @@ __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(co
 		fe.potE *= 0.5f; // Potential is halved because we computing for both this and the other particle's
 
 		// The reciprocal sum includes each charge's interaction with its own Gaussian, which the Ewald self-energy removes
-		fe.potE -= ewaldKappa / sqrtf(PI) * PhysicsUtilsDevice::modifiedCoulombConstant * particle.charge * particle.charge;
+		if constexpr (computePotE)
+			fe.potE -= ewaldKappa / sqrtf(PI) * PhysicsUtilsDevice::modifiedCoulombConstant * particle.charge * particle.charge;
 
 		const int scId = slot / SuperCluster::maxParticles;
 
 		if (forceAcc.fx) {
-			forceAcc.Add(slot, fe);
+			forceAcc.Add<computePotE>(slot, fe);
 		}
 		else {
 			const int indexInSc = slot % SuperCluster::maxParticles;
@@ -505,8 +508,12 @@ void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta
 		ApplyGreensFunctionKernel<false><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
 			reciprocalVirialScalars, gridpointsPerDim, batchCount, nullptr);
 	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
-	InterpolateForcesKernel<<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
-		scMeta, ewaldKappa, forceEnergy, forceAcc, gridScale);
+	if (forceAcc.fx == nullptr || forceAcc.potE != nullptr)
+		InterpolateForcesKernel<true><<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
+			scMeta, ewaldKappa, forceEnergy, forceAcc, gridScale);
+	else
+		InterpolateForcesKernel<false><<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
+			scMeta, ewaldKappa, forceEnergy, forceAcc, gridScale);
 	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
 }
 

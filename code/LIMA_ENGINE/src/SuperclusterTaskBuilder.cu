@@ -442,7 +442,14 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 							noInteractions |= BondedQueryMask(particlesBondedToParticle[pidOwn], queryParticleIds) << (iLocal * 4);
 					}
 				}
-				out.noInteractions[iq] = static_cast<uint16_t>(noInteractions);
+				// Rotate row iLocal so bit k is query particle (iLocal+k)&3, the one lane iLocal pairs with in iteration k of NbNonlocalKernel
+				uint32_t rotated = 0;
+#pragma unroll
+				for (int iLocal = 0; iLocal < 4; iLocal++) {
+					const uint32_t row = (noInteractions >> (iLocal * 4)) & 0xFu;
+					rotated |= (((row | (row << 4)) >> iLocal) & 0xFu) << (iLocal * 4);
+				}
+				out.noInteractions[iq] = static_cast<uint16_t>((maskClass >> iq) & 1 ? rotated : 0xFFFFu);
 			}
 			entries[dst] = out;
 			if constexpr (allQuarters)

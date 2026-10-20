@@ -5,6 +5,8 @@
 #include "platform/DeviceIntrinsics.cuh"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 
 namespace LAL {
 	//static_assert(USE_PRECOMPUTED_BSPLINES == false, "Precomputed B-spline LUT is disabled. Please set USE_PRECOMPUTED_BSPLINES to false.");
@@ -95,24 +97,59 @@ namespace PhysicsUtilsDevice {
 		constexpr float log2e = 1.4426950408889634f;
 		return raw_ex2(distSq * (-ewaldKappa * ewaldKappa * log2e)); // The product of constants is hoisted out of the pair loops
 	}
-	// R(x). Minimax (Lawson-iterated Chebyshev) fit of (R(x)-1)/x, weighted for the relative error of R.
-	// Max relative error of the force scalar 5.4e-6 (fasterfc + exp: 2.9e-6)
+	// The coefficients of R(x), highest degree first. Minimax (Lawson-iterated Chebyshev) fit of (R(x)-1)/x, weighted for the
+	// relative error of R. Max relative error of the force scalar 5.4e-6 (fasterfc + exp: 2.9e-6)
+	constexpr int ewaldForcePolyDegree = 9;
+	__host__ __device__ constexpr std::array<float, ewaldForcePolyDegree + 1> EwaldForcePolyCoeffs() {
+		return { -1.642438147e-4f, 2.629942494e-3f, -1.860453375e-2f, 7.769382000e-2f, -2.180595994e-1f,
+			4.498292804e-1f, -7.343890071e-1f, 9.968287945e-1f, 1.945109834e-4f, 1.f };
+	}
+	// R(x)
 	__device__ inline float EwaldForcePoly(float x) {
-		float r = -1.642438147e-4f;
-		r = fmaf(r, x, 2.629942494e-3f);
-		r = fmaf(r, x, -1.860453375e-2f);
-		r = fmaf(r, x, 7.769382000e-2f);
-		r = fmaf(r, x, -2.180595994e-1f);
-		r = fmaf(r, x, 4.498292804e-1f);
-		r = fmaf(r, x, -7.343890071e-1f);
-		r = fmaf(r, x, 9.968287945e-1f);
-		r = fmaf(r, x, 1.945109834e-4f);
-		return fmaf(r, x, 1.f);
+		constexpr auto coeffs = EwaldForcePolyCoeffs();
+		float r = coeffs[0];
+#pragma unroll
+		for (int i = 1; i <= ewaldForcePolyDegree; i++)
+			r = fmaf(r, x, coeffs[i]);
+		return r;
 	}
 	// erfc(x) = EwaldGaussian * ErfcxFromForcePoly. Max relative error of erfc 1.0e-4, near the cutoff where erfc ~ 2e-5 (fasterfc: 7.0e-5)
 	__device__ inline float ErfcxFromForcePoly(float forcePoly, float x) {
 		return fmaf(x, -2.f / PI_sqrt, forcePoly);
 	}
+
+	// The Ewald real space terms as functions of the distance rather than of x = kappa*dist, for the MD pair kernel. The
+	// polynomial's coefficients are scaled by powers of kappa once on the host, saving the multiplication with kappa per pair.
+	// The coefficients are kernel parameters, so the FMAs read them from the constant bank rather than holding registers
+	struct EwaldRealSpace {
+		float kappa = 0.f;
+		float gaussianScale = 0.f;	// EwaldGaussian(distSq, kappa) = ex2(distSq * gaussianScale)
+		float erfcxSlope = 0.f;		// -2*kappa/sqrt(pi), see ErfcxFromForcePoly
+		std::array<float, ewaldForcePolyDegree + 1> polyCoeffs{};	// R(kappa*dist) as a polynomial in dist, highest degree first
+
+		static EwaldRealSpace Make(float kappa) {
+			constexpr float log2e = 1.4426950408889634f;
+			EwaldRealSpace e;
+			e.kappa = kappa;
+			e.gaussianScale = -kappa * kappa * log2e; // As in EwaldGaussian
+			e.erfcxSlope = static_cast<float>(-2.0 * kappa / std::sqrt(3.14159265358979323846));
+			const auto coeffs = EwaldForcePolyCoeffs();
+			for (int i = 0; i <= ewaldForcePolyDegree; i++)
+				e.polyCoeffs[i] = static_cast<float>(coeffs[i] * std::pow(static_cast<double>(kappa), ewaldForcePolyDegree - i));
+			return e;
+		}
+		__device__ float Gaussian(float distSq) const { return raw_ex2(distSq * gaussianScale); }
+		// R(kappa*dist)
+		__device__ float ForcePoly(float dist) const {
+			float r = polyCoeffs[0];
+#pragma unroll
+			for (int i = 1; i <= ewaldForcePolyDegree; i++)
+				r = fmaf(r, dist, polyCoeffs[i]);
+			return r;
+		}
+		// erfcx(kappa*dist), from ForcePoly(dist)
+		__device__ float ErfcxFromForcePoly(float forcePoly, float dist) const { return fmaf(dist, erfcxSlope, forcePoly); }
+	};
 
 	//static_assert(USE_PRECOMPUTED_ERFCSCALARS == false, "Precomputed ERFC scalar LUT is disabled. Please set USE_PRECOMPUTED_ERFCSCALARS to false.");
 	__device__ inline float CalcErfcScalar(float dist, float distSq, float ewaldKappa) {

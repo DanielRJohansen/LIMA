@@ -292,11 +292,10 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 
 
 namespace NbNonlocal {
-	// This lane's row of an entry's noInteractions with an own quarter, rotated so bit k is j particle (lane+k)&3. All set if
-	// the entry does not interact with the quarter
-	__device__ inline uint32_t RotatedNoInteractions(uint32_t noInteractions, uint32_t ownQuarterMask, int ownQuarter, int lane) {
-		const uint32_t row = (noInteractions >> (lane * 4)) & 0xFu;
-		return ((ownQuarterMask >> ownQuarter) & 1) ? ((row | (row << 4)) >> lane) & 0xFu : 0xFu;
+	// This lane's row of an entry's noInteractions with an own quarter: bit k is j particle (lane+k)&3. The task builder stores
+	// the rows rotated, and all set for quarters the entry does not interact with
+	__device__ inline uint32_t LaneNoInteractions(uint32_t noInteractions, int lane) {
+		return (noInteractions >> (lane * 4)) & 0xFu;
 	}
 
 	// entry.noInteractions[ownQuarter], for a runtime ownQuarter. Indexing the array would put entry in local memory
@@ -354,7 +353,8 @@ template <typename BoundaryCondition, bool energyMinimize, bool computePotE, boo
 __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(const SuperCluster* const superClusters,
 	const QuarterEntryTask* const tasks, const QuarterEntry* const entries,
 	const ForceAccumulator forceAcc /*MD only*/, SCResult* const results /*EM only*/, const int* const entryResultIndices /*EM only*/,
-	const SuperClusterMeta* const scMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa, float cutoffSq, int nSuperclusters,
+	const SuperClusterMeta* const scMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa /*EM*/, const PhysicsUtilsDevice::EwaldRealSpace ewald /*MD*/,
+	float cutoffSq, int nSuperclusters,
 	long long* const virialPartials /*MD pressure steps only*/)
 {
 	using namespace NbNonlocal;
@@ -392,8 +392,11 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 	for (int base = task.firstEntry; base < end; base += nGroups) {
 		const int e = base + group;
 		const bool activeGroup = e < end;
-		const QuarterEntry entry = entries[activeGroup ? e : base];
+		QuarterEntry entry = entries[activeGroup ? e : base];
 		const uint32_t ownQuarterMask = activeGroup ? entry.ownQuarterMask : 0u;
+		if (!activeGroup)
+			for (int q = 0; q < 4; q++)
+				entry.noInteractions[q] = 0xFFFFu; // The group still runs the warp's quarters, with all pairs masked
 
 		const int jIndex = entry.jQuarter * 4 + lane;
 		float4 pqJ = superClusters[entry.jScId].posCharge[jIndex];
@@ -415,7 +418,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 			for (int ownQuarter = 0; ownQuarter < 4; ownQuarter++) {
 				if (!((unionMask >> ownQuarter) & 1))
 					continue;
-				const uint32_t noInteractions = RotatedNoInteractions(entry.noInteractions[ownQuarter], ownQuarterMask, ownQuarter, lane);
+				const uint32_t noInteractions = LaneNoInteractions(entry.noInteractions[ownQuarter], lane);
 				const float4 pqI = ownPosCharge[warpInBlock][ownQuarter * 4 + lane];
 				const float2 seI = ownSigmaEpsilon[warpInBlock][ownQuarter * 4 + lane];
 #pragma unroll
@@ -425,7 +428,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 					const float2 seJ = jSigmaEpsilon[warpInBlock][group][jLocal];
 					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
 					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
-					ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewaldKappa);
+					ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewald);
 					if constexpr (computeVirial)
 					virialLocal -= diff.dot(fe.force);
 					accJ[k] += fe;
@@ -446,7 +449,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 			for (int ownQuarter = 0; ownQuarter < 4; ownQuarter++) {
 				if (!((unionMask >> ownQuarter) & 1))
 					continue;
-				const uint32_t noInteractions = RotatedNoInteractions(NoInteractionsOfQuarter(entry, ownQuarter), ownQuarterMask, ownQuarter, lane);
+				const uint32_t noInteractions = LaneNoInteractions(NoInteractionsOfQuarter(entry, ownQuarter), lane);
 				const float4 pqI = ownPosCharge[warpInBlock][ownQuarter * 4 + lane];
 				const float2 seI = ownSigmaEpsilon[warpInBlock][ownQuarter * 4 + lane];
 				ForceEnergy ownForce{};

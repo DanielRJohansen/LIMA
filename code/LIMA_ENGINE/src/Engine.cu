@@ -790,7 +790,8 @@ void Engine::_deviceMaster() {
 		// Blocksize must be 64, 2 superclusters per block, see the kernel
 		NbNonlocalKernel<BoundaryCondition, emvariant, logData, computeVirial><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
 			batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
-			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, batch->params.cutoff_nm * batch->params.cutoff_nm, nScs,
+			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, PhysicsUtilsDevice::EwaldRealSpace::Make(batch->ewaldKappa),
+			batch->params.cutoff_nm * batch->params.cutoff_nm, nScs,
 			computeVirial ? batch->nbVirialPartials.Get() : nullptr);
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);

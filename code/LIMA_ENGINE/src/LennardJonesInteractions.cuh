@@ -138,9 +138,11 @@ namespace LJ {
 	// The MD pair interaction. diff is from p0 to p1, the returned fe is on p0, invert to get fe on p1.
 	// epsilonTimes24 and chargeProductTimesK are products of particle parameters pre-scaled with PrescaleNBParams
 	// Branchless: LJ and coulomb share a single rsqrt, and are combined into a single scalar applied to diff.
+	// Both force scalars have a factor 1/dist^2, which is applied once to their sum.
 	// Masked pairs are discarded with a select, since padding particles may overlap other particles and produce NaN.
 	template<bool computePotE>
-	__device__ inline ForceEnergy ComputePairNB(const Float3& diff, float sigma, float epsilonTimes24, float chargeProductTimesK, bool masked, float ewaldKappa)
+	__device__ inline ForceEnergy ComputePairNB(const Float3& diff, float sigma, float epsilonTimes24, float chargeProductTimesK, bool masked,
+		const PhysicsUtilsDevice::EwaldRealSpace& ewald)
 	{
 		ForceEnergy fe{}; // on p0
 
@@ -148,12 +150,12 @@ namespace LJ {
 		const float distInv = rsqrtf(distSq);
 		const float distSqInv = 1.f / distSq; // Not distInv^2, the steep LJ terms amplify the rsqrt error into noticeable energy drift
 
-		float forceScalar = 0.f; // force = diff * forceScalar, attractive when positive
+		float forceScalarTimesDistSq = 0.f; // force = diff * forceScalarTimesDistSq / dist^2, attractive when positive
 
 		if constexpr (ENABLE_LJ) {
 			float s = (sigma * sigma) * distSqInv;
 			s = s * s * s;
-			forceScalar += epsilonTimes24 * s * distSqInv * (1.f - 2.f * s);	// [J/mol/nm^2]
+			forceScalarTimesDistSq += epsilonTimes24 * s * fmaf(-2.f, s, 1.f);	// [J/mol]
 
 			if constexpr (computePotE && ENABLE_POTE)
 				fe.potE += epsilonTimes24 * (1.f / 12.f) * s * (s - 1.f);	// 4*eps*s*(s-1) * 0.5 to account for splitting the potential between the 2 particles
@@ -161,24 +163,24 @@ namespace LJ {
 
 		if constexpr (ENABLE_ES_SR) {
 			// Repulsive for equal charges, hence the negation
-			float coulombScalar = -chargeProductTimesK * distInv * distSqInv;
+			float coulombScalarTimesDistSq = -chargeProductTimesK * distInv;
 			if constexpr (ENABLE_ERFC_FOR_EWALD) {
 				// As CalcErfcScalar, sharing the gaussian with erfc for the potential
-				const float x = distSq * distInv * ewaldKappa;
-				const float gaussian = PhysicsUtilsDevice::EwaldGaussian(distSq, ewaldKappa);
-				const float forcePoly = PhysicsUtilsDevice::EwaldForcePoly(x);
-				coulombScalar *= gaussian * forcePoly;
+				const float dist = distSq * distInv;
+				const float gaussian = ewald.Gaussian(distSq);
+				const float forcePoly = ewald.ForcePoly(dist);
+				coulombScalarTimesDistSq *= gaussian * forcePoly;
 				if constexpr (computePotE)
-					fe.potE += chargeProductTimesK * distInv * gaussian * PhysicsUtilsDevice::ErfcxFromForcePoly(forcePoly, x) * 0.5f; // erfc(x) * 0.5, the 0.5 to account for splitting the potential between the 2 particles
+					fe.potE += chargeProductTimesK * distInv * gaussian * ewald.ErfcxFromForcePoly(forcePoly, dist) * 0.5f; // erfc(kappa*dist) * 0.5, the 0.5 to account for splitting the potential between the 2 particles
 			}
 			else {
 				if constexpr (computePotE)
-					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotentialTrueImplementation(chargeProductTimesK, distSq, ewaldKappa) * 0.5f; // 0.5 to account for splitting the potential between the 2 particles
+					fe.potE += PhysicsUtilsDevice::CalcCoulumbPotentialTrueImplementation(chargeProductTimesK, distSq, ewald.kappa) * 0.5f; // 0.5 to account for splitting the potential between the 2 particles
 			}
-			forceScalar += coulombScalar;
+			forceScalarTimesDistSq += coulombScalarTimesDistSq;
 		}
 
-		fe.force = diff * (masked ? 0.f : forceScalar);
+		fe.force = diff * (masked ? 0.f : forceScalarTimesDistSq * distSqInv);
 		fe.potE = masked ? 0.f : fe.potE;
 
 		if constexpr (FORCE_CHECKS) {

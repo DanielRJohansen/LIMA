@@ -535,7 +535,8 @@ struct SCResult {
 // An entry is quarter jQuarter of supercluster jScId, with the blocks it forms with the quarters of the task's own supercluster
 struct QuarterEntry {
 	int jScId;
-	uint16_t noInteractions[4];	// Per own quarter: bit iLocal*4+jLocal set if the pair must not be computed (bonded, padding, or computed in the other order)
+	uint16_t noInteractions[4];	// Per own quarter: bit iLocal*4+k set if the pair of own particle iLocal and j particle (iLocal+k)&3 must not be
+								// computed (bonded, padding, or computed in the other order). All set for own quarters not in ownQuarterMask
 	uint8_t jQuarter;
 	uint8_t ownQuarterMask;		// Bit i set if own quarter i has a pair within the list radius
 	uint16_t _unused = 0;

@@ -105,7 +105,8 @@ namespace Benchmarks {
 
 	TestRoutine Bench(Environment& environment, EnvMode envmode, fs::path workDir,
 		fs::path groPath, fs::path topPath, fs::path simParamsPath,
-		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps, bool printPerformance, bool barostat) {
+		PerformanceBounds<std::chrono::microseconds> allowedTimePerStep, int nSteps, int nRuns, int warmupSteps, bool printPerformance, bool barostat,
+		bool constrained) {
 		const auto MakeJob = [&](int steps) {
 			SimulationJob job;
 			job.workDir = workDir;
@@ -114,11 +115,13 @@ namespace Benchmarks {
 			job.simParams.emplace(simParamsPath);
 			job.mode = EnvMode::Headless;
 			job.mustRunAlone = true;
-			job.preprocess = [steps, barostat](GroFile&, TopologyFile&, SimParams& params) {
+			job.preprocess = [steps, barostat, constrained](GroFile&, TopologyFile&, SimParams& params) {
 				params.data_logging_interval = 20;
 				params.enable_electrostatics = true;
 				params.n_steps = steps;
 				params.apply_barostat = barostat;
+				if (constrained)
+					params.constraints = ConstraintsSelect::HBonds;
 			};
 			return job;
 		};
@@ -155,11 +158,11 @@ namespace Benchmarks {
 				allowedTimePerStep.max.count() / 1000.), envmode != Headless };
 	}
 
-	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance, bool barostat) {
+	TestRoutine STMV(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance, bool barostat, bool constrained) {
 		const fs::path workDir = TestsDir() / "benchmarking/stmv";
 		return Bench(environment, envmode, workDir, workDir / "conf.gro", workDir / "topol.top",
-			workDir / "sim_params.txt", { std::chrono::microseconds{ 3200 }, std::chrono::microseconds{ 7500 } },
-			nSteps, nRuns, 0, printPerformance, barostat);
+			workDir / "sim_params.txt", { std::chrono::microseconds{ 2900 }, std::chrono::microseconds{ 7500 } },
+			nSteps, nRuns, 0, printPerformance, barostat, constrained);
 	}
 
 	TestRoutine T4(Environment& environment, EnvMode envmode, int nSteps, int nRuns, bool printPerformance) {

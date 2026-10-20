@@ -37,7 +37,8 @@ __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const Super
 		const int i = pairId / sc1.nUniquePcIds;
 		const int j = pairId % sc1.nUniquePcIds;
 
-		bonded |= pclustersBondedToPcluster[sc0.uniquePclusterIds[i]].Contains(sc1.uniquePclusterIds[j]);
+		// The same pcluster in both: a pcluster split over the superclusters, see ClusteringKernel
+		bonded |= sc0.uniquePclusterIds[i] == sc1.uniquePclusterIds[j] || pclustersBondedToPcluster[sc0.uniquePclusterIds[i]].Contains(sc1.uniquePclusterIds[j]);
 	}
 
 	return __any_sync(mask, bonded);
@@ -49,7 +50,7 @@ __device__ inline bool Warp_ScAreBonded(const SuperClusterMeta& sc0, const Super
 
 // gridDim = nGridnodes, blockDim = 32. Bounding sphere, cell, valid particles and external bonds of every supercluster, and the AABB of every cell
 __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
-	float4* const scSpheres, int* const scCells, uint16_t* const scValidMasks, uint8_t* const scExternalBonds, float4* const cellMin, float4* const cellMax)
+	const PersistentClusterMeta* const pclusterMeta, float4* const scSpheres, int* const scCells, uint16_t* const scValidMasks, uint8_t* const scExternalBonds, float4* const cellMin, float4* const cellMax)
 {
 	static_assert(sizeof(PclustersBondedToPcluster) == 32 * sizeof(int), "One lane per value of a bonded set");
 	const int cell = blockIdx.x;
@@ -79,8 +80,8 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 			scCells[scId] = cell;
 			scValidMasks[scId] = static_cast<uint16_t>(validMask);
 		}
-		// Whether any value in the bonded sets of the supercluster's pclusters is a pcluster outside it. Superclusters without are bonded
-		// to no other supercluster, so FindNeighborsKernel can skip checking their pairs
+		// Whether any value in the bonded sets of the supercluster's pclusters is a pcluster outside it, or any of its pclusters is split
+		// over superclusters. Superclusters with neither are bonded to no other supercluster, so FindNeighborsKernel can skip checking their pairs
 		const int nUnique = scControl.scMeta[scId].nUniquePcIds;
 		const int ownPcluster = lane < nUnique ? scControl.scMeta[scId].uniquePclusterIds[lane] : -1;
 		bool externalBond = false;
@@ -91,6 +92,10 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 				internal |= __shfl_sync(LIMA_FULL_WARP_MASK, ownPcluster, v) == bondedPcluster;
 			externalBond |= !internal;
 		}
+		const int pclusterOfSlot = valid && lane < SuperCluster::maxParticles ? scControl.scMeta[scId]._pclusterIds[i] : -1;
+		const uint32_t samePcluster = __match_any_sync(LIMA_FULL_WARP_MASK, pclusterOfSlot);
+		if (pclusterOfSlot >= 0 && __popc(samePcluster) < pclusterMeta[pclusterOfSlot].nParticles)
+			externalBond = true;
 		externalBond = __any_sync(LIMA_FULL_WARP_MASK, externalBond);
 		if (lane == 0)
 			scExternalBonds[scId] = externalBond;
@@ -522,7 +527,7 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	tb.entryCounts.Expand(n + 1, 1.2);
 	tb.overflow.Expand(1);
 
-	SuperclusterBoundsKernel<<<nCells, 32, 0, stream>>>(*batch->superClustersControl, tb.contents.pclustersBondedToPcluster, tb.scSpheres.Get(),
+	SuperclusterBoundsKernel<<<nCells, 32, 0, stream>>>(*batch->superClustersControl, tb.contents.pclustersBondedToPcluster, batch->pClusterMetaDevice.Get(), tb.scSpheres.Get(),
 		tb.scCells.Get(), tb.scValidMasks.Get(), tb.scExternalBonds.Get(), tb.cellMin.Get(), tb.cellMax.Get());
 	cudaMemsetAsync(tb.overflow.Get(), 0, sizeof(int), stream);
 	FindNeighborsKernel<<<(n + neighborSearchWarpsPerBlock - 1) / neighborSearchWarpsPerBlock, 32 * neighborSearchWarpsPerBlock, 0, stream>>>(

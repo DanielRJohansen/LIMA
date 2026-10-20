@@ -929,7 +929,7 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 			if (particle >= 0 && particle / PersistentCluster::maxParticles == pcId)
 				group.slots[particle % PersistentCluster::maxParticles] = i;
 		}
-		// Pclusters are placed in superclusters whole, so this only guards against a broken layout
+		// Pclusters with constraints are placed in superclusters whole (see ClusteringKernel), so this only guards against a broken layout
 		for (int c = 0; c < constraints.nConstraints; c++)
 			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0) {
 				printf("Constrained particles of pcluster %d are not in the same supercluster\n", pcId);

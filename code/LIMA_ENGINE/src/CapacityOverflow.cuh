@@ -9,7 +9,7 @@
 // point and aborts the run, since dropped entries mean the step's physics is already wrong.
 struct CapacityOverflow {
 	// Unstable is no capacity, but rides the same sync: a particle moved more than maxStep in one step, or became non-finite
-	enum Code : int { None = 0, ClusterTransfer, ClusterOccupancy, ChargeBlock, Unstable };
+	enum Code : int { None = 0, ClusterTransfer, ClusterOccupancy, ChargeBlock, Unstable, SuperclusterOccupancy };
 	static constexpr float maxStep = 0.2f;	// [nm] Also in the message of ThrowIfSet. Thermal motion is below ~0.05 nm per step even at 4 fs
 	static constexpr int nValues = 4; // code, block, count, capacity
 
@@ -47,6 +47,7 @@ struct CapacityOverflow {
 				"use constraints=h-bonds");
 		const char* what = values[0] == ClusterTransfer ? "outgoing cluster transfers per direction"
 			: values[0] == ClusterOccupancy ? "persistent clusters per grid block"
+			: values[0] == SuperclusterOccupancy ? "particles (constrained pclusters counting as one) per grid block, to fit its superclusters"
 			: "PME charge entries per charge block";
 		throw std::length_error("Engine capacity exceeded: " + std::to_string(values[2]) + " " + what + " in block "
 			+ std::to_string(values[1]) + " (max " + std::to_string(values[3]) + "). The system is locally too dense for the engine's fixed buffers");

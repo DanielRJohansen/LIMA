@@ -453,6 +453,49 @@ __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, co
 	}
 	__syncthreads();
 
+	// Order each supercluster's particles into spatially compact quarters, as NbNonlocalKernel computes 4x4 blocks of quarters
+	// with any pair in range: compact quarters have fewer such blocks. Recursive bisection: sort all particles along their longest
+	// axis, then each half along its own. The particles stay first, so only the last quarter can hold padding
+	for (int scId = threadIdx.x; scId < nScs; scId += blockDim.x) {
+		int* const sources = &slotSources[scId * SuperCluster::maxParticles];
+		const int n = scNParticles[scId];
+		Float3 positions[SuperCluster::maxParticles];
+		for (int i = 0; i < n; i++) {
+			const int source = sources[i];
+			positions[i] = pClusters[idsOfPclustersInBlock[sortIds[source / PersistentCluster::maxParticles]]].pqd[source % PersistentCluster::maxParticles].position;
+			PeriodicBoundaryCondition::applyHyperposNM(blockCenter, positions[i], boxSizeFloat);
+		}
+		// Stable insertion sort of [begin, end) along the longest axis of its bounding box. Ties keep their order, so it is deterministic
+		auto SortAlongLongestAxis = [&](int begin, int end) {
+			if (end - begin < 2) return;
+			Float3 lo = positions[begin], hi = positions[begin];
+			for (int i = begin + 1; i < end; i++) {
+				lo = Float3{ fminf(lo.x, positions[i].x), fminf(lo.y, positions[i].y), fminf(lo.z, positions[i].z) };
+				hi = Float3{ fmaxf(hi.x, positions[i].x), fmaxf(hi.y, positions[i].y), fmaxf(hi.z, positions[i].z) };
+			}
+			const Float3 extent = hi - lo;
+			const int dim = extent.x >= extent.y && extent.x >= extent.z ? 0 : extent.y >= extent.z ? 1 : 2;
+			for (int i = begin + 1; i < end; i++) {
+				const Float3 p = positions[i];
+				const int source = sources[i];
+				const float key = dim == 0 ? p.x : dim == 1 ? p.y : p.z;
+				int j = i;
+				for (; j > begin; j--) {
+					const Float3 q = positions[j - 1];
+					if ((dim == 0 ? q.x : dim == 1 ? q.y : q.z) <= key) break;
+					positions[j] = q;
+					sources[j] = sources[j - 1];
+				}
+				positions[j] = p;
+				sources[j] = source;
+			}
+		};
+		SortAlongLongestAxis(0, n);
+		SortAlongLongestAxis(0, min(n, 8));
+		SortAlongLongestAxis(8, n);
+	}
+	__syncthreads();
+
 	const int stagingStartIndex = blockIdx.x * SuperClustersControl::maxClustersPerBlock;
 	for (int slot = threadIdx.x; slot < nScs * SuperCluster::maxParticles; slot += blockDim.x) {
 		const int scId = slot / SuperCluster::maxParticles;

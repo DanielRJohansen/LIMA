@@ -206,8 +206,9 @@ Options:
 
 inline constexpr std::string_view DaemonHelp = R"(Usage: lima daemon status|stop
 
-GPU commands (mdrun, em and buildmembrane) run in a background lima process, the
-daemon, so commands started at the same time share the GPU efficiently:
+GPU commands (mdrun, em and buildmembrane) started with --async run in a
+background lima process, the daemon, so commands submitted together share the
+GPU efficiently. Without --async a command runs in its own process:
 
   for d in run1 run2 run3; do lima mdrun --async -c $d/conf.gro -t $d/topol.top \
     --conf-out $d/out.gro; done
@@ -221,7 +222,7 @@ Commands:
   stop                         Let running commands finish, then exit
 
 Environment:
-  LIMA_NO_DAEMON=1             Run every command in its own process
+  LIMA_NO_DAEMON=1             Disable the daemon (--async then fails)
   LIMA_DAEMON_IDLE=SECONDS     Idle time before the daemon exits (default: 120)
   LIMA_DAEMON_DIR=PATH         Where the daemon keeps its socket and log
 )";

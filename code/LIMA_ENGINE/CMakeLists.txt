@@ -31,6 +31,10 @@ if (LIMA_GPU_BACKEND STREQUAL "HIP")
     find_package(hipfft REQUIRED CONFIG)
     find_package(hipcub REQUIRED CONFIG)
     target_link_libraries(LIMA_ENGINE LIMA_BASE hip::hipfft hip::hipcub)
+    # The equivalent of the CUDA build's -use_fast_math: flush denormals, approximate fp32 division/sqrt and math functions.
+    # Not -ffast-math, whose finite-math assumption would remove the kernels' NaN checks. T4 on the 780M: +16%
+    set(hipFastMath -fgpu-flush-denormals-to-zero -fno-hip-fp32-correctly-rounded-divide-sqrt -fapprox-func)
+    target_compile_options(LIMA_ENGINE PRIVATE "$<$<COMPILE_LANGUAGE:HIP>:${hipFastMath}>")
     return()	# The rest is the CUDA build's flags
 endif()
 

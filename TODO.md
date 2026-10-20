@@ -164,6 +164,7 @@ Possibly done by commit 78acee8b ("Solvate by tiling an equilibrated water box")
 ## Codebase TODOs
 Find and solve TODOs spread around the codebase.
 - `BoundaryConditionPublic.cpp`: the switches on `BoundaryConditionSelect` use `case None:`, which is `SupernaturalForcesSelect::None`; it only works because both are 0. Should be `NoBC` (clang warns: -Wenum-compare-switch).
+- The build script should, after creating the release draft and copying release notes, clear the "Whats new" section, so we wont write the same "whats new" in subsequent releases.
 
 ---
 
@@ -254,6 +255,13 @@ One Engine source tree for both backends; every kernel is written once (no hipif
         - Energy-gradient targets exceeded (CUDA-calibrated, expected): Pool 3.421e-08 / 3.421e-08 (equal to the CUDA value), PoolCompSol 2.31e-07 / 1.02e-07, Singlebond 4.04e-07 / 2.62e-07, ImproperDihedral 4.59e-05 / 4.47e-05, Solvent 7.91e-08 / 7.62e-08. PoolCompSol (2.3x) and Singlebond (1.5x) are the largest; worth a look when per-backend targets are set.
         - Perf: four batched T4 1.19x vs single (56.1 vs 47.1 ns/day), limit 1.25x. Needs a per-GPU limit.
         - Laptop data, not HIP: ForceComparisons, LoadT4, T4 throw "Unknown simulation parameter 'save_trajectory=false'" (in `LIMA_data/benchmarking/sim_params.txt` and `CompareWithOtherMdEngines/Forcecomparison1step/sim_params.txt`: the LIMA_data repo is behind the desktop's data). 3J3Q/STMV inputs missing (large systems are skipped on AMD anyway).
+   - **T4 speed on the 780M (2026-10-16), 48 ns/day:** not memory placement (hipMalloc and host memory both 75-80 GB/s, ~300 ns latency) and not the CPU (same speed pinned to 1 core). Found:
+     - HIP had no fast math (CUDA uses `-use_fast_math`): IEEE division/exp expansions in NB and integrate. **Fixed**: `-fgpu-flush-denormals-to-zero -fno-hip-fp32-correctly-rounded-divide-sqrt -fapprox-func` on Engine's HIP sources, +16%. Batch tests still bitwise; limatest drift: Pool/PoolCompSol/Improper now pass, Anglebond 7.2e-07 / 2.5e-07 now over, Singlebond/Met/Solvent still slightly over.
+     - Stream fork/join costs ~300 us/step under Windows HIP (event waits, independent of stream count); one stream: +11%. Not fixed.
+     - NB `__launch_bounds__(64, 16)` caps it at 64 VGPRs with 48 B/lane scratch spills; without the min-blocks hint +5%. Not fixed (HIP-only tuning).
+     - Not the cause: NB's 64-bit atomics (tripling them costs ~0.05 ms), dead printf, shuffles (few).
+     - The iGPU's clocks ramp up under load (FMA bench 1.95 -> 4.4 TFLOP/s over 3 runs).
+   - limatest on HIP skips the performance section and only reports the batched-T4 throughput ratio (the limits are the CUDA machine's). It still takes ~260 s on the 780M: the physics tests dominate.
 5. Warp-level kernels (neighbor search, NB) + determinism tests
 6. PME (hipFFT), test suite (small systems)
 7. Remaining features, rendering interop

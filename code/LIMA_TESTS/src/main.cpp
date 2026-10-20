@@ -292,12 +292,14 @@ int RunAllUnitTests() {
 	//ADD_TEST("ReorderMoleculeParticles", testReorderMoleculeParticles(envmode));
 	//ADD_SERIAL_TEST("TestFilesAreCachedAsBinaries", FileTests::TestFilesAreCachedAsBinaries(envmode)); too slow to run...
 
-	// Performance test
+	// Performance test. The limits are the CUDA dev machine's, so AMD builds skip them
+#ifndef LIMA_HIP
 	ADD_TEST("ToGmx large CIF benchmark", Benchmarks::ToGmxLargeCif);
 	ADD_TEST("3j3q load benchmark", Benchmarks::Load3J3Q);
 	ADD_SERIAL_TEST("LoadT4", Benchmarks::LoadT4);
 	ADD_SERIAL_TEST("T4", Benchmarks::T4, 500, Benchmarks::automatedTestRuns);
 	ADD_TEST("stmv sim performance", Benchmarks::STMV, 500, Benchmarks::automatedTestRuns);
+#endif
 
 	// Meta tests
 	//doPool50x(EnvMode::Headless);

@@ -11,7 +11,7 @@
 - **Solvation keeps water 0.35 nm away from the solute**, so membranes no longer get water in their hydrophobic core.
 
 ### New in the CLI
-- **GPU commands share the GPU**: `lima mdrun`, `em` and `buildmembrane` run on a background `lima` that batches concurrent commands on the GPU. Use `lima daemon status|stop` to manage it, or `--no-daemon` to run in-process.
+- **GPU commands share the GPU**: `lima mdrun`, `em` and `buildmembrane` started with `--async` run on a background `lima` that batches them on the GPU; `lima wait` collects the results. Without `--async` they run in-process. Use `lima daemon status|stop` to manage it.
 - **`--async`** returns immediately, and `lima wait` collects the results. With `-d`, a batch is shown tiled in one window.
 - **`lima mdrun --set KEY=VALUE ...`** overrides parameters of the sim_params file.
 - **`initial_temperature`** in sim_params draws starting velocities.

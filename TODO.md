@@ -61,12 +61,12 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 
 ## Thermostats
 - **Done:** v-rescale (Bussi), 2026-10-13. Deterministic (seeded, own deviates). T4 in water: mean 299.8 K, fluctuations 1.598 K vs 1.600 canonical.
-- **Compatibility check:** Salad uses `tcoupl = v-rescale`, `tau_t = 0.1`, `ref_t = 300`. Compare LIMA's behavior with GROMACS v-rescale and make compatible if needed; it depends on the kinetic-energy convention used by the integrator.
+- **Done:** GROMACS v-rescale compatibility, 2026-10-15. LIMA explicitly supports `integrator = md-vv` and rejects leap-frog `md`; velocity Verlet couples every step and applies each stochastic rescaling as one impulse.
 - **Missing:** Nose-Hoover, Langevin/stochastic dynamics, per-group coupling (eg. protein vs solvent).
 
 ## Constant pressure (NPT)
-- No barostat: C-rescale/Berendsen for equilibration, Parrinello-Rahman/MTTK for production.
-- Needs box rescaling on the GPU, a virial (the fixed-point force accumulation would also have to sum pair virials), and the grid/PME to follow the box size.
+- **Done:** isotropic Berendsen coupling, 2026-10-15. Deterministic fixed-point virials cover nonbonded, bonded, constraints and reciprocal PME; GPU box scaling updates the neighbor grid and PME, with hysteresis around grid-size changes. Align `steps_per_pressure_measurement` with `stepsPerNlistupdate` to reuse its rebuild.
+- **Missing:** stochastic cell rescaling / a canonical NPT barostat, anisotropic or semi-isotropic coupling, and independently barostatted simulations in one batch.
 
 ## Restraints and pulling
 - Position restraints are skipped (posre includes ignored in `Topologyfile.cpp`), so no restrained equilibration.

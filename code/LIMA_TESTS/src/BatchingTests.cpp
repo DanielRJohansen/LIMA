@@ -219,10 +219,28 @@ namespace BatchingTests {
 			auto handles = SubmitTogether(environment, std::move(jobs));
 			for (size_t i = 0; i < handles.size(); ++i) {
 				auto result = handles[i].Get();
-				Require(result.execution.batchSize == 1, "Standalone/preparation-only job was batched");
+				if ((i == 1 || i == 2) && result.execution.batchSize != 1)
+					throw std::runtime_error("Standalone/preparation-only job was batched");
 				Require(result.simulation->finished == (i != 2), "Preparation-only job executed");
 				Require(result.simulation->getStep() == (i == 2 ? 0 : 3), "Standalone job step count changed");
 			}
+		}
+		{
+			std::vector<SimulationJob> jobs;
+			for (int i = 0; i < 2; ++i) {
+				auto job = MakeSmallJob(5, 2, 0.00001f, false);
+				auto configure = std::move(job.configureSimulation);
+				job.configureSimulation = [configure](Simulation& simulation) {
+					configure(simulation);
+					simulation.simParams.apply_barostat = true;
+					simulation.simParams.steps_per_pressure_measurement = 1;
+					simulation.simParams.compressibility = 1e-12f;
+				};
+				jobs.push_back(std::move(job));
+			}
+			auto handles = SubmitTogether(environment, std::move(jobs));
+			for (auto& handle : handles)
+				Require(handle.Get().execution.batchSize == 1, "Scheduler batched a pressure-coupled job");
 		}
 		{
 			std::vector<SimulationJob> jobs;

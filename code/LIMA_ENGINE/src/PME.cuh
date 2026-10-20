@@ -39,6 +39,7 @@ namespace PME {
 		float* realspaceGrid = nullptr;
 		cufftComplex* fourierspaceGrid = nullptr;
 		float* greensFunctionScalars;
+		float* reciprocalVirialScalars;
 
 		// Chargeblocks 
 		std::unique_ptr<ChargeBlock::ChargeblockBuffers> chargeblockBuffers;
@@ -60,7 +61,11 @@ namespace PME {
 		~Controller();
 
 		// MD adds the forces to forceAcc, EM stores them in forceEnergy (pcluster layout)
-		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc);
+		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc,
+			long long* virialPartials = nullptr);
+		int VirialPartialCount() const { return (nGridpointsReciprocalspace * batchCount + 63) / 64; }
+		bool RequiresRebuild(Float3 boxLength) const;
+		void UpdateBoxLength(Float3 boxLength);
 
 		// Charge-block capacity status, or nullptr while no simulation is active
 		const CapacityOverflow* Overflow() const;

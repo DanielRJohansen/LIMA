@@ -34,6 +34,7 @@ namespace NeighborList{struct IdAndRelshift;}
 struct RunStatus {
 	int64_t current_step = 0;
 	float current_temperature = NAN;
+	float current_pressure = NAN;	// [bar]
 	float greatestForce = NAN; // measured in a single particle
 
 	bool simulation_finished = false;
@@ -92,7 +93,7 @@ private:
 
 	bool hostMaster();
 	void deviceMaster();
-	template <typename BoundaryCondition, bool emvariant, bool computePotE>
+	template <typename BoundaryCondition, bool emvariant, bool computePotE, bool computeVirial>
 	void _deviceMaster();
 
 	template <typename BoundaryCondition, bool emvariant>
@@ -144,6 +145,7 @@ private:
 	void ForkStreamsFromMainStream();
 	// Must be called after changing any field that IntegrationSimulationData is built from
 	void UploadIntegrationSimulationData();
+	bool ApplyBarostat(float coordinateScale);
 	EngineRunMode mode;
 	// ################################# VARIABLES AND ARRAYS ################################# //
 

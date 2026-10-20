@@ -16,7 +16,7 @@ enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClus
 enum BoundaryConditionSelect { NoBC, PBC };
 enum class ConstraintsSelect { None, HBonds };
 enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };
-enum class SimParamSection { Main, Physics, Thermostat, Output, Analysis, Debug };
+enum class SimParamSection { Main, Physics, Thermostat, Barostat, Output, Analysis, Debug };
 
 template<typename T>
 struct SimParam {
@@ -121,6 +121,14 @@ struct SimParams {
     SimParam<int64_t> velocity_seed{ "velocity_seed", 1, SimParamSection::Thermostat,
         "Seed of the initial_temperature velocities, as GROMACS' gen-seed. Runs with the same seed and input are identical" };
 
+    SimParam<bool> apply_barostat{ "apply_barostat", false, SimParamSection::Barostat,
+        "Isotropic Berendsen pressure coupling on/off" };
+    SimParam<int64_t> steps_per_pressure_measurement{ "steps_per_pressure_measurement", 20,
+        SimParamSection::Barostat, "[steps]. Align with stepsPerNlistupdate to reuse its neighbor-list rebuild" };
+    SimParam<float> ref_p{ "ref_p", 1.f, SimParamSection::Barostat, "Reference pressure [bar]" };
+    SimParam<float> tau_p{ "tau_p", 2.f, SimParamSection::Barostat, "[ps] Time constant of the barostat" };
+    SimParam<float> compressibility{ "compressibility", 4.5e-5f, SimParamSection::Barostat, "[bar^-1]" };
+
     SimParam<int> data_logging_interval{ "data_logging_interval", 5, SimParamSection::Output, "[steps]" };
     SimParam<bool> save_energy{ "save_energy", false, SimParamSection::Output,
         "Write energy.xvg: potential, kinetic and total energy [kJ/mol] and temperature [K] every data_logging_interval steps, "
@@ -139,6 +147,7 @@ struct SimParams {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate, verlet_buffer_tolerance, rlist,
             bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, tau_t, thermostat_seed, initial_temperature, velocity_seed,
+            apply_barostat, steps_per_pressure_measurement, ref_p, tau_p, compressibility,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 
@@ -146,6 +155,7 @@ struct SimParams {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate, verlet_buffer_tolerance, rlist,
             bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, tau_t, thermostat_seed, initial_temperature, velocity_seed,
+            apply_barostat, steps_per_pressure_measurement, ref_p, tau_p, compressibility,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 };

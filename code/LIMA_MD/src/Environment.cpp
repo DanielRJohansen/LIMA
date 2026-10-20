@@ -283,7 +283,7 @@ size_t Environment::MaxPreparedSimulations() const {
 
 bool Environment::MustRunAlone(const PreparedSimulation& next) {
 	return next.job.mustRunAlone || !next.job.run /*|| next.job.mode == Full*/
-		|| next.simulation->simParams.stepwise;
+		|| next.simulation->simParams.stepwise || next.simulation->simParams.apply_barostat;
 }
 
 bool Environment::IsDrained() const {

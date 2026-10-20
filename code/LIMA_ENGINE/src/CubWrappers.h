@@ -11,6 +11,7 @@
 #include "CudaBuffer.h"
 
 namespace CubWrappers {
+	struct PressureSums { double kineticEnergy; long long virial; };
 	// Stream ordered, does not synchronize. tempStorage is only used by work queued on the stream, so it may be reused by
 	// later calls on the same stream; growing it frees the old buffer, which synchronizes the device.
 	void ExclusiveScan(const int* first, const int* last, int* result, CudaBuffer<char>& tempStorage, cudaStream_t stream);
@@ -19,6 +20,9 @@ namespace CubWrappers {
 	void FillN(int* first, size_t count, int value, cudaStream_t stream);
 	// Sums in double precision
 	double Sum(const float* first, const float* last, cudaStream_t stream);
+	PressureSums SumPressure(const float* kineticEnergy, int nKinetic,
+		const long long* nonbonded, int nNonbonded, const long long* bonded, int nBonded,
+		const long long* constraints, int nConstraints, const long long* reciprocal, int nReciprocal, cudaStream_t stream);
 	// On the default stream
 	void SqrtInPlace(float* data, size_t count);
 }

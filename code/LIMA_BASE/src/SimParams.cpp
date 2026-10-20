@@ -141,6 +141,7 @@ std::string_view SectionName(const SimParamSection section) {
     case SimParamSection::Main: return "Main parameters";
     case SimParamSection::Physics: return "Physics parameters";
     case SimParamSection::Thermostat: return "Thermostat parameters";
+    case SimParamSection::Barostat: return "Barostat parameters";
     case SimParamSection::Output: return "Output parameters";
     case SimParamSection::Analysis: return "Analysis";
     case SimParamSection::Debug: return "Debug parameters";
@@ -204,9 +205,14 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
             ParseValue(key, found->second, target);
     };
 
+    bool velocityVerlet = false;
     if (const auto found = mdp.find("integrator"); found != mdp.end()) {
-        if (found->second == "md-vv") params.em_variant.value = false;
-        else if (found->second == "md") params.em_variant.value = false; // TODO: warn users that leap-frog runs as velocity Verlet: same trajectories, but the kinetic energy is at full rather than averaged half steps
+        if (found->second == "md-vv") {
+            params.em_variant.value = false;
+            velocityVerlet = true;
+        }
+        else if (found->second == "md")
+            throw std::runtime_error("Unsupported integrator: md is GROMACS leap-frog; LIMA uses velocity Verlet, set integrator = md-vv");
         else if (found->second == "steep") params.em_variant.value = true;
         else throw std::runtime_error("Unsupported integrator: " + found->second);
     }
@@ -295,6 +301,23 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
     };
     parseSeed("ld-seed", params.thermostat_seed.value);
     parseSeed("gen-seed", params.velocity_seed.value);
+
+    if (const auto found = mdp.find("pcoupl"); found != mdp.end()) {
+        const std::string pcoupl = Lowercase(found->second);
+        if (pcoupl != "no" && pcoupl != "none" && pcoupl != "berendsen")
+            throw std::runtime_error("Unsupported pcoupl: " + found->second + ". LIMA has isotropic Berendsen coupling");
+        params.apply_barostat.value = pcoupl == "berendsen";
+    }
+    if (const auto found = mdp.find("pcoupltype"); found != mdp.end() && Lowercase(found->second) != "isotropic")
+        throw std::runtime_error("Unsupported pcoupltype: " + found->second + ". LIMA has isotropic pressure coupling");
+    parseIfPresent("nstpcouple", params.steps_per_pressure_measurement.value);
+    parseSameForAllGroups("tau-p", params.tau_p.value);
+    parseSameForAllGroups("ref-p", params.ref_p.value);
+    parseSameForAllGroups("compressibility", params.compressibility.value);
+
+    // GROMACS couples every step with velocity Verlet, irrespective of nsttcouple.
+    if (velocityVerlet && params.apply_thermostat)
+        params.steps_per_temperature_measurement.value = 1;
 }
 
 } // namespace

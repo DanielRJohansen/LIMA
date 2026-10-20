@@ -13,6 +13,7 @@
 #include "platform/DeviceIntrinsics.cuh"
 #include "Utilities.h"
 #include "LimitTesting.cuh"
+#include "Virial.cuh"
 
 using namespace ChargeBlock;
 using namespace PME;
@@ -619,9 +620,9 @@ __global__ void __launch_bounds__(interpolateThreads) InterpolateForcesKernel(co
 
 
 
-__global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gridpointsPerDim,
+__global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, float* reciprocalVirialScalars, Int3 gridpointsPerDim,
 	double boxLenX, double boxLenY, double boxLenZ,		// [nm]
-	double ewaldKappa	// [nm^-1]
+	double ewaldKappa, float gridCellVolumeScale		// ewaldKappa [nm^-1]
 ) {
 	const Int3 halfNodes = gridpointsPerDim / 2;
 	int nGridpointsHalfdim = gridpointsPerDim.x / 2 + 1;
@@ -665,25 +666,50 @@ __global__ void PrecomputeGreensFunctionKernel(float* d_greensFunction, Int3 gri
 	// The inverse FFT is unnormalized, so the 1/N normalization of the realspace grid is folded in here instead of a separate pass
 	const double nGridpointsRealspace = double(gridpointsPerDim.x) * gridpointsPerDim.y * gridpointsPerDim.z;
 	d_greensFunction[index1D] = static_cast<float>(currentGreensValue / nGridpointsRealspace);
+	reciprocalVirialScalars[index1D] = static_cast<float>(currentGreensValue / nGridpointsRealspace
+		* (1.0 - kSquared / (2.0 * ewaldKappa * ewaldKappa)) / (invCellVolume * gridCellVolumeScale));
 }
 
 
+template<bool computeVirial>
 __global__ void ApplyGreensFunctionKernel(
 	cufftComplex* const d_reciprocalFreqData,
 	const float* const d_greensFunctionArray,
-	Int3 gridpointsPerDim, int batchCount
+	const float* const reciprocalVirialScalars, Int3 gridpointsPerDim, int batchCount,
+	long long* const virialPartials
 )
 {
 	int nGridpointsHalfdim = gridpointsPerDim.x / 2 + 1;// TODO: add comment here
 	const int index1D = blockIdx.x * blockDim.x + threadIdx.x;
 	const int gridSize = nGridpointsHalfdim * gridpointsPerDim.y * gridpointsPerDim.z;
-	if (index1D >= size_t(gridSize) * batchCount)
-		return;
+	const bool active = index1D < size_t(gridSize) * batchCount;
+	if constexpr (!computeVirial)
+		if (!active) return;
 
-	d_reciprocalFreqData[index1D] = cufftComplex{
-		d_reciprocalFreqData[index1D].x * d_greensFunctionArray[index1D % gridSize],
-		d_reciprocalFreqData[index1D].y * d_greensFunctionArray[index1D % gridSize]
-	};
+	float virial = 0.f;
+	if constexpr (computeVirial) {
+		if (active) {
+			const int mode = index1D % gridSize;
+			const NodeIndex frequency = Get3dIndexReciprocalspace(mode, gridpointsPerDim, nGridpointsHalfdim);
+			const cufftComplex rho = d_reciprocalFreqData[index1D];
+			const float weight = frequency.x == 0 || (gridpointsPerDim.x % 2 == 0 && frequency.x == gridpointsPerDim.x / 2) ? 1.f : 2.f;
+			virial = 0.5f * weight * (rho.x * rho.x + rho.y * rho.y) * reciprocalVirialScalars[mode];
+		}
+		for (int offset = 16; offset > 0; offset >>= 1)
+			virial += __shfl_down_sync(__activemask(), virial, offset);
+		__shared__ float warpVirials[2];
+		if ((threadIdx.x & 31) == 0)
+			warpVirials[threadIdx.x >> 5] = virial;
+		__syncthreads();
+		if (threadIdx.x == 0)
+			virialPartials[blockIdx.x] = Virial::ToFixed(warpVirials[0] + warpVirials[1]);
+	}
+
+	if (active)
+		d_reciprocalFreqData[index1D] = cufftComplex{
+			d_reciprocalFreqData[index1D].x * d_greensFunctionArray[index1D % gridSize],
+			d_reciprocalFreqData[index1D].y * d_greensFunctionArray[index1D % gridSize]
+		};
 
 }
 
@@ -716,8 +742,10 @@ PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations
 	if (nGridpointsRealspace > INT_MAX || nGridpointsRealspace * simulations.size() > INT_MAX)
 		throw std::runtime_error("PME batch exceeds grid index range");
 	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
+	cudaMalloc(&reciprocalVirialScalars, nGridpointsReciprocalspace * sizeof(float));
 	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
-		greensFunctionScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa);
+		greensFunctionScalars, reciprocalVirialScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa,
+		gridScale.x * gridScale.y * gridScale.z);
 	LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel");
 	SetActiveSimulations(simulations);
 }
@@ -764,6 +792,7 @@ PME::Controller::~Controller() {
 	cudaFree(realspaceGrid);
 	cudaFree(fourierspaceGrid);
 	cudaFree(greensFunctionScalars);
+	cudaFree(reciprocalVirialScalars);
 	if (chargeblockBuffers) chargeblockBuffers->Free();
 }
 
@@ -771,15 +800,33 @@ const CapacityOverflow* PME::Controller::Overflow() const {
 	return chargeblockBuffers ? &chargeblockBuffers->overflow : nullptr;
 }
 
-void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc) {
+bool PME::Controller::RequiresRebuild(Float3 boxLength) const {
+	return GridSizeRequiresRebuild(blocksPerDim, ChargeblocksPerDim(boxLength));
+}
+
+void PME::Controller::UpdateBoxLength(Float3 boxLength) {
+	boxlenNm = boxLength;
+	gridScale = NodeIndex(blocksPerDim).toFloat3() / boxlenNm;
+	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
+		greensFunctionScalars, reciprocalVirialScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa,
+		gridScale.x * gridScale.y * gridScale.z);
+}
+
+void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy,
+	ForceAccumulator forceAcc, long long* virialPartials) {
 	if (nSuperclusters == 0 || batchCount == 0) return;
 	DistributeCompoundchargesToBlocksKernel<<<(nSuperclusters + distributeScsPerBlock - 1) / distributeScsPerBlock, dim3(32, distributeScsPerBlock, 1), 0, stream>>>(
 		scData, *chargeblockBuffers, blocksPerDim, scMeta, simulationSlots.Get(), nSuperclusters, gridScale);
 	ChargeblockDistributeToGrid<<<nChargeblocks * batchCount, 128, 0, stream>>>(
 		*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim, gridScale.x * gridScale.y * gridScale.z);
 	CheckFft(cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid));
-	ApplyGreensFunctionKernel<<<(size_t(nGridpointsReciprocalspace) * batchCount + 63) / 64, 64, 0, stream>>>(
-		fourierspaceGrid, greensFunctionScalars, gridpointsPerDim, batchCount);
+	const int applyBlocks = VirialPartialCount();
+	if (virialPartials)
+		ApplyGreensFunctionKernel<true><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
+			reciprocalVirialScalars, gridpointsPerDim, batchCount, virialPartials);
+	else
+		ApplyGreensFunctionKernel<false><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
+			reciprocalVirialScalars, gridpointsPerDim, batchCount, nullptr);
 	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
 	InterpolateForcesKernel<<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
 		scMeta, ewaldKappa, forceEnergy, forceAcc, gridScale);

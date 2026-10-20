@@ -182,12 +182,20 @@ namespace EngineBatch {
 			if (sim->finished || sim->getStep() != 0)
 				throw std::invalid_argument("Engine requires fresh simulations at step zero");
 			const auto& params = sim->simParams;
-			if (params.stepsPerNlistupdate <= 0 || params.steps_per_temperature_measurement <= 0 || params.data_logging_interval < 0)
+			if (params.stepsPerNlistupdate <= 0 || params.steps_per_temperature_measurement <= 0
+				|| (params.apply_barostat && params.steps_per_pressure_measurement <= 0) || params.data_logging_interval < 0)
 				throw std::invalid_argument("Invalid engine measurement or update interval");
 			if (!FinitePositive(params.dt))
 				throw std::invalid_argument("Timestep must be finite and positive");
 			if (params.apply_thermostat && !FinitePositive(params.tau_t))
 				throw std::invalid_argument("tau_t must be finite and positive");
+			if (params.apply_barostat && (!FinitePositive(params.tau_p) || !FinitePositive(params.compressibility)
+				|| !std::isfinite(params.ref_p.value)))
+				throw std::invalid_argument("Barostat tau_p and compressibility must be finite and positive, and ref_p finite");
+			if (params.apply_barostat && (params.em_variant || params.bc_select != PBC))
+				throw std::invalid_argument("The barostat requires periodic-boundary molecular dynamics");
+			if (params.apply_barostat && !params.snf_select.empty())
+				throw std::invalid_argument("The barostat is not compatible with supernatural forces");
 			if (!FinitePositive(params.cutoff_nm))
 				throw std::invalid_argument("Cutoff must be finite and positive");
 			if (!(FinitePositive(params.verlet_buffer_tolerance) || params.verlet_buffer_tolerance == -1.f) || !std::isfinite(params.rlist.value))
@@ -207,6 +215,10 @@ namespace EngineBatch {
 			if (auto mismatch = FindIncompatibility(*simulations.front(), *sim))
 				throw std::invalid_argument("Incompatible batch parameter: " + std::string(*mismatch));
 		}
+		if (simulations.size() != 1 && std::ranges::any_of(simulations, [](const Simulation* simulation) {
+			return simulation->simParams.apply_barostat.value;
+		}))
+			throw std::invalid_argument("Pressure coupling currently requires a single simulation; independently scaled boxes cannot share a batch");
 		// The per-particle checks rely on the metadata checked above, and are by far the most expensive
 		ForEachSimulationInParallel(simulations.size(), [&](size_t i) {
 			const auto& box = *simulations[i]->box;

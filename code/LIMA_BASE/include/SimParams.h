@@ -101,6 +101,9 @@ struct SimParams {
     SimParam<BoundaryConditionSelect> bc_select{ "boundarycondition", PBC, SimParamSection::Physics, "PBC or NoBC" };
     SimParam<bool> enable_electrostatics{ "enable_electrostatics", true, SimParamSection::Physics };
     SimParam<float> cutoff_nm{ "cutoff_nm", 1.2f, SimParamSection::Physics, "[nm]" };
+    SimParam<float> fourier_spacing{ "fourierspacing", 0.f, SimParamSection::Physics,
+        "[nm] Largest PME grid spacing. 0 is 0.125 * cutoff_nm, the accuracy of GROMACS' defaults (fourierspacing 0.12 "
+        "at a 1 nm cutoff), as the Ewald splitting, and with it the grid needed, scales with the cutoff" };
     SimParam<std::set<SupernaturalForcesSelect>> snf_select{ "supernatural_forces", {}, SimParamSection::Physics };
     SimParam<ConstraintsSelect> constraints{ "constraints", ConstraintsSelect::None, SimParamSection::Physics,
         "none or h-bonds: h-bonds holds bonds to hydrogens at their equilibrium length and makes water rigid, as GROMACS' "
@@ -145,7 +148,7 @@ struct SimParams {
 
     auto Params() {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate, verlet_buffer_tolerance, rlist,
-            bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
+            bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, tau_t, thermostat_seed, initial_temperature, velocity_seed,
             apply_barostat, steps_per_pressure_measurement, ref_p, tau_p, compressibility,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
@@ -153,7 +156,7 @@ struct SimParams {
 
     auto Params() const {
         return std::tie(n_steps, dt, em_variant, em_force_tolerance, stepsPerNlistupdate, verlet_buffer_tolerance, rlist,
-            bc_select, enable_electrostatics, cutoff_nm, snf_select, constraints,
+            bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, tau_t, thermostat_seed, initial_temperature, velocity_seed,
             apply_barostat, steps_per_pressure_measurement, ref_p, tau_p, compressibility,
             data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);

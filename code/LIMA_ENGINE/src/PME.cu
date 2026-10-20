@@ -396,17 +396,26 @@ namespace PME {
 	}
 }
 
-// The chargeblocks per axis: the box length rounded up, so the grid spacing is at most the nominal 1 / gridpointsPerNm
-static Int3 ChargeblocksPerDim(Float3 boxlenNm) {
-	const auto Blocks = [](float l) { return (std::max)(1, static_cast<int>(std::ceil(l - boxLengthRoundingTolerance))); };
+// The chargeblocks per axis: the fewest that keep the grid spacing at most gridSpacing, rounded up to a count whose grid has
+// no prime factors above 5, as cuFFT takes a much slower path for others (eg. 7: 154 gridpoints cost more than 176)
+static Int3 ChargeblocksPerDim(Float3 boxlenNm, float gridSpacing) {
+	const auto Blocks = [gridSpacing](float l) {
+		int blocks = (std::max)(1, static_cast<int>(std::ceil(l / (gridSpacing * gridpointsPerNm) - boxLengthRoundingTolerance)));
+		const auto FftFriendly = [](int n) { for (const int p : { 2, 3, 5 }) while (n % p == 0) n /= p; return n == 1; };
+		while (!FftFriendly(blocks * gridpointsPerNm))
+			blocks++;
+		return blocks;
+	};
 	return Int3{ Blocks(boxlenNm.x), Blocks(boxlenNm.y), Blocks(boxlenNm.z) };
 }
 
-PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, cudaStream_t& stream)
-	: boxlenNm(simulations.front().simulation->box->boxparams.BoxSizeFloat()),
-	  blocksPerDim(ChargeblocksPerDim(boxlenNm)),
+PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, float fourierSpacing, cudaStream_t& stream)
+	: ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM)),
+	  gridSpacing(fourierSpacing > 0.f ? fourierSpacing : 0.125f * cutoffNM),
+	  boxlenNm(simulations.front().simulation->box->boxparams.BoxSizeFloat()),
+	  blocksPerDim(ChargeblocksPerDim(boxlenNm, gridSpacing)),
 	  nChargeblocks(blocksPerDim.InnerProduct()),
-	  ewaldKappa(PhysicsUtils::CalcEwaldkappa(cutoffNM)), stream(stream)
+	  stream(stream)
 {
 	gridScale = NodeIndex(blocksPerDim).toFloat3() / boxlenNm;
 	gridpointsPerDim = blocksPerDim * gridpointsPerNm;
@@ -479,7 +488,7 @@ const CapacityOverflow* PME::Controller::Overflow() const {
 }
 
 bool PME::Controller::RequiresRebuild(Float3 boxLength) const {
-	return GridSizeRequiresRebuild(blocksPerDim, ChargeblocksPerDim(boxLength));
+	return GridSizeRequiresRebuild(blocksPerDim, ChargeblocksPerDim(boxLength, gridSpacing));
 }
 
 void PME::Controller::UpdateBoxLength(Float3 boxLength) {

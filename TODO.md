@@ -37,7 +37,7 @@ GROMACS has these, LIMA does not (status checked 2026-10-13). Check each against
 
 ## Topology / input
 - **`[ constraints ]` sections:** not read yet. constraints = h-bonds and `[ settles ]` are handled (see Constraints below), but topologies that list their constraints explicitly lose them.
-- **MDP validation:** integrator, pbc, coulombtype, rvdw, output cadence, thermostat/barostat and seeds are validated. Still silently ignored: PME grid settings (`fourierspacing`, `pme-order`), `comm-mode`, and unknown keys in general.
+- **MDP validation:** integrator, pbc, coulombtype, rvdw, output cadence, thermostat/barostat and seeds are validated. `fourierspacing` sets the largest PME grid spacing. Still silently ignored: `pme-order`, `comm-mode`, and unknown keys in general.
 - **Regression coverage:** add a small AMBER99SB/TIP3P constrained-water fixture with tests for topology loading, constraint preservation, short-run stability, and readable `.trr` output. Validate against GROMACS observables, not frame-by-frame coordinates.
 
 ## Constraints

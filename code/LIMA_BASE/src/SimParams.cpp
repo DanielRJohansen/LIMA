@@ -243,6 +243,7 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         params.enable_electrostatics.value = true;
     }
     parseIfPresent("rcoulomb", params.cutoff_nm.value);
+    parseIfPresent("fourierspacing", params.fourier_spacing.value);
     // LIMA has one cutoff for LJ and Coulomb
     if (const auto found = mdp.find("rvdw"); found != mdp.end())
         if (ParseNumber<float>("rvdw", found->second) != params.cutoff_nm)

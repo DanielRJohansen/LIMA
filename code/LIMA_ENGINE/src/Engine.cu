@@ -160,7 +160,7 @@ bool Engine::IsFinished() const {
 
 void Engine::InitializePME() {
 	if (ENABLE_ES_LR && batch->params.enable_electrostatics) {
-		batch->pmeController = std::make_unique<PME::Controller>(batch->simulations, batch->params.cutoff_nm, pmeStream);
+		batch->pmeController = std::make_unique<PME::Controller>(batch->simulations, batch->params.cutoff_nm, batch->params.fourier_spacing, pmeStream);
 	}
 }
 

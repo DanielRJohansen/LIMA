@@ -11,8 +11,8 @@ namespace ChargeBlock { struct ChargeblockBuffers; }
 #include <memory>
 
 namespace PME {
-	// 0.125 nm grid spacing. With 4th order B-splines this gives ~0.3% RMS reciprocal force error on a solvated protein,
-	// measured against an exact Ewald sum (0.14% at 0.1 nm)
+	// Gridpoints per chargeblock and axis. A chargeblock is 1 nm in the grid's scaled coordinates, so this is per scaled nm.
+	// The real spacing follows from how many chargeblocks tile the box, see ChargeblocksPerDim
 	const int gridpointsPerNm = 8;
 	constexpr float gridpointsPerNm_f = static_cast<float>(gridpointsPerNm);
 	constexpr float invCellVolume = static_cast<float>(gridpointsPerNm * gridpointsPerNm * gridpointsPerNm);
@@ -23,8 +23,9 @@ namespace PME {
 		size_t nGridpointsRealspace = 0;
 		int nGridpointsReciprocalspace = -1;
 		const float ewaldKappa;
+		const float gridSpacing;	// The largest grid spacing [nm]
 		Float3 boxlenNm{};
-		Int3 blocksPerDim{};	// The box length rounded up, independent of the engine's cells
+		Int3 blocksPerDim{};	// See ChargeblocksPerDim, independent of the engine's cells
 		Float3 gridScale{};		// Per axis, from nm to the grid's coordinates, where the chargeblocks are 1 by 1 by 1
 		const int nChargeblocks;
 
@@ -54,7 +55,8 @@ namespace PME {
 
 	public:
 
-		Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, cudaStream_t& stream);
+		// fourierSpacing: the largest grid spacing [nm], 0 for the default, see SimParams::fourier_spacing
+		Controller(const std::vector<EngineSimulationData>& simulations, float cutoffNM, float fourierSpacing, cudaStream_t& stream);
 		void SetActiveSimulations(const std::vector<EngineSimulationData>& simulations);
 		~Controller();
 

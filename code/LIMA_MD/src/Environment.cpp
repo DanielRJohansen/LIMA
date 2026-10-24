@@ -630,7 +630,7 @@ void Environment::InitializeLiveEditSimulation(
 	if (display) {
 		display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 			session.simulation->box->persistentClusters, session.simulation->box->persistentClustersMetadata,
-			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains
+			session.simulation->box->boxparams, session.simStatus, session.simulation->box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, session.simulation->box->lipidModels
 		), false, nullptr, session.simulation->name);
 	}
 }
@@ -723,7 +723,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 			const std::string& label = member->name;
 			display->Submit(session.simulationId, std::make_unique<Rendering::AtomRenderTask>(
 				member->box->persistentClusters, member->box->persistentClustersMetadata,
-				member->box->boxparams, session.simStatus, member->box->backboneChains, Rendering::GetMoleculeInfo(*member->boxImage)
+				member->box->boxparams, session.simStatus, member->box->backboneChains, Rendering::GetMoleculeInfo(*member->boxImage), member->box->lipidModels
 			), stepwise, session.renderDataPipe, label);
 		}
 	}

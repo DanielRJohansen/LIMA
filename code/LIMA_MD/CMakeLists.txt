@@ -25,6 +25,9 @@ add_library(LIMA_MD STATIC
     src/RenderTask.cpp
     src/BackboneStructureInterpreter.cpp
     src/NewCartoonRenderer.cpp
+    src/LipidInterpreter.cpp
+    src/LipidRenderer.cpp
+    src/TubeMesh.cpp
     src/Lipids.cpp
     src/Overlay.cpp
     src/SimulationBuilder.cpp

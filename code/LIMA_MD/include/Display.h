@@ -38,6 +38,7 @@ class SSBO;
 class RenderDataPipe;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
+class LipidRenderer;
 
 struct SimulationTab {
 	SimulationId simulationId = 0;
@@ -59,6 +60,7 @@ struct RenderContext {
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
+	std::unique_ptr<LipidRenderer> lipidRenderer;
 	std::shared_ptr<RenderDataPipe> renderDataPipe;
 	std::vector<Float3> renderPositionsHost;
 	std::string label;

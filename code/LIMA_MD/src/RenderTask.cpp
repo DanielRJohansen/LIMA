@@ -1,5 +1,6 @@
 #include "RenderTask.h"
 
+#include "BoxBuilder.cuh"
 #include "BoxImageBuilder.h"
 
 #include <stdexcept>
@@ -39,6 +40,7 @@ Rendering::AtomRenderTask::AtomRenderTask(const GroFile& grofile, bool shouldSho
 	, atoms(grofile.atoms.size())
 	, packedPositionIndices(grofile.atoms.size())
 	, boxSize(grofile.box_size)
+	, lipidModels(BoxBuilder::InterpretLipids(grofile))
 	, showSolvents(shouldShowSolvents)
 {
 	for (std::size_t atomId = 0; atomId < grofile.atoms.size(); ++atomId) {
@@ -56,13 +58,15 @@ Rendering::AtomRenderTask::AtomRenderTask(
 	const BoxParams& boxparams,
 	SimStatus initialSimStatus,
 	BackboneChains initialBackboneChains,
-	std::vector<MoleculeInfo> initialMolecules)
+	std::vector<MoleculeInfo> initialMolecules,
+	LipidModels initialLipidModels)
 	: positions(boxparams.totalParticles)
 	, atoms(boxparams.totalParticles)
 	, packedPositionIndices(boxparams.totalParticles, -1)
 	, boxSize(boxparams.BoxSizeFloat())
 	, simStatus(initialSimStatus)
 	, backboneChains(std::move(initialBackboneChains))
+	, lipidModels(std::move(initialLipidModels))
 	, molecules(std::move(initialMolecules))
 {
 	for (std::size_t pcid = 0; pcid < pcMeta.size(); ++pcid) {

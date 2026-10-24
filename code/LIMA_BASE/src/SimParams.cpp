@@ -80,7 +80,8 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
             { "gradientfromatomid", ColoringMethod::GradientFromAtomid },
             { "persistentclusterid", ColoringMethod::PersistentClusterId },
             { "forcemagnitude", ColoringMethod::ForceMagnitude },
-            { "newcartoon", ColoringMethod::NewCartoon }
+            { "newcartoon", ColoringMethod::NewCartoon },
+            { "lipids", ColoringMethod::Lipids }
         };
         const auto found = values.find(input);
         if (found == values.end()) throw std::runtime_error(Lima::Format("Invalid coloring method: '{}'", input));
@@ -113,6 +114,7 @@ std::string FormatValue(const ColoringMethod value) {
     case ColoringMethod::PersistentClusterId: return "PersistentClusterId";
     case ColoringMethod::ForceMagnitude: return "ForceMagnitude";
     case ColoringMethod::NewCartoon: return "NewCartoon";
+    case ColoringMethod::Lipids: return "Lipids";
     }
     throw std::runtime_error("Invalid coloring method");
 }

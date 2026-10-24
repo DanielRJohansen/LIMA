@@ -89,7 +89,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus, simulation->box->backboneChains
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, simulation->box->lipidModels
 	));
 }
 
@@ -226,7 +226,7 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	liveeditData->remainingStepsCount = 4000;
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus, simulation->box->backboneChains
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, simulation->box->lipidModels
 	));
 
 	display->SetSpinnerVisible(false);
@@ -290,7 +290,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	display->WaitForDisplayReady();
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus, simulation->box->backboneChains
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, simulation->box->lipidModels
 	), false, nullptr, simulation->name);
 	display->allowUserInputs = true;
 

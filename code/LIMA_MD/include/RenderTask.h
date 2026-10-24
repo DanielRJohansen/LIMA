@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Backbone.h"
+#include "LipidModel.h"
 #include "MDFiles.h"
 #include "MoleculeHull.cuh"
 #include "Simulation.cuh"
@@ -28,11 +29,16 @@ namespace Rendering {
 
 	struct FreeTask{};
 
-	struct AtomRenderData {	
+	enum class LipidPart : uint8_t { None, Body, Head };
+
+	struct AtomRenderData {
 		char atomLetter = ' ';
 		float charge = 0.f;
 		int groupId = -1;
 		bool isSolvent = false;
+		// Set from the lipid models when the task is prepared for display
+		LipidPart lipidPart = LipidPart::None;
+		LipidHeadgroup lipidHeadgroup = LipidHeadgroup::Anionic;
 	};
 
 	struct AtomRenderTask {	
@@ -42,9 +48,11 @@ namespace Rendering {
 		Float3 boxSize{};
 		SimStatus simStatus;
 		BackboneChains backboneChains;
+		LipidModels lipidModels;
 		std::set<int> highlightedAtoms;
 		std::vector<MoleculeInfo> molecules;
 		bool showSolvents = true;
+		std::optional<ColoringMethod> representation; // Initial representation, otherwise the display keeps its current
 
 		AtomRenderTask(const GroFile& grofile, bool showSolvents = true);
 		AtomRenderTask(
@@ -53,7 +61,8 @@ namespace Rendering {
 			const BoxParams& boxparams,
 			SimStatus simStatus = {},
 			BackboneChains backboneChains = {},
-			std::vector<MoleculeInfo> molecules = {});
+			std::vector<MoleculeInfo> molecules = {},
+			LipidModels lipidModels = {});
 	};
 
 	struct SimulationTaskUpdate {

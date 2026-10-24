@@ -54,6 +54,7 @@ struct RenderSettings {
 	ColoringMethod coloringMethod{}; // Guides what (selected) renderatoms will be set to upon change
 	bool hasForceData = false;
 	bool hasBackbone = false;
+	bool hasLipids = false;
 };
 
 class Overlay {

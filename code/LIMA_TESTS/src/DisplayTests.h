@@ -3,6 +3,8 @@
 #include "../../LIMA_MD/src/DisplayInternal.h"
 #include "../../LIMA_MD/src/Shaders.h"
 #include "NewCartoonRenderer.h"
+#include "LipidRenderer.h"
+#include "BoxBuilder.cuh"
 #include "RenderDataPipe.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
@@ -75,6 +77,27 @@ public:
 				}
 			}
 		}
+
+		std::cout << "Checking lipid interpretation" << std::endl;
+		const fs::path slipids = FileUtils::GetLimaDir() / "resources" / "Slipids";
+		struct ExpectedLipid { const char* file; LipidHeadgroup headgroup; std::size_t tails; const char* head; };
+		// SITS names its atoms C1..C48 rather than by chain, so it checks the interpretation does not rely on names
+		for (const auto& expected : std::initializer_list<ExpectedLipid>{
+			{ "POPC", LipidHeadgroup::Choline, 2, "P" }, { "POPE", LipidHeadgroup::Ethanolamine, 2, "P" },
+			{ "POPS", LipidHeadgroup::Serine, 2, "P" }, { "DOPG", LipidHeadgroup::Anionic, 2, "P" },
+			{ "SM16", LipidHeadgroup::Choline, 2, "P" }, { "SITS", LipidHeadgroup::Choline, 2, "P" },
+			{ "cholesterol", LipidHeadgroup::Sterol, 1, "O3" } }) {
+			const GroFile grofile{ slipids / (std::string{ expected.file } + ".gro") };
+			const LipidModels lipids = BoxBuilder::InterpretLipids(grofile);
+			Require(lipids.size() == 1, "Lipid was not recognised as exactly one lipid");
+			Require(lipids[0].headgroup == expected.headgroup, "Lipid headgroup misclassified");
+			Require(lipids[0].tails.size() == expected.tails, "Lipid has the wrong number of tails");
+			Require(grofile.atoms[lipids[0].headParticleId].atomName == expected.head, "Lipid head is the wrong atom");
+			for (const auto& tail : lipids[0].tails)
+				Require(tail.size() >= 8, "Lipid tail is too short to be a chain");
+		}
+		Require(BoxBuilder::InterpretLipids(GroFile{ FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures" / "metsol.gro" }).empty(),
+			"A protein in water was interpreted as lipids");
 
 		std::cout << "Starting OpenGL fixture" << std::endl;
 		{
@@ -184,6 +207,35 @@ public:
 			Require(display.viewports.size() == 1 && display.viewports.contains(4), "Single view did not retain its context");
 			Require(display.GetObjectIdAtPixel(AtomPixel(display, 4, 0)) == 0, "Single-view picking regressed");
 			Require(glGetError() == GL_NO_ERROR, "OpenGL error during tile tests");
+
+			std::cout << "Checking lipid representation" << std::endl;
+			for (auto& [id, context] : display.renderContexts) context.selectedMolecule.reset();
+			{
+				auto task = std::make_unique<Rendering::AtomRenderTask>(GroFile{ slipids / "POPC.gro" }, true);
+				task->representation = ColoringMethod::Lipids;
+				Require(task->lipidModels.size() == 1, "Coordinate-only render task found no lipid");
+				const int head = task->lipidModels[0].headParticleId;
+				const int body = task->lipidModels[0].tails[0].back();
+				auto& context = display.renderContexts[50];
+				context.currentRenderTask = std::move(task);
+				display.PrepareTask(context, context.currentRenderTask, false);
+				display.activeSimulationId = 50;
+				display.activeRenderContext = &context;
+				display.RenderFrame({});
+				Require(context.lipidRenderer && context.lipidRenderer->HasGeometry(), "Lipid representation has no tails");
+				Require(context.renderAtomsHost[head].position.w == LipidRenderer::headRadius && context.renderAtomsHost[head].color.w > 0.f,
+					"Lipid head is not drawn as a bead");
+				Require(context.renderAtomsHost[body].color.w == 0.f, "Lipid body atoms are still drawn");
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, head)) == head, "Picking the lipid head failed");
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, body)) == head, "Picking a lipid tail did not select its lipid");
+
+				display.ApplyRepresentation(ColoringMethod::Atomname);
+				PrepareChanges(display);
+				Require(!context.lipidRenderer->HasGeometry(), "Lipid tails survived switching back to atoms");
+				Require(context.renderAtomsHost[head].position.w != LipidRenderer::headRadius && context.renderAtomsHost[body].color.w > 0.f,
+					"Atoms were not restored after the lipid representation");
+			}
+			Require(glGetError() == GL_NO_ERROR, "OpenGL error during lipid tests");
 			display.renderContexts.clear();
 			display.activeRenderContext = nullptr;
 			auto stoppedPipe = std::make_shared<RenderDataPipe>();

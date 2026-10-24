@@ -6,6 +6,7 @@
 
 #include "RenderUtilities.cuh"
 #include "NewCartoonRenderer.h"
+#include "LipidRenderer.h"
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "SSBO.h"
@@ -21,7 +22,15 @@ void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, si
 	const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
 	const float chargeNormalized = (atom.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
 	const auto coloringMethod = static_cast<ColoringMethod>(renderAtom.flags.y);
-	if (coloringMethod == ColoringMethod::Atomname || coloringMethod == ColoringMethod::NewCartoon)
+	const bool lipidHead = coloringMethod == ColoringMethod::Lipids && atom.lipidPart == Rendering::LipidPart::Head;
+	const bool lipidBody = coloringMethod == ColoringMethod::Lipids && atom.lipidPart == Rendering::LipidPart::Body;
+	renderAtom.position.w = lipidHead ? LipidRenderer::headRadius : RenderUtilities::getRadius(atomType);
+	if (lipidHead) {
+		const glm::vec4 color = LipidRenderer::HeadColor(atom.lipidHeadgroup);
+		renderAtom.color = float4{ color.r, color.g, color.b, color.a };
+	}
+	else if (coloringMethod == ColoringMethod::Atomname || coloringMethod == ColoringMethod::NewCartoon
+		|| coloringMethod == ColoringMethod::Lipids)
 		renderAtom.color = RenderUtilities::getColor(atomType);
 	else if (coloringMethod == ColoringMethod::Charge)
 		renderAtom.color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
@@ -34,7 +43,7 @@ void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, si
 		renderAtom.color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / atomCount);
 	else if (coloringMethod == ColoringMethod::ForceMagnitude)
 		renderAtom.color = RenderUtilities::GetLogColorGradient(forceMagnitude, 1e5f, 1e11f);
-	if ((!showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon)
+	if ((!showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon || lipidBody)
 		renderAtom.color.w = 0.f;
 }
 
@@ -122,6 +131,9 @@ void Display::_RenderAtoms(const RenderContext& renderContext) {
 	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry()) {
 		renderContext.newCartoonRenderer->Draw(*drawTrianglesShader, VP);
 	}
+	if (renderContext.lipidRenderer && renderContext.lipidRenderer->HasGeometry()) {
+		renderContext.lipidRenderer->Draw(*drawTrianglesShader, VP);
+	}
 
 	const glm::mat4 view = renderContext.camera->View();
 	const glm::mat4 projection = renderContext.camera->Projection();
@@ -177,9 +189,24 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
         renderContext.lastSelectedAtomId = -1;
         renderContext.activeGizmo.reset();
 		renderContext.renderSettings->hasBackbone = !task.backboneChains.empty();
+		renderContext.renderSettings->hasLipids = !task.lipidModels.empty();
 		renderContext.renderSettings->hasForceData = false;
+		if (task.representation)
+			renderContext.renderSettings->coloringMethod = *task.representation;
 		if (!renderContext.renderSettings->hasBackbone && renderContext.renderSettings->coloringMethod == ColoringMethod::NewCartoon)
 			renderContext.renderSettings->coloringMethod = ColoringMethod::Atomname;
+		if (!renderContext.renderSettings->hasLipids && renderContext.renderSettings->coloringMethod == ColoringMethod::Lipids)
+			renderContext.renderSettings->coloringMethod = ColoringMethod::Atomname;
+
+		for (const LipidModel& lipid : task.lipidModels) {
+			const int end = std::min(lipid.firstParticleId + lipid.particleCount, static_cast<int>(task.atoms.size()));
+			for (int atomId = std::max(lipid.firstParticleId, 0); atomId < end; ++atomId) {
+				task.atoms[atomId].lipidPart = Rendering::LipidPart::Body;
+				task.atoms[atomId].lipidHeadgroup = lipid.headgroup;
+			}
+			if (lipid.headParticleId >= 0 && lipid.headParticleId < static_cast<int>(task.atoms.size()))
+				task.atoms[lipid.headParticleId].lipidPart = Rendering::LipidPart::Head;
+		}
 		if (!renderContext.renderSettings->hasForceData && renderContext.renderSettings->coloringMethod == ColoringMethod::ForceMagnitude)
 			renderContext.renderSettings->coloringMethod = ColoringMethod::Atomname;
 	}
@@ -253,6 +280,21 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
         renderContext.newCartoonRenderer->Clear();
     }
 
+    LipidModels shownLipids;
+    for (const LipidModel& lipid : task.lipidModels) {
+        if (lipid.headParticleId >= 0 && lipid.headParticleId < renderContext.renderAtomsHost.size()
+            && renderContext.renderAtomsHost[lipid.headParticleId].flags.y == static_cast<unsigned int>(ColoringMethod::Lipids))
+            shownLipids.push_back(lipid);
+    }
+    if (!shownLipids.empty()) {
+        if (!renderContext.lipidRenderer)
+            renderContext.lipidRenderer = std::make_unique<LipidRenderer>();
+        renderContext.lipidRenderer->Prepare(shownLipids, task.positions, task.boxSize);
+    }
+    else if (renderContext.lipidRenderer) {
+        renderContext.lipidRenderer->Clear();
+    }
+
 
 	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
 		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
@@ -288,6 +330,8 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 	}
 	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry())
 		renderContext.newCartoonRenderer->Update(currentTask.positions);
+	if (renderContext.lipidRenderer && renderContext.lipidRenderer->HasGeometry())
+		renderContext.lipidRenderer->Update(currentTask.positions);
 	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
 		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
 		if (attachedAtomId < renderContext.renderAtomsHost.size()) {
@@ -304,6 +348,8 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 void Display::PrepareNewRenderTask(RenderContext& renderContext, const Rendering::MoleculehullTask& task) {
 	if (renderContext.newCartoonRenderer)
 		renderContext.newCartoonRenderer->Clear();
+	if (renderContext.lipidRenderer)
+		renderContext.lipidRenderer->Clear();
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 
@@ -407,6 +453,7 @@ void Display::RenderFrame(const std::vector<SimulationTab>& tabs) {
     overlay->enableConsole = allowUserInputs;
     RenderSettings menuSettings = *activeRenderContext->renderSettings;
     menuSettings.hasBackbone = false;
+    menuSettings.hasLipids = false;
     menuSettings.hasForceData = false;
     const bool anySelection = std::ranges::any_of(renderContexts, [](const auto& entry) {
         return entry.second.selectedMolecule.has_value();
@@ -414,6 +461,7 @@ void Display::RenderFrame(const std::vector<SimulationTab>& tabs) {
     for (const auto& [id, context] : renderContexts) {
         if (anySelection && !context.selectedMolecule) continue;
         menuSettings.hasBackbone |= context.renderSettings->hasBackbone;
+        menuSettings.hasLipids |= context.renderSettings->hasLipids;
         menuSettings.hasForceData |= context.renderSettings->hasForceData;
     }
     const float top = overlay->BeginFrame(menuSettings, fps->GetFps(), tabs, tiled, *activeSimulationId);

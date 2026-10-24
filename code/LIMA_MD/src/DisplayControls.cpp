@@ -481,6 +481,7 @@ void Display::ApplyRepresentation(ColoringMethod method) {
     for (auto& [id, context] : renderContexts) {
         if (anySelection && !context.selectedMolecule) continue;
         if (method == ColoringMethod::NewCartoon && !context.renderSettings->hasBackbone) continue;
+        if (method == ColoringMethod::Lipids && !context.renderSettings->hasLipids) continue;
         if (method == ColoringMethod::ForceMagnitude && !context.renderSettings->hasForceData) continue;
         context.renderSettings->coloringMethod = method;
         context.shouldRecolorAtoms = true;

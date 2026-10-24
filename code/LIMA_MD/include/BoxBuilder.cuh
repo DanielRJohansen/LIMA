@@ -14,4 +14,5 @@ namespace BoxBuilder
 
 
 	BackboneChains InterpretBackboneChains(const GroFile& grofile);
+	LipidModels InterpretLipids(const GroFile& grofile);
 };

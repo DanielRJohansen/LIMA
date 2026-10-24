@@ -12,7 +12,7 @@
 #include <tuple>
 #include <utility>
 
-enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon };
+enum class ColoringMethod { Atomname, Charge, GradientFromAtomid, PersistentClusterId, ForceMagnitude, NewCartoon, Lipids };
 enum BoundaryConditionSelect { NoBC, PBC };
 enum class ConstraintsSelect { None, HBonds };
 enum SupernaturalForcesSelect { None, HorizontalSqueeze, HorizontalChargeField, BoxEdgePotential, ElasticPosition };

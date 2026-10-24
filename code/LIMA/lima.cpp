@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -211,6 +212,21 @@ namespace RenderCli {
 		});
 		return value;
 	}
+
+	inline ColoringMethod ParseRepresentation(const std::string& name) {
+		static const std::map<std::string, ColoringMethod> representations{
+			{ "atomname", ColoringMethod::Atomname },
+			{ "charge", ColoringMethod::Charge },
+			{ "atomid", ColoringMethod::GradientFromAtomid },
+			{ "compound", ColoringMethod::PersistentClusterId },
+			{ "backbone", ColoringMethod::NewCartoon },
+			{ "lipids", ColoringMethod::Lipids },
+		};
+		const auto found = representations.find(Lowercase(name));
+		if (found == representations.end())
+			throw CliError(Lima::Format("unknown representation '{}'", name));
+		return found->second;
+	}
 }
 
 
@@ -226,6 +242,7 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
     bool whole = false;
     bool hidewater = false;
     std::vector<int> highlightAtomsInput{};
+	std::string representation;
 
     parser.AddOption({ "--structure", "-f", "--conf", "-c", "-structure", "-conf" }, false, conf);
     parser.AddOption({ "--topology", "-t", "-topology", "-top" }, false, topol);
@@ -233,7 +250,10 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 	parser.AddFlag({ "--whole", "-w", "-whole" }, [&whole]() { whole = true; });
 	parser.AddFlag({ "--hide-water", "-hidewater", "-hw" }, [&hidewater]() { hidewater = true; });
 	parser.AddOption({ "--highlight", "-highlight", "-hl" }, false, highlightAtomsInput);
+	parser.AddOption({ "--representation", "-r" }, false, representation);
     parser.Parse(argc, argv);
+	const std::optional<ColoringMethod> initialRepresentation = representation.empty()
+		? std::nullopt : std::optional{ RenderCli::ParseRepresentation(representation) };
     conf = ctx.Resolve(conf);
     topol = ctx.Resolve(topol);
 
@@ -295,7 +315,7 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 				simulation->box->persistentClusters,
 				simulation->box->persistentClustersMetadata,
 				simulation->box->boxparams,
-				SimStatus{}, simulation->box->backboneChains);
+				SimStatus{}, simulation->box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, simulation->box->lipidModels);
 		}
 		catch (const std::exception&) {
 			// Coordinate-only rendering remains valid when the topology or
@@ -308,6 +328,7 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 	}
 	renderTask->showSolvents = !hidewater;
 	renderTask->highlightedAtoms = highlightedAtoms;
+	renderTask->representation = initialRepresentation;
     d.Submit(1, std::move(renderTask), true);
 
     return 0;

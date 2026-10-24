@@ -9,6 +9,7 @@
 #include "DisplayInternal.h"
 #include "Shaders.h"
 #include "NewCartoonRenderer.h"
+#include "LipidRenderer.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"

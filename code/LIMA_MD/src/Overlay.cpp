@@ -194,6 +194,7 @@ namespace
         case ColoringMethod::PersistentClusterId: return "Compound ID";
         case ColoringMethod::ForceMagnitude: return "Force magnitude";
         case ColoringMethod::NewCartoon: return "Backbone";
+        case ColoringMethod::Lipids: return "Lipids";
         default: return "Default";
         }
     }
@@ -203,10 +204,12 @@ namespace
         constexpr std::array methods{
             ColoringMethod::Atomname, ColoringMethod::Charge,
             ColoringMethod::GradientFromAtomid, ColoringMethod::PersistentClusterId,
-            ColoringMethod::ForceMagnitude, ColoringMethod::NewCartoon
+            ColoringMethod::ForceMagnitude, ColoringMethod::NewCartoon, ColoringMethod::Lipids
         };
         for (const auto method : methods) {
             if (method == ColoringMethod::ForceMagnitude && !settings.hasForceData)
+                continue;
+            if (method == ColoringMethod::Lipids && !settings.hasLipids)
                 continue;
             if (method == ColoringMethod::NewCartoon && !settings.hasBackbone)
                 continue;

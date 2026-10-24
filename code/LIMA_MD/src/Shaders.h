@@ -581,6 +581,7 @@ private:
         uniform vec3 LightDir;
         uniform vec4 Color;
         uniform int ObjectId;
+        uniform float Ambient;
 
         layout(location = 0) out vec4 outColor;
         layout(location = 1) out int outObjectId;
@@ -591,8 +592,7 @@ private:
             vec3 L = normalize(-LightDir);
 
             float diffuse = max(dot(N, L), 0.0);
-            float ambient = 0.25;
-            float lighting = ambient + diffuse * 0.75;
+            float lighting = Ambient + diffuse * (1.0 - Ambient);
 
             outColor = vec4(Color.rgb * lighting, Color.a);
             outObjectId = ObjectId;
@@ -642,7 +642,31 @@ public:
         if (vertices.empty())
             return;
 
+        Upload(vertices);
+        DrawUploaded(0, vertices.size(), MVP, Model, color, objectId, defaultAmbient, lightDir);
+    }
+
+    static constexpr float defaultAmbient = 0.25f;
+
+    // For many small meshes: upload them once as one buffer, then draw each by its range
+    void Upload(const std::vector<Vertex>& vertices)
+    {
         glNamedBufferData(vbo, static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_DYNAMIC_DRAW);
+    }
+
+    void DrawUploaded(
+        std::size_t first,
+        std::size_t count,
+        const glm::mat4& MVP,
+        const glm::mat4& Model,
+        const glm::vec4& color,
+        int objectId,
+        float ambient = defaultAmbient,
+        const glm::vec3& lightDir = glm::normalize(glm::vec3(0.1f, 0.1f, -1.0f))
+    )
+    {
+        if (count == 0)
+            return;
 
         use();
         SetUniformMat4("MVP", MVP);
@@ -650,9 +674,10 @@ public:
         SetUniform("Color", color);
         SetUniform("LightDir", lightDir);
         SetUniformI("ObjectId", objectId);
+        SetUniform("Ambient", ambient);
 
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+        glDrawArrays(GL_TRIANGLES, static_cast<GLint>(first), static_cast<GLsizei>(count));
         glBindVertexArray(0);
         glUseProgram(0);
     }

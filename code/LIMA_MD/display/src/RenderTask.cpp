@@ -3,6 +3,7 @@
 #include "BoxBuilder.cuh"
 #include "BoxImageBuilder.h"
 #include "Format.h"
+#include "RenderUtilities.cuh"
 
 #include <algorithm>
 #include <stdexcept>

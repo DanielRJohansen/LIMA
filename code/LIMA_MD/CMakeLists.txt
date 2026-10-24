@@ -14,25 +14,29 @@ add_library(LIMA_MD STATIC
 
     src/Analyzer.cpp
     src/BoxBuilder.cpp
-    src/Display.cpp
-    src/DisplayInternal.cpp
     src/Environment.cpp
     src/Interface.cpp
     src/Programs.cpp
 	 src/Workflow.cpp
     src/Pdb2gmx.cpp
-    src/Rendering.cpp
-    src/RenderTask.cpp
     src/BackboneStructureInterpreter.cpp
-    src/NewCartoonRenderer.cpp
     src/LipidInterpreter.cpp
-    src/LipidRenderer.cpp
-    src/TubeMesh.cpp
     src/Lipids.cpp
-    src/Overlay.cpp
     src/SimulationBuilder.cpp
     src/LiveEditCommands.cpp
- "src/DisplayControls.cpp" "src/EnvironmentLiveedit.cpp")
+    src/EnvironmentLiveedit.cpp
+
+    # Display
+    display/src/Display.cpp
+    display/src/DisplayControls.cpp
+    display/src/DisplayInternal.cpp
+    display/src/Rendering.cpp
+    display/src/Overlay.cpp
+    display/src/RenderTask.cpp
+    display/src/NewCartoonRenderer.cpp
+    display/src/LipidRenderer.cpp
+    display/src/TubeMesh.cpp
+)
 
 
 
@@ -46,12 +50,14 @@ endif()
 
 target_include_directories(LIMA_MD PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/display/include
     ${GLFW_INCLUDE_DIRS}
     #${CMAKE_CURRENT_SOURCE_DIR}/imgui/
     #${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends/
 )
 target_include_directories(LIMA_MD PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/display/src
     ${CMAKE_SOURCE_DIR}/code/dependencies/glm/    
 )
 

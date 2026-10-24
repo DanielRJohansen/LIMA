@@ -142,7 +142,7 @@ if (WIN32)
 	set_source_files_properties(code/LIMA_MD/src/Analyzer.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 endif()
 # The longest C++ sources compile on their own, so no batch gets much longer than them
-set_source_files_properties(code/LIMA_MD/src/Pdb2gmx.cpp code/LIMA_MD/src/Display.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+set_source_files_properties(code/LIMA_MD/src/Pdb2gmx.cpp code/LIMA_MD/display/src/Display.cpp DIRECTORY code/LIMA_MD PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 lima_unity(LIMA_BASE 8)
 lima_unity(LIMA_TOOLS 8)
 lima_unity(LIMA_MD 5)

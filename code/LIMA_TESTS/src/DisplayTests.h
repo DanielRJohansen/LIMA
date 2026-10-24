@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../LIMA_MD/src/DisplayInternal.h"
-#include "../../LIMA_MD/src/Shaders.h"
+#include "../../LIMA_MD/display/src/DisplayInternal.h"
+#include "../../LIMA_MD/display/src/Shaders.h"
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
 #include "BoxBuilder.cuh"

@@ -22,6 +22,39 @@ namespace ProgramsTests {
 			return ReadPositionRestraintAtoms(GenericItpFile{ path });
 		}
 
+		struct AtomsAndCharge { std::size_t atoms = 0; double charge = 0.0; };
+		AtomsAndCharge CountAtomsAndCharge(const Programs::GmxConversionResult& conversion) {
+			AtomsAndCharge result;
+			for (const auto& molecule : conversion.topology.GetSystem().Instances())
+				for (const auto& atom : molecule.moleculetype->atoms) {
+					++result.atoms;
+					result.charge += atom.charge.value_or(0.f);
+				}
+			return result;
+		}
+
+		// 6lzm with CYS 97's SG moved 0.2 nm from CYS 54's, so the two cysteines form a disulfide
+		void WriteDisulfidePdb(const fs::path& sourcePath, const fs::path& outputPath) {
+			std::ifstream source(sourcePath);
+			std::ofstream output(outputPath);
+			if (!source || !output) throw std::runtime_error("Could not create disulfide PDB test input");
+			std::string sg54;
+			std::vector<std::string> lines;
+			for (std::string line; std::getline(source, line);) {
+				if (line.starts_with("ATOM  ") && line.substr(12, 4) == " SG " && std::stoi(line.substr(22, 4)) == 54) sg54 = line;
+				lines.push_back(line);
+			}
+			const double x = std::stod(sg54.substr(30, 8)) + 2.0, y = std::stod(sg54.substr(38, 8)), z = std::stod(sg54.substr(46, 8));
+			for (auto& line : lines) {
+				if (line.starts_with("ATOM  ") && line.substr(12, 4) == " SG " && std::stoi(line.substr(22, 4)) == 97) {
+					char coordinates[32];
+					std::snprintf(coordinates, sizeof(coordinates), "%8.3f%8.3f%8.3f", x, y, z);
+					line.replace(30, 24, coordinates);
+				}
+				output << line << '\n';
+			}
+		}
+
 		void WriteTwoChainPdb(const fs::path& sourcePath, const fs::path& outputPath) {
 			std::ifstream source(sourcePath);
 			std::ofstream output(outputPath);
@@ -89,6 +122,59 @@ namespace ProgramsTests {
 		TEST_ASSERT(conversion.positionRestraints.size() == 1
 			&& ReadPositionRestraintAtoms(conversion.positionRestraints.front()) == ReadPositionRestraintAtoms(directory / "posre_ref.itp"),
 			"CIF position-restraint atom sets differ");
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
+	}
+
+	// The togmx options change exactly the atoms and charges they should, and disulfides are bonded
+	TestRoutine TestToGmx_options(Environment&, EnvMode envmode) {
+		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
+		const fs::path input = directory / "6lzm.pdb";
+		const auto convert = [&](auto configure) {
+			Programs::ToGmxOptions options;
+			configure(options);
+			return Programs::ToGmx(input, options);
+		};
+		using O = Programs::ToGmxOptions;
+		const auto base = CountAtomsAndCharge(Programs::ToGmx(input));
+		const auto check = [&](std::string_view what, auto configure, int atomDelta, int chargeDelta) {
+			const auto variant = CountAtomsAndCharge(convert(configure));
+			const bool ok = static_cast<long long>(variant.atoms) - static_cast<long long>(base.atoms) == atomDelta
+				&& std::abs(variant.charge - base.charge - chargeDelta) < 1e-3;
+			return ok ? std::string{} : Lima::Format("{}: {} atoms, charge {:.3f}; expected {:+d} atoms, {:+d} charge vs {} / {:.3f}",
+				what, variant.atoms, variant.charge, atomDelta, chargeDelta, base.atoms, base.charge);
+		};
+		for (const std::string& error : {
+			check("--ter-n neutral", [](O& o) { o.nTerminus = O::NTerminus::Neutral; }, -1, -1),
+			check("--ter-c neutral", [](O& o) { o.cTerminus = O::CTerminus::Neutral; }, +1, +1),
+			check("--ter-c amide", [](O& o) { o.cTerminus = O::CTerminus::Amide; }, +2, +1),
+			check("--ter-c methylamide", [](O& o) { o.cTerminus = O::CTerminus::Methylamide; }, +5, +1),
+			check("--his hsp", [](O& o) { o.his = O::His::Hsp; }, +1, +1),
+			check("--his hse", [](O& o) { o.his = O::His::Hse; }, 0, 0),
+			check("--ignore-h", [](O& o) { o.ignoreHydrogens = true; }, 0, 0) }) {
+			TEST_ASSERT(error.empty(), error);
+		}
+
+		const fs::path disulfideInput = directory / "generated_disulfide.pdb";
+		WriteDisulfidePdb(input, disulfideInput);
+		const auto bonded = Programs::ToGmx(disulfideInput);
+		const auto& molecule = *bonded.topology.GetSystem().molecules.front().moleculetype;
+		int sg54 = -1, sg97 = -1;
+		for (const auto& atom : molecule.atoms) {
+			if (atom.atomname == "SG" && atom.resnr == 54) sg54 = atom.id;
+			if (atom.atomname == "SG" && atom.resnr == 97) sg97 = atom.id;
+		}
+		const bool hasBond = std::ranges::any_of(molecule.singlebonds, [&](const auto& bond) {
+			return (bond.ids[0] == sg54 && bond.ids[1] == sg97) || (bond.ids[0] == sg97 && bond.ids[1] == sg54);
+		});
+		TEST_ASSERT(sg54 >= 0 && sg97 >= 0 && hasBond, "No SG-SG bond for the disulfide CYS 54 - CYS 97");
+		TEST_ASSERT(CountAtomsAndCharge(bonded).atoms == base.atoms - 2, "The disulfide cysteines kept their HG hydrogens");
+		TEST_ASSERT(std::ranges::any_of(bonded.notes, [](const std::string& note) { return note.starts_with("Disulfides: "); }),
+			"The disulfide was not reported");
+		const auto unbonded = convert([](O& o) { o.disulfides = false; });
+		TEST_ASSERT(CountAtomsAndCharge(unbonded).atoms == base.atoms, "--no-disulfides changed the plain structure");
+		TryDeleteFile(disulfideInput);
+
+		TEST_ASSERT(Programs::ToGmx(directory / "7LZM.cif").notes.size() >= 1, "The CIF's HETATM waters were not reported");
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 

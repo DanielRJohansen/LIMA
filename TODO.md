@@ -13,6 +13,9 @@ Sections:
 
 # 1. Priority: GROMACS parity (Salad benchmark)
 
+## togmx: AMBER99SB force field (2026-10-24)
+`lima togmx` only writes CHARMM27, so it can't prepare the Salad (AMBER99SB) systems. Add `--ff charmm27|amber99sb`: AMBER's rtp/hdb/tdb/r2b files, its residue names (HID/HIE/HIP, CYX, NXXX/CXXX termini) and its default protonation/termini rules.
+
 ## Villin (Salad, AMBER99SB) vs GROMACS 2024.2: remaining issues (2026-10-14)
 - **Left:** fixture `tests/automatedtests/ForceComparisons/VillinAmber` has zero charges. A charged fixture needs an RMS rather than a per-atom criterion, as PME differs by up to 0.4% per atom.
 - Smaller issue (exclusions) found on the way: see [Correctness issues](#3-correctness-issues).

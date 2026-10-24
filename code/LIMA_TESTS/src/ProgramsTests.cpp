@@ -233,8 +233,20 @@ namespace ProgramsTests {
 		TEST_ASSERT(sameIds(actual.singlebonds, expected.singlebonds), "Bonds differ from pdb2gmx");
 		TEST_ASSERT(sameIds(actual.pairbonds, expected.pairbonds), "Pairs differ from pdb2gmx");
 		TEST_ASSERT(sameIds(actual.anglebonds, expected.anglebonds), "Angles differ from pdb2gmx");
-		TEST_ASSERT(sameIds(actual.dihedralbonds, expected.dihedralbonds), "Proper dihedrals differ from pdb2gmx");
-		TEST_ASSERT(sameIds(actual.improperdihedralbonds, expected.improperdihedralbonds), "Impropers differ from pdb2gmx");
+		// AMBER's impropers are periodic (funct 4) [ dihedrals ]; the parser may file them with the propers, so they are compared together
+		const auto dihedrals = [](const TopologyFile::Moleculetype& m) {
+			std::vector<std::array<int, 4>> all;
+			for (const auto& d : m.dihedralbonds) all.push_back(d.ids);
+			for (const auto& d : m.improperdihedralbonds) all.push_back(d.ids);
+			return all;
+		};
+		const auto asEntries = [](std::vector<std::array<int, 4>> ids) {
+			struct Entry { std::array<int, 4> ids; };
+			std::vector<Entry> entries;
+			for (const auto& i : ids) entries.push_back({ i });
+			return entries;
+		};
+		TEST_ASSERT(sameIds(asEntries(dihedrals(actual)), asEntries(dihedrals(expected))), "Dihedrals and impropers differ from pdb2gmx");
 
 		Programs::ToGmxOptions neutral = options;
 		neutral.cTerminus = Programs::ToGmxOptions::CTerminus::Neutral;

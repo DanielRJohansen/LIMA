@@ -4,6 +4,7 @@
 #include "MoleculeGraph.h"
 #include "TimeIt.h"
 #include "ParallelFor.h"
+#include "RenderUtilities.cuh"
 
 #include <unordered_set>
 #include <unordered_map>
@@ -732,7 +733,7 @@ namespace {
 					particle.mass = atomType->mass;
 			}
 
-			particle.atomLetter = !atom.atomname.empty() ? atom.atomname[0] : ' ';
+			particle.atomLetter = RenderUtilities::AtomLetter(atom.atomname, atom.residue); // TODO: This is hacky. Boxbuilder must be agnostic to rendering
 			particle.isSolvent = IsSolventResidue(atom.residue);
 			assert(particle.mass > 0.f);
 		}

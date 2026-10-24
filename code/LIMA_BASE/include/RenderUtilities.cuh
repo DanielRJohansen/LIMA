@@ -2,10 +2,25 @@
 
 #include "GpuRuntime.h"
 #include <glm.hpp>
+#include <string_view>
 
 
 namespace RenderUtilities {
-	enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, M, LIMA_CUSTOM };
+	enum ATOM_TYPE { NONE, O, C, P, N, H, SOL, S, M, LIMA_CUSTOM, ION };
+
+    // The letter an atom is rendered by: its name's first letter. Monatomic ions get 'I', as their names (K, NA, CL, ...) would
+    // otherwise read as other elements or as unknown. An ion is recognized by its residue having the ion's name, as CA alone is
+    // also a protein's alpha carbon
+    inline char AtomLetter(std::string_view atomName, std::string_view residueName) {
+        constexpr std::string_view ions[] = { "LI", "NA", "K", "RB", "CS", "MG", "CA", "ZN", "CL", "BR", "F", "I",
+            "SOD", "POT", "CLA", "CAL", "CES", "LIT", "RUB", "ZN2", "MG2", "NA+", "K+", "CL-" };
+        if (atomName.empty())
+            return ' ';
+        for (const std::string_view ion : ions)
+            if (atomName == ion && residueName == ion)
+                return 'I';
+        return atomName[0];
+    }
 
     __device__ __host__ inline ATOM_TYPE RAS_getTypeFromAtomletter(char atom, std::optional<bool> isSolvent = std::nullopt) {
         if (isSolvent.has_value() && isSolvent.value()) {
@@ -30,8 +45,19 @@ namespace RenderUtilities {
             return ATOM_TYPE::M;
         case 'l':
             return ATOM_TYPE::LIMA_CUSTOM;
+        case 'I':
+            return ATOM_TYPE::ION;
         default:
-            printf("Unknown atom type: %c\n", atom);
+#ifndef __CUDA_ARCH__
+            {
+                // Once per letter, as this runs for every atom of every frame
+                static bool warned[256]{};
+                if (!warned[static_cast<unsigned char>(atom)]) {
+                    warned[static_cast<unsigned char>(atom)] = true;
+                    printf("Unknown atom type: %c\n", atom);
+                }
+            }
+#endif
             return ATOM_TYPE::NONE;
         }
     }
@@ -82,6 +108,8 @@ namespace RenderUtilities {
             return float4{ 0xD0 / 255.0f, 0xB4 / 255.0f, 0x4C / 255.0f, 1.0f }; // muted metallic gold
         case ATOM_TYPE::M:
             return float4{ 0xA7 / 255.0f, 0xB0 / 255.0f, 0xBB / 255.0f, 1.0f }; // satin titanium
+        case ATOM_TYPE::ION:
+            return float4{ 0x3F / 255.0f, 0xC2 / 255.0f, 0x8A / 255.0f, 1.0f }; // jade green
         case ATOM_TYPE::LIMA_CUSTOM:
         case ATOM_TYPE::NONE:
             return float4{ 0xB8 / 255.0f, 0x4F / 255.0f, 0xD8 / 255.0f, 1.0f }; // premium violet marker
@@ -109,6 +137,8 @@ namespace RenderUtilities {
             return 0.189f;
         case ATOM_TYPE::M:
             return 0.173f;
+        case ATOM_TYPE::ION:
+            return 0.2f;
         case ATOM_TYPE::LIMA_CUSTOM:
             return 0.1f;
         case ATOM_TYPE::NONE:

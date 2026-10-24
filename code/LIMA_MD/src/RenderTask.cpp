@@ -45,7 +45,7 @@ Rendering::AtomRenderTask::AtomRenderTask(const GroFile& grofile, bool shouldSho
 		const GroRecord& atom = grofile.atoms[atomId];
 		positions[atomId] = atom.position;
 		packedPositionIndices[atomId] = static_cast<int>(atomId);
-		atoms[atomId].atomLetter = atom.atomName[0];
+		atoms[atomId].atomLetter = RenderUtilities::AtomLetter(atom.atomName.View(), atom.residueName.View());
 		atoms[atomId].isSolvent = atom.residueName == "SOL" || atom.residueName == "TIP3";
 	}
 }

@@ -36,6 +36,8 @@
 #define cudaDriverGetVersion hipDriverGetVersion
 #define cudaRuntimeGetVersion hipRuntimeGetVersion
 #define cudaDeviceSynchronize hipDeviceSynchronize
+#define cudaDeviceSetCacheConfig hipDeviceSetCacheConfig
+#define cudaFuncCachePreferShared hipFuncCachePreferShared
 // hipProfilerStart/Stop return hipErrorNotSupported on Windows, which then sticks as the last error and fails the next
 // error check. Profilers attach without them, so they do nothing under HIP
 inline hipError_t cudaProfilerStart() { return hipSuccess; }
@@ -70,6 +72,10 @@ inline hipError_t cudaHostGetDevicePointer(T** devicePtr, void* hostPtr, unsigne
 #define cudaEventDestroy hipEventDestroy
 #define cudaEventRecord hipEventRecord
 #define cudaEventSynchronize hipEventSynchronize
+
+// Graphs: HIP builds launch steps directly (Engine.cu), but Engine keeps the members
+#define cudaGraphExec_t hipGraphExec_t
+#define cudaGraphExecDestroy hipGraphExecDestroy
 
 // Graphs. Engine captures steps into graphs on CUDA only, HIP just needs the type
 #define cudaGraphExec_t hipGraphExec_t

@@ -152,6 +152,17 @@ private:
 	std::array<std::array<cudaGraphExec_t, 2>, 2> stepGraphs{};
 	void BeginStepCapture();
 	void LaunchCapturedStep(bool logData, bool computeVirial);
+	// Steps without logging or virial relaunch stepGraphs[0][0] without capturing while it is valid: the host then queues a step in
+	// a few us rather than the ~30 us of capturing and updating it, and stays ahead of the GPU on small systems. Its arguments change
+	// only on a clustering, a task build, an upload of IntegrationSimulationData or a changed live-edit buffer, which invalidate it.
+	// The step index the kernels read is advanced on the GPU, see stepCounterDevice. Not in Interactive mode, where params change freely
+	bool replayableStepGraph = false;
+	void InvalidateStepGraph() { replayableStepGraph = false; }
+	// The current step's index, advanced by the step's first kernel. Read by the integration kernels for error reports
+	int64_t* stepCounterDevice = nullptr;
+	void LaunchStepGraph(cudaGraphExec_t exec, bool captured);
+	// Set after the host waited on the GPU, see LaunchStepGraph
+	bool flushNextStepLaunch = false;
 	// Must be called after changing any field that IntegrationSimulationData is built from
 	void UploadIntegrationSimulationData();
 	bool ApplyBarostat(float coordinateScale);

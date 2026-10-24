@@ -526,6 +526,12 @@ struct LiveEditBuffers {
 	__host__ __device__ bool Any() const { return fixedParticleMovement || forceMask || fixedParticleRotation; }
 };
 
+// The step's index for the integration kernels. A replayed step graph passes the step it was captured at, so the counter is advanced
+// and only raised to the passed step: that is the step itself when captured, and the previous step plus one when replayed
+__global__ void AdvanceStepCounterKernel(int64_t* const counter, int64_t step) {
+	*counter = max(*counter + 1, step);
+}
+
 struct LogBuffers {
 	Float3* traj = nullptr;
 	float* potE = nullptr;
@@ -546,7 +552,7 @@ struct LogBuffers {
 template<typename BoundaryCondition, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
 	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
-	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const CapacityOverflow overflow, int64_t stepIndex)
+	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const CapacityOverflow overflow, const int64_t* const stepIndex)
 {
 	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
 	if (scId >= nSuperclusters)
@@ -581,7 +587,7 @@ __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, con
 
 	// Negated, so non-finite steps are caught too
 	if (!((posNext - pos).lenSquared() < CapacityOverflow::maxStep * CapacityOverflow::maxStep) && !liveEdit.Any())
-		overflow.Report(CapacityOverflow::Unstable, scMeta[scId].globalParticleIds[threadIdx.x], static_cast<int>(stepIndex), 0);
+		overflow.Report(CapacityOverflow::Unstable, scMeta[scId].globalParticleIds[threadIdx.x], static_cast<int>(*stepIndex), 0);
 
 	if (liveEdit.fixedParticleMovement) {
 		const Float3 fixedMovement = liveEdit.fixedParticleMovement[pidGlobal];
@@ -889,7 +895,7 @@ template<typename BoundaryCondition, bool logData, bool computeVirial>
 __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences,
 	const SuperClustersControl scControl, ParticleIntegrationState* const states, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints,
-	const int* const pclusterParticleSlots, const CapacityOverflow overflow, int64_t stepIndex, long long* const virialPartials)
+	const int* const pclusterParticleSlots, const CapacityOverflow overflow, const int64_t* const stepIndex, long long* const virialPartials)
 {
 	using namespace ConstrainedCell;
 	LIMA_SHARED_UNINIT(Float3, positions, [maxScs * n]);	// Before the step
@@ -990,7 +996,7 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	const Float3 constrainedStep = velocities[local];
 	const Float3 posNext = pos + constrainedStep;
 	if (active && !(constrainedStep.lenSquared() < CapacityOverflow::maxStep * CapacityOverflow::maxStep) && !liveEdit.Any())
-		overflow.Report(CapacityOverflow::Unstable, pidGlobal, static_cast<int>(stepIndex), 0);
+		overflow.Report(CapacityOverflow::Unstable, pidGlobal, static_cast<int>(*stepIndex), 0);
 	// The correction to the step is dt^2/2m of the constraint force. Fixed particles are not corrected, so they get none
 	const Float3 constraintForce = active
 		? (constrainedStep - step) * (2.f * state.mass / (simulation->dt * simulation->dt)) : Float3{};

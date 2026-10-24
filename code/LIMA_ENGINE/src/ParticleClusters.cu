@@ -694,6 +694,7 @@ __global__ void MapBondgroupParticlesToSlots(const BondGroup::ParticleRef* const
 }
 
 void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
+	InvalidateStepGraph();
 	const Int3 boxSize = batch->boxSize;
 	const int nBlocks = batch->nGridnodes;
 	const int nPclusters = batch->nPclusters;

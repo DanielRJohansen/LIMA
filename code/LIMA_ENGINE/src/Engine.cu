@@ -1,6 +1,9 @@
 #include "Engine.cuh"
 #include <cstring>
 #include <thread>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
 
 #include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
@@ -71,6 +74,11 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		cudaStreamCreateWithFlags(&logCopyStream, cudaStreamNonBlocking); // Not synchronized with the legacy default stream, which would wait for the copy
 		for (auto& event : streamJoinEvents) cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
 		cudaEventCreateWithFlags(&stepStartEvent, cudaEventDisableTiming);
+		LIMA_UTILS::genericErrorCheck(cudaMalloc(&stepCounterDevice, sizeof(int64_t)));
+		LIMA_UTILS::genericErrorCheck(cudaMemset(stepCounterDevice, 0xFF, sizeof(int64_t))); // -1, before step 0
+		if (batch->params.data_logging_interval != 0)
+			for (size_t i = 0; i < batch->simulations.size(); ++i)
+				logDrains.push_back(std::make_unique<LogDrain>());
 		for (size_t simulationId = 0; simulationId < renderDataPipes.size(); ++simulationId) {
 			if (!renderDataPipes[simulationId]) continue;
 			const auto count = batch->simulations[simulationId].device.pclusters.count * PersistentCluster::maxParticles;
@@ -103,6 +111,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		if (logCopyStream) cudaStreamDestroy(logCopyStream);
 		for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 		if (stepStartEvent) cudaEventDestroy(stepStartEvent);
+		cudaFree(stepCounterDevice);
 		for (auto& graphs : stepGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
 		throw;
 	}
@@ -118,6 +127,7 @@ Engine::~Engine() {
 	if (logCopyStream) cudaStreamDestroy(logCopyStream);
 	for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 	if (stepStartEvent) cudaEventDestroy(stepStartEvent);
+	cudaFree(stepCounterDevice);
 	for (auto& graphs : stepGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
 	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
 }
@@ -151,6 +161,7 @@ void Engine::ForkStreamsFromMainStream() {
 #if defined(LIMA_HIP)
 void Engine::BeginStepCapture() {}
 void Engine::LaunchCapturedStep(bool, bool) {}
+void Engine::LaunchStepGraph(cudaGraphExec_t, bool) {}
 #else
 // ThreadLocal, so the log drain thread's CUDA calls are not affected by the capture
 void Engine::BeginStepCapture() {
@@ -170,8 +181,19 @@ void Engine::LaunchCapturedStep(bool logData, bool computeVirial) {
 	}
 	if (!exec)
 		LIMA_UTILS::genericErrorCheck(cudaGraphInstantiate(&exec, graph, 0));
-	LIMA_UTILS::genericErrorCheck(cudaGraphLaunch(exec, cudaStreams[0]));
+	LaunchStepGraph(exec, true);
 	cudaGraphDestroy(graph);
+	if (!logData && !computeVirial && mode != EngineRunMode::Interactive)
+		replayableStepGraph = true;
+}
+void Engine::LaunchStepGraph(cudaGraphExec_t exec, bool captured) {
+	LIMA_UTILS::genericErrorCheck(cudaGraphLaunch(exec, cudaStreams[0]));
+	// When the GPU has drained its queue, after a host wait or while the host captured a step, WDDM holds launches back until a later
+	// submit, up to ~750 us. Not every launch: replays keep the queue filled, and then the extra submits cost more than they save
+	if (captured || flushNextStepLaunch) {
+		cudaStreamQuery(cudaStreams[0]);
+		flushNextStepLaunch = false;
+	}
 }
 #endif
 
@@ -359,10 +381,12 @@ void Engine::step() {
 	}
 	PublishRenderData();
 	const bool rebuilt = hostMaster();
+	flushNextStepLaunch |= rebuilt;
 	if (!rebuilt && !IsFinished() && batch->step % batch->params.stepsPerNlistupdate == 0) {
 		batch->superClustersControl->Reset(batch->nGridnodes, cudaStreams[0]);
 		RunClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
+		flushNextStepLaunch = true;
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error after step");
 }
@@ -401,6 +425,7 @@ bool Engine::hostMaster() {
 	const bool measurePressure = batch->params.apply_barostat
 		&& batch->step % batch->params.steps_per_pressure_measurement == 0;
 	if (measureTemperature || measurePressure) {
+		flushNextStepLaunch = true; // The measurements wait for the GPU
 		StoreIntegrationStates(cudaStreams[0]);
 		batch->thermostat->ComputeKineticEnergy(batch->boxState.pclusterInterimStates, batch->pClusterMetaDevice.Get(),
 			batch->nPclusters, cudaStreams[0]);
@@ -511,6 +536,7 @@ bool Engine::ApplyBarostat(float coordinateScale) {
 }
 
 void Engine::UploadIntegrationSimulationData() {
+	InvalidateStepGraph();
 	std::vector<IntegrationSimulationData> simulationData;
 	simulationData.reserve(batch->simulations.size());
 	for (const auto& sim : batch->simulations) {
@@ -558,22 +584,60 @@ struct Engine::LogDrain {
 	size_t capacity = 0;
 	cudaEvent_t snapshotted = nullptr;
 	std::array<cudaEvent_t, 2> copied{};	// Of the last two slices issued
-	std::thread unpacker;
 	cudaError_t error = cudaSuccess;
+
+	// One thread for the drain's lifetime: a thread's first CUDA call initializes its runtime state, which on WDDM blocked
+	// the main thread's launches for ~10 ms, so a new thread per drain stalled the steps (T4 every 100 steps)
+	std::thread unpacker;
+	std::mutex mutex;
+	std::condition_variable changed;
+	std::function<void()> job;	// Set by Start, cleared by the thread once done
+	bool stop = false;
 
 	LogDrain() {
 		cudaEventCreateWithFlags(&snapshotted, cudaEventDisableTiming);
 		for (auto& event : copied) cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
+		int deviceId = 0;
+		cudaGetDevice(&deviceId);
+		unpacker = std::thread([this, deviceId] {
+			cudaSetDevice(deviceId); // Also initializes the thread's runtime state, before the steps run
+			std::unique_lock lock(mutex);
+			while (true) {
+				changed.wait(lock, [this] { return stop || job; });
+				if (!job) return;
+				lock.unlock();
+				job();
+				lock.lock();
+				job = nullptr;
+				changed.notify_all();
+			}
+		});
 	}
 	~LogDrain() {
-		if (unpacker.joinable()) unpacker.join();
+		{
+			std::lock_guard lock(mutex);
+			stop = true;
+		}
+		changed.notify_all();
+		unpacker.join(); // Finishes a started job first
 		cudaFree(device);
 		cudaFreeHost(pinned);
 		cudaEventDestroy(snapshotted);
 		for (auto event : copied) cudaEventDestroy(event);
 	}
+	// Must be joined
+	void Start(std::function<void()> work) {
+		{
+			std::lock_guard lock(mutex);
+			job = std::move(work);
+		}
+		changed.notify_all();
+	}
 	void Join() {
-		if (unpacker.joinable()) unpacker.join();
+		{
+			std::unique_lock lock(mutex);
+			changed.wait(lock, [this] { return !job; });
+		}
 		if (error != cudaSuccess) {
 			const cudaError_t e = error;
 			error = cudaSuccess;
@@ -647,7 +711,7 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 	// The thread copies the snapshot to the host on its own stream, so the steps continue meanwhile. It keeps only two slices queued:
 	// the steps' own readbacks share the copy engine, and would otherwise wait for the whole copy. Each slice is unpacked while the
 	// next is copied
-	drain.unpacker = std::thread([&drain, slices = std::move(slices), stream = logCopyStream] {
+	drain.Start([&drain, slices = std::move(slices), stream = logCopyStream] {
 		auto issue = [&](size_t i) {
 			cudaMemcpyAsync(drain.pinned + slices[i].offset, drain.device + slices[i].offset, slices[i].bytes, cudaMemcpyDeviceToHost, stream);
 			cudaEventRecord(drain.copied[i % 2], stream);
@@ -708,24 +772,28 @@ namespace {
 
 void Engine::SetFixedParticleMovementBuffer(const std::vector<Float3>& movement, size_t simulationId) {
 	Synchronize();
+	InvalidateStepGraph();
 	auto& sim = batch->simulations.at(simulationId);
 	SetParticleBuffer(batch->fixedParticleMovementBuffer, movement, sim.device.particles, batch->nParticles);
 }
 
 void Engine::SetFixedParticleRotationBuffer(const std::vector<Rotation>& rotation, size_t simulationId) {
 	Synchronize();
+	InvalidateStepGraph();
 	auto& sim = batch->simulations.at(simulationId);
 	SetParticleBuffer(batch->fixedParticleRotationBuffer, rotation, sim.device.particles, batch->nParticles);
 }
 
 void Engine::SetForceMask(const std::vector<Float3>& mask, size_t simulationId) {
 	Synchronize();
+	InvalidateStepGraph();
 	auto& sim = batch->simulations.at(simulationId);
 	SetParticleBuffer(batch->forceMaskBuffer, mask, sim.device.particles, batch->nParticles);
 }
 
 void Engine::SetElasticPositions(const std::vector<Float3>& positions, size_t simulationId) {
 	Synchronize();
+	InvalidateStepGraph();
 	auto& sim = batch->simulations.at(simulationId);
 	SetParticleBuffer(batch->elasticPositionsBuffer, positions, sim.device.particles, batch->nParticles);
 }
@@ -805,10 +873,17 @@ void Engine::_deviceMaster() {
 	}
 	// EM synchronizes within the step. SNFs are not checked for capturability
 	const bool captureStep = useStepGraphs && !emvariant && nScs > 0 && batch->params.snf_select.empty();
+	if (captureStep && !logData && !computeVirial && replayableStepGraph) {
+		LaunchStepGraph(stepGraphs[0][0], false);
+		LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
+		return;
+	}
 	if (captureStep)
 		BeginStepCapture();
 	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
 	ForkStreamsFromMainStream();
+	if constexpr (!emvariant)
+		AdvanceStepCounterKernel<<<1, 1, 0, cudaStreams[1]>>>(stepCounterDevice, batch->step);
 	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
 	// and are gathered by integration, so all force kernels can run concurrently.
 	ForceAccumulator forceAcc{};
@@ -876,7 +951,7 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateConstrainedKernel<BoundaryCondition, logData, computeVirial><<<batch->nGridnodes, dim3(SuperCluster::maxParticles, SuperClustersControl::maxClustersPerBlock, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), *batch->superClustersControl, batch->integrationStates.Get(),
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), batch->pclusterTransfermodule->overflow, batch->step,
+					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), batch->pclusterTransfermodule->overflow, stepCounterDevice,
 					computeVirial ? batch->constraintVirialPartials.Get() : nullptr);
 			}
 			else {
@@ -885,7 +960,7 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterTransfermodule->overflow, batch->step);
+					liveEdit, log, batch->pclusterTransfermodule->overflow, stepCounterDevice);
 			}
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster

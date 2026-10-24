@@ -644,6 +644,7 @@ void Engine::MakeNbTasksEM(cudaStream_t stream) {
 }
 
 bool Engine::MakeSuperClusterTasksGPU(cudaStream_t stream) {
+	InvalidateStepGraph();
 	if (batch->nSuperclusters == 0)
 		return true;
 

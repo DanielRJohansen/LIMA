@@ -114,6 +114,20 @@ double CubWrappers::Sum(const float* first, const float* last, cudaStream_t stre
 	return result;
 }
 
+size_t CubWrappers::SumTempBytes(int count) {
+	size_t tempBytes = 0;
+	Check(cub::DeviceReduce::Reduce(nullptr, tempBytes, static_cast<const float*>(nullptr), static_cast<double*>(nullptr), count,
+		cuda::std::plus<double>{}, 0.0, cudaStream_t{}), "SumTempBytes");
+	return tempBytes;
+}
+
+void CubWrappers::SumInto(const float* first, int count, double* result, CudaBuffer<char>& tempStorage, cudaStream_t stream) {
+	size_t tempBytes = SumTempBytes(count);
+	if (tempStorage.Size() < tempBytes)
+		throw std::runtime_error("SumInto: tempStorage holds less than SumTempBytes");
+	Check(cub::DeviceReduce::Reduce(tempStorage.Get(), tempBytes, first, result, count, cuda::std::plus<double>{}, 0.0, stream), "SumInto");
+}
+
 CubWrappers::PressureSums CubWrappers::SumPressure(const float* kineticEnergy, int nKinetic,
 	const long long* nonbonded, int nNonbonded, const long long* bonded, int nBonded,
 	const long long* constraints, int nConstraints, const long long* reciprocal, int nReciprocal, cudaStream_t stream) {

@@ -36,6 +36,48 @@ namespace {
 		return !atom.atomname.empty() && std::toupper(static_cast<unsigned char>(atom.atomname[0])) == 'H';	// As GROMACS
 	}
 
+	// The pairs of a moleculetype the nonbonded kernel excludes, as GROMACS: those at most nrexcl bonds apart. Not those sharing an
+	// angle or dihedral, as a topology may list only some of them, eg. united-atom lipids one dihedral per torsion.
+	// Ids relative to the molecule, each pair once with first < second, sorted
+	std::vector<std::pair<int, int>> ExcludedPairs(const TopologyFile::Moleculetype& molType) {
+		const int nAtoms = static_cast<int>(molType.atoms.size());
+		std::vector<std::vector<int>> neighbors(nAtoms);
+		for (const auto& bond : molType.singlebonds) {
+			const auto [a, b] = bond.ids;
+			if (a < 0 || b < 0 || a >= nAtoms || b >= nAtoms || a == b)
+				continue;
+			neighbors[a].push_back(b);
+			neighbors[b].push_back(a);
+		}
+
+		std::vector<std::pair<int, int>> pairs;
+		std::vector<int> distance(nAtoms, -1);
+		std::vector<int> visited, frontier, next;
+		for (int start = 0; start < nAtoms; start++) {
+			// Breadth first, nrexcl bonds deep. Only the atoms reached are reset, so each search costs its neighborhood
+			distance[start] = 0;
+			visited = { start };
+			frontier = { start };
+			for (int depth = 1; depth <= molType.nrexcl && !frontier.empty(); depth++) {
+				next.clear();
+				for (const int atom : frontier)
+					for (const int neighbor : neighbors[atom])
+						if (distance[neighbor] == -1) {
+							distance[neighbor] = depth;
+							visited.push_back(neighbor);
+							next.push_back(neighbor);
+							if (neighbor > start)
+								pairs.emplace_back(start, neighbor);
+						}
+				std::swap(frontier, next);
+			}
+			for (const int atom : visited)
+				distance[atom] = -1;
+		}
+		std::ranges::sort(pairs);
+		return pairs;
+	}
+
 	// The constraints of a moleculetype: its settled waters ([ settles ]) always, and with constrainHBonds also its bonds to
 	// hydrogens at their b0, and in a 3-atom flexible water the distance between the hydrogens at the angle's theta0.
 	// The constrained bonds and angles stay: at the constrained lengths their energy is 0 and the constraints absorb their forces,
@@ -276,24 +318,11 @@ SuperTopology::SuperTopology(const TopologyFile::System& system, const GroFile& 
 			for (auto& pair : bonds.pairbonds)
 				pair.params.chargeProduct = forcefield.FudgeQQ() * charges[pair.global_atom_indexes[0]] * charges[pair.global_atom_indexes[1]];
 
-			// The Ewald exclusion correction, for every pair the nonbonded kernel excludes: those sharing a bond, angle, dihedral or
-			// improper (see the exclusions built from these in MakePersistentClusters). 1-4 pairs carry it in their entry, the
-			// others get an entry of their own
+			// The Ewald exclusion correction, for every pair the nonbonded kernel excludes (ExcludedPairs, as in
+			// MakePersistentClusters). 1-4 pairs carry it in their entry, the others get an entry of their own
 			std::vector<uint64_t> excluded;
-			const auto addExcluded = [&](const auto& bondList) {
-				for (const auto& bond : bondList)
-					for (size_t a = 0; a < bond.global_atom_indexes.size(); a++)
-						for (size_t b = a + 1; b < bond.global_atom_indexes.size(); b++) {
-							const uint32_t i = bond.global_atom_indexes[a], j = bond.global_atom_indexes[b];
-							excluded.push_back(uint64_t(std::min(i, j)) << 32 | std::max(i, j));
-						}
-			};
-			addExcluded(bonds.singlebonds);
-			addExcluded(bonds.anglebonds);
-			addExcluded(bonds.dihedralbonds);
-			addExcluded(bonds.improperdihedralbonds);
-			std::ranges::sort(excluded);
-			excluded.erase(std::unique(excluded.begin(), excluded.end()), excluded.end());
+			for (const auto [i, j] : ExcludedPairs(molType))
+				excluded.push_back(uint64_t(i) << 32 | uint32_t(j));
 			std::unordered_map<uint64_t, size_t> pairIndices;
 			for (size_t p = 0; p < bonds.pairbonds.size(); p++) {
 				const auto [i, j] = bonds.pairbonds[p].global_atom_indexes;
@@ -665,29 +694,23 @@ namespace {
 		// Collect as vectors and sort afterwards, which is much faster than inserting into sets
 		std::vector<std::vector<int>> particleBondedToParticle(molecule.atoms.size());
 		std::vector<std::vector<int>> pclusterBondedToPcluster(result.clusters.size());
+		const auto AddPclusterPair = [&](int pidA, int pidB) {
+			const int pcidA = result.particleToPcluster[pidA];
+			const int pcidB = result.particleToPcluster[pidB];
+			assert(pcidA != -1 && pcidB != -1);
+			pclusterBondedToPcluster[pcidA].push_back(pcidB);
+			pclusterBondedToPcluster[pcidB].push_back(pcidA);
+		};
+		// The pclusters are bonded where they share a bonded term or an excluded pair
 		auto AddBond = [&](const auto& bond) {
 			const auto& ids = bond.ids;
 			for (const int id : ids) {
 				if (id < 0 || id >= result.particleToPcluster.size())
 					return;
 			}
-
-			for (int i = 0; i < ids.size(); i++) {
-				const int pidSelf = ids[i];
-				const int pcidSelf = result.particleToPcluster[pidSelf];
-				assert(pcidSelf != -1);
-
-				for (int j = i + 1; j < ids.size(); j++) {
-					const int pidOther = ids[j];
-					const int pcidOther = result.particleToPcluster[pidOther];
-					assert(pcidOther != -1);
-
-					particleBondedToParticle[pidSelf].push_back(pidOther);
-					particleBondedToParticle[pidOther].push_back(pidSelf);
-					pclusterBondedToPcluster[pcidSelf].push_back(pcidOther);
-					pclusterBondedToPcluster[pcidOther].push_back(pcidSelf);
-				}
-			}
+			for (int i = 0; i < ids.size(); i++)
+				for (int j = i + 1; j < ids.size(); j++)
+					AddPclusterPair(ids[i], ids[j]);
 		};
 
 		for (const auto& bond : molecule.singlebonds)
@@ -698,6 +721,11 @@ namespace {
 			AddBond(bond);
 		for (const auto& bond : molecule.improperdihedralbonds)
 			AddBond(bond);
+		for (const auto [a, b] : ExcludedPairs(molecule)) {
+			particleBondedToParticle[a].push_back(b);
+			particleBondedToParticle[b].push_back(a);
+			AddPclusterPair(a, b);
+		}
 
 		result.particleBondedToParticle.reserve(particleBondedToParticle.size());
 		for (auto& values : particleBondedToParticle) {

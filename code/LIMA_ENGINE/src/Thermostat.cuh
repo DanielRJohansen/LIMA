@@ -3,8 +3,16 @@
 #include "LimaTypes.cuh"
 #include "PhysicsUtilsDevice.cuh"
 #include "BatchLayout.cuh"
+#include "EngineBodies.cuh"
+#include "VRescale.h"
+#include "Utilities.h"
 
 #include "CubWrappers.h"
+
+#include <algorithm>
+#include <cmath>
+#include <optional>
+#include <vector>
 
 #include "GpuRuntime.h"
 
@@ -57,8 +65,125 @@ public:
 		return intermediate + pclusters.offset * PersistentCluster::maxParticles;
 	}
 
+	float* KineticEnergyValues() { return intermediate; }
+
 	~Thermostat() {
 		cudaFree(intermediate);
+	}
+};
+
+namespace _Thermostat {
+	// As ComputeKineticEnergyKernel, from the integration states in the supercluster slots, which StoreIntegrationStates copies to the
+	// pclusters' vels_prev. Each particle's value goes to its pcluster lane, so the sums are the same. Unused lanes stay 0
+	__global__ void ComputeKineticEnergyFromSlotsKernel(const ParticleIntegrationState* states, int nSlots, const PersistentClusterMeta* metadata,
+		float* intermediate) {
+		const int slot = blockIdx.x * blockDim.x + threadIdx.x;
+		if (slot >= nSlots) return;
+		const ParticleIntegrationState state = states[slot];
+		if (state.mass == 0.f) return;
+		const int pc = state.pclusterParticle / PersistentCluster::maxParticles;
+		const int lane = state.pclusterParticle % PersistentCluster::maxParticles;
+		intermediate[state.pclusterParticle] = PhysicsUtils::calcKineticEnergy(state.velocity.len(), metadata[pc].mass[lane]);
+	}
+
+	struct DeviceThermostatSimulation {
+		int64_t degreesOfFreedom = 0;
+		double referenceTemperature = 0.0;	// [K]
+		double tauInCouplings = 0.0;
+		bool applyThermostat = false;
+		bool measure = false;	// Active and with particles
+	};
+
+	// One thread per simulation: the temperature and, with the thermostat, the v-rescale factor for the next step, as Engine::hostMaster
+	__global__ void VRescaleKernel(const DeviceThermostatSimulation* simulations, int nSimulations, const double* kineticEnergies,
+		VRescale* rngs, ThermostatImpulse* impulses, float* temperatureRing, int ringSize, const int64_t* stepCounter, int interval) {
+		const int id = blockIdx.x * blockDim.x + threadIdx.x;
+		if (id >= nSimulations || !simulations[id].measure) return;
+		const DeviceThermostatSimulation simulation = simulations[id];
+		const int64_t nextStep = *stepCounter + 1;	// The step that applies the factor, whose host work measures the temperature
+		const float temperature = PhysicsUtils::kineticEnergyToTemperature(kineticEnergies[id], simulation.degreesOfFreedom);
+		temperatureRing[size_t(id) * ringSize + (nextStep / interval) % ringSize] = temperature;
+		if (simulation.applyThermostat) {
+			const double factor = rngs[id].Factor(temperature, simulation.referenceTemperature, simulation.degreesOfFreedom, simulation.tauInCouplings);
+			impulses[id] = ThermostatImpulse{ static_cast<float>(factor), nextStep };
+		}
+	}
+} // namespace _Thermostat
+
+// The temperature measurement and v-rescale thermostat on the GPU, inside the captured step, so a coupling step needs no host roundtrip
+// and does not invalidate the step graph. On a coupling step the step's work ends with the kinetic energies (from the slots), their sum
+// per simulation and VRescaleKernel. The factor goes to the next step's integration as a ThermostatImpulse, and the temperature to a
+// ring in mapped host memory, which the host reads without waiting (Harvest). Each simulation's random stream is the one the host
+// thermostat would draw. Not with the barostat, whose pressure measurement reads the kinetic energy on the host anyway
+class DeviceThermostat {
+	CudaBuffer<_Thermostat::DeviceThermostatSimulation> simulationsDevice;
+	CudaBuffer<VRescale> rngs;
+	CudaBuffer<double> kineticEnergies;
+	CudaBuffer<char> sumTempStorage;
+	std::vector<BatchRange> pclusters;
+	int interval = 1;
+	float* ringHost = nullptr;
+	float* ringDevice = nullptr;
+	std::vector<int64_t> nextMeasurement;	// Per simulation, the index (step / interval) of the next temperature to harvest
+
+public:
+	// Holds the temperatures not yet harvested. The host harvests at least every Engine::maxStepsPerCall steps
+	static constexpr int ringSize = 4096;
+	CudaBuffer<ThermostatImpulse> impulses;	// Always allocated, as the integration kernels read it
+
+	DeviceThermostat(const std::vector<VRescale>& initialRngs, int interval, int64_t step) : interval(interval) {
+		const size_t n = initialRngs.size();
+		rngs.SetData(initialRngs);
+		impulses.SetData(std::vector<ThermostatImpulse>(n));
+		kineticEnergies.Expand(n);
+		LIMA_UTILS::genericErrorCheck(cudaHostAlloc(&ringHost, sizeof(float) * n * ringSize, cudaHostAllocMapped));
+		LIMA_UTILS::genericErrorCheck(cudaHostGetDevicePointer(&ringDevice, ringHost, 0));
+		std::fill(ringHost, ringHost + n * ringSize, NAN);
+		nextMeasurement.assign(n, step / interval + 1);
+	}
+	DeviceThermostat(const DeviceThermostat&) = delete;
+	~DeviceThermostat() { cudaFreeHost(ringHost); }
+
+	// Must be called before the first coupling step and whenever the batch is repacked. Synchronizes
+	void SetSimulations(const std::vector<_Thermostat::DeviceThermostatSimulation>& simulations, const std::vector<BatchRange>& simulationPclusters) {
+		simulationsDevice.SetData(simulations);
+		pclusters = simulationPclusters;
+		size_t tempBytes = 0;
+		for (const BatchRange range : pclusters)
+			if (range.count > 0)
+				tempBytes = std::max(tempBytes, CubWrappers::SumTempBytes(range.count * PersistentCluster::maxParticles));
+		sumTempStorage.Expand(std::max<size_t>(tempBytes, 1));
+	}
+
+	// Capturable. kineticEnergyValues is the batch's Thermostat buffer, one value per pcluster lane
+	void Queue(const ParticleIntegrationState* states, int nSlots, const PersistentClusterMeta* metadata, float* kineticEnergyValues,
+		const int64_t* stepCounter, cudaStream_t stream) {
+		if (nSlots > 0)
+			_Thermostat::ComputeKineticEnergyFromSlotsKernel<<<(nSlots + 127) / 128, 128, 0, stream>>>(states, nSlots, metadata, kineticEnergyValues);
+		for (size_t id = 0; id < pclusters.size(); id++)
+			if (pclusters[id].count > 0)
+				CubWrappers::SumInto(kineticEnergyValues + pclusters[id].offset * PersistentCluster::maxParticles,
+					pclusters[id].count * PersistentCluster::maxParticles, kineticEnergies.Get() + id, sumTempStorage, stream);
+		const int n = static_cast<int>(pclusters.size());
+		_Thermostat::VRescaleKernel<<<(n + 31) / 32, 32, 0, stream>>>(simulationsDevice.Get(), n, kineticEnergies.Get(), rngs.Get(),
+			impulses.Get(), ringDevice, ringSize, stepCounter, interval);
+	}
+
+	// Appends the temperatures the GPU has written since the last harvest, in order, and returns the latest. Does not wait: a temperature
+	// is either fully written or still NaN. After a synchronization it gets all of them
+	std::optional<float> Harvest(size_t simulationId, std::vector<float>& temperatures) {
+		volatile float* ring = ringHost + simulationId * ringSize;
+		std::optional<float> latest;
+		while (true) {
+			const size_t slot = nextMeasurement[simulationId] % ringSize;
+			const float temperature = ring[slot];
+			if (std::isnan(temperature))
+				return latest;
+			ring[slot] = NAN;
+			temperatures.push_back(temperature);
+			latest = temperature;
+			nextMeasurement[simulationId]++;
+		}
 	}
 };
 

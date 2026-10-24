@@ -584,7 +584,8 @@ struct LogBuffers {
 template<typename BoundaryCondition, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
 	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
-	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const CapacityOverflow overflow, const int64_t* const stepIndex)
+	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const CapacityOverflow overflow, const int64_t* const stepIndex,
+	const ThermostatImpulse* const thermostatImpulses)
 {
 	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
 	if (scId >= nSuperclusters)
@@ -638,7 +639,8 @@ __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, con
 		BoundaryCondition::applyHyperposNM(p0, posNext, boxSize);
 	}
 
-	state.velocity = velocity * simulation.thermostatScalar;
+	const ThermostatImpulse impulse = thermostatImpulses[scMeta[scId].simulationId];
+	state.velocity = velocity * (impulse.step == *stepIndex ? impulse.scalar : simulation.thermostatScalar);
 	state.forcePrev = fe.force;
 	states[slot] = state;
 
@@ -927,7 +929,8 @@ template<typename BoundaryCondition, bool logData, bool computeVirial>
 __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences,
 	const SuperClustersControl scControl, ParticleIntegrationState* const states, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints,
-	const int* const pclusterParticleSlots, const CapacityOverflow overflow, const int64_t* const stepIndex, long long* const virialPartials)
+	const int* const pclusterParticleSlots, const CapacityOverflow overflow, const int64_t* const stepIndex, long long* const virialPartials,
+	const ThermostatImpulse* const thermostatImpulses)
 {
 	using namespace ConstrainedCell;
 	LIMA_SHARED_UNINIT(Float3, positions, [maxScs * n]);	// Before the step
@@ -953,6 +956,12 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	const int indexInPc = state.pclusterParticle % PersistentCluster::maxParticles;
 	const IntegrationSimulationData* const simulation = active ? &simulationData[scMeta[scId].simulationId] : nullptr;
 	const int pidGlobal = active ? scMeta[scId].globalParticleIds[threadIdx.x] : -1;
+	// The velocity scale of this step, see ThermostatImpulse
+	float thermostatScalar = 1.f;
+	if (active) {
+		const ThermostatImpulse impulse = thermostatImpulses[scMeta[scId].simulationId];
+		thermostatScalar = impulse.step == *stepIndex ? impulse.scalar : simulation->thermostatScalar;
+	}
 
 	Float3 pos{}, velocity{};
 	ForceEnergy fe{};
@@ -1042,7 +1051,7 @@ __global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator fo
 	if (!active)
 		return;
 
-	state.velocity = velocity * simulation->thermostatScalar;
+	state.velocity = velocity * thermostatScalar;
 	state.forcePrev = fe.force + constraintForce;
 	states[slot] = state;
 

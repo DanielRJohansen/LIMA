@@ -20,6 +20,10 @@ namespace CubWrappers {
 	void FillN(int* first, size_t count, int value, cudaStream_t stream);
 	// Sums in double precision
 	double Sum(const float* first, const float* last, cudaStream_t stream);
+	// The same sum as Sum, to *result on the device. Stream ordered, does not synchronize, and capturable once tempStorage holds
+	// SumTempBytes(count)
+	size_t SumTempBytes(int count);
+	void SumInto(const float* first, int count, double* result, CudaBuffer<char>& tempStorage, cudaStream_t stream);
 	PressureSums SumPressure(const float* kineticEnergy, int nKinetic,
 		const long long* nonbonded, int nNonbonded, const long long* bonded, int nBonded,
 		const long long* constraints, int nConstraints, const long long* reciprocal, int nReciprocal, cudaStream_t stream);

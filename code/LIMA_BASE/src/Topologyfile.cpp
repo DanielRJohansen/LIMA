@@ -10,6 +10,7 @@
 #include "ParallelFor.h"
 #include <execution>
 #include <atomic>
+#include <deque>
 #include <span>
 
 
@@ -410,6 +411,7 @@ class TopologyParser {
 		Kind kind = Kind::Other;
 		size_t lineBegin = 0, lineEnd = 0;	// lineEnd is past the newline
 		std::string argument;				// The symbol of a define/undef/ifdef/ifndef, the filename of an include
+		std::string value;					// Only for defines: the text the symbol expands to, eg. a dihedral's parameters
 
 		// Only for includes
 		bool ignoredInclude = false;
@@ -459,6 +461,9 @@ class TopologyParser {
 	std::unordered_map<std::string, int> fileIndices;
 	std::vector<Instance> instances;
 	std::vector<MoleculetypeWork> works;
+	// The #defines with a value, which GROMACS substitutes in the entries, eg. amber99sb-ildn's torsion_ASP_N_CA_CB_CG_mult1.
+	// The moleculetypes are parsed after Resolve, so a define redefined between two uses gets its last value
+	std::unordered_map<std::string, std::string> macros;
 
 public:
 	TopologyParser(TopologyFile& topology) : topology(topology) {}
@@ -474,7 +479,7 @@ public:
 				ReleaseContents(*file);
 
 		ParallelUtils::ParallelFor(works.size(), [&](size_t i) {
-			ParseMoleculetype(works[i]);
+			ParseMoleculetype(works[i], macros);
 			if (--files[works[i].file]->unparsedMoleculetypes == 0)
 				ReleaseContents(*files[works[i].file]);
 			});
@@ -528,7 +533,18 @@ private:
 
 		using Kind = Directive::Kind;
 		Directive directive;
-		if (word == "define") { directive.kind = Kind::Define; directive.argument = FirstToken(rest); }
+		if (word == "define") {
+			directive.kind = Kind::Define;
+			directive.argument = FirstToken(rest);
+			std::string_view value = rest;
+			SkipLeadingWhitespace(value);
+			value.remove_prefix(directive.argument.size());
+			value = value.substr(0, value.find(';'));
+			SkipLeadingWhitespace(value);
+			while (!value.empty() && (value.back() == ' ' || value.back() == '	'))
+				value.remove_suffix(1);
+			directive.value = value;
+		}
 		else if (word == "undef") { directive.kind = Kind::Undef; directive.argument = FirstToken(rest); }
 		else if (word == "ifdef") { directive.kind = Kind::Ifdef; directive.argument = FirstToken(rest); }
 		else if (word == "ifndef") { directive.kind = Kind::Ifndef; directive.argument = FirstToken(rest); }
@@ -648,12 +664,17 @@ private:
 				conditionals.pop_back();
 				break;
 			case Kind::Define:
-				if (active)
+				if (active) {
 					topology.defines.insert(directive.argument);
+					if (!directive.value.empty())
+						macros.insert_or_assign(directive.argument, directive.value);
+				}
 				break;
 			case Kind::Undef:
-				if (active)
+				if (active) {
 					topology.defines.erase(directive.argument);
+					macros.erase(directive.argument);
+				}
 				break;
 			case Kind::Include:
 				if (!active || directive.ignoredInclude)
@@ -826,10 +847,39 @@ private:
 		return lines;
 	}
 
-	static void ParseMoleculetype(MoleculetypeWork& work) {
+	// Replaces the tokens of each line that are a define with its value. The expanded lines are owned by storage
+	static void ExpandMacros(std::vector<std::string_view>& lines, const std::unordered_map<std::string, std::string>& macros,
+		std::deque<std::string>& storage) {
+		if (macros.empty())
+			return;
+		for (std::string_view& line : lines) {
+			const std::string_view data = line.substr(0, line.find(';'));
+			std::string expanded;
+			bool anyExpanded = false;
+			for (size_t pos = 0; pos < data.size();) {
+				const size_t begin = data.find_first_not_of(" 	", pos);
+				if (begin == std::string_view::npos)
+					break;
+				const size_t end = std::min(data.find_first_of(" 	", begin), data.size());
+				const std::string token{ data.substr(begin, end - begin) };
+				const auto macro = macros.find(token);
+				anyExpanded |= macro != macros.end();
+				expanded.append(macro != macros.end() ? macro->second : token).push_back(' ');
+				pos = end;
+			}
+			if (anyExpanded)
+				line = storage.emplace_back(std::move(expanded));
+		}
+	}
+
+	static void ParseMoleculetype(MoleculetypeWork& work, const std::unordered_map<std::string, std::string>& macros) {
 		TopologyFile::Moleculetype& moleculetype = *work.moleculetype;
+		std::deque<std::string> expandedLines;
 		auto Lines = [&](TopologySection section) {
-			return DataLines(work.chunks[std::ranges::find(entrySections, section) - entrySections.begin()]);
+			auto lines = DataLines(work.chunks[std::ranges::find(entrySections, section) - entrySections.begin()]);
+			if (section != atoms)
+				ExpandMacros(lines, macros, expandedLines);
+			return lines;
 			};
 
 		const auto atomLines = Lines(atoms);

@@ -231,39 +231,39 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 }
 
 // https://manual.gromacs.org/current/reference-manual/functions/bonded-interactions.html
-// Plane described by i,j,k, and l is out of plane, connected to i
+// Harmonic improper (funct 2): V = 1/2 k (xi - xi_0)^2, xi the IUPAC dihedral i-j-k-l as GROMACS defines it, with its exact gradient
 __device__ inline void calcImproperdihedralbondForces(const Float3& i, const Float3& j, const Float3& k, const Float3& l, const ImproperDihedralBond& improper, Float3* results, float& potE) {
-	const Float3 ij_norm = (j - i).norm();
-	const Float3 ik_norm = (k - i).norm();
-	const Float3 il_norm = (l - i).norm();
-	const Float3 lj_norm = (j - l).norm();
-	const Float3 lk_norm = (k - l).norm();
+	const Float3 r_ij = i - j;
+	const Float3 r_kj = k - j;
+	const Float3 r_kl = k - l;
+	const Float3 m = r_ij.cross(r_kj);
+	const Float3 n = r_kj.cross(r_kl);
+	const float iprm = m.dot(m);
+	const float iprn = n.dot(n);
+	const float nrkj2 = r_kj.dot(r_kj);
+	const float nrkj = sqrtf(nrkj2);
 
-	const Float3 plane_normal = (ij_norm).cross((ik_norm)).norm();	// i is usually the center on
-	const Float3 plane2_normal = (lj_norm.cross(lk_norm)).norm();
+	const float cos_xi = fminf(fmaxf(m.dot(n) * rsqrtf(iprm * iprn), -1.f), 1.f);
+	const float angle = copysignf(acosf(cos_xi), r_ij.dot(n));
 
-
-	float angle = Float3::getAngleOfNormVectors(plane_normal, plane2_normal);
-	const bool angle_is_negative = (plane_normal.dot(il_norm)) > 0.f;
-	if (angle_is_negative) {
-		angle = -angle;
-	}
-
-	const float error = angle - improper.params.psi_0;
+	float error = angle - improper.params.psi_0;
+	if (error >= PI) error -= 2.f * PI;
+	else if (error < -PI) error += 2.f * PI;
 
 	if constexpr (ENABLE_POTE) {
 		potE = 0.5f * improper.params.k_psi * (error * error);
 	}
-	const float torque = improper.params.k_psi * (angle - improper.params.psi_0);
+	const float torque = improper.params.k_psi * error; // dV/dxi
 
-	// This is the simple way, always right-ish
-	results[3] = plane2_normal * (torque / l.distToLine(j, k));
-	results[0] = -plane_normal * (torque / i.distToLine(j, k));
-
-	const Float3 residual = -(results[0] + results[3]);
-	const float ratio = (j - i).len() / ((j - i).len() + (k - i).len());
-	results[1] = residual * (1.f-ratio);
-	results[2] = residual * (ratio);
+	const Float3 f_i = m * (-torque * nrkj / iprm);
+	const Float3 f_l = n * (torque * nrkj / iprn);
+	const float p = r_ij.dot(r_kj) / nrkj2;
+	const float q = r_kl.dot(r_kj) / nrkj2;
+	const Float3 s = f_i * p - f_l * q;
+	results[0] = f_i;
+	results[1] = s - f_i;
+	results[2] = -(f_l + s);
+	results[3] = f_l;
 
 
 #if defined LIMASAFEMODE

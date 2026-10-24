@@ -92,6 +92,13 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
 		batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
 		batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
+		{
+			std::vector<VRescale> rngs;
+			for (const auto& sim : batch->simulations)
+				rngs.push_back(sim.thermostat);
+			deviceThermostat = std::make_unique<DeviceThermostat>(rngs, std::max<int>(1, static_cast<int>(batch->params.steps_per_temperature_measurement.value)), batch->step);
+			UploadDeviceThermostatSimulations();
+		}
 		BootstrapClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 		InitializePME();
@@ -117,7 +124,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 		if (stepStartEvent) cudaEventDestroy(stepStartEvent);
 		cudaFree(stepCounterDevice);
-		for (auto& graphs : stepGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
+		for (auto& virialGraphs : stepGraphs) for (auto& graphs : virialGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
 		throw;
 	}
 }
@@ -133,7 +140,7 @@ Engine::~Engine() {
 	for (auto event : streamJoinEvents) if (event) cudaEventDestroy(event);
 	if (stepStartEvent) cudaEventDestroy(stepStartEvent);
 	cudaFree(stepCounterDevice);
-	for (auto& graphs : stepGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
+	for (auto& virialGraphs : stepGraphs) for (auto& graphs : virialGraphs) for (auto graph : graphs) if (graph) cudaGraphExecDestroy(graph);
 	LIMA_UTILS::genericErrorCheckNoSync("Error during Engine destruction");
 }
 
@@ -165,17 +172,17 @@ void Engine::ForkStreamsFromMainStream() {
 // directly; it only needs to be correct
 #if defined(LIMA_HIP)
 void Engine::BeginStepCapture() {}
-void Engine::LaunchCapturedStep(bool, bool) {}
+void Engine::LaunchCapturedStep(bool, bool, bool) {}
 void Engine::LaunchStepGraph(cudaGraphExec_t, bool) {}
 #else
 // ThreadLocal, so the log drain thread's CUDA calls are not affected by the capture
 void Engine::BeginStepCapture() {
 	LIMA_UTILS::genericErrorCheck(cudaStreamBeginCapture(cudaStreams[0], cudaStreamCaptureModeThreadLocal));
 }
-void Engine::LaunchCapturedStep(bool logData, bool computeVirial) {
+void Engine::LaunchCapturedStep(bool logData, bool computeVirial, bool measureTemperature) {
 	cudaGraph_t graph = nullptr;
 	LIMA_UTILS::genericErrorCheck(cudaStreamEndCapture(cudaStreams[0], &graph));
-	cudaGraphExec_t& exec = stepGraphs[logData][computeVirial];
+	cudaGraphExec_t& exec = stepGraphs[logData][computeVirial][measureTemperature];
 	if (exec) {
 		cudaGraphExecUpdateResultInfo updateInfo{};
 		if (cudaGraphExecUpdate(exec, graph, &updateInfo) != cudaSuccess) {
@@ -189,7 +196,7 @@ void Engine::LaunchCapturedStep(bool logData, bool computeVirial) {
 	LaunchStepGraph(exec, true);
 	cudaGraphDestroy(graph);
 	if (!logData && !computeVirial && mode != EngineRunMode::Interactive)
-		replayableStepGraph = true;
+		replayableStepGraph[measureTemperature] = true;
 }
 void Engine::LaunchStepGraph(cudaGraphExec_t exec, bool captured) {
 	LIMA_UTILS::genericErrorCheck(cudaGraphLaunch(exec, cudaStreams[0]));
@@ -351,6 +358,7 @@ void Engine::RebuildActiveBatch() {
 	batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
 	batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
 	batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
+	UploadDeviceThermostatSimulations();
 	if (batch->step == 0) BootstrapClustering(cudaStreams[0]);
 	else RunClustering(cudaStreams[0]);
 	MakeSuperClusterTasksGPU(cudaStreams[0]);
@@ -388,7 +396,7 @@ int Engine::StepUntilHostWork() {
 	int nSteps = 1;
 	if (nSteps < maxStepsPerCall && IsPlainReplayStep()) {
 		do {
-			LaunchStepGraph(stepGraphs[0][0], false);
+			LaunchStepGraph(stepGraphs[0][0][DeviceThermostatStep()], false);
 			AdvanceStepCounters();
 			for (auto& sim : batch->simulations)
 				if (sim.device.active) sim.runstatus.current_step = sim.step;
@@ -410,7 +418,7 @@ void Engine::AdvanceStepCounters() {
 }
 
 bool Engine::IsPlainReplayStep() const {
-	if (!replayableStepGraph || mode != EngineRunMode::Simulation || IsFinished())
+	if (!replayableStepGraph[DeviceThermostatStep()] || mode != EngineRunMode::Simulation || IsFinished())
 		return false;
 	const auto& params = batch->params;
 	const int64_t step = batch->step;	// The step to run, the steps' host work below sees step + 1
@@ -420,7 +428,7 @@ bool Engine::IsPlainReplayStep() const {
 		return false;
 	if (params.apply_barostat && (step + 1) % params.steps_per_pressure_measurement == 0)
 		return false;
-	if ((step + 1) % params.steps_per_temperature_measurement == 0 || (step + 1) % params.stepsPerNlistupdate == 0)
+	if ((!UsesDeviceThermostat() && (step + 1) % params.steps_per_temperature_measurement == 0) || (step + 1) % params.stepsPerNlistupdate == 0)
 		return false;
 	if ((step + 1) % StepsPerRender == 0 && std::any_of(renderDataPipes.begin(), renderDataPipes.end(), [](auto* pipe) { return pipe != nullptr; }))
 		return false;
@@ -495,7 +503,7 @@ bool Engine::hostMaster() {
 	bool thermostatScalarsChanged = false;
 	float barostatCoordinateScale = 1.f;
 	// Temperature cadence is independent of logging, otherwise the logging interval changes the thermostat's dynamics
-	const bool measureTemperature = batch->step % batch->params.steps_per_temperature_measurement == 0;
+	const bool measureTemperature = !UsesDeviceThermostat() && batch->step % batch->params.steps_per_temperature_measurement == 0;
 	const bool measurePressure = batch->params.apply_barostat
 		&& batch->step % batch->params.steps_per_pressure_measurement == 0;
 	if (measureTemperature || measurePressure) {
@@ -510,6 +518,8 @@ bool Engine::hostMaster() {
 		const auto& params = sim.simulation->simParams;
 		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval))
 			OffloadLoggingData(sim);
+		if (UsesDeviceThermostat())
+			HarvestTemperatures(sim);
 		// v-rescale is one impulse on a coupling step, not a factor spread over the interval.
 		if ((!measureTemperature || !params.apply_thermostat) && sim.device.thermostatScalar != 1.f) {
 			sim.device.thermostatScalar = 1.f;
@@ -633,6 +643,8 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 		if (const CapacityOverflow* overflow = batch->pmeController->Overflow()) overflow->Check();
 	OffloadLoggingData(sim);
 	JoinLogDrains();
+	if (UsesDeviceThermostat())
+		HarvestTemperatures(sim);
 	const auto range = sim.device.pclusters;
 	cudaMemcpy(sim.simulation->box->pclusterInterimStates.data(), batch->boxState.pclusterInterimStates + range.offset,
 		sizeof(PersistentclusterInterimState) * range.count, cudaMemcpyDeviceToHost);
@@ -643,6 +655,40 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 	sim.device.active = false;
 	sim.runstatus.simulation_finished = true;
 	sim.finalized = true;
+	UploadDeviceThermostatSimulations(); // It no longer measures this simulation
+}
+
+bool Engine::UsesDeviceThermostat() const {
+	return deviceThermostat && mode == EngineRunMode::Simulation && !batch->params.em_variant && !batch->params.apply_barostat;
+}
+
+bool Engine::DeviceThermostatStep() const {
+	return UsesDeviceThermostat() && (batch->step + 1) % batch->params.steps_per_temperature_measurement == 0;
+}
+
+void Engine::UploadDeviceThermostatSimulations() {
+	if (!deviceThermostat)
+		return;
+	const int interval = std::max<int>(1, static_cast<int>(batch->params.steps_per_temperature_measurement.value));
+	std::vector<_Thermostat::DeviceThermostatSimulation> simulations;
+	std::vector<BatchRange> pclusters;
+	for (const auto& sim : batch->simulations) {
+		const SimParams& params = sim.simulation->simParams;
+		_Thermostat::DeviceThermostatSimulation simulation;
+		simulation.measure = sim.device.active && !sim.finalized && sim.device.pclusters.count > 0;
+		simulation.degreesOfFreedom = sim.simulation->box->boxparams.degreesOfFreedom;
+		simulation.referenceTemperature = params.ref_t;
+		simulation.tauInCouplings = params.tau_t * PICO_TO_NANO / (interval * double(params.dt));	// As hostMaster
+		simulation.applyThermostat = params.apply_thermostat;
+		simulations.push_back(simulation);
+		pclusters.push_back(simulation.measure ? sim.device.pclusters : BatchRange{});
+	}
+	deviceThermostat->SetSimulations(simulations, pclusters);
+}
+
+void Engine::HarvestTemperatures(EngineSimulationData& sim) {
+	if (const auto latest = deviceThermostat->Harvest(&sim - batch->simulations.data(), sim.simulation->temperature_buffer))
+		sim.runstatus.current_temperature = *latest;
 }
 
 void Engine::terminateSimulation() {
@@ -924,7 +970,7 @@ void Engine::UpdateEnergyMinimization(Float3 boxSize) {
 }
 
 template <typename BoundaryCondition, bool emvariant, bool logData, bool computeVirial>
-void Engine::_deviceMaster() {
+void Engine::_deviceMaster(bool measureTemperature) {
 	if (emvariant != tasksBuiltForEm)
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 	const Float3 boxSize = batch->boxLength;
@@ -947,8 +993,8 @@ void Engine::_deviceMaster() {
 	}
 	// EM synchronizes within the step. SNFs are not checked for capturability
 	const bool captureStep = useStepGraphs && !emvariant && nScs > 0 && batch->params.snf_select.empty();
-	if (captureStep && !logData && !computeVirial && replayableStepGraph) {
-		LaunchStepGraph(stepGraphs[0][0], false);
+	if (captureStep && !logData && !computeVirial && replayableStepGraph[measureTemperature]) {
+		LaunchStepGraph(stepGraphs[0][0][measureTemperature], false);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 		return;
 	}
@@ -1032,7 +1078,7 @@ void Engine::_deviceMaster() {
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), *batch->superClustersControl, batch->integrationStates.Get(),
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
 					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), batch->pclusterTransfermodule->overflow, stepCounterDevice,
-					computeVirial ? batch->constraintVirialPartials.Get() : nullptr);
+					computeVirial ? batch->constraintVirialPartials.Get() : nullptr, deviceThermostat->impulses.Get());
 			}
 			else {
 				// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
@@ -1040,58 +1086,62 @@ void Engine::_deviceMaster() {
 				SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterTransfermodule->overflow, stepCounterDevice);
+					liveEdit, log, batch->pclusterTransfermodule->overflow, stepCounterDevice, deviceThermostat->impulses.Get());
 			}
+			if (measureTemperature)
+				deviceThermostat->Queue(batch->integrationStates.Get(), nScs * SuperCluster::maxParticles, batch->pClusterMetaDevice.Get(),
+					batch->thermostat->KineticEnergyValues(), stepCounterDevice, cudaStreams[0]);
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster
 		if constexpr (emvariant)
 			cudaStreamSynchronize(cudaStreams[0]);
 		if (captureStep)
-			LaunchCapturedStep(logData, computeVirial);
+			LaunchCapturedStep(logData, computeVirial, measureTemperature);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 }
 
 void Engine::deviceMaster() {
 	const bool logData = batch->params.data_logging_interval != 0 && batch->step % batch->params.data_logging_interval == 0;
+	const bool measureTemperature = DeviceThermostatStep();
 	const bool pressureStep = batch->params.apply_barostat
 		&& (batch->step + 1) % batch->params.steps_per_pressure_measurement == 0;
 	switch (batch->params.bc_select) {
 	case NoBC:
 		if (batch->params.em_variant) {
 			if (logData) {
-				_deviceMaster<NoBoundaryCondition, true, true, false>();
+				_deviceMaster<NoBoundaryCondition, true, true, false>(measureTemperature);
 			}
 			else {
-				_deviceMaster<NoBoundaryCondition, true, false, false>();
+				_deviceMaster<NoBoundaryCondition, true, false, false>(measureTemperature);
 			}
 		}
 		else {
 			if (logData) {
-				_deviceMaster<NoBoundaryCondition, false, true, false>();
+				_deviceMaster<NoBoundaryCondition, false, true, false>(measureTemperature);
 			}
 			else {
-				_deviceMaster<NoBoundaryCondition, false, false, false>();
+				_deviceMaster<NoBoundaryCondition, false, false, false>(measureTemperature);
 			}
 		}
 		break;
 	case PBC:
 		if (batch->params.em_variant) {
 			if (logData) {
-				_deviceMaster<PeriodicBoundaryCondition, true, true, false>();
+				_deviceMaster<PeriodicBoundaryCondition, true, true, false>(measureTemperature);
 			}
 			else {
-				_deviceMaster<PeriodicBoundaryCondition, true, false, false>();
+				_deviceMaster<PeriodicBoundaryCondition, true, false, false>(measureTemperature);
 			}
 		}
 		else {
 			if (logData) {
-				if (pressureStep) _deviceMaster<PeriodicBoundaryCondition, false, true, true>();
-				else _deviceMaster<PeriodicBoundaryCondition, false, true, false>();
+				if (pressureStep) _deviceMaster<PeriodicBoundaryCondition, false, true, true>(measureTemperature);
+				else _deviceMaster<PeriodicBoundaryCondition, false, true, false>(measureTemperature);
 			}
 			else {
-				if (pressureStep) _deviceMaster<PeriodicBoundaryCondition, false, false, true>();
-				else _deviceMaster<PeriodicBoundaryCondition, false, false, false>();
+				if (pressureStep) _deviceMaster<PeriodicBoundaryCondition, false, false, true>(measureTemperature);
+				else _deviceMaster<PeriodicBoundaryCondition, false, false, false>(measureTemperature);
 			}
 		}
 		break;

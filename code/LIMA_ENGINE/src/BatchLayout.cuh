@@ -31,3 +31,10 @@ struct IntegrationSimulationData {
 	float dt = 0.f;
 	float thermostatScalar = 1.f;
 };
+
+// A v-rescale factor the device thermostat computed after a coupling step, see DeviceThermostat. The integration kernels apply it to
+// the velocities of step, in place of IntegrationSimulationData::thermostatScalar, so no step resets it
+struct ThermostatImpulse {
+	float scalar = 1.f;
+	int64_t step = -1;
+};

@@ -12,6 +12,7 @@
 
 
 class Thermostat;
+class DeviceThermostat;
 struct ForceEnergyInterims;
 struct SuperClustersControl;
 struct ForceAccumulator;
@@ -97,7 +98,7 @@ private:
 	bool hostMaster();
 	void deviceMaster();
 	template <typename BoundaryCondition, bool emvariant, bool computePotE, bool computeVirial>
-	void _deviceMaster();
+	void _deviceMaster(bool measureTemperature);
 
 	template <typename BoundaryCondition, bool emvariant>
 	void SnfHandler(cudaStream_t& stream, const ForceAccumulator& forceAcc);
@@ -152,16 +153,16 @@ private:
 	// arguments and buffers need no tracking. Anything launched in a captured step must be capturable: no syncs, no allocations,
 	// and only on the forked streams. Ignored on HIP
 	static constexpr bool useStepGraphs = true;
-	// [logData][computeVirial]
-	std::array<std::array<cudaGraphExec_t, 2>, 2> stepGraphs{};
+	// [logData][computeVirial][measureTemperature], the last for the DeviceThermostat's coupling steps
+	std::array<std::array<std::array<cudaGraphExec_t, 2>, 2>, 2> stepGraphs{};
 	void BeginStepCapture();
-	void LaunchCapturedStep(bool logData, bool computeVirial);
-	// Steps without logging or virial relaunch stepGraphs[0][0] without capturing while it is valid: the host then queues a step in
+	void LaunchCapturedStep(bool logData, bool computeVirial, bool measureTemperature);
+	// Steps without logging or virial relaunch stepGraphs[0][0][measureTemperature] without capturing while it is valid: the host then queues a step in
 	// a few us rather than the ~30 us of capturing and updating it, and stays ahead of the GPU on small systems. Its arguments change
 	// only on a clustering, a task build, an upload of IntegrationSimulationData or a changed live-edit buffer, which invalidate it.
 	// The step index the kernels read is advanced on the GPU, see stepCounterDevice. Not in Interactive mode, where params change freely
-	bool replayableStepGraph = false;
-	void InvalidateStepGraph() { replayableStepGraph = false; }
+	std::array<bool, 2> replayableStepGraph{};	// [measureTemperature]
+	void InvalidateStepGraph() { replayableStepGraph = {}; }
 	// The current step's index, advanced by the step's first kernel. Read by the integration kernels for error reports
 	int64_t* stepCounterDevice = nullptr;
 	void LaunchStepGraph(cudaGraphExec_t exec, bool captured);
@@ -176,6 +177,14 @@ private:
 	bool flushNextStepLaunch = false;
 	// Must be called after changing any field that IntegrationSimulationData is built from
 	void UploadIntegrationSimulationData();
+	// The temperature measurement and thermostat run on the GPU in MD without the barostat, see DeviceThermostat. Else on the host, in hostMaster
+	std::unique_ptr<DeviceThermostat> deviceThermostat;
+	bool UsesDeviceThermostat() const;
+	// Whether the DeviceThermostat measures after the step batch->step
+	bool DeviceThermostatStep() const;
+	// Must be called whenever the batch is packed
+	void UploadDeviceThermostatSimulations();
+	void HarvestTemperatures(EngineSimulationData& sim);
 	bool ApplyBarostat(float coordinateScale);
 	EngineRunMode mode;
 	// ################################# VARIABLES AND ARRAYS ################################# //

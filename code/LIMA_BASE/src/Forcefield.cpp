@@ -5,6 +5,7 @@
 #include "MDFiles.h"
 
 #include <format>
+#include <optional>
 #include <tuple>
 #include <algorithm>
 
@@ -425,15 +426,29 @@ void LIMAForcefield::LoadFileIntoForcefield(const GenericItpFile& file)
 	}
 
 	for (const auto& line : file.GetSection(TopologySection::atomtypes)) {
-		std::istringstream iss(line);
-		float sigma, epsilon;
+		// GROMACS' layout is: name [bond_type] [at.num] mass charge ptype sigma epsilon, so the fields are counted from the end
+		std::istringstream iss(line.substr(0, line.find(';')));
+		std::vector<std::string> fields;
+		for (std::string field; iss >> field;)
+			fields.push_back(field);
+		if (fields.size() < 6 || fields.size() > 8)
+			throw std::runtime_error(Lima::Format("Atomtype line with {} fields, expected 6 to 8: '{}'", fields.size(), line));
+		const size_t n = fields.size();
+		const auto isInteger = [](const std::string& s) { return !s.empty() && s.find_first_not_of("0123456789") == std::string::npos; };
 		AtomType atomtype{};
-		iss >> atomtype.name >> atomtype.atNum
-			>> atomtype.mass				// [g]         // // we take the one from topology, not FF file
-			>> atomtype.charge				// [e]
-			>> atomtype.ptype
-			>> sigma	// [nm]
-			>> epsilon;	// [kJ/mol]
+		atomtype.name = fields[0];
+		// The optional fields: bond_type and at.num both (8 fields), or one of them (7), told apart as at.num is an integer
+		std::optional<std::string> bondType;
+		if (n == 8) { bondType = fields[1]; atomtype.atNum = std::stoi(fields[2]); }
+		else if (n == 7) { if (isInteger(fields[1])) atomtype.atNum = std::stoi(fields[1]); else bondType = fields[1]; }
+		// LIMA looks up bonded parameters by the atomtype name, so a different bond_type would silently get the wrong ones
+		if (bondType && *bondType != atomtype.name)
+			throw std::runtime_error(Lima::Format("Atomtype {} has bond_type {}. LIMA requires them to be equal", atomtype.name, *bondType));
+		atomtype.mass = std::stof(fields[n - 5]);	// [g]         // // we take the one from topology, not FF file
+		atomtype.charge = std::stof(fields[n - 4]);	// [e]
+		atomtype.ptype = fields[n - 3][0];
+		const float sigma = std::stof(fields[n - 2]);	// [nm]
+		const float epsilon = std::stof(fields[n - 1]);	// [kJ/mol]
 
 		atomtype.charge *= elementaryChargeToKiloCoulombPerMole;
 		atomtype.mass /= static_cast<float>(KILO);

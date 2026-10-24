@@ -643,8 +643,15 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 		if (const CapacityOverflow* overflow = batch->pmeController->Overflow()) overflow->Check();
 	OffloadLoggingData(sim);
 	JoinLogDrains();
-	if (UsesDeviceThermostat())
+	if (UsesDeviceThermostat()) {
+		// The temperature after its last step is measured by the next step, which it does not run
+		if (sim.device.active && deviceThermostat->MeasuresAt(batch->step) && batch->nSuperclusters > 0) {
+			deviceThermostat->Queue(batch->integrationStates.Get(), batch->nSuperclusters * SuperCluster::maxParticles, batch->pClusterMetaDevice.Get(),
+				batch->thermostat->KineticEnergyValues(), stepCounterDevice, cudaStreams[0], batch->step, static_cast<int>(&sim - batch->simulations.data()));
+			Synchronize();
+		}
 		HarvestTemperatures(sim);
+	}
 	const auto range = sim.device.pclusters;
 	cudaMemcpy(sim.simulation->box->pclusterInterimStates.data(), batch->boxState.pclusterInterimStates + range.offset,
 		sizeof(PersistentclusterInterimState) * range.count, cudaMemcpyDeviceToHost);
@@ -663,7 +670,7 @@ bool Engine::UsesDeviceThermostat() const {
 }
 
 bool Engine::DeviceThermostatStep() const {
-	return UsesDeviceThermostat() && (batch->step + 1) % batch->params.steps_per_temperature_measurement == 0;
+	return UsesDeviceThermostat() && deviceThermostat->MeasuresAt(batch->step);
 }
 
 void Engine::UploadDeviceThermostatSimulations() {
@@ -1002,8 +1009,13 @@ void Engine::_deviceMaster(bool measureTemperature) {
 		BeginStepCapture();
 	// The previous step and any rebuild are queued on cudaStreams[0], and the host does not wait for them
 	ForkStreamsFromMainStream();
-	if constexpr (!emvariant)
+	if constexpr (!emvariant) {
 		AdvanceStepCounterKernel<<<1, 1, 0, cudaStreams[1]>>>(stepCounterDevice, batch->step);
+		// After the counter, on its stream, overlapping the force kernels. Integration joins it
+		if (measureTemperature && nScs > 0)
+			deviceThermostat->Queue(batch->integrationStates.Get(), nScs * SuperCluster::maxParticles, batch->pClusterMetaDevice.Get(),
+				batch->thermostat->KineticEnergyValues(), stepCounterDevice, cudaStreams[1]);
+	}
 	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
 	// and are gathered by integration, so all force kernels can run concurrently.
 	ForceAccumulator forceAcc{};
@@ -1088,9 +1100,6 @@ void Engine::_deviceMaster(bool measureTemperature) {
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
 					liveEdit, log, batch->pclusterTransfermodule->overflow, stepCounterDevice, deviceThermostat->impulses.Get());
 			}
-			if (measureTemperature)
-				deviceThermostat->Queue(batch->integrationStates.Get(), nScs * SuperCluster::maxParticles, batch->pClusterMetaDevice.Get(),
-					batch->thermostat->KineticEnergyValues(), stepCounterDevice, cudaStreams[0]);
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster
 		if constexpr (emvariant)

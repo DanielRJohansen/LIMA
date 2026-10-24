@@ -180,7 +180,7 @@ private:
 	// The temperature measurement and thermostat run on the GPU in MD without the barostat, see DeviceThermostat. Else on the host, in hostMaster
 	std::unique_ptr<DeviceThermostat> deviceThermostat;
 	bool UsesDeviceThermostat() const;
-	// Whether the DeviceThermostat measures after the step batch->step
+	// Whether the step batch->step starts with the DeviceThermostat's measurement and coupling
 	bool DeviceThermostatStep() const;
 	// Must be called whenever the batch is packed
 	void UploadDeviceThermostatSimulations();

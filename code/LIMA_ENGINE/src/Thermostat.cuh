@@ -94,26 +94,31 @@ namespace _Thermostat {
 		bool measure = false;	// Active and with particles
 	};
 
-	// One thread per simulation: the temperature and, with the thermostat, the v-rescale factor for the next step, as Engine::hostMaster
+	// One thread per simulation: the temperature after the previous step and, with the thermostat, the v-rescale factor for this step, as
+	// Engine::hostMaster did between them. step is this step, or -1 for the step counter's. onlySimulation, if not -1, measures only that
+	// simulation, and without coupling: its final temperature, after its last step
 	__global__ void VRescaleKernel(const DeviceThermostatSimulation* simulations, int nSimulations, const double* kineticEnergies,
-		VRescale* rngs, ThermostatImpulse* impulses, float* temperatureRing, int ringSize, const int64_t* stepCounter, int interval) {
+		VRescale* rngs, ThermostatImpulse* impulses, float* temperatureRing, int ringSize, const int64_t* stepCounter, int64_t step,
+		int interval, int onlySimulation) {
 		const int id = blockIdx.x * blockDim.x + threadIdx.x;
-		if (id >= nSimulations || !simulations[id].measure) return;
+		if (id >= nSimulations || !simulations[id].measure || (onlySimulation != -1 && id != onlySimulation)) return;
 		const DeviceThermostatSimulation simulation = simulations[id];
-		const int64_t nextStep = *stepCounter + 1;	// The step that applies the factor, whose host work measures the temperature
+		if (step == -1)
+			step = *stepCounter;
 		const float temperature = PhysicsUtils::kineticEnergyToTemperature(kineticEnergies[id], simulation.degreesOfFreedom);
-		temperatureRing[size_t(id) * ringSize + (nextStep / interval) % ringSize] = temperature;
-		if (simulation.applyThermostat) {
+		temperatureRing[size_t(id) * ringSize + (step / interval) % ringSize] = temperature;
+		if (simulation.applyThermostat && onlySimulation == -1) {
 			const double factor = rngs[id].Factor(temperature, simulation.referenceTemperature, simulation.degreesOfFreedom, simulation.tauInCouplings);
-			impulses[id] = ThermostatImpulse{ static_cast<float>(factor), nextStep };
+			impulses[id] = ThermostatImpulse{ static_cast<float>(factor), step };
 		}
 	}
 } // namespace _Thermostat
 
 // The temperature measurement and v-rescale thermostat on the GPU, inside the captured step, so a coupling step needs no host roundtrip
-// and does not invalidate the step graph. On a coupling step the step's work ends with the kinetic energies (from the slots), their sum
-// per simulation and VRescaleKernel. The factor goes to the next step's integration as a ThermostatImpulse, and the temperature to a
-// ring in mapped host memory, which the host reads without waiting (Harvest). Each simulation's random stream is the one the host
+// and does not invalidate the step graph. A coupling step, the one after a measurement interval, starts with the kinetic energies after
+// the previous step (from the slots), their sum per simulation and VRescaleKernel, on a side stream overlapping the force kernels, which
+// do not touch the velocities. The factor goes to this step's integration as a ThermostatImpulse, and the temperature to a ring in
+// mapped host memory, which the host reads without waiting (Harvest). Each simulation's random stream is the one the host
 // thermostat would draw. Not with the barostat, whose pressure measurement reads the kinetic energy on the host anyway
 class DeviceThermostat {
 	CudaBuffer<_Thermostat::DeviceThermostatSimulation> simulationsDevice;
@@ -122,6 +127,7 @@ class DeviceThermostat {
 	CudaBuffer<char> sumTempStorage;
 	std::vector<BatchRange> pclusters;
 	int interval = 1;
+	int64_t firstStep = 0;
 	float* ringHost = nullptr;
 	float* ringDevice = nullptr;
 	std::vector<int64_t> nextMeasurement;	// Per simulation, the index (step / interval) of the next temperature to harvest
@@ -131,7 +137,8 @@ public:
 	static constexpr int ringSize = 4096;
 	CudaBuffer<ThermostatImpulse> impulses;	// Always allocated, as the integration kernels read it
 
-	DeviceThermostat(const std::vector<VRescale>& initialRngs, int interval, int64_t step) : interval(interval) {
+	// step is the engine's first: the later steps that are a multiple of interval measure
+	DeviceThermostat(const std::vector<VRescale>& initialRngs, int interval, int64_t step) : interval(interval), firstStep(step) {
 		const size_t n = initialRngs.size();
 		rngs.SetData(initialRngs);
 		impulses.SetData(std::vector<ThermostatImpulse>(n));
@@ -155,18 +162,21 @@ public:
 		sumTempStorage.Expand(std::max<size_t>(tempBytes, 1));
 	}
 
-	// Capturable. kineticEnergyValues is the batch's Thermostat buffer, one value per pcluster lane
+	bool MeasuresAt(int64_t step) const { return step > firstStep && step % interval == 0; }
+
+	// Capturable. kineticEnergyValues is the batch's Thermostat buffer, one value per pcluster lane. See VRescaleKernel for step and
+	// onlySimulation
 	void Queue(const ParticleIntegrationState* states, int nSlots, const PersistentClusterMeta* metadata, float* kineticEnergyValues,
-		const int64_t* stepCounter, cudaStream_t stream) {
+		const int64_t* stepCounter, cudaStream_t stream, int64_t step = -1, int onlySimulation = -1) {
 		if (nSlots > 0)
 			_Thermostat::ComputeKineticEnergyFromSlotsKernel<<<(nSlots + 127) / 128, 128, 0, stream>>>(states, nSlots, metadata, kineticEnergyValues);
 		for (size_t id = 0; id < pclusters.size(); id++)
-			if (pclusters[id].count > 0)
+			if (pclusters[id].count > 0 && (onlySimulation == -1 || id == size_t(onlySimulation)))
 				CubWrappers::SumInto(kineticEnergyValues + pclusters[id].offset * PersistentCluster::maxParticles,
 					pclusters[id].count * PersistentCluster::maxParticles, kineticEnergies.Get() + id, sumTempStorage, stream);
 		const int n = static_cast<int>(pclusters.size());
 		_Thermostat::VRescaleKernel<<<(n + 31) / 32, 32, 0, stream>>>(simulationsDevice.Get(), n, kineticEnergies.Get(), rngs.Get(),
-			impulses.Get(), ringDevice, ringSize, stepCounter, interval);
+			impulses.Get(), ringDevice, ringSize, stepCounter, step, interval, onlySimulation);
 	}
 
 	// Appends the temperatures the GPU has written since the last harvest, in order, and returns the latest. Does not wait: a temperature

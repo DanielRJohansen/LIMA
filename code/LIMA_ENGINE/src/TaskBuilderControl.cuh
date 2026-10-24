@@ -46,6 +46,12 @@ public:
 	CudaBuffer<float4> cellMax;
 	CudaBuffer<ScNeighbor> neighbors;		// maxTasksPerSc per supercluster
 	CudaBuffer<int> nNeighbors;
+	// FindNeighborsKernel with several warps per supercluster: each chunk's list, its entry count, the hits per group of 32 cell
+	// offsets, and the count of finished chunks per supercluster (zero between launches)
+	CudaBuffer<ScNeighbor> chunkNeighbors;
+	CudaBuffer<int> chunkEntryCounts;
+	CudaBuffer<int> groupCounts;
+	CudaBuffer<int> chunksDone;
 	CudaBuffer<int> overflow;
 
 	// MD

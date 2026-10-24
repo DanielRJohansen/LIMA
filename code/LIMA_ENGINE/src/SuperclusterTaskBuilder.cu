@@ -61,6 +61,15 @@ constexpr uint8_t splitPclusters = 2;		// A pcluster of the supercluster is spli
 
 // ------------------------------------------------------- Neighbor search ------------------------------------------------------- //
 
+// The split FindNeighborsKernel's buffers, see TaskBuilderControl
+struct NeighborChunks {
+	int nChunks;
+	ScNeighbor* lists;
+	int* entryCounts;
+	int* groupCounts;
+	int* done;
+};
+
 // gridDim = nGridnodes, blockDim = 32. Bounding sphere, cell, valid particles and external bonds of every supercluster, and the AABB of every cell
 __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
 	const PersistentClusterMeta* const pclusterMeta, float4* const scSpheres, int* const scCells, uint16_t* const scValidMasks, uint8_t* const scExternalBonds, float4* const cellMin, float4* const cellMax)
@@ -132,23 +141,34 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 	}
 }
 
-// blockDim = 32 * neighborSearchWarpsPerBlock, one warp per own supercluster.
+// blockDim = 32 * neighborSearchWarpsPerBlock, nChunks warps per own supercluster.
 // Lists the superclusters each supercluster owns an interaction with (queryId >= own id): those with a pair of particles within
 // the list radius, and which of their 4x4 blocks of quarters have such a pair. Pairs within a self interaction count in one order only.
 // entryCounts is the number of QuarterEntries EmitQuarterEntriesKernel will write, with allQuarters as passed to it.
 // The cells from -cellRangeLo to cellRangeHi around the own cell are searched, but only those whose AABB is within reach, and of
 // those only the superclusters whose bounding sphere is. Candidates are enumerated in a fixed order, so the lists are deterministic.
+//
+// Small systems have too few superclusters to fill the GPU, so then nChunks warps share a supercluster: chunk c searches the groups
+// of groupSize cell offsets c, c + nChunks, .., listing their hits in its own list. The chunk to finish last merges the lists in group
+// order, which is the order of a single warp, so the lists and counts are identical. Groups of 8 balance the chunks better, as the hits
+// cluster in a few offsets around the own cell. A template parameter, so the single warp variant is unchanged by the split
+template <bool split>
 __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const uint8_t* const scExternalBonds, const int* const scCells,
 	const float4* const cellMin, const float4* const cellMax, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
 	ScNeighbor* const neighbors, int* const nNeighbors, int* const entryCounts, int* const overflow,
-	int nSuperclusters, Int3 boxSize, Int3 cellRangeLo, Int3 cellRangeHi, float listRadius, bool allQuarters, Float3 boxSizeF, Float3 boxSizeInv)
+	int nSuperclusters, Int3 boxSize, Int3 cellRangeLo, Int3 cellRangeHi, float listRadius, bool allQuarters, Float3 boxSizeF, Float3 boxSizeInv,
+	const NeighborChunks chunkBuffers /*split only*/)
 {
 	__shared__ float4 stage[neighborSearchWarpsPerBlock][SuperCluster::maxParticles];
 	const int warpInBlock = threadIdx.x >> 5;
 	const int lane = threadIdx.x & 31;
-	const int scId = blockIdx.x * neighborSearchWarpsPerBlock + warpInBlock;
+	const int warpId = blockIdx.x * neighborSearchWarpsPerBlock + warpInBlock;
+	const int chunks = split ? chunkBuffers.nChunks : 1; // Compile time 1 without the split
+	const int scId = warpId / chunks;
+	const int chunk = warpId - scId * chunks;
 	if (scId >= nSuperclusters)
 		return;
+	constexpr int groupSize = split ? 8 : 32;
 
 	const int ownIndex = lane & 15;
 	const Float3 ownPos = scControl.scData[scId].Position(ownIndex);
@@ -173,14 +193,17 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 	const NodeIndex cell3d = BoxGrid::Get3dIndex(cell - gridOffset, boxSize);
 	const Int3 side{ cellRangeLo.x + cellRangeHi.x + 1, cellRangeLo.y + cellRangeHi.y + 1, cellRangeLo.z + cellRangeHi.z + 1 };
 	const int nOffsets = side.x * side.y * side.z;
+	const int nGroups = (nOffsets + groupSize - 1) / groupSize;
 
 	int count = 0;
 	int entryCount = 0;
-	for (int base = 0; base < nOffsets; base += 32) {
+	// As the single warp variant's loop, which got 5% slower with a group index
+	for (int base = chunk * groupSize; base < nOffsets; base += chunks * groupSize) {
+		const int countBefore = count;
 		const int o = base + lane;
 		int targetCell = 0;
 		bool cellHit = false;
-		if (o < nOffsets) {
+		if ((!split || lane < groupSize) && o < nOffsets) {
 			const NodeIndex relative{ o % side.x - cellRangeLo.x, (o / side.x) % side.y - cellRangeLo.y, o / (side.x * side.y) - cellRangeLo.z };
 			NodeIndex target = cell3d + relative;
 			PeriodicBoundaryCondition::applyBC(target, boxSize);
@@ -268,13 +291,54 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 					const bool bonded = selfTask
 						|| ((ownExternalBonds & bondsToOtherScs) && Warp_ScAreBonded(scControl.scMeta[scId], scControl.scMeta[queryId], pclustersBondedToPcluster))
 						|| ((ownExternalBonds & splitPclusters) && scCells[queryId] == ownCell && Warp_ScsSharePcluster(scControl.scMeta[scId], scControl.scMeta[queryId]));
-					if (lane == 0 && count < maxNeighborsPerSc)
-						neighbors[scId * maxNeighborsPerSc + count] = ScNeighbor{ queryId, static_cast<uint16_t>(bits), static_cast<uint16_t>(bonded) };
+					if (lane == 0 && count < maxNeighborsPerSc) {
+						const ScNeighbor neighbor{ queryId, static_cast<uint16_t>(bits), static_cast<uint16_t>(bonded) };
+						if constexpr (split) chunkBuffers.lists[size_t(scId * chunks + chunk) * maxNeighborsPerSc + count] = neighbor;
+						else neighbors[scId * maxNeighborsPerSc + count] = neighbor;
+					}
 					count++;
 					entryCount += allQuarters && !selfTask ? 4 : __popc((bits | bits >> 4 | bits >> 8 | bits >> 12) & 0xF);
 				}
 			}
 		}
+		if (split && lane == 0)
+			chunkBuffers.groupCounts[scId * nGroups + base / groupSize] = count - countBefore;
+	}
+
+	if constexpr (split) {
+		// The last chunk to finish merges, and sees the others' writes: they are fenced before their increment, and read past L1
+		if (lane == 0)
+			chunkBuffers.entryCounts[scId * chunks + chunk] = entryCount;
+		__threadfence();
+		int previouslyDone = 0;
+		if (lane == 0)
+			previouslyDone = atomicAdd(&chunkBuffers.done[scId], 1);
+		if (__shfl_sync(LIMA_FULL_WARP_MASK, previouslyDone, 0) != chunks - 1)
+			return;
+		__threadfence();
+		// Lane c holds the read offset in chunk c's list
+		int chunkOffset = 0;
+		int total = 0;
+		for (int group = 0; group < nGroups; group++) {
+			const int c = group % chunks;
+			const int groupCount = __ldcg(&chunkBuffers.groupCounts[scId * nGroups + group]);
+			const int from = __shfl_sync(LIMA_FULL_WARP_MASK, chunkOffset, c);
+			const ScNeighbor* const source = &chunkBuffers.lists[size_t(scId * chunks + c) * maxNeighborsPerSc];
+			for (int i = lane; i < groupCount; i += 32)
+				if (from + i < maxNeighborsPerSc && total + i < maxNeighborsPerSc) {
+					const int2 raw = __ldcg(reinterpret_cast<const int2*>(&source[from + i]));
+					reinterpret_cast<int2*>(neighbors)[size_t(scId) * maxNeighborsPerSc + total + i] = raw;
+				}
+			if (lane == c)
+				chunkOffset += groupCount;
+			total += groupCount;
+		}
+		entryCount = 0;
+		for (int c = 0; c < chunks; c++)
+			entryCount += __ldcg(&chunkBuffers.entryCounts[scId * chunks + c]);
+		count = total;
+		if (lane == 0)
+			chunkBuffers.done[scId] = 0;
 	}
 
 	if (lane == 0) {
@@ -311,26 +375,11 @@ __device__ inline uint32_t BondedQueryMask(const StaticSet<size>& set, const int
 // 8 groups straddle two classes, the union of their masks is small. EM's entries without pairs in range (class 0) go last
 __constant__ uint8_t quarterMaskEmitOrder[16] = { 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8, 0 };
 
-// gridDim = nSuperclusters, blockDim = 32. Writes the QuarterEntries of each supercluster: one per quarter of a neighbor with a pair
-// within the list radius. Sorted by ownQuarterMask in quarterMaskEmitOrder, and within a class by (chunk of 32 neighbors, neighbor,
-// query quarter), so the result is deterministic.
-// EM (allQuarters) also writes entries for the quarters of other superclusters without pairs in range, so every quarter of their
-// result gets written, the index of each entry's result, and the result range of each supercluster
-template <bool allQuarters>
-__global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, const ScNeighbor* const neighbors,
-	const int* const nNeighbors, const uint16_t* const scValidMasks, const ParticlesBondedToParticle* const particlesBondedToParticle,
-	const int* const entryStarts, QuarterEntryTask* const entryTasks, QuarterEntry* const entries,
-	const TaskBuilderControlContents tbContents /*EM only*/, int* const entryResultIndices /*EM only*/)
-{
+namespace EmitEntries {
 	constexpr uint32_t noEntry = 16;
-	const int scId = blockIdx.x;
-	const int lane = threadIdx.x;
-	const int n = nNeighbors[scId];
-	__shared__ int classOffsets[16];
-	const uint32_t ownValid = scValidMasks[scId];
 
 	// 4 bits per query quarter: the own quarters it has a pair within the list radius with
-	auto OwnMasks = [](uint32_t quarterMask) {
+	__device__ __forceinline__ uint32_t OwnMasks(uint32_t quarterMask) {
 		uint32_t ownMasks = 0;
 #pragma unroll
 		for (int jq = 0; jq < 4; jq++)
@@ -338,47 +387,22 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 			for (int iq = 0; iq < 4; iq++)
 				ownMasks |= ((quarterMask >> (iq * 4 + jq)) & 1u) << (jq * 4 + iq);
 		return ownMasks;
-	};
+	}
 	// The class of an entry for a query quarter, or noEntry
-	auto EntryClass = [scId](uint32_t ownMasks, int jq, int queryScId) {
+	template <bool allQuarters>
+	__device__ __forceinline__ uint32_t EntryClass(uint32_t ownMasks, int jq, int queryScId, int scId) {
 		const uint32_t maskClass = (ownMasks >> (jq * 4)) & 0xF;
 		return maskClass || (allQuarters && queryScId != scId) ? maskClass : noEntry;
-	};
-
-	// Count the entries of each class, then turn the counts into each class's first index
-	if (lane < 16)
-		classOffsets[lane] = 0;
-	__syncwarp();
-	for (int k = lane; k < n; k += 32) {
-		const ScNeighbor neighbor = neighbors[scId * maxNeighborsPerSc + k];
-		const uint32_t ownMasks = OwnMasks(neighbor.quarterMask);
-		for (int jq = 0; jq < 4; jq++) {
-			const uint32_t c = EntryClass(ownMasks, jq, neighbor.queryScId);
-			if (c != noEntry) atomicAdd(&classOffsets[c], 1);
-		}
 	}
-	__syncwarp();
-	if (lane == 0) {
-		int sum = entryStarts[scId];
-		for (int r = 0; r < 16; r++) {
-			const int c = quarterMaskEmitOrder[r];
-			const int count = classOffsets[c];
-			classOffsets[c] = sum;
-			sum += count;
-		}
-		entryTasks[scId] = QuarterEntryTask{ entryStarts[scId], sum - entryStarts[scId] };
-		if constexpr (allQuarters) {
-			scControl.scMeta[scId].resultsStartIndex = tbContents.nResultsPrefixsum[scId];
-			scControl.scMeta[scId].nResults = tbContents.nResults[scId];
-		}
-	}
-	// The own particles' ids, for the bonded exclusions
-	__shared__ int ownParticleIds[SuperCluster::maxParticles];
-	if (lane < SuperCluster::maxParticles)
-		ownParticleIds[lane] = scControl.scMeta[scId].globalParticleIds[lane];
-	__syncwarp();
 
-	for (int base = 0; base < n; base += 32) {
+	// The entries of the warp's batch of 32 neighbors from base: lane k's entry for query quarter jq goes to classOffsets[its class]
+	// plus its rank among the batch's entries of that class. classLanes[c][jq] returns the batch's lanes whose entry for jq has class c
+	template <bool allQuarters>
+	__device__ __forceinline__ void EmitBatch(const SuperClustersControl& scControl, const ScNeighbor* const neighbors, const uint16_t* const scValidMasks,
+		const ParticlesBondedToParticle* const particlesBondedToParticle, QuarterEntry* const entries, const TaskBuilderControlContents& tbContents,
+		int* const entryResultIndices, int scId, int lane, int base, int n, uint32_t ownValid, const int* const ownParticleIds,
+		const int* const classOffsets, uint32_t (*const classLanes)[4])
+	{
 		const int k = base + lane;
 		const bool validNeighbor = k < n;
 		const ScNeighbor neighbor = validNeighbor ? neighbors[scId * maxNeighborsPerSc + k] : ScNeighbor{ 0, 0, 0 };
@@ -405,14 +429,12 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 
 		// Within a class, order by (neighbor, query quarter), so a warp's groups get the quarters of the same neighbor and their
 		// force atomics share a cache line (the accumulator is SoA, a supercluster's 16 x components are one line)
-		// classLanes[c][jq]: the lanes whose entry for query quarter jq has class c
-		__shared__ uint32_t classLanes[noEntry + 1][4];
 		for (int i = lane; i < (noEntry + 1) * 4; i += 32)
 			classLanes[i / 4][i % 4] = 0;
 		__syncwarp();
 		uint32_t classes[4];
 		for (int jq = 0; jq < 4; jq++) {
-			classes[jq] = validNeighbor ? EntryClass(ownMasks, jq, queryScId) : noEntry;
+			classes[jq] = validNeighbor ? EntryClass<allQuarters>(ownMasks, jq, queryScId, scId) : noEntry;
 			const uint32_t sameClass = __match_any_sync(LIMA_FULL_WARP_MASK, classes[jq]);
 			if (lane == __ffs(sameClass) - 1)
 				classLanes[classes[jq]][jq] = sameClass;
@@ -426,9 +448,6 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 				rank += __popc(classLanes[classes[jq]][jq2] & lowerLanes) + (jq2 < jq && classes[jq2] == classes[jq]);
 			dsts[jq] = classes[jq] != noEntry ? classOffsets[classes[jq]] + rank : 0;
 		}
-		__syncwarp();
-		if (lane < 16)
-			classOffsets[lane] += __popc(classLanes[lane][0]) + __popc(classLanes[lane][1]) + __popc(classLanes[lane][2]) + __popc(classLanes[lane][3]);
 		__syncwarp();
 
 		for (int jq = 0; jq < 4; jq++) {
@@ -478,6 +497,137 @@ __global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, c
 				entryResultIndices[dst] = resultIndex;
 		}
 	}
+}
+
+// gridDim = nSuperclusters, blockDim = 32. Writes the QuarterEntries of each supercluster: one per quarter of a neighbor with a pair
+// within the list radius. Sorted by ownQuarterMask in quarterMaskEmitOrder, and within a class by (chunk of 32 neighbors, neighbor,
+// query quarter), so the result is deterministic.
+// EM (allQuarters) also writes entries for the quarters of other superclusters without pairs in range, so every quarter of their
+// result gets written, the index of each entry's result, and the result range of each supercluster
+template <bool allQuarters>
+__global__ void EmitQuarterEntriesKernel(const SuperClustersControl scControl, const ScNeighbor* const neighbors,
+	const int* const nNeighbors, const uint16_t* const scValidMasks, const ParticlesBondedToParticle* const particlesBondedToParticle,
+	const int* const entryStarts, QuarterEntryTask* const entryTasks, QuarterEntry* const entries,
+	const TaskBuilderControlContents tbContents /*EM only*/, int* const entryResultIndices /*EM only*/)
+{
+	using namespace EmitEntries;
+	const int scId = blockIdx.x;
+	const int lane = threadIdx.x;
+	const int n = nNeighbors[scId];
+	__shared__ int classOffsets[16];
+	const uint32_t ownValid = scValidMasks[scId];
+
+	// Count the entries of each class, then turn the counts into each class's first index
+	if (lane < 16)
+		classOffsets[lane] = 0;
+	__syncwarp();
+	for (int k = lane; k < n; k += 32) {
+		const ScNeighbor neighbor = neighbors[scId * maxNeighborsPerSc + k];
+		const uint32_t ownMasks = OwnMasks(neighbor.quarterMask);
+		for (int jq = 0; jq < 4; jq++) {
+			const uint32_t c = EntryClass<allQuarters>(ownMasks, jq, neighbor.queryScId, scId);
+			if (c != noEntry) atomicAdd(&classOffsets[c], 1);
+		}
+	}
+	__syncwarp();
+	if (lane == 0) {
+		int sum = entryStarts[scId];
+		for (int r = 0; r < 16; r++) {
+			const int c = quarterMaskEmitOrder[r];
+			const int count = classOffsets[c];
+			classOffsets[c] = sum;
+			sum += count;
+		}
+		entryTasks[scId] = QuarterEntryTask{ entryStarts[scId], sum - entryStarts[scId] };
+		if constexpr (allQuarters) {
+			scControl.scMeta[scId].resultsStartIndex = tbContents.nResultsPrefixsum[scId];
+			scControl.scMeta[scId].nResults = tbContents.nResults[scId];
+		}
+	}
+	// The own particles' ids, for the bonded exclusions
+	__shared__ int ownParticleIds[SuperCluster::maxParticles];
+	if (lane < SuperCluster::maxParticles)
+		ownParticleIds[lane] = scControl.scMeta[scId].globalParticleIds[lane];
+	__syncwarp();
+
+	__shared__ uint32_t classLanes[noEntry + 1][4];
+	for (int base = 0; base < n; base += 32) {
+		EmitBatch<allQuarters>(scControl, neighbors, scValidMasks, particlesBondedToParticle, entries, tbContents, entryResultIndices,
+			scId, lane, base, n, ownValid, ownParticleIds, classOffsets, classLanes);
+		// The next batch's entries of each class follow this one's
+		if (lane < 16)
+			classOffsets[lane] += __popc(classLanes[lane][0]) + __popc(classLanes[lane][1]) + __popc(classLanes[lane][2]) + __popc(classLanes[lane][3]);
+		__syncwarp();
+	}
+}
+
+// EmitQuarterEntriesKernel<false> with blockDim = 32 * warpsPerSc, for small systems, whose few superclusters leave the GPU idle while
+// a warp walks its neighbors' batches serially. The entries per (batch, class) are counted first, so each batch's first index per
+// class is known and the warps emit the batches in parallel. The entries and their order are those of EmitQuarterEntriesKernel
+constexpr int emitMaxWarpsPerSc = 8;
+constexpr int emitMaxBatches = maxNeighborsPerSc / 32;
+__global__ void EmitQuarterEntriesSplitKernel(const SuperClustersControl scControl, const ScNeighbor* const neighbors,
+	const int* const nNeighbors, const uint16_t* const scValidMasks, const ParticlesBondedToParticle* const particlesBondedToParticle,
+	const int* const entryStarts, QuarterEntryTask* const entryTasks, QuarterEntry* const entries, int warpsPerSc)
+{
+	using namespace EmitEntries;
+	const int scId = blockIdx.x;
+	const int warp = threadIdx.x >> 5;
+	const int lane = threadIdx.x & 31;
+	const int n = nNeighbors[scId];
+	const int nBatches = (n + 31) / 32;
+	const uint32_t ownValid = scValidMasks[scId];
+	__shared__ int batchClassOffsets[emitMaxBatches][16];	// Counts, then each batch's first index per class
+	__shared__ int ownParticleIds[SuperCluster::maxParticles];
+	__shared__ uint32_t classLanes[emitMaxWarpsPerSc][noEntry + 1][4];
+
+	for (int i = threadIdx.x; i < nBatches * 16; i += blockDim.x)
+		(&batchClassOffsets[0][0])[i] = 0;
+	if (threadIdx.x < SuperCluster::maxParticles)
+		ownParticleIds[threadIdx.x] = scControl.scMeta[scId].globalParticleIds[threadIdx.x];
+	__syncthreads();
+	for (int batch = warp; batch < nBatches; batch += warpsPerSc) {
+		const int k = batch * 32 + lane;
+		if (k < n) {
+			const ScNeighbor neighbor = neighbors[scId * maxNeighborsPerSc + k];
+			const uint32_t ownMasks = OwnMasks(neighbor.quarterMask);
+			for (int jq = 0; jq < 4; jq++) {
+				const uint32_t c = EntryClass<false>(ownMasks, jq, neighbor.queryScId, scId);
+				if (c != noEntry) atomicAdd(&batchClassOffsets[batch][c], 1);
+			}
+		}
+	}
+	__syncthreads();
+	// The classes in quarterMaskEmitOrder, each by batch
+	if (warp == 0) {
+		int classTotal = 0;
+		if (lane < 16)
+			for (int batch = 0; batch < nBatches; batch++)
+				classTotal += batchClassOffsets[batch][lane];
+		// Serial over the emit order, the totals passed by shuffles
+		int classStart = 0;
+		int sum = entryStarts[scId];
+		for (int r = 0; r < 16; r++) {
+			const int c = quarterMaskEmitOrder[r];
+			const int total = __shfl_sync(LIMA_FULL_WARP_MASK, classTotal, c);
+			if (lane == c) classStart = sum;
+			sum += total;
+		}
+		if (lane == 0)
+			entryTasks[scId] = QuarterEntryTask{ entryStarts[scId], sum - entryStarts[scId] };
+		if (lane < 16) {
+			int offset = classStart;
+			for (int batch = 0; batch < nBatches; batch++) {
+				const int count = batchClassOffsets[batch][lane];
+				batchClassOffsets[batch][lane] = offset;
+				offset += count;
+			}
+		}
+	}
+	__syncthreads();
+	for (int batch = warp; batch < nBatches; batch += warpsPerSc)
+		EmitBatch<false>(scControl, neighbors, scValidMasks, particlesBondedToParticle, entries, TaskBuilderControlContents{}, nullptr,
+			scId, lane, batch * 32, n, ownValid, ownParticleIds, batchClassOffsets[batch], classLanes[warp]);
 }
 
 
@@ -543,15 +693,31 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	tb.nNeighbors.Expand(n, 1.2);
 	tb.entryCounts.Expand(n + 1, 1.2);
 	tb.overflow.Expand(1);
+	// Warps per supercluster, see FindNeighborsKernel. The lists don't depend on it. Twice a large GPU's resident warps, as the slowest
+	// superclusters set the duration: at 4096 the 33.9k atom T4 (2270 superclusters) got 1 chunk and took 336 us, at 8192 167 us
+	constexpr int targetWarps = 8192, maxChunks = 8;
+	const int nChunks = std::clamp(targetWarps / std::max(n, 1), 1, maxChunks);
+	const int nGroups = (((rangeLo.x + rangeHi.x + 1) * (rangeLo.y + rangeHi.y + 1) * (rangeLo.z + rangeHi.z + 1)) + 7) / 8; // Of the split variant
+	if (nChunks > 1) {
+		tb.chunkNeighbors.Expand(size_t(n) * nChunks * maxNeighborsPerSc, 1.2);
+		tb.chunkEntryCounts.Expand(size_t(n) * nChunks, 1.2);
+		tb.groupCounts.Expand(size_t(n) * nGroups, 1.2);
+		const int* const chunksDoneBefore = tb.chunksDone.Get();
+		tb.chunksDone.Expand(n, 1.2);
+		if (tb.chunksDone.Get() != chunksDoneBefore) // The merging chunk resets its count, so only new allocations are zeroed
+			cudaMemsetAsync(tb.chunksDone.Get(), 0, sizeof(int) * static_cast<size_t>(double(n) * 1.2), stream); // The size Expand allocated
+	}
 
 	SuperclusterBoundsKernel<<<nCells, 32, 0, stream>>>(*batch->superClustersControl, tb.contents.pclustersBondedToPcluster, batch->pClusterMetaDevice.Get(), tb.scSpheres.Get(),
 		tb.scCells.Get(), tb.scValidMasks.Get(), tb.scExternalBonds.Get(), tb.cellMin.Get(), tb.cellMax.Get());
 	cudaMemsetAsync(tb.overflow.Get(), 0, sizeof(int), stream);
-	FindNeighborsKernel<<<(n + neighborSearchWarpsPerBlock - 1) / neighborSearchWarpsPerBlock, 32 * neighborSearchWarpsPerBlock, 0, stream>>>(
+	const auto kernel = nChunks > 1 ? FindNeighborsKernel<true> : FindNeighborsKernel<false>;
+	kernel<<<(n * nChunks + neighborSearchWarpsPerBlock - 1) / neighborSearchWarpsPerBlock, 32 * neighborSearchWarpsPerBlock, 0, stream>>>(
 		*batch->superClustersControl, tb.scSpheres.Get(), tb.scExternalBonds.Get(), tb.scCells.Get(), tb.cellMin.Get(), tb.cellMax.Get(),
 		tb.contents.pclustersBondedToPcluster,
 		tb.neighbors.Get(), tb.nNeighbors.Get(), tb.entryCounts.Get(), tb.overflow.Get(),
-		n, boxSize, rangeLo, rangeHi, listRadius, allQuarters, boxSizeF, boxSizeF.Inv());
+		n, boxSize, rangeLo, rangeHi, listRadius, allQuarters, boxSizeF, boxSizeF.Inv(),
+		NeighborChunks{ nChunks, tb.chunkNeighbors.Get(), tb.chunkEntryCounts.Get(), tb.groupCounts.Get(), tb.chunksDone.Get() });
 	LIMA_UTILS::genericErrorCheckNoSync("FindNeighborsKernel");
 }
 
@@ -589,9 +755,16 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 	batch->nQuarterEntries = readback.Host()[1];
 	batch->quarterEntriesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
 
-	EmitQuarterEntriesKernel<false><<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
-		tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(),
-		tb.contents, nullptr);
+	// Warps per supercluster, see EmitQuarterEntriesSplitKernel. The entries don't depend on it. As FindNeighbors (T4 33.9k atoms: 122 -> 65 us)
+	constexpr int targetWarps = 8192;
+	const int warpsPerSc = std::clamp(targetWarps / n, 1, emitMaxWarpsPerSc);
+	if (warpsPerSc > 1)
+		EmitQuarterEntriesSplitKernel<<<n, 32 * warpsPerSc, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
+			tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(), warpsPerSc);
+	else
+		EmitQuarterEntriesKernel<false><<<n, 32, 0, stream>>>(*batch->superClustersControl, tb.neighbors.Get(), tb.nNeighbors.Get(), tb.scValidMasks.Get(),
+			tb.contents.particlesBondedToParticle, tb.entryStarts.Get(), batch->quarterEntryTasksDevice.Get(), batch->quarterEntriesDevice.Get(),
+			tb.contents, nullptr);
 	LIMA_UTILS::genericErrorCheckNoSync("EmitQuarterEntriesKernel");
 	cudaStreamQuery(stream); // Submits the work queued after the sync at once, see RunClustering
 }

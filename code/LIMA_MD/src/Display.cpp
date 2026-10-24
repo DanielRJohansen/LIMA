@@ -8,6 +8,7 @@
 #include "Display.h"
 #include "DisplayInternal.h"
 #include "Shaders.h"
+#include "AmbientOcclusion.h"
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
 #include "TimeIt.h"
@@ -242,6 +243,7 @@ void Display::ReleaseGraphics() {
         renderContexts.clear();
         overlay.reset();
         renderTargetControl.reset();
+        ambientOcclusion.reset();
         drawBoxOutlineShader.reset();
         drawFacetsShader.reset();
         drawAtomsFromCpuShader.reset();

@@ -26,6 +26,7 @@ class DrawFacetsShader;
 class DrawAtomsShader;
 class DrawAtomsPrettyShader;
 class DrawAtomsLegacyShader;
+class AmbientOcclusion;
 class DrawNormalsShader;
 class DrawTrianglesShader;
 class DrawBackgroundGradientShader;
@@ -177,6 +178,7 @@ private:
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
 	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader;
 	std::unique_ptr<DrawAtomsLegacyShader> drawAtomsLegacyShader;
+	std::unique_ptr<AmbientOcclusion> ambientOcclusion;
 	bool classicAtoms = false; // Display-wide, see RenderSettings::classicAtoms
 
 	std::unique_ptr<RenderTargetControl> renderTargetControl;

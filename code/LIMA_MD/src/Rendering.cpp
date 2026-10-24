@@ -1,6 +1,7 @@
 #include "Display.h"
 #include "DisplayInternal.h"
 #include "Shaders.h"
+#include "AmbientOcclusion.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 
@@ -35,8 +36,8 @@ public:
 		GLuint64 nanoseconds = 0;
 		glGetQueryObjectui64v(query, GL_QUERY_RESULT, &nanoseconds);
 		glDeleteQueries(1, &query);
-		static double totalMs = 0.;
-		static int frames = 0;
+		static std::map<std::string, std::pair<double, int>> totals;	// Per pass: {ms, frames}
+		auto& [totalMs, frames] = totals[name];
 		totalMs += nanoseconds * 1e-6;
 		if (++frames == 200) {
 			std::printf("[render timing] %s: %.3f ms\n", name, totalMs / frames);
@@ -446,6 +447,14 @@ void Display::RenderScene(const RenderContext& renderContext, const RenderViewpo
 
 	const glm::mat4 VP = renderContext.camera->ViewProjection();
 
+	// Atoms get ambient occlusion, except in the classic style, which is the original look
+	const bool occlusion = !classicAtoms && std::holds_alternative<std::unique_ptr<Rendering::AtomRenderTask>>(currentRenderTask);
+	if (occlusion) {
+		if (!ambientOcclusion)
+			ambientOcclusion = std::make_unique<AmbientOcclusion>();
+		ambientOcclusion->Resize(framebufferSize);
+		ambientOcclusion->BindScene();
+	}
 
 	// START OF RENDERING
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -468,7 +477,13 @@ void Display::RenderScene(const RenderContext& renderContext, const RenderViewpo
 			}, currentRenderTask);
 	}
 
-	
+	if (occlusion) {
+		ScopedGpuTimer timer{ "occlusion" };
+		const int bottom = framebufferSize.y - viewport.pixelOrigin.y - viewport.pixelSize.y;
+		ambientOcclusion->Resolve(renderContext.camera->Projection(),
+			glm::ivec4{ viewport.pixelOrigin.x, bottom, viewport.pixelSize.x, viewport.pixelSize.y });
+	}
+
 	if (gizmoEnabled && renderContext.activeGizmo) {
 		// DO NOT RENDER ANYTHING IN 3D AFTER THIS POINT
 		glClear(GL_DEPTH_BUFFER_BIT);   // forget scene depth

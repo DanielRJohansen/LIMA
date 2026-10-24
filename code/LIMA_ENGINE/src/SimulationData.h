@@ -126,6 +126,8 @@ struct EngineBatchData {
 	int nParticles = 0;
 	int nGridnodes = 0;
 	int nSuperclusters = 0;
+	int nbMaxChunks = 1;	// The largest of nbSimulationChunks
+	CudaBuffer<int> nbSimulationChunks;	// MD: NbNonlocalKernel warps per supercluster of each simulation, see Engine::UploadNbChunks
 	int nResults = 0;
 	float ewaldKappa = 0.f;
 	float listBuffer = 0.f;	// MD's pair list radius beyond the cutoff, see VerletBuffer [nm]

@@ -135,6 +135,7 @@ private:
 	// are re-clustered anyway. Rebuilding on any other step changes their neighbor lists and so their trajectories.
 	bool rebuildPending = false;
 	void InitializePME();
+	void UploadNbChunks();
 	void FinalizeSimulation(EngineSimulationData& simData);
 
 

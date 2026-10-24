@@ -91,6 +91,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		BootstrapClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
 		InitializePME();
+		UploadNbChunks();
 		UploadIntegrationSimulationData();
 		bool retired = false;
 		for (auto& sim : batch->simulations) {
@@ -210,6 +211,22 @@ void Engine::StopSimulation(size_t simulationId) {
 
 bool Engine::IsFinished() const {
 	return std::none_of(batch->simulations.begin(), batch->simulations.end(), [](const auto& sim) { return sim.device.active; });
+}
+
+// From the simulation's own size, so a simulation computes the same forces batched and alone: its supercluster count estimated
+// from its particles, against a large GPU's resident warps of NbNonlocalKernel. A constant, so the forces don't depend on the GPU.
+// More than 8 gained nothing on T4 (2.6k particles, -18% at 8), and STMV-sized simulations get 1, as more cost them (+7% at 8)
+void Engine::UploadNbChunks() {
+	constexpr int targetWarps = 4096, maxChunks = 8;
+	std::vector<int> chunks;
+	for (const auto& sim : batch->simulations) {
+		const int superclusters = std::max(1, sim.device.particles.count / SuperCluster::maxParticles);
+		chunks.push_back(std::clamp(targetWarps / superclusters, 1, maxChunks));
+	}
+	batch->nbMaxChunks = *std::max_element(chunks.begin(), chunks.end());
+	batch->nbSimulationChunks.Expand(chunks.size());
+	cudaMemcpy(batch->nbSimulationChunks.Get(), chunks.data(), sizeof(int) * chunks.size(), cudaMemcpyHostToDevice);
+	InvalidateStepGraph();
 }
 
 void Engine::InitializePME() {
@@ -334,6 +351,7 @@ void Engine::RebuildActiveBatch() {
 	else RunClustering(cudaStreams[0]);
 	MakeSuperClusterTasksGPU(cudaStreams[0]);
 	InitializePME();
+	UploadNbChunks();
 	UploadIntegrationSimulationData();
 	Synchronize();
 }
@@ -499,7 +517,7 @@ bool Engine::hostMaster() {
 			const int kineticCount = sim.device.pclusters.count * PersistentCluster::maxParticles;
 			const int reciprocalCount = batch->pmeController ? batch->pmeController->VirialPartialCount() : 0;
 			const auto sums = CubWrappers::SumPressure(batch->thermostat->KineticEnergyValues(sim.device.pclusters), kineticCount,
-				batch->nbVirialPartials.Get(), batch->nSuperclusters,
+				batch->nbVirialPartials.Get(), batch->nSuperclusters * batch->nbMaxChunks,
 				batch->nBondgroups > 0 ? batch->bondVirialPartials.Get() : nullptr, batch->nBondgroups,
 				batch->hasConstraints ? batch->constraintVirialPartials.Get() : nullptr, batch->hasConstraints ? batch->nSuperclusters : 0,
 				reciprocalCount > 0 ? batch->pmeVirialPartials.Get() : nullptr, reciprocalCount, cudaStreams[0]);
@@ -918,7 +936,7 @@ void Engine::_deviceMaster() {
 		batch->scResultsDevice.Expand(batch->nResults, 1.2); // Not allocated at all in MD, where it would be ~1GB for large systems
 	if constexpr (computeVirial) {
 		batch->pmeVirialPartials.Expand(batch->pmeController ? batch->pmeController->VirialPartialCount() : 0);
-		batch->nbVirialPartials.Expand(nScs);
+		batch->nbVirialPartials.Expand(nScs * batch->nbMaxChunks);
 		batch->bondVirialPartials.Expand(batch->nBondgroups);
 		if (batch->hasConstraints)
 			batch->constraintVirialPartials.Expand(nScs);
@@ -953,11 +971,12 @@ void Engine::_deviceMaster() {
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
-		// Blocksize must be 64, 2 superclusters per block, see the kernel
-		NbNonlocalKernel<BoundaryCondition, emvariant, logData, computeVirial><<<(nScs + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
+		// Blocksize must be 64, 2 warps per block, see the kernel
+		const int nChunks = emvariant ? 1 : batch->nbMaxChunks;
+		NbNonlocalKernel<BoundaryCondition, emvariant, logData, computeVirial><<<(nScs * nChunks + 1) / 2, 64, 0, cudaStreams[0]>>>(scData, batch->quarterEntryTasksDevice.Get(),
 			batch->quarterEntriesDevice.Get(), forceAcc, batch->scResultsDevice.Get(), batch->quarterEntryResultIndicesDevice.Get(),
 			batch->superClustersControl->scMeta, boxSize, boxSizeInv, batch->ewaldKappa, PhysicsUtilsDevice::EwaldRealSpace::Make(batch->ewaldKappa),
-			batch->params.cutoff_nm * batch->params.cutoff_nm, nScs,
+			batch->params.cutoff_nm * batch->params.cutoff_nm, nScs, nChunks, batch->nbSimulationChunks.Get(),
 			computeVirial ? batch->nbVirialPartials.Get() : nullptr);
 	}
 	if (!batch->params.snf_select.empty()) SnfHandler<BoundaryCondition, emvariant>(cudaStreams[2], forceAcc);

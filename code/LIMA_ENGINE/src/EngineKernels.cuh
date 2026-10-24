@@ -331,8 +331,11 @@ namespace NbNonlocal {
 	}
 }
 
-// Nonbonded forces. Each warp computes the QuarterEntries of one supercluster, see EmitQuarterEntriesKernel.
-// blockDim = 64, 2 superclusters per block. computePotE must match logData of the following SuperclusterIntegrateKernel.
+// Nonbonded forces. Each warp computes the QuarterEntries of one supercluster, see EmitQuarterEntriesKernel. In MD the entries of
+// a small simulation's superclusters are split into contiguous chunks over several warps, see Engine::UploadNbChunks: such a
+// simulation has too few superclusters to fill the GPU, and a warp's serial walk over its entries bounds the step. The grid has
+// maxChunks warps per supercluster, and those beyond its simulation's chunk count exit.
+// blockDim = 64, 2 warps per block. computePotE must match logData of the following SuperclusterIntegrateKernel.
 //
 // The warp's 8 groups of 4 lanes each take one entry: lane l stages particle l of the entry's j quarter in shared memory,
 // then for every own quarter in the entry's mask, holds own particle l of that quarter, and in iteration k pairs it with
@@ -354,16 +357,24 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 	const QuarterEntryTask* const tasks, const QuarterEntry* const entries,
 	const ForceAccumulator forceAcc /*MD only*/, SCResult* const results /*EM only*/, const int* const entryResultIndices /*EM only*/,
 	const SuperClusterMeta* const scMeta, Float3 boxSize, Float3 boxSizeInv, float ewaldKappa /*EM*/, const PhysicsUtilsDevice::EwaldRealSpace ewald /*MD*/,
-	float cutoffSq, int nSuperclusters,
+	float cutoffSq, int nSuperclusters, int maxChunks /*1 in EM*/, const int* const simulationChunks /*MD only*/,
 	long long* const virialPartials /*MD pressure steps only*/)
 {
 	using namespace NbNonlocal;
 	constexpr int nGroups = 8;
 	const int warpInBlock = threadIdx.x >> 5;
-	const int scId = blockIdx.x * 2 + warpInBlock;
+	const int warpId = blockIdx.x * 2 + warpInBlock;
+	const int scId = warpId / maxChunks;
+	const int chunk = warpId - scId * maxChunks;
 	if (scId >= nSuperclusters)
 		return; // Only warp level syncs below
 	const int laneInWarp = threadIdx.x & 31;
+	const int nChunks = energyMinimize || maxChunks == 1 ? 1 : simulationChunks[scMeta[scId].simulationId];
+	if (chunk >= nChunks) {
+		if constexpr (computeVirial)
+			if (laneInWarp == 0) virialPartials[warpId] = 0;
+		return;
+	}
 	const int group = laneInWarp >> 2;
 	const int lane = laneInWarp & 3;
 
@@ -388,8 +399,11 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 	ForceEnergy accOwn[4]{};
 	float virialLocal = 0.f;
 
-	const int end = task.firstEntry + task.nEntries;
-	for (int base = task.firstEntry; base < end; base += nGroups) {
+	// The warp's chunk of the task's entries, in whole groups
+	const int groupsPerChunk = ((task.nEntries + nGroups - 1) / nGroups + nChunks - 1) / nChunks;
+	const int begin = task.firstEntry + chunk * groupsPerChunk * nGroups;
+	const int end = min(task.firstEntry + task.nEntries, begin + groupsPerChunk * nGroups);
+	for (int base = begin; base < end; base += nGroups) {
 		const int e = base + group;
 		const bool activeGroup = e < end;
 		QuarterEntry entry = entries[activeGroup ? e : base];
@@ -513,7 +527,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 		for (int offset = 16; offset > 0; offset >>= 1)
 			virialLocal += __shfl_down_sync(0xFFFFFFFFu, virialLocal, offset);
 		if (laneInWarp == 0)
-			virialPartials[scId] = Virial::ToFixed(virialLocal);
+			virialPartials[warpId] = Virial::ToFixed(virialLocal);
 	}
 }
 

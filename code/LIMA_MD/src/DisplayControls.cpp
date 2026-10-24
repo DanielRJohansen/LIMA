@@ -334,14 +334,23 @@ void Display::SelectMolecule(int atomId) {
 		for (const auto& candidate : molecules)
 			if (candidate.name == molecule->name)
 				selection.atomIds.insert(selection.atomIds.end(), candidate.atomIds.begin(), candidate.atomIds.end());
-		renderContext.selectedMolecule = std::move(selection);
+		SetSelection(renderContext, std::move(selection));
 	}
 	else {
-		renderContext.selectedMolecule = *molecule;
+		SetSelection(renderContext, *molecule);
 	}
-	_UpdateSelection(renderContext, std::set<int>{ renderContext.selectedMolecule->atomIds.begin(),
-		renderContext.selectedMolecule->atomIds.end() });
 	renderContext.lastSelectedAtomId = atomId;
+}
+
+void Display::SetSelection(RenderContext& renderContext, Rendering::MoleculeInfo selection) {
+	renderContext.lastSelectedAtomId = -1;
+	if (selection.atomIds.empty()) {
+		renderContext.selectedMolecule.reset();
+		_UpdateSelection(renderContext, {});
+		return;
+	}
+	_UpdateSelection(renderContext, std::set<int>{ selection.atomIds.begin(), selection.atomIds.end() });
+	renderContext.selectedMolecule = std::move(selection);
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
@@ -416,6 +425,10 @@ void Display::OnMouseButton(int button, int action, int mods) {
     else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         if (action == GLFW_PRESS) {
             popupSimulationId = activeSimulationId;
+            contextMenuOptions.clear();
+            if (const auto* task = std::get_if<std::unique_ptr<Rendering::AtomRenderTask>>(&renderContext.currentRenderTask))
+                contextMenuOptions = Rendering::SelectionOptions(**task, ElementIdIsAtomid(objectId) ? objectId : -1,
+                    renderContext.selectedMolecule.has_value());
             mousePosAtRightBtnDown.emplace();
             glfwGetCursorPos(window, &mousePosAtRightBtnDown->x, &mousePosAtRightBtnDown->y);            
 		}
@@ -543,6 +556,18 @@ void Display::ConsumeInputs() {
                     activeRenderContext = &renderContexts.at(cmd.simulationId);
                     viewports.clear();
                 }
+            }
+            else if constexpr (std::is_same_v<T, Overlay::Select>) {
+                const auto context = renderContexts.find(cmd.simulationId);
+                if (context == renderContexts.end()) return;
+                if (allowUserInputs) {
+                    // Live-edit owns the selection, as it acts on it
+                    std::lock_guard<std::mutex> lock(liveEditCommandsQueueMutex);
+                    liveEditCommandsQueue.push_back(LiveEdit::SelectAtoms{
+                        cmd.selection.name, cmd.selection.atomIds, cmd.selection.typeCount });
+                }
+                else
+                    SetSelection(context->second, cmd.selection);
             }
             else if constexpr (std::is_same_v<T, Overlay::SetTiled>) {
                 CancelInteraction();

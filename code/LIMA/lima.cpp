@@ -315,7 +315,7 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 				simulation->box->persistentClusters,
 				simulation->box->persistentClustersMetadata,
 				simulation->box->boxparams,
-				SimStatus{}, simulation->box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, simulation->box->lipidModels);
+				SimStatus{}, simulation->box->backboneChains, Rendering::GetMoleculeInfo(*simulation), simulation->box->lipidModels, simulation->box->particleCategories);
 		}
 		catch (const std::exception&) {
 			// Coordinate-only rendering remains valid when the topology or

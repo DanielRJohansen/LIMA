@@ -360,7 +360,7 @@ void Display::Mainloop() {
 				glDisable(GL_SCISSOR_TEST);
 				glViewport(0, 0, framebufferSize.x, framebufferSize.y);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-				overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, std::nullopt, spinnerVisible.load());
+				overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, std::nullopt, {}, spinnerVisible.load());
 				mousePosAtRightBtnDown.reset();
 				overlay->Render();
                 glfwSwapBuffers(window);

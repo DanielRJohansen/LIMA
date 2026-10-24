@@ -140,6 +140,7 @@ private:
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
 	void SelectMolecule(int atomId);
+	void SetSelection(RenderContext&, Rendering::MoleculeInfo selection);
 	int GetObjectIdAtPixel(glm::dvec2);
 	void ConsumeInputs();
 
@@ -150,6 +151,7 @@ private:
 	glm::dvec2 mousePos{};
 	std::optional<SimulationId> dragSimulationId;
 	std::optional<SimulationId> popupSimulationId;
+	std::vector<Rendering::SelectionOption> contextMenuOptions; // For the popup, built when it is opened
 	std::map<SimulationId, RenderContext> renderContexts;
 	std::map<SimulationId, RenderViewport> viewports;
 	bool tiled = false;

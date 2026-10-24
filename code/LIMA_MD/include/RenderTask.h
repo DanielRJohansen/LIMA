@@ -2,6 +2,7 @@
 
 #include "Backbone.h"
 #include "LipidModel.h"
+#include "ParticleCategory.h"
 #include "MDFiles.h"
 #include "MoleculeHull.cuh"
 #include "Simulation.cuh"
@@ -25,6 +26,10 @@ namespace Rendering {
 
 	std::vector<MoleculeInfo> GetMoleculeInfo(const BoxImage& boxImage);
 	std::optional<MoleculeInfo> GetMoleculeInfo(const BoxImage& boxImage, int atomId);
+	// Empty when the simulation has no box image
+	std::vector<MoleculeInfo> GetMoleculeInfo(const Simulation& simulation);
+	// One molecule per residue, for coordinate-only rendering
+	std::vector<MoleculeInfo> GetMoleculeInfo(const GroFile& grofile);
 	struct NoTask {};
 
 	struct FreeTask{};
@@ -49,6 +54,7 @@ namespace Rendering {
 		SimStatus simStatus;
 		BackboneChains backboneChains;
 		LipidModels lipidModels;
+		ParticleCategories particleCategories;
 		std::set<int> highlightedAtoms;
 		std::vector<MoleculeInfo> molecules;
 		bool showSolvents = true;
@@ -62,8 +68,20 @@ namespace Rendering {
 			SimStatus simStatus = {},
 			BackboneChains backboneChains = {},
 			std::vector<MoleculeInfo> molecules = {},
-			LipidModels lipidModels = {});
+			LipidModels lipidModels = {},
+			ParticleCategories particleCategories = {});
 	};
+
+	// One entry of the display's right-click menu
+	struct SelectionOption {
+		std::string label;
+		std::string count;	// Shown right-aligned
+		MoleculeInfo selection;	// Empty atomIds clears the selection
+	};
+
+	// What can be selected starting from atomId: the atom, its element, its molecule, its kind of molecule, and
+	// every category in the system. atomId -1 (empty space) gives only the system-wide options
+	std::vector<SelectionOption> SelectionOptions(const AtomRenderTask& task, int atomId, bool hasSelection);
 
 	struct SimulationTaskUpdate {
 		const Float3* const positions = nullptr;

@@ -65,7 +65,8 @@ public:
 	struct RevolveCamera { SimulationId simulationId = 0; };
 	struct SetTiled { bool enabled = false; };
 	struct SelectSimulation { SimulationId simulationId = 0; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled>;
+	struct Select { SimulationId simulationId = 0; Rendering::MoleculeInfo selection; };
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled, Select>;
 private:
 	bool didDrawThisFrame = false;
 	unsigned int logoTexture = 0;
@@ -74,7 +75,8 @@ private:
 	std::deque<std::string> consoleLines;
 
 	void HandleConsole();
-	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos, SimulationId simulationId);
+	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos, SimulationId simulationId,
+		const std::vector<Rendering::SelectionOption>& selectionOptions);
 
 public:
 	std::deque<Command> submittedCommands;
@@ -86,7 +88,7 @@ public:
 	float BeginFrame(RenderSettings&, int fps, const std::vector<SimulationTab>& tabs, bool tiled, SimulationId simulationId);
 	void DrawTile(SimulationId simulationId, const RenderContext&, const RenderViewport&, bool tiled);
 	void EndFrame(RenderSettings&, std::optional<glm::dvec2> rightClickedPos,
-		std::optional<SimulationId> popupSimulationId, bool spinnerVisible);
+		std::optional<SimulationId> popupSimulationId, const std::vector<Rendering::SelectionOption>& selectionOptions, bool spinnerVisible);
 	void Render();
 };
 

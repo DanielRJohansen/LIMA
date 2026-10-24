@@ -8,6 +8,7 @@
 #include "RenderDataPipe.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
+#include <numeric>
 #include <stdexcept>
 
 class DisplayTests {
@@ -98,6 +99,55 @@ public:
 		}
 		Require(BoxBuilder::InterpretLipids(GroFile{ FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures" / "metsol.gro" }).empty(),
 			"A protein in water was interpreted as lipids");
+
+		std::cout << "Checking selection options" << std::endl;
+		GroFile mixedSystem{ slipids / "POPC.gro" };
+		const int lipidAtoms = static_cast<int>(mixedSystem.atoms.size());
+		mixedSystem.atoms.push_back({ 2, SmallString{ "ALA" }, SmallString{ "CA" }, 0, { 1.f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 2, SmallString{ "ALA" }, SmallString{ "N" }, 0, { 1.1f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 3, SmallString{ "SOL" }, SmallString{ "OW" }, 0, { 2.f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 3, SmallString{ "SOL" }, SmallString{ "HW1" }, 0, { 2.1f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 4, SmallString{ "NA" }, SmallString{ "NA" }, 0, { 3.f, 1.f, 1.f } });
+		{
+			Rendering::AtomRenderTask task{ mixedSystem };
+			std::vector<int> lipidIds(lipidAtoms);
+			std::iota(lipidIds.begin(), lipidIds.end(), 0);
+			task.molecules = { { "POPC", 1, 1, lipidIds }, { "Protein", 1, 1, { lipidAtoms, lipidAtoms + 1 } },
+				{ "SOL", 1, 1, { lipidAtoms + 2, lipidAtoms + 3 } }, { "NA", 1, 1, { lipidAtoms + 4 } } };
+			const auto Find = [](const std::vector<Rendering::SelectionOption>& options, const std::string& label) {
+				const auto option = std::ranges::find(options, label, &Rendering::SelectionOption::label);
+				return option == options.end() ? nullptr : &*option;
+			};
+
+			const int carbon = task.lipidModels.at(0).tails[0].back();
+			const auto options = Rendering::SelectionOptions(task, carbon, false);
+			Require(Find(options, "This atom (#" + std::to_string(carbon) + ")")->selection.atomIds == std::vector<int>{ carbon }, "This atom selects other atoms");
+			for (int id : Find(options, "All C atoms")->selection.atomIds)
+				Require(task.atoms[id].atomLetter == 'C', "All C atoms selected a non-carbon");
+			Require(Find(options, "This molecule")->selection.atomIds == lipidIds, "This molecule is not the lipid");
+			Require(Find(options, "All POPC") != nullptr, "No option for all molecules of the type");
+			Require(Find(options, "All lipids")->selection.atomIds == lipidIds, "All lipids is not the lipid");
+			Require(Find(options, "All protein")->selection.atomIds == std::vector<int>{ lipidAtoms, lipidAtoms + 1 }, "All protein is wrong");
+			Require(Find(options, "All water")->selection.atomIds.size() == 2, "All water is wrong");
+			Require(Find(options, "All ions")->selection.atomIds == std::vector<int>{ lipidAtoms + 4 }, "All ions is wrong");
+			Require(Find(options, "All other") == nullptr, "A category with no atoms was offered");
+			Require(Find(options, "All atoms")->selection.atomIds.size() == task.atoms.size(), "All atoms is wrong");
+			Require(Find(options, "Clear selection") == nullptr, "Clear offered without a selection");
+
+			const auto emptySpace = Rendering::SelectionOptions(task, -1, true);
+			Require(emptySpace.front().label == "All protein", "Empty space offers per-atom options");
+			Require(Find(emptySpace, "Clear selection") != nullptr, "No way to clear the selection");
+			const auto ion = Rendering::SelectionOptions(task, lipidAtoms + 4, false);
+			Require(Find(ion, "All I atoms") == nullptr, "Ions offered as an element");
+
+			// A membrane-only system: the category is everything, and must still be offered
+			const Rendering::AtomRenderTask lipidsOnly{ GroFile{ slipids / "POPC.gro" } };
+			const auto lipidOptions = Rendering::SelectionOptions(lipidsOnly, carbon, false);
+			Require(Find(lipidOptions, "All lipids") != nullptr, "All lipids missing when the system is only lipids");
+			// Coordinate-only tasks get a molecule per residue, Slipids names the POPC residue POP
+			Require(Find(lipidOptions, "All POP") != nullptr && Find(lipidOptions, "This molecule") != nullptr,
+				"Coordinate-only task has no molecule options");
+		}
 
 		std::cout << "Starting OpenGL fixture" << std::endl;
 		{
@@ -236,6 +286,32 @@ public:
 					"Atoms were not restored after the lipid representation");
 			}
 			Require(glGetError() == GL_NO_ERROR, "OpenGL error during lipid tests");
+
+			std::cout << "Checking menu selections" << std::endl;
+			{
+				auto& context = display.renderContexts.at(50);
+				const auto* task = std::get<std::unique_ptr<Rendering::AtomRenderTask>>(context.currentRenderTask).get();
+				const auto options = Rendering::SelectionOptions(*task, 0, false);
+				const auto carbons = std::ranges::find(options, std::string{ "All C atoms" }, &Rendering::SelectionOption::label);
+				Require(carbons != options.end(), "No element option for a lipid carbon");
+				display.overlay->submittedCommands.push_back(Overlay::Select{ 50, carbons->selection });
+				display.ConsumeInputs();
+				Require(context.selectedMolecule && context.selectedMolecule->name == "All C atoms", "Menu selection was not applied");
+				for (std::size_t id = 0; id < context.renderAtomsHost.size(); ++id)
+					Require((context.renderAtomsHost[id].flags.x == 1) == (task->atoms[id].atomLetter == 'C'), "Menu selection highlighted the wrong atoms");
+
+				display.ApplyRepresentation(ColoringMethod::Charge);
+				PrepareChanges(display);
+				for (std::size_t id = 0; id < context.renderAtomsHost.size(); ++id)
+					Require((context.renderAtomsHost[id].flags.y == static_cast<unsigned int>(ColoringMethod::Charge)) == (task->atoms[id].atomLetter == 'C'),
+						"Representation did not follow the menu selection");
+
+				display.overlay->submittedCommands.push_back(Overlay::Select{ 50, {} });
+				display.ConsumeInputs();
+				Require(!context.selectedMolecule, "Clear selection did not clear");
+				for (const auto& atom : context.renderAtomsHost)
+					Require(atom.flags.x == 0, "Clear selection left highlights");
+			}
 			display.renderContexts.clear();
 			display.activeRenderContext = nullptr;
 			auto stoppedPipe = std::make_shared<RenderDataPipe>();

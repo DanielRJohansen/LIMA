@@ -204,6 +204,7 @@ private:
 	void HandleMoveSelectionCommand(LiveEditData*, const LiveEdit::MoveSelection& newMoveCommand);
 	void UpdateForcemask(LiveEditData*, const LiveEdit::AddForcemaskToSelection&);
 	void UpdateSelection(LiveEditData*, const LiveEdit::AtomSelected&);
+	void UpdateSelection(LiveEditData*, const LiveEdit::SelectAtoms&);
 	void UpdateSelection(LiveEditData*, const LiveEdit::SelectAtomsBasedOnQualifier&);
 	void UpdateElasticPosition(LiveEditData*, const LiveEdit::ElasticPosition&);
 	void EM(LiveEditData*);

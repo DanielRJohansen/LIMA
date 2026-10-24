@@ -487,7 +487,7 @@ void Display::RenderFrame(const std::vector<SimulationTab>& tabs) {
     }
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, framebufferSize.x, framebufferSize.y);
-    overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, popupSimulationId, spinnerVisible.load());
+    overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, popupSimulationId, contextMenuOptions, spinnerVisible.load());
     mousePosAtRightBtnDown.reset();
     overlay->Render();
     glfwSwapBuffers(window);

@@ -55,6 +55,7 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	if (envmode == EnvMode::Full) {
 		box->backboneChains = InterpretBackboneChains(boxImage.grofile);
 		box->lipidModels = InterpretLipids(boxImage.grofile);
+		box->particleCategories = InterpretParticleCategories(boxImage.grofile, box->lipidModels);
 	}
 	//box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
 

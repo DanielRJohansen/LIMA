@@ -4,7 +4,9 @@
 #include "MembraneGeometry.h"
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <variant>
+#include <vector>
 
 namespace LiveEdit {
 	namespace fs = std::filesystem;
@@ -34,6 +36,13 @@ namespace LiveEdit {
 		int particleId = -1;// Global id 
 	};
 
+	// A selection made in the display's right-click menu
+	struct SelectAtoms {
+		std::string label;
+		std::vector<int> particleIds; // Global ids, empty clears the selection
+		size_t moleculeCount = 0;
+	};
+
 	struct SelectAtomsBasedOnQualifier {
 		enum class Qualifier {
 			All, Solvent, Nonsolvent
@@ -56,7 +65,7 @@ namespace LiveEdit {
 	};
 
 	using Command = std::variant<Invalid, InsertMolecule, MoveSelection, BuildMembrane,
-		TogglePause, AtomSelected, SelectAtomsBasedOnQualifier, AddForcemaskToSelection, ElasticPosition, EnergyMinimize, StepOnce>;
+		TogglePause, AtomSelected, SelectAtoms, SelectAtomsBasedOnQualifier, AddForcemaskToSelection, ElasticPosition, EnergyMinimize, StepOnce>;
 
 
 	Command ParseCommand(const std::string& commandStr);

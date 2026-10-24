@@ -286,8 +286,8 @@ namespace
 		const std::string name = molecule->number > 0
 			? Lima::Format("{} (#{})", molecule->name, molecule->number)
 			: molecule->name;
-		CardSection section{ "Molecule info", { { "Name", name } } };
-		if (molecule->number == 0)
+		CardSection section{ "Selection", { { "Name", name } } };
+		if (molecule->number == 0 && molecule->typeCount > 0)
 			section.lines.push_back({ "Molecules selected", Lima::Format("{}", molecule->typeCount) });
 		section.lines.push_back({ "Atoms", Lima::Format("{}", molecule->atomIds.size()) });
         DrawCard("##MoleculeInfo", CardSide::Right, {
@@ -494,17 +494,25 @@ void Overlay::HandleConsole()
     ImGui::End();
 }
 
-void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos, SimulationId simulationId)
+void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos, SimulationId simulationId,
+    const std::vector<Rendering::SelectionOption>& selectionOptions)
 {
     if (pos) {
         ImGui::SetNextWindowPos(ImVec2(static_cast<float>(pos->x), static_cast<float>(pos->y)));
         ImGui::OpenPopup("##ViewportMenu");
     }
     if (ImGui::BeginPopup("##ViewportMenu")) {
-        SectionLabel("APPEARANCE");
-    ColoringMenu(settings, submittedCommands);
-        ImGui::Separator();
-        CameraMenu(submittedCommands, simulationId);
+        if (!selectionOptions.empty()) {
+            SectionLabel("SELECT");
+            for (const auto& option : selectionOptions)
+                if (ImGui::MenuItem(option.label.c_str(), option.count.c_str()))
+                    submittedCommands.push_back(Select{ simulationId, option.selection });
+            ImGui::Separator();
+        }
+        if (ImGui::BeginMenu("Show as")) {
+            ColoringMenu(settings, submittedCommands);
+            ImGui::EndMenu();
+        }
         ImGui::EndPopup();
     }
 }
@@ -556,12 +564,12 @@ void Overlay::DrawTile(SimulationId simulationId, const RenderContext& context,
 
 
 void Overlay::EndFrame(RenderSettings& settings, std::optional<glm::dvec2> rightClickedPos,
-    std::optional<SimulationId> popupSimulationId, bool spinnerVisible)
+    std::optional<SimulationId> popupSimulationId, const std::vector<Rendering::SelectionOption>& selectionOptions, bool spinnerVisible)
 {
     if (enableConsole)
         HandleConsole();
     if (popupSimulationId)
-        HandleContextMenu(settings, rightClickedPos, *popupSimulationId);
+        HandleContextMenu(settings, rightClickedPos, *popupSimulationId, selectionOptions);
     if (spinnerVisible) {
         const auto displaySize = ImGui::GetIO().DisplaySize;
         const ImVec2 center(displaySize.x - 35.f, 70.f);

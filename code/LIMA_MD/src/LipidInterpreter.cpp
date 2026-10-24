@@ -201,3 +201,33 @@ LipidModels BoxBuilder::InterpretLipids(const GroFile& grofile)
 	}
 	return lipids;
 }
+
+ParticleCategories BoxBuilder::InterpretParticleCategories(const GroFile& grofile, const LipidModels& lipids)
+{
+	static const std::set<std::string_view> waterResidues{ "SOL", "SPC", "SPCE", "TIP3", "TIP3P", "TIP4", "TIP4P", "TIP5P", "HOH", "WAT" };
+
+	ParticleCategories categories(grofile.atoms.size(), ParticleCategory::Other);
+	std::size_t begin = 0;
+	while (begin < grofile.atoms.size()) {
+		std::size_t end = begin + 1;
+		while (end < grofile.atoms.size()
+			&& grofile.atoms[end].residue_number == grofile.atoms[begin].residue_number
+			&& grofile.atoms[end].residueName == grofile.atoms[begin].residueName)
+			++end;
+
+		const GroRecord& first = grofile.atoms[begin];
+		ParticleCategory category = ParticleCategory::Other;
+		if (waterResidues.contains(first.residueName.View()))
+			category = ParticleCategory::Water;
+		else if (end - begin == 1 && RenderUtilities::AtomLetter(first.atomName.View(), first.residueName.View()) == 'I')
+			category = ParticleCategory::Ion;
+		else if (IsProteinResidue(first.residueName.View()))
+			category = ParticleCategory::Protein;
+		std::fill(categories.begin() + begin, categories.begin() + end, category);
+		begin = end;
+	}
+
+	for (const LipidModel& lipid : lipids)
+		std::fill_n(categories.begin() + lipid.firstParticleId, lipid.particleCount, ParticleCategory::Lipid);
+	return categories;
+}

@@ -349,3 +349,8 @@ BackboneChains BoxBuilder::InterpretBackboneChains(const GroFile& grofile)
 	AssignSecondaryStructure(interpretedChains);
 	return ToBackboneChains(interpretedChains);
 }
+
+bool BoxBuilder::IsProteinResidue(std::string_view residueName)
+{
+	return proteinResidues.contains(residueName);
+}

@@ -57,5 +57,12 @@ namespace DeviceIntrinsics {
 		return __ldcg(ptr);
 #endif
 	}
+#if defined(LIMA_HIP)
+	// HIP's atomic load takes scalars only, so an int2 is loaded as one 64-bit word
+	__device__ __forceinline__ int2 LoadCoherent(const int2* ptr) {
+		const unsigned long long word = __hip_atomic_load(reinterpret_cast<const unsigned long long*>(ptr), __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+		return int2{ static_cast<int>(static_cast<unsigned int>(word)), static_cast<int>(static_cast<unsigned int>(word >> 32)) };
+	}
+#endif
 }
 #endif

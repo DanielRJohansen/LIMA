@@ -76,3 +76,13 @@ dev/VMDscripts/*.trr
 .github/
 .pre-commit-config.yaml
 tools/
+
+# Outputs that the tests regenerate on every run
+tests/automatedtests/BuildMembraneSmall/molecule/*
+!tests/automatedtests/BuildMembraneSmall/molecule/*reference*
+tests/automatedtests/ElectrostaticField/*.itp
+tests/automatedtests/ElectrostaticField/*.gro
+tests/automatedtests/ElectrostaticField/*.top
+tests/automatedtests/PmeMatchesEwaldSum/*.itp
+tests/automatedtests/PmeMatchesEwaldSum/*.gro
+tests/automatedtests/PmeMatchesEwaldSum/*.top

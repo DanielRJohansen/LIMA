@@ -170,6 +170,8 @@ namespace ProgramsTests {
 	TestRoutine TestToGmx_pdbfile(Environment&, EnvMode envmode);
 	TestRoutine TestToGmx_ciffile(Environment&, EnvMode envmode);
 	TestRoutine TestToGmx_multichain(Environment&, EnvMode envmode);
+	TestRoutine TestToGmx_options(Environment&, EnvMode envmode);
+	TestRoutine TestToGmx_amber(Environment&, EnvMode envmode);
 }
 
 // SetupTests.cpp

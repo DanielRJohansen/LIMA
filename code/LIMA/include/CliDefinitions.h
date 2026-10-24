@@ -244,16 +244,31 @@ Options:
 
 inline constexpr std::string_view ToGmxHelp = R"(Usage: lima togmx [OPTION]...
 
-Build CHARMM27 coordinates, topology, and position restraints from a protein
-PDB or mmCIF file. Files are written beside the input structure.
+Build CHARMM27 or AMBER99SB coordinates, topology, and position restraints from a
+protein PDB or mmCIF file. Prints what it decided (disulfides, histidine states) and
+what it skipped (HETATM records such as waters, ions and ligands).
 
 Options:
   -f, --structure PATH         Input .pdb or .cif file (required)
+  -o, --output-dir DIR         Where to write the files (default: beside the input)
   -n, --name NAME              Optional output basename
+      --ff FORCEFIELD          charmm27 or amber99sb (default: charmm27). AMBER99SB only
+                               has charged termini
       --water-model MODEL      Water topology (default: tip3p)
+      --chains A,B             Only convert these chains (default: all)
+      --altloc ID              Alternate location to keep (default: A)
+      --his MODE               hsd, hse, hsp or auto (default: hsd). Input names
+                               HISD, HISE, HISH always win
+      --ter-n MODE             charged (NH3+) or neutral (NH2) (default: charged)
+      --ter-c MODE             charged (COO-), neutral (COOH), amide (CONH2),
+                               or methylamide (CONHCH3) (default: charged)
+      --no-disulfides          Don't bond cysteines whose SG atoms are 0.17-0.24 nm apart
+      --ignore-h               Ignore the input's hydrogens and build them all
   -h, --help                   Display this help and exit
 
-Water models: tip3p, tip4p, tips3p, tip5p, spc, spce
+Water models: tip3p, tip4p, tips3p (charmm27 only), tip5p, spc, spce
+Disulfides between chains are not bonded (each chain is its own molecule); they
+are reported as a warning.
 )";
 
 inline constexpr std::array Commands{
@@ -268,7 +283,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "insertmolecules", "Insert multiple molecules into a box.", InsertMoleculesHelp },
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp },
     CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp },
-    CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 files.", ToGmxHelp },
+    CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 or AMBER99SB files.", ToGmxHelp },
     CommandDefinition{ "daemon", "Show or stop the background GPU process.", DaemonHelp },
     CommandDefinition{ "wait", "Wait for commands started with --async.", WaitHelp },
 };

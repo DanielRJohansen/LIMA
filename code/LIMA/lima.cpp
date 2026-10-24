@@ -592,21 +592,50 @@ int Cli::RunToGmx(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::ToGmxHelp };
 
     ArgParser parser(helpText);
-    fs::path structurePath;
-    std::string name;
-    std::string water = "tip3p";
+    fs::path structurePath, outputDir;
+    std::string name, forceField = "charmm27", water = "tip3p", chains, altloc = "A", his = "hsd", terN = "charged", terC = "charged";
+    Programs::ToGmxOptions options;
     parser.AddOption({ "--structure", "-f", "-structure" }, true, structurePath);
+    parser.AddOption({ "--output-dir", "-o" }, false, outputDir);
     parser.AddOption({ "--name", "-n", "-name" }, false, name);
+    parser.AddOption({ "--ff", "-ff" }, false, forceField);
     parser.AddOption({ "--water-model", "-water-model", "-water" }, false, water);
+    parser.AddOption({ "--chains", "-chains" }, false, chains);
+    parser.AddOption({ "--altloc", "-altloc" }, false, altloc);
+    parser.AddOption({ "--his", "-his" }, false, his);
+    parser.AddOption({ "--ter-n", "-ter-n" }, false, terN);
+    parser.AddOption({ "--ter-c", "-ter-c" }, false, terC);
+    parser.AddFlag({ "--no-disulfides", "-no-ss" }, [&options]() { options.disulfides = false; });
+    parser.AddFlag({ "--ignore-h", "-ignh" }, [&options]() { options.ignoreHydrogens = true; });
     parser.Parse(argc, argv);
     structurePath = ctx.Resolve(structurePath);
 
     if (!name.empty() && fs::path{ name }.has_parent_path()) {
         throw std::runtime_error("togmx output name must be a basename");
     }
+    const auto choose = [](std::string_view option, const std::string& value, std::initializer_list<std::string_view> allowed) {
+        const auto found = std::ranges::find(allowed, value);
+        if (found == allowed.end()) throw CliError(Lima::Format("{} must be one of the listed values; got '{}'", option, value));
+        return static_cast<int>(found - allowed.begin());
+    };
+    options.forceField = static_cast<Programs::ToGmxOptions::ForceField>(choose("--ff", forceField, { "charmm27", "amber99sb" }));
+    options.waterModel = Programs::ParseWaterModel(water);
+    options.his = static_cast<Programs::ToGmxOptions::His>(choose("--his", his, { "hsd", "hse", "hsp", "auto" }));
+    options.nTerminus = static_cast<Programs::ToGmxOptions::NTerminus>(choose("--ter-n", terN, { "charged", "neutral" }));
+    options.cTerminus = static_cast<Programs::ToGmxOptions::CTerminus>(
+        choose("--ter-c", terC, { "charged", "neutral", "amide", "methylamide" }));
+    if (altloc.size() != 1) throw CliError("--altloc expects a single character");
+    options.altloc = altloc[0];
+    for (std::size_t begin = 0; begin < chains.size();) {
+        const std::size_t end = (std::min)(chains.find(',', begin), chains.size());
+        if (end > begin) options.chains.push_back(chains.substr(begin, end - begin));
+        begin = end + 1;
+    }
 
-    auto conversion = Programs::ToGmx(structurePath, Programs::ParseWaterModel(water));
-    const fs::path directory = structurePath.parent_path();
+    auto conversion = Programs::ToGmx(structurePath, options);
+    for (const auto& note : conversion.notes) ctx.out << note << '\n';
+    const fs::path directory = outputDir.empty() ? structurePath.parent_path() : ctx.Resolve(outputDir);
+    fs::create_directories(directory);
     const fs::path groPath = directory / (name.empty() ? "conf.gro" : name + ".gro");
     const fs::path topPath = directory / (name.empty() ? "topol.top" : name + ".top");
 
@@ -619,7 +648,10 @@ int Cli::RunToGmx(const Context& ctx, int argc, char** argv) {
         const fs::path filename = name.empty()
             ? fs::path{ "posre" + suffix + ".itp" }
             : fs::path{ name + "_posre" + suffix + ".itp" };
-        conversion.topology.moleculetypes.at(molecules[i].name)->positionRestraintsInclude = filename;
+        auto& moleculetype = conversion.topology.moleculetypes.at(molecules[i].name);
+        moleculetype->positionRestraintsInclude = filename;
+        // With a name, so conversions written to one directory don't overwrite each other's molecule topologies
+        if (!name.empty()) moleculetype->includePath = fs::path{ name + "_" + molecules[i].name + ".itp" };
         conversion.positionRestraints[i].printToFile(directory / filename);
     }
 

@@ -321,12 +321,12 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 		int total = 0;
 		for (int group = 0; group < nGroups; group++) {
 			const int c = group % chunks;
-			const int groupCount = __ldcg(&chunkBuffers.groupCounts[scId * nGroups + group]);
+			const int groupCount = DeviceIntrinsics::LoadCoherent(&chunkBuffers.groupCounts[scId * nGroups + group]);
 			const int from = __shfl_sync(LIMA_FULL_WARP_MASK, chunkOffset, c);
 			const ScNeighbor* const source = &chunkBuffers.lists[size_t(scId * chunks + c) * maxNeighborsPerSc];
 			for (int i = lane; i < groupCount; i += 32)
 				if (from + i < maxNeighborsPerSc && total + i < maxNeighborsPerSc) {
-					const int2 raw = __ldcg(reinterpret_cast<const int2*>(&source[from + i]));
+					const int2 raw = DeviceIntrinsics::LoadCoherent(reinterpret_cast<const int2*>(&source[from + i]));
 					reinterpret_cast<int2*>(neighbors)[size_t(scId) * maxNeighborsPerSc + total + i] = raw;
 				}
 			if (lane == c)
@@ -335,7 +335,7 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 		}
 		entryCount = 0;
 		for (int c = 0; c < chunks; c++)
-			entryCount += __ldcg(&chunkBuffers.entryCounts[scId * chunks + c]);
+			entryCount += DeviceIntrinsics::LoadCoherent(&chunkBuffers.entryCounts[scId * chunks + c]);
 		count = total;
 		if (lane == 0)
 			chunkBuffers.done[scId] = 0;

@@ -301,7 +301,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	}
 	if constexpr (computeVirial) {
 		for (int offset = 16; offset > 0; offset >>= 1)
-			virialLocal += __shfl_down_sync(0xFFFFFFFFu, virialLocal, offset);
+			virialLocal += __shfl_down_sync(LIMA_FULL_WARP_MASK, virialLocal, offset);
 		if (lane == 0)
 			virialPartials[groupId] = Virial::ToFixed(virialLocal);
 	}
@@ -543,7 +543,7 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 
 	if constexpr (computeVirial) {
 		for (int offset = 16; offset > 0; offset >>= 1)
-			virialLocal += __shfl_down_sync(0xFFFFFFFFu, virialLocal, offset);
+			virialLocal += __shfl_down_sync(LIMA_FULL_WARP_MASK, virialLocal, offset);
 		if (laneInWarp == 0)
 			virialPartials[warpId] = Virial::ToFixed(virialLocal);
 	}

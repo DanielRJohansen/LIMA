@@ -71,6 +71,10 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
 		for (auto& stream : cudaStreams) cudaStreamCreate(&stream);
 		cudaStreamCreate(&pmeStream);
+		// The SMs' L1/shared split follows the resident kernels. With the default, the NB and bonded blocks of a small system leave
+		// too little shared memory for PME's kernels, which run concurrently on the critical path, so their blocks waited for the
+		// SMs to drain (T4: 2.7 us before SpreadChargesKernel, a 4 us shorter step without). No cost on STMV's kernels (ncu)
+		cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
 		cudaStreamCreateWithFlags(&logCopyStream, cudaStreamNonBlocking); // Not synchronized with the legacy default stream, which would wait for the copy
 		for (auto& event : streamJoinEvents) cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
 		cudaEventCreateWithFlags(&stepStartEvent, cudaEventDisableTiming);
@@ -989,8 +993,13 @@ void Engine::_deviceMaster() {
 		const Float3 boxSizeInv = boxSize.Inv();
 		const auto kernel = batch->cmapGridSpacing > 0 ? BondgroupsKernel<BoundaryCondition, emvariant, logData, computeVirial, true>
 			: BondgroupsKernel<BoundaryCondition, emvariant, logData, computeVirial, false>;
-		kernel<<<(batch->nBondgroups + BONDGROUPS_PER_BLOCK - 1) / BONDGROUPS_PER_BLOCK, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
-			bondGroups, batch->nBondgroups, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, primaryBondForces, extraBondForces, batch->bondgroupExtraResultIndices.Get(), batch->superClustersControl->scData,
+		// Warps per bondgroup, see the kernel. The split does not change the forces, so it may depend on the batch
+		constexpr int targetWarps = 2048;
+		int warpsPerGroup = emvariant ? 1 : std::clamp(targetWarps / batch->nBondgroups, 1, BONDGROUPS_PER_BLOCK);
+		if (warpsPerGroup == 3) warpsPerGroup = 2; // Must divide BONDGROUPS_PER_BLOCK
+		const int groupsPerBlock = BONDGROUPS_PER_BLOCK / warpsPerGroup;
+		kernel<<<(batch->nBondgroups + groupsPerBlock - 1) / groupsPerBlock, THREADS_PER_BONDSGROUPSKERNEL, 0, cudaStreams[4]>>>(
+			bondGroups, batch->nBondgroups, warpsPerGroup, batch->boxState, batch->forceEnergyInterims->forceEnergiesBondgroups, primaryBondForces, extraBondForces, batch->bondgroupExtraResultIndices.Get(), batch->superClustersControl->scData,
 			batch->bondgroupParticleSlots.Get(), boxSize, boxSizeInv, ENABLE_ES_LR && batch->params.enable_electrostatics ? batch->ewaldKappa : 0.f,
 			computeVirial ? batch->bondVirialPartials.Get() : nullptr);
 	}

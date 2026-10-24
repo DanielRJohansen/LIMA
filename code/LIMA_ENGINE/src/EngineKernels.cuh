@@ -128,13 +128,23 @@ static constexpr int BONDGROUP_MAX_PARTICLES = 64;
 static_assert(BONDGROUP_MAX_PARTICLES <= 64, "Compact bond records reserve 6 bits per atom id");
 static_assert(LimaForcecalc::FixedPointBondAccumulator::scale == ForceAccumulator::scale, "Integration combines bonded and nonbonded sums in the same fixed point");
 // withCmap: the CMAP code raises the kernel from 62 to 84 registers, which cuts occupancy, so batches without CMAP use a variant without it
+//
+// warpsPerGroup: in MD, few bondgroups (small systems) leave most of the GPU idle while each warp walks its group's bonds serially,
+// so then up to 4 warps of a block share a group: each takes every warpsPerGroup'th batch of each bond type, adding to the group's
+// shared accumulator. Its fixed point sums are exact, so the forces do not depend on the split. Part 0 loads and stores the group.
+// The warps of an inactive group still reach the block barriers. EM accumulates serially in float, so it has 1
 template <typename BoundaryCondition, bool emVariant, bool computePotE, bool computeVirial, bool withCmap>
-__global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int nBondgroups, const BoxState boxState, ForceEnergy* const forceEnergiesOut /*EM only*/,
+__global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int nBondgroups, int warpsPerGroup, const BoxState boxState, ForceEnergy* const forceEnergiesOut /*EM only*/,
 	const ForceAccumulator primaryBondForces, ulonglong4* const extraBondForces, const int* const extraResultIndices /*MD only*/, const SuperCluster* const superClusters, const int* const particleSlots, Float3 boxSize, Float3 boxSizeInv,
 	float ewaldKappa /*0 without PME*/, long long* const virialPartials /*MD pressure steps only*/) {
-	const int groupInBlock = threadIdx.x / 32;
-	const int groupId = blockIdx.x * BONDGROUPS_PER_BLOCK + groupInBlock;
-	if (groupId >= nBondgroups) return; // Uniform per warp; no block barriers below
+	const int warpInBlock = threadIdx.x / 32;
+	const int groupInBlock = warpInBlock / warpsPerGroup;
+	const int part = warpInBlock - groupInBlock * warpsPerGroup;
+	const int groupId = blockIdx.x * (BONDGROUPS_PER_BLOCK / warpsPerGroup) + groupInBlock;
+	const bool split = warpsPerGroup > 1;
+	if (!split && groupId >= nBondgroups) return; // Uniform per warp; no block barriers without a split
+	const bool active = groupId < nBondgroups;
+	const auto GroupSync = [split]() { if (split) __syncthreads(); else __syncwarp(); };
 	const int lane = threadIdx.x & 31;
 	LIMA_SHARED_UNINIT(Float3, positionsBuffer, [BONDGROUPS_PER_BLOCK][BONDGROUP_MAX_PARTICLES]);
 	Float3* const positions = positionsBuffer[groupInBlock];
@@ -152,38 +162,44 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	static_assert(sizeof(CmapBond) <= largestBondBytesize);
 	static_assert(sizeof(PairBond) <= largestBondBytesize);
 	__shared__ __align__(16) char bondsBuffers[BONDGROUPS_PER_BLOCK][largestBondBytesize * batchSize];
-	char* const _bondsBuffer = bondsBuffers[groupInBlock];
+	char* const _bondsBuffer = bondsBuffers[warpInBlock];
 
-	const BondGroup* const bondGroup = &bondGroups.groups[groupId];
+	const BondGroup* const bondGroup = &bondGroups.groups[active ? groupId : 0];
+	const bool loadsAndStores = active && part == 0;
+	// The batches of each bond type this warp takes
+	const int firstBatch = active ? part * batchSize : 1 << 30;
+	const int batchStride = warpsPerGroup * batchSize;
 
 	int slots[2]{ -1, -1 };
-#pragma unroll
-	for (int i = 0; i < 2; i++) {
-		const int pid = lane + i * 32;
-		acc.Init(pid);
-		if (pid < bondGroup->nParticles) {
-			const int slot = particleSlots[bondGroup->indexOfFirstParticle + pid];
-			slots[i] = slot;
-			const float4 pq = __ldg(&superClusters[slot / SuperCluster::maxParticles].posCharge[slot % SuperCluster::maxParticles]);
-			positions[pid] = Float3{ pq.x, pq.y, pq.z };
-		}
-	}
-	acc.Sync();
-	if constexpr (computeVirial) {
+	if (loadsAndStores) {
 #pragma unroll
 		for (int i = 0; i < 2; i++) {
 			const int pid = lane + i * 32;
-			if (pid > 0 && pid < bondGroup->nParticles)
-				BoundaryCondition::applyHyperposNM(positions[0], positions[pid], boxSize);
+			acc.Init(pid);
+			if (pid < bondGroup->nParticles) {
+				const int slot = particleSlots[bondGroup->indexOfFirstParticle + pid];
+				slots[i] = slot;
+				const float4 pq = __ldg(&superClusters[slot / SuperCluster::maxParticles].posCharge[slot % SuperCluster::maxParticles]);
+				positions[pid] = Float3{ pq.x, pq.y, pq.z };
+			}
 		}
 		acc.Sync();
+		if constexpr (computeVirial) {
+#pragma unroll
+			for (int i = 0; i < 2; i++) {
+				const int pid = lane + i * 32;
+				if (pid > 0 && pid < bondGroup->nParticles)
+					BoundaryCondition::applyHyperposNM(positions[0], positions[pid], boxSize);
+			}
+		}
 	}
+	GroupSync();
 
 	
 	{
 		acc.Sync();
 		SingleBond* bondsBuffer = reinterpret_cast<SingleBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nSinglebonds; batchStart += batchSize) {
+		for (int batchStart = firstBatch; batchStart < bondGroup->nSinglebonds; batchStart += batchStride) {
 			if (batchStart + lane < bondGroup->nSinglebonds) {
 				const int bondIndex = batchStart + lane;
 				bondGroups.singlebonds.Load(bondGroup->indexOfFirstSinglebond + bondIndex, bondsBuffer[lane]);
@@ -197,7 +213,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	{
 		acc.Sync();
 		AngleUreyBradleyBond* bondsBuffer = reinterpret_cast<AngleUreyBradleyBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nAnglebonds; batchStart += batchSize) {
+		for (int batchStart = firstBatch; batchStart < bondGroup->nAnglebonds; batchStart += batchStride) {
 			if (batchStart + lane < bondGroup->nAnglebonds) {
 				const int bondIndex = batchStart + lane;
 				bondGroups.anglebonds.Load(bondGroup->indexOfFirstAnglebond + bondIndex, bondsBuffer[lane]);
@@ -211,7 +227,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	{
 		acc.Sync();
 		DihedralBond* bondsBuffer = reinterpret_cast<DihedralBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nDihedralbonds; batchStart += batchSize) {
+		for (int batchStart = firstBatch; batchStart < bondGroup->nDihedralbonds; batchStart += batchStride) {
 			if (batchStart + lane < bondGroup->nDihedralbonds) {
 				const int bondIndex = batchStart + lane;
 				bondGroups.dihedralbonds.Load(bondGroup->indexOfFirstDihedralbond + bondIndex, bondsBuffer[lane]);
@@ -225,7 +241,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	{
 		acc.Sync();
 		ImproperDihedralBond* bondsBuffer = reinterpret_cast<ImproperDihedralBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nImproperdihedralbonds; batchStart += batchSize) {
+		for (int batchStart = firstBatch; batchStart < bondGroup->nImproperdihedralbonds; batchStart += batchStride) {
 			if (batchStart + lane < bondGroup->nImproperdihedralbonds) {
 				const int bondIndex = batchStart + lane;
 				bondGroups.improperdihedralbonds.Load(bondGroup->indexOfFirstImproperdihedralbond + bondIndex, bondsBuffer[lane]);
@@ -239,7 +255,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	if constexpr (withCmap) {
 		acc.Sync();
 		CmapBond* bondsBuffer = reinterpret_cast<CmapBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nCmapbonds; batchStart += batchSize) {
+		for (int batchStart = firstBatch; batchStart < bondGroup->nCmapbonds; batchStart += batchStride) {
 			if (batchStart + lane < bondGroup->nCmapbonds)
 				bondsBuffer[lane] = bondGroups.cmapbonds[bondGroup->indexOfFirstCmapbond + batchStart + lane];
 			acc.Sync();
@@ -253,7 +269,7 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 	{
 		acc.Sync();
 		PairBond* bondsBuffer = reinterpret_cast<PairBond*>(_bondsBuffer);
-		for (int batchStart = 0; batchStart < bondGroup->nPairbonds; batchStart += batchSize) {
+		for (int batchStart = firstBatch; batchStart < bondGroup->nPairbonds; batchStart += batchStride) {
 			if (batchStart + lane < bondGroup->nPairbonds) {
 				const int bondIndex = batchStart + lane;
 				bondGroups.pairbonds.Load(bondGroup->indexOfFirstPairbond + bondIndex, bondsBuffer[lane]);
@@ -264,6 +280,8 @@ __global__ void BondgroupsKernel(const CompactBondGroupsDevice bondGroups, int n
 		}
 	}
 
+	GroupSync();
+	if (!loadsAndStores) return; // No barriers below
 	float virialLocal = 0.f;
 #pragma unroll
 	for (int i = 0; i < 2; i++) {

@@ -318,6 +318,8 @@ namespace
                 ImGui::Separator();
                 if (ImGui::MenuItem("Show solvents", nullptr, &settings.showSolvents))
                     commands.push_back(Overlay::SolventVisibility{ settings.showSolvents });
+                if (ImGui::MenuItem("Classic atoms", nullptr, &settings.classicAtoms))
+                    commands.push_back(Overlay::ClassicAtoms{ settings.classicAtoms });
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Camera")) {

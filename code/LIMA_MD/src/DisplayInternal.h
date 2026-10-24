@@ -55,6 +55,7 @@ struct RenderSettings {
 	bool hasForceData = false;
 	bool hasBackbone = false;
 	bool hasLipids = false;
+	bool classicAtoms = false; // The original cone-shaded atoms, for the whole display. Here only for the menu checkbox
 };
 
 class Overlay {
@@ -64,9 +65,10 @@ public:
 	struct ResetCamera { SimulationId simulationId = 0; };
 	struct RevolveCamera { SimulationId simulationId = 0; };
 	struct SetTiled { bool enabled = false; };
+	struct ClassicAtoms { bool enabled = false; };
 	struct SelectSimulation { SimulationId simulationId = 0; };
 	struct Select { SimulationId simulationId = 0; Rendering::MoleculeInfo selection; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled, Select>;
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled, Select, ClassicAtoms>;
 private:
 	bool didDrawThisFrame = false;
 	unsigned int logoTexture = 0;

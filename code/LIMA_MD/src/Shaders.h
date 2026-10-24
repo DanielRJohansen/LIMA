@@ -686,7 +686,132 @@ public:
 
 
 
+// Atoms as ray-cast sphere impostors: each atom is a camera-facing quad, and the fragment shader intersects the view
+// ray with the sphere, so silhouettes, normals and depth are exact per pixel at the cost of 4 vertices per atom
 class DrawAtomsShader : public Shader {
+    static constexpr const char* vertexShaderSource = R"(
+#version 430 core
+
+struct RenderAtom {
+    vec4 position; // {posX, posY, posZ, radius}
+    vec4 color;    // {r, g, b, a}
+    uvec4 flags;   // {x=highlight, y=coloring method, z=atom ID}
+};
+
+layout(std430, binding = 0) buffer RenderAtoms {
+    RenderAtom atoms[];
+};
+
+uniform mat4 View;
+uniform mat4 Proj;
+
+out vec3 quadPositionView;
+flat out vec3 sphereCenterView;
+flat out float sphereRadius;
+flat out vec4 atomColor;
+flat out int atomId;
+flat out uint highlight;
+
+void main() {
+    const RenderAtom atom = atoms[gl_InstanceID];
+    atomId = int(atom.flags.z);
+    highlight = atom.flags.x;
+    atomColor = atom.color;
+    sphereRadius = atom.position.w;
+    sphereCenterView = (View * vec4(atom.position.xyz, 1.0)).xyz;
+
+    // Hidden atoms collapse to a point, so they cost no fragments
+    const float centerDistance = length(sphereCenterView);
+    if (atom.color.a <= 0.0 || centerDistance <= sphereRadius) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
+
+    // A quad through the center, perpendicular to the view ray, just large enough to cover the sphere's silhouette
+    const vec3 toCamera = -sphereCenterView / centerDistance;
+    const vec3 helper = abs(toCamera.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    const vec3 right = normalize(cross(helper, toCamera));
+    const vec3 up = cross(toCamera, right);
+    const float halfSize = sphereRadius * centerDistance / sqrt(centerDistance * centerDistance - sphereRadius * sphereRadius);
+    const vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.0 - 1.0;
+
+    quadPositionView = sphereCenterView + (right * corner.x + up * corner.y) * halfSize;
+    gl_Position = Proj * vec4(quadPositionView, 1.0);
+}
+)";
+
+    static constexpr const char* fragmentShaderSource = R"(
+#version 430 core
+
+in vec3 quadPositionView;
+flat in vec3 sphereCenterView;
+flat in float sphereRadius;
+flat in vec4 atomColor;
+flat in int atomId;
+flat in uint highlight;
+
+uniform mat4 Proj;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out int  FragAtomId;
+
+void main() {
+    // Camera at the origin of view space
+    const vec3 ray = normalize(quadPositionView);
+    const float b = dot(ray, sphereCenterView);
+    const float discriminant = b * b - dot(sphereCenterView, sphereCenterView) + sphereRadius * sphereRadius;
+    if (discriminant < 0.0)
+        discard;
+    const vec3 hit = ray * (b - sqrt(discriminant));
+    const vec3 N = (hit - sphereCenterView) / sphereRadius;
+    const vec3 V = -ray;
+
+    const vec4 clip = Proj * vec4(hit, 1.0);
+    gl_FragDepth = (clip.z / clip.w) * 0.5 + 0.5;
+
+    // Fully matte, like chalk or clay: no highlight or rim, as any shine reads as plastic. A key light from the upper
+    // left with wrap-around diffuse, a dim fill from the right and a sky/ground ambient, with low contrast between them
+    const vec3 keyDir = normalize(vec3(-0.45, 0.65, 0.6));
+    const vec3 fillDir = normalize(vec3(0.7, -0.15, 0.7));
+    const float wrap = 0.5;
+    const float key = max((dot(N, keyDir) + wrap) / (1.0 + wrap), 0.0);
+    const float fill = max(dot(N, fillDir), 0.0);
+    const float ambient = mix(0.26, 0.38, N.y * 0.5 + 0.5);
+
+    vec3 color = atomColor.rgb * (ambient + 0.55 * key + 0.12 * fill);
+    const float rim = 1.0 - max(dot(N, V), 0.0);
+
+    if (highlight == 1u) {
+        const vec3 highlightColor = vec3(1.0, 0.85, 0.35);
+        color = mix(color, highlightColor, 0.25) + highlightColor * pow(rim, 0.6) * 0.9;
+    }
+
+    FragColor = vec4(min(color, vec3(1.0)), atomColor.a);
+    FragAtomId = atomId;
+}
+)";
+
+public:
+    DrawAtomsShader()
+        : Shader(vertexShaderSource, fragmentShaderSource)
+    {
+    }
+
+    void Draw(const SSBO& renderAtomsBuffer, int nAtoms, const glm::mat4& view, const glm::mat4& projection) {
+        use();
+        renderAtomsBuffer.Bind(0);
+
+        SetUniformMat4("View", view);
+        SetUniformMat4("Proj", projection);
+
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, nAtoms);
+        glUseProgram(0);
+    }
+};
+
+// The original atom shader, kept as the "Classic atoms" style: each atom is a flat 24-vertex cone facing the camera,
+// lit per vertex. Cheap, but faceted and without exact depth where atoms overlap
+class DrawAtomsLegacyShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
 #version 430 core
 
@@ -796,12 +921,12 @@ void main() {
     static constexpr int numVerticesPerAtom = 24;
 
 public:
-    DrawAtomsShader()
+    DrawAtomsLegacyShader()
         : Shader(vertexShaderSource, fragmentShaderSource)
     {
     }
 
-    ~DrawAtomsShader() {
+    ~DrawAtomsLegacyShader() {
     }
 
     void Draw(const SSBO& renderAtomsBuffer, int nAtoms, const glm::mat4& view, const glm::mat4& projection) {

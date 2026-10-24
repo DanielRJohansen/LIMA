@@ -17,8 +17,38 @@ const float rad2deg = 1.f / deg2rad;
 
 namespace {
 
+// With LIMA_RENDER_TIMING set, prints the average GPU time of a pass every 200 frames. Waits for each query, so it
+// stalls the pipeline a bit: for comparing render passes, not for production
+class ScopedGpuTimer {
+	static inline const bool enabled = std::getenv("LIMA_RENDER_TIMING") != nullptr;
+	const char* name;
+	GLuint query = 0;
+public:
+	explicit ScopedGpuTimer(const char* name) : name(name) {
+		if (!enabled) return;
+		glGenQueries(1, &query);
+		glBeginQuery(GL_TIME_ELAPSED, query);
+	}
+	~ScopedGpuTimer() {
+		if (!enabled) return;
+		glEndQuery(GL_TIME_ELAPSED);
+		GLuint64 nanoseconds = 0;
+		glGetQueryObjectui64v(query, GL_QUERY_RESULT, &nanoseconds);
+		glDeleteQueries(1, &query);
+		static double totalMs = 0.;
+		static int frames = 0;
+		totalMs += nanoseconds * 1e-6;
+		if (++frames == 200) {
+			std::printf("[render timing] %s: %.3f ms\n", name, totalMs / frames);
+			std::fflush(stdout);
+			totalMs = 0.;
+			frames = 0;
+		}
+	}
+};
+
 void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, size_t atomId, size_t atomCount,
-	bool showSolvents, float forceMagnitude = 0.f) {
+	const RenderSettings& settings, float forceMagnitude = 0.f) {
 	const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
 	const float chargeNormalized = (atom.charge + elementaryChargeToKiloCoulombPerMole) / (elementaryChargeToKiloCoulombPerMole * 2.f);
 	const auto coloringMethod = static_cast<ColoringMethod>(renderAtom.flags.y);
@@ -43,7 +73,7 @@ void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, si
 		renderAtom.color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / atomCount);
 	else if (coloringMethod == ColoringMethod::ForceMagnitude)
 		renderAtom.color = RenderUtilities::GetLogColorGradient(forceMagnitude, 1e5f, 1e11f);
-	if ((!showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon || lipidBody)
+	if ((!settings.showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon || lipidBody)
 		renderAtom.color.w = 0.f;
 }
 
@@ -141,7 +171,10 @@ void Display::_RenderAtoms(const RenderContext& renderContext) {
 	if (!renderContext.renderAtomsBuffer)
 		return;
 	//drawAtomsPrettyShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);	
-	drawAtomsFromCpuShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
+	if (classicAtoms)
+		drawAtomsLegacyShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
+	else
+		drawAtomsFromCpuShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
 }
 
 int Display::GetObjectIdAtPixel(glm::dvec2 cursor)
@@ -218,6 +251,9 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 	if (!drawAtomsFromCpuShader)
 		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader>();
+	if (!drawAtomsLegacyShader)
+		drawAtomsLegacyShader = std::make_unique<DrawAtomsLegacyShader>();
+	renderContext.renderSettings->classicAtoms = classicAtoms;
 	if (!drawTrianglesShader)
 		drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
 	if (!renderTargetControl)
@@ -240,7 +276,7 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		// If no active selection, color all atoms
 		if (!renderContext.selectedMolecule) {
 			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
-			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), renderContext.renderSettings->showSolvents);
+			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), *renderContext.renderSettings);
 		}
 	}
 
@@ -250,7 +286,7 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		for (auto& atomId : renderContext.selectedMolecule->atomIds) {
 			const Rendering::AtomRenderData& atom = task.atoms[atomId];
 			renderContext.renderAtomsHost[atomId].flags.y = static_cast<unsigned int>(renderContext.renderSettings->coloringMethod);
-			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), renderContext.renderSettings->showSolvents);
+			ColorAtom(renderContext.renderAtomsHost[atomId], atom, atomId, task.atoms.size(), *renderContext.renderSettings);
 		}
 	}
 
@@ -325,7 +361,7 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 			renderContext.renderAtomsHost[atomId].position = currentTask.positions[atomId].Tofloat4(renderContext.renderAtomsHost[atomId].position.w);
 			if (update.forceMagnitudes)
 				ColorAtom(renderContext.renderAtomsHost[atomId], currentTask.atoms[atomId], atomId, currentTask.atoms.size(),
-					renderContext.renderSettings->showSolvents, update.forceMagnitudes[atomId]);
+					*renderContext.renderSettings, update.forceMagnitudes[atomId]);
 		}
 	}
 	if (renderContext.newCartoonRenderer && renderContext.newCartoonRenderer->HasGeometry())
@@ -423,6 +459,7 @@ void Display::RenderScene(const RenderContext& renderContext, const RenderViewpo
 		std::visit([&](auto& taskPtr) {
 			using T = std::decay_t<decltype(taskPtr)>;
 			if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::AtomRenderTask>>) {
+				ScopedGpuTimer timer{ "atoms" };
 				_RenderAtoms(renderContext);
 			}
 			else if constexpr (std::is_same_v<T, std::unique_ptr<Rendering::MoleculehullTask>>) {

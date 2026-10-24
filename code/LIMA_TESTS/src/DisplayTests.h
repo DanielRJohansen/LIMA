@@ -306,11 +306,20 @@ public:
 					Require((context.renderAtomsHost[id].flags.y == static_cast<unsigned int>(ColoringMethod::Charge)) == (task->atoms[id].atomLetter == 'C'),
 						"Representation did not follow the menu selection");
 
+
 				display.overlay->submittedCommands.push_back(Overlay::Select{ 50, {} });
 				display.ConsumeInputs();
 				Require(!context.selectedMolecule, "Clear selection did not clear");
 				for (const auto& atom : context.renderAtomsHost)
 					Require(atom.flags.x == 0, "Clear selection left highlights");
+				// Classic style: the old shader must still draw pickable atoms
+				display.overlay->submittedCommands.push_back(Overlay::ClassicAtoms{ true });
+				display.ConsumeInputs();
+				display.RenderFrame({});
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, 0)) >= 0, "Classic atoms drew no pickable atom");
+				display.overlay->submittedCommands.push_back(Overlay::ClassicAtoms{ false });
+				display.ConsumeInputs();
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, 0)) >= 0, "Leaving classic atoms drew no pickable atom");
 			}
 			display.renderContexts.clear();
 			display.activeRenderContext = nullptr;

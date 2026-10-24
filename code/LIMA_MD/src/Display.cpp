@@ -569,6 +569,9 @@ bool Display::initGLFW() {
 
     // Make the window's context current
     glfwMakeContextCurrent(window);
+    // Renderer profiling: without vsync, so frame rates are not capped at the refresh rate
+    if (std::getenv("LIMA_RENDER_TIMING"))
+        glfwSwapInterval(0);
     return 1;
 }
 

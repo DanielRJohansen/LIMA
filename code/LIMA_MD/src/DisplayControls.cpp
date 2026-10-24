@@ -569,6 +569,11 @@ void Display::ConsumeInputs() {
                 else
                     SetSelection(context->second, cmd.selection);
             }
+            else if constexpr (std::is_same_v<T, Overlay::ClassicAtoms>) {
+                classicAtoms = cmd.enabled;
+                for (auto& [id, context] : renderContexts)
+                    context.renderSettings->classicAtoms = classicAtoms;
+            }
             else if constexpr (std::is_same_v<T, Overlay::SetTiled>) {
                 CancelInteraction();
                 tiled = cmd.enabled && !allowUserInputs;

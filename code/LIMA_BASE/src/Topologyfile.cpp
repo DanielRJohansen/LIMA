@@ -1281,7 +1281,7 @@ void TopologyFile::AtomsEntry::composeString(std::ostringstream& oss) const {
 		<< std::setw(10) << atomname
 		<< std::setw(10) << cgnr;
 	if (charge.has_value())
-		oss << std::setw(10) << std::fixed << std::setprecision(2) << charge.value();
+		oss << std::setw(10) << std::fixed << std::setprecision(5) << charge.value();	// 2 decimals made net charges non-integral
 	if (mass.has_value())
 		oss << std::setw(10) << std::fixed << std::setprecision(3) << mass.value();
 	oss << '\n';

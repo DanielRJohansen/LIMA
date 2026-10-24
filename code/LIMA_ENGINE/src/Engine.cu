@@ -355,8 +355,65 @@ void Engine::StopRenderDataPipes() {
 			pipe->Stop();
 }
 
-void Engine::step() {
-	if (IsFinished()) return;
+void Engine::step() { // step isnt an accurate name
+	if (!IsFinished())
+		FullStep(); // isnt accurate either..
+}
+
+int Engine::StepUntilHostWork() {
+	if (IsFinished()) return 0;
+	FullStep();
+	int nSteps = 1;
+	if (nSteps < maxStepsPerCall && IsPlainReplayStep()) {
+		do {
+			LaunchStepGraph(stepGraphs[0][0], false);
+			AdvanceStepCounters();
+			for (auto& sim : batch->simulations)
+				if (sim.device.active) sim.runstatus.current_step = sim.step;
+			nSteps++;
+		} while (nSteps < maxStepsPerCall && IsPlainReplayStep());
+		cudaStreamQuery(cudaStreams[0]); // Submits the queued steps at once, see LaunchStepGraph
+		LIMA_UTILS::genericErrorCheckNoSync("Error after replayed steps");
+	}
+	return nSteps;
+}
+
+void Engine::AdvanceStepCounters() {
+	++batch->step;
+	for (auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		++sim.simulation->step;
+		sim.step = sim.simulation->getStep();
+	}
+}
+
+bool Engine::IsPlainReplayStep() const {
+	if (!replayableStepGraph || mode != EngineRunMode::Simulation || IsFinished())
+		return false;
+	const auto& params = batch->params;
+	const int64_t step = batch->step;	// The step to run, the steps' host work below sees step + 1
+	if (params.em_variant || !params.snf_select.empty() || batch->nSuperclusters == 0)
+		return false;
+	if (params.data_logging_interval != 0 && step % params.data_logging_interval == 0)
+		return false;
+	if (params.apply_barostat && (step + 1) % params.steps_per_pressure_measurement == 0)
+		return false;
+	if ((step + 1) % params.steps_per_temperature_measurement == 0 || (step + 1) % params.stepsPerNlistupdate == 0)
+		return false;
+	if ((step + 1) % StepsPerRender == 0 && std::any_of(renderDataPipes.begin(), renderDataPipes.end(), [](auto* pipe) { return pipe != nullptr; }))
+		return false;
+	for (const auto& sim : batch->simulations) {
+		if (!sim.device.active) continue;
+		const auto& simParams = sim.simulation->simParams;
+		if (DatabuffersDeviceController::IsBufferFull(sim.step + 1, simParams.data_logging_interval)
+			|| sim.device.thermostatScalar != 1.f || sim.step + 1 >= simParams.n_steps
+			|| sim.runstatus.critical_error_occured || sim.runstatus.simulation_finished)
+			return false;
+	}
+	return true;
+}
+
+void Engine::FullStep() {
 	LIMA_UTILS::genericErrorCheckNoSync("Error before step");
 	if (mode == EngineRunMode::Interactive) {
 		auto& sim = batch->simulations.front();
@@ -373,12 +430,7 @@ void Engine::step() {
 		}
 	}
 	deviceMaster();
-	++batch->step;
-	for (auto& sim : batch->simulations) {
-		if (!sim.device.active) continue;
-		++sim.simulation->step;
-		sim.step = sim.simulation->getStep();
-	}
+	AdvanceStepCounters();
 	PublishRenderData();
 	const bool rebuilt = hostMaster();
 	flushNextStepLaunch |= rebuilt;

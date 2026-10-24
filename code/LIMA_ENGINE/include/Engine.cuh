@@ -56,6 +56,9 @@ public:
 	~Engine();
 
 	void step();
+	// Runs a step, then the following steps that need no host work (see IsPlainReplayStep) as relaunches of the step graph,
+	// queued in a tight loop. Returns the number of steps run, at most maxStepsPerCall
+	int StepUntilHostWork();
 
 	void CopySimulationToHost(size_t simulationId = 0);
 	const RunStatus& GetRunStatus(size_t simulationId = 0) const;
@@ -161,6 +164,13 @@ private:
 	// The current step's index, advanced by the step's first kernel. Read by the integration kernels for error reports
 	int64_t* stepCounterDevice = nullptr;
 	void LaunchStepGraph(cudaGraphExec_t exec, bool captured);
+	// Bounds the time between the caller's status and display updates
+	static constexpr int maxStepsPerCall = 100;
+	void FullStep();
+	// Whether the next step would only replay the step graph: no logging, virial, measurement, render, log drain, rebuild or
+	// thermostat reset, and no simulation finishing. Must match the conditions of FullStep, deviceMaster and hostMaster
+	bool IsPlainReplayStep() const;
+	void AdvanceStepCounters();
 	// Set after the host waited on the GPU, see LaunchStepGraph
 	bool flushNextStepLaunch = false;
 	// Must be called after changing any field that IntegrationSimulationData is built from

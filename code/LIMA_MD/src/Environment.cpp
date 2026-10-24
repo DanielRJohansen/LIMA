@@ -144,7 +144,7 @@ void SimulationResult::WriteTrajectoryAsUff(const fs::path& path) const {
 
 // ------------------------------------------------ Display Parameters ------------------------------------------ //
 const int STEPS_PER_UPDATE = 100;
-constexpr float MIN_STEP_TIME = 0.f;		// [ms] Set to 0 for full speed sim
+
 // -------------------------------------------------------------------------------------------------------------- //
 
 Environment::SimulationSession::SimulationSession(SimulationId simulationId, std::unique_ptr<Simulation> simulation, EnvMode mode,
@@ -741,8 +741,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 	while (!engine.IsFinished()) {
 		if (!HandleDisplay(display.get()))
 			break;
-		const auto stepStarted = std::chrono::steady_clock::now();
-		engine.step();
+		engine.StepUntilHostWork();
 		for (size_t i = 0; i < batch.sessions.size(); ++i) {
 			auto& session = batch.sessions[i];
 			if (session.engineTime) continue;
@@ -759,8 +758,6 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 				session.simulationTimer->stop();
 			}
 		}
-		// Optional rendering throttle for visual debugging.
-		while (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStarted).count() < MIN_STEP_TIME) {}
 	}
 	const auto elapsed = std::chrono::steady_clock::now() - started;
 	// Finalization copies final coordinates, integration state and remaining logs
@@ -796,11 +793,13 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 	}
 
 	const int64_t step = simulation->getStep();
-	if ((step % STEPS_PER_UPDATE == STEPS_PER_UPDATE-1) || forceWriteSimstatusToDisplay) {		
+	// The engine may run several steps per call, so this triggers when a multiple of STEPS_PER_UPDATE was passed
+	const int64_t lastStep = simStatus.step ? static_cast<int64_t>(*simStatus.step) : -1;
+	if (((step + 1) / STEPS_PER_UPDATE != (lastStep + 1) / STEPS_PER_UPDATE) || forceWriteSimstatusToDisplay) {
 		forceWriteSimstatusToDisplay = false;
 		auto duration = std::chrono::steady_clock::now() - time0;		
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
-		const double avgSteptime = duration_ms / (double) STEPS_PER_UPDATE;
+		const double avgSteptime = duration_ms / (double)std::max<int64_t>(step - lastStep, 1);
 
 		if (printToConsole && session.mode == Full) {
 			//// First clear the current line

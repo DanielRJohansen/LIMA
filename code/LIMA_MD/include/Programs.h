@@ -21,6 +21,8 @@ namespace Programs {
 	};
 
 	struct ToGmxOptions {
+		// AMBER99SB only has charged termini: its neutral and capped ends are separate residues (ACE, NME, NHE)
+		enum class ForceField { Charmm27, Amber99sb } forceField = ForceField::Charmm27;
 		WaterModel waterModel = WaterModel::Tip3p;
 		// Histidine protonation: Hsd/Hse/Hsp for all histidines, or Auto from the H-bond network.
 		// Explicit input names (HISD, HISE, HISH) always win
@@ -54,7 +56,7 @@ namespace Programs {
 	SimulationJob MakeSimulationJob(fs::path workDir, MolecularSystem system,
 		SimParams params, EnvMode mode = EnvMode::Headless);
 
-	/// Build in-memory CHARMM27 coordinates, topology, and position restraints
+	/// Build in-memory CHARMM27 or AMBER99SB coordinates, topology, and position restraints
 	/// from a protein PDB or mmCIF structure.
 	GmxConversionResult ToGmx(const fs::path& structureFile, WaterModel waterModel = WaterModel::Tip3p);
 	GmxConversionResult ToGmx(const fs::path& structureFile, const ToGmxOptions& options);

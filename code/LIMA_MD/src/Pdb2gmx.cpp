@@ -159,10 +159,7 @@ PdbInput readPdb(const fs::path& path, const ReadOptions& options) {
             ++result.skippedHydrogens;
             continue;
         }
-        if (atom.name == "H") atom.name = "HN"; // CHARMM27 aminoacids.arn mapping.
         atom.residueName = trim(std::string_view(line).substr(17, 3));
-        // Standard PDB and CHARMM use different names for isoleucine's terminal carbon.
-        if (atom.residueName == "ILE" && atom.name == "CD1") atom.name = "CD";
         atom.chain = line.size() > 21 && line[21] != ' ' ? std::string(1, line[21]) : std::string{};
         atom.residueNumber = std::stoi(line.substr(22, 4));
         atom.insertionCode = line.size() > 26 ? line[26] : ' ';
@@ -409,9 +406,7 @@ PdbInput readCif(const fs::path& path, const ReadOptions& options) {
             ++result.skippedHydrogens;
             continue;
         }
-        if (atom.name == "H") atom.name = "HN";
         atom.residueName = std::string(preferredValue(row, authResidueName, labelResidueName, "residue name"));
-        if (atom.residueName == "ILE" && atom.name == "CD1") atom.name = "CD";
         const std::string_view chainValue = preferredValue(row, authChain, labelChain, "chain identifier");
         atom.chain = cifValueMissing(chainValue) ? std::string{} : chainValue;
         atom.residueNumber = std::stoi(std::string(preferredValue(row, authResidueNumber, labelResidueNumber, "residue number")));
@@ -497,7 +492,7 @@ std::unordered_map<std::string, ResidueTemplate> readResidueTemplates(
         auto& target = result.at(residue);
         if (subsection == "atoms" && fields.size() >= 4) {
             const auto mass = masses.find(fields[1]);
-            if (mass == masses.end()) throw std::runtime_error(Lima::Format("No mass for CHARMM27 atom type {}", fields[1]));
+            if (mass == masses.end()) throw std::runtime_error(Lima::Format("No mass for atom type {}", fields[1]));
             target.atoms.push_back({ fields[0], fields[1], std::stod(fields[2]), std::stoi(fields[3]), mass->second });
         }
         else if (subsection == "bonds" && fields.size() >= 2) target.bonds.push_back({ fields[0], fields[1] });
@@ -756,16 +751,69 @@ struct OutputResidue {
     std::vector<int> disulfidePartners;	// Residue indices in the chain whose SG bonds to this residue's SG
 };
 
-const std::string& rtpNameFor(const std::string& pdbName) {
-    static const std::string HSD = "HSD", HSE = "HSE", HSP = "HSP", LSN = "LSN", ASPP = "ASPP", GLUP = "GLUP";
-    if (pdbName == "HIS" || pdbName == "HISD" || pdbName == "HIS1") return HSD;
-    if (pdbName == "HISE") return HSE;
-    if (pdbName == "HISH") return HSP;
-    if (pdbName == "LYSN") return LSN;
-    if (pdbName == "ASPH") return ASPP;
-    if (pdbName == "GLUH") return GLUP;
-    return pdbName;
-}
+// The GROMACS-format force field togmx builds from: its residue names (r2b), atom renames (arn) and how it makes termini.
+// CHARMM27 patches the terminal residues (tdb); AMBER has terminal residue variants (NALA, CALA, ...) instead
+struct ForceField {
+    std::string name;		// Directory name without .ff, eg. "amber99sb"
+    fs::path directory;
+    bool terminalPatches = false;
+
+    // r2b row: the force field's residue for a GROMACS residue name, as a mid-chain, N- and C-terminal residue.
+    // An empty terminal name means the force field has no such variant
+    struct ResidueNames { std::string main, nTerminal, cTerminal; };
+    std::unordered_map<std::string, ResidueNames> residueNames;	// By GROMACS name and by the main name
+    // arn: input atom name -> force field atom name, per force field residue ("*" for all)
+    std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> atomRenames;
+
+    static ForceField Load(Programs::ToGmxOptions::ForceField which) {
+        ForceField ff;
+        ff.name = which == Programs::ToGmxOptions::ForceField::Amber99sb ? "amber99sb" : "charmm27";
+        ff.directory = FileUtils::GetLimaDir() / "resources" / "forcefields" / (ff.name + ".ff");
+        ff.terminalPatches = which == Programs::ToGmxOptions::ForceField::Charmm27;
+
+        std::ifstream r2b(ff.directory / "aminoacids.r2b");
+        for (std::string line; std::getline(r2b, line);) {
+            const auto fields = words(withoutComment(std::move(line)));
+            if (fields.size() < 2) continue;
+            const auto column = [&](std::size_t i) { return fields.size() > i && fields[i] != "-" ? fields[i] : std::string{}; };
+            const ResidueNames names{ column(1), column(2), column(3) };
+            if (names.main.empty()) continue;
+            ff.residueNames[fields[0]] = names;
+            ff.residueNames.try_emplace(names.main, names);
+        }
+        std::ifstream arn(ff.directory / "aminoacids.arn");
+        for (std::string line; std::getline(arn, line);) {
+            const auto fields = words(withoutComment(std::move(line)));
+            if (fields.size() >= 3) ff.atomRenames[fields[0]].emplace_back(fields[1], fields[2]);
+        }
+        return ff;
+    }
+
+    // The template for a residue of a chain. Names the force field doesn't list (eg. already HSD or HID) are used as is
+    std::string TemplateName(const std::string& residue, bool nTerminal, bool cTerminal) const {
+        const auto found = residueNames.find(residue);
+        if (found == residueNames.end()) return residue;
+        if (terminalPatches || (!nTerminal && !cTerminal)) return found->second.main;
+        if (nTerminal && cTerminal) throw std::runtime_error(Lima::Format("{} has no template for a single-residue chain ({})", name, residue));
+        const std::string& terminal = nTerminal ? found->second.nTerminal : found->second.cTerminal;
+        if (terminal.empty())
+            throw std::runtime_error(Lima::Format("{} has no {}-terminal {} residue", name, nTerminal ? "N" : "C", residue));
+        return terminal;
+    }
+
+    // The force field's name for an input atom of the template residue
+    std::string_view AtomName(const std::string& templateName, std::string_view atom) const {
+        // Standard PDB names isoleucine's terminal carbon CD1, both force fields CD (GROMACS' xlateat.dat, for all of them)
+        if (atom == "CD1" && templateName.ends_with("ILE")) return "CD";
+        for (const char* key : { "*", "" }) {
+            const auto found = atomRenames.find(*key ? std::string{ key } : templateName);
+            if (found == atomRenames.end()) continue;
+            for (const auto& [from, to] : found->second)
+                if (from == atom) return to;
+        }
+        return atom;
+    }
+};
 
 void applyTerminalPatch(std::vector<TemplateAtom>& atoms, OutputResidue& output, const TerminalPatch& patch) {
     std::vector<TemplateAtom> modified;
@@ -904,7 +952,7 @@ std::vector<OutputResidue> makeAtoms(
     const std::unordered_map<std::string, std::vector<HydrogenInstruction>>& hydrogenDatabase,
     const std::unordered_map<std::string, TerminalPatch>& nTerminalPatches,
     const std::unordered_map<std::string, TerminalPatch>& cTerminalPatches,
-    const Programs::ToGmxOptions& options) {
+    const Programs::ToGmxOptions& options, const ForceField& ff) {
     TimeIt timer("makeAtoms", false);
     using NT = Programs::ToGmxOptions::NTerminus;
     using CT = Programs::ToGmxOptions::CTerminus;
@@ -913,11 +961,20 @@ std::vector<OutputResidue> makeAtoms(
     result.reserve(residues.size());
     for (int residueIndex = 0; residueIndex < static_cast<int>(residues.size()); ++residueIndex) {
         const auto& source = residues[residueIndex];
-        const std::string& rtpName = source.rtpOverride.empty() ? rtpNameFor(source.name) : source.rtpOverride;
+        const bool nTerminal = residueIndex == 0, cTerminal = residueIndex == static_cast<int>(residues.size()) - 1;
+        const std::string rtpName = ff.TemplateName(source.rtpOverride.empty() ? source.name : source.rtpOverride, nTerminal, cTerminal);
         const auto templateEntry = templates.find(rtpName);
         if (templateEntry == templates.end()) {
-            throw std::runtime_error(Lima::Format("Residue {} has no CHARMM27 amino-acid template", source.name));
+            throw std::runtime_error(Lima::Format("Residue {} has no {} amino-acid template ({})", source.name, ff.name, rtpName));
         }
+        // The input's atoms by their force field names
+        std::unordered_map<std::string, const PdbAtom*, StringHash, StringEqual> sourceAtoms;
+        for (const auto& [name, atom] : source.atoms) sourceAtoms.try_emplace(std::string(ff.AtomName(rtpName, name)), &atom);
+        // Atoms the hydrogen database builds, so they need not be in the input (hydrogens, AMBER's terminal oxygens)
+        std::set<std::string, std::less<>> constructible;
+        if (const auto entry = hydrogenDatabase.find(rtpName); entry != hydrogenDatabase.end())
+            for (const auto& instruction : entry->second)
+                for (const auto& name : generatedNames(instruction)) constructible.insert(name);
         std::vector<TemplateAtom> patchedDefinitions;
         const std::vector<TemplateAtom>* definitions = &templateEntry->second.atoms;
         bool definitionsPatched = false;
@@ -936,13 +993,13 @@ std::vector<OutputResidue> makeAtoms(
                 for (const auto& name : generatedNames(addition.instruction)) patchAdded.insert(name);
             applyTerminalPatch(patchedDefinitions, output, patch);
         };
-        if (residueIndex == 0) {
+        if (nTerminal && ff.terminalPatches) {
             const bool charged = options.nTerminus == NT::Charged;
             const char* patchName = source.name == "GLY" ? (charged ? "GLY-NH3+" : "GLY-NH2")
                 : source.name == "PRO" ? (charged ? "PRO-NH2+" : "PRO-NH") : (charged ? "NH3+" : "NH2");
             applyPatch(nTerminalPatches.at(patchName));
         }
-        if (residueIndex == static_cast<int>(residues.size()) - 1) {
+        if (cTerminal && ff.terminalPatches) {
             const char* patchName = options.cTerminus == CT::Charged ? "COO-" : options.cTerminus == CT::Neutral ? "COOH"
                 : options.cTerminus == CT::Amide ? "CT2" : "CT3";
             applyPatch(cTerminalPatches.at(patchName));
@@ -958,12 +1015,15 @@ std::vector<OutputResidue> makeAtoms(
             atom.type = definition.type;
             atom.charge = definition.charge;
             atom.mass = definition.mass;
+            // CHARMM's terminus patches rename O and OXT to OT1 and OT2
             const std::string_view sourceName = atom.name == "OT1" ? std::string_view{ "O" }
                 : atom.name == "OT2" ? std::string_view{ "OXT" } : std::string_view{ atom.name };
-            if (const auto found = source.atoms.find(sourceName); found != source.atoms.end()) {
-                atom.position = found->second.position;
+            auto found = sourceAtoms.find(atom.name);
+            if (found == sourceAtoms.end()) found = sourceAtoms.find(sourceName);
+            if (found != sourceAtoms.end()) {
+                atom.position = found->second->position;
             }
-            else if (!atom.name.starts_with('H') && !patchAdded.contains(atom.name)) {
+            else if (!atom.name.starts_with('H') && !patchAdded.contains(atom.name) && !constructible.contains(atom.name)) {
                 throw std::runtime_error(Lima::Format(
                     "Heavy atom {} is missing in residue {} {}", atom.name, source.name, source.number));
             }
@@ -1350,7 +1410,7 @@ void prepareInput(PdbInput& input, const Programs::ToGmxOptions& options, std::v
         constexpr float minDistance = 0.17f, maxDistance = 0.24f;
         std::vector<std::size_t> cysteines;
         for (std::size_t i = 0; i < input.residues.size(); ++i)
-            if ((input.residues[i].name == "CYS" || input.residues[i].name == "CYS2") && input.residues[i].atoms.contains(std::string_view{ "SG" })) cysteines.push_back(i);
+            if ((input.residues[i].name == "CYS" || input.residues[i].name == "CYS2" || input.residues[i].name == "CYX") && input.residues[i].atoms.contains(std::string_view{ "SG" })) cysteines.push_back(i);
         std::string bonded, skipped;
         for (std::size_t a = 0; a < cysteines.size(); ++a) {
             for (std::size_t b = a + 1; b < cysteines.size(); ++b) {
@@ -1383,13 +1443,13 @@ void prepareInput(PdbInput& input, const Programs::ToGmxOptions& options, std::v
     for (std::size_t i = 0; i < input.residues.size(); ++i) {
         PdbResidue& residue = input.residues[i];
         if (residue.name != "HIS") continue;
-        std::string choice = options.his == His::Hse ? "HSE" : options.his == His::Hsp ? "HSP" : "HSD";
+        std::string choice = options.his == His::Hse ? "HISE" : options.his == His::Hsp ? "HISH" : "HISD";
         if (options.his == His::Auto && residue.atoms.contains(std::string_view{ "ND1" }) && residue.atoms.contains(std::string_view{ "NE2" })) {
             if (!grid) grid.emplace(input.residues);
             constexpr float hbond = 0.32f;
             const bool nd1 = grid->AnyNear(residue.atoms.at("ND1").position, i, hbond);
             const bool ne2 = grid->AnyNear(residue.atoms.at("NE2").position, i, hbond);
-            choice = ne2 && !nd1 ? "HSE" : "HSD";
+            choice = ne2 && !nd1 ? "HISE" : "HISD";
         }
         residue.rtpOverride = choice;
         ++histidines[choice];
@@ -1406,7 +1466,13 @@ Programs::GmxConversionResult convertStructureToGmx(PdbInput input, const Progra
     std::vector<std::string> notes;
     prepareInput(input, options, notes);
     if (input.residues.empty()) throw std::runtime_error("No residues left after selecting chains");
-    const fs::path forcefieldDirectory = FileUtils::GetLimaDir() / "resources" / "forcefields" / "charmm27.ff";
+    const ForceField ff = ForceField::Load(options.forceField);
+    if (!ff.terminalPatches && (options.nTerminus != Programs::ToGmxOptions::NTerminus::Charged
+        || options.cTerminus != Programs::ToGmxOptions::CTerminus::Charged))
+        throw std::runtime_error(Lima::Format("{} only supports charged termini (neutral and capped ends need ACE/NME residues)", ff.name));
+    if (!fs::exists(ff.directory / waterTopologyFilename(waterModel)))
+        throw std::runtime_error(Lima::Format("{} has no {} water model", ff.name, waterTopologyFilename(waterModel)));
+    const fs::path& forcefieldDirectory = ff.directory;
     const auto masses = readAtomMasses(forcefieldDirectory / "atomtypes.atp");
     const auto bondedTypes = readBondedTypeDefaults(forcefieldDirectory / "aminoacids.rtp");
     const auto templates = readResidueTemplates(forcefieldDirectory / "aminoacids.rtp", masses);
@@ -1426,7 +1492,7 @@ Programs::GmxConversionResult convertStructureToGmx(PdbInput input, const Progra
             molecule.chain = chainInputs[i].front().chain;
             molecule.name = moleculeNameForChain(molecule.chain, i, chainInputs.size());
             molecule.residues = makeAtoms(
-                chainInputs[i], templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches, options);
+                chainInputs[i], templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches, options, ff);
         }
         catch (...) { errors[i] = std::current_exception(); }
     });
@@ -1448,9 +1514,9 @@ Programs::GmxConversionResult convertStructureToGmx(PdbInput input, const Progra
 
     TopologyFile topology;
     topology.title = "Topology generated by LIMA ToGmx";
-    topology.forcefieldInclude.emplace("charmm27.ff/forcefield.itp");
-    topology.otherIncludes.push_back((fs::path{ "charmm27.ff" } / waterTopologyFilename(waterModel)).string());
-    topology.otherIncludes.push_back((fs::path{ "charmm27.ff" } / "ions.itp").string());
+    topology.forcefieldInclude.emplace(ff.name + ".ff/forcefield.itp");
+    topology.otherIncludes.push_back((fs::path{ ff.name + ".ff" } / waterTopologyFilename(waterModel)).string());
+    topology.otherIncludes.push_back((fs::path{ ff.name + ".ff" } / "ions.itp").string());
     topology.SetSystem(input.title);
 
     std::vector<GenericItpFile> positionRestraints;
@@ -1481,7 +1547,7 @@ Programs::WaterModel Programs::ParseWaterModel(std::string_view name) {
     if (normalized == "tip5p") return WaterModel::Tip5p;
     if (normalized == "spc") return WaterModel::Spc;
     if (normalized == "spce") return WaterModel::Spce;
-    throw std::runtime_error(Lima::Format("Unsupported CHARMM27 water model: {}", name));
+    throw std::runtime_error(Lima::Format("Unsupported water model: {}", name));
 }
 
 Programs::GmxConversionResult Programs::ToGmx(const fs::path& structureFile, WaterModel waterModel) {

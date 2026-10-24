@@ -280,6 +280,7 @@ int RunAllUnitTests() {
 	ADD_TEST("ToGmx PDB matches GROMACS", ProgramsTests::TestToGmx_pdbfile);
 	ADD_TEST("ToGmx handles multiple chains", ProgramsTests::TestToGmx_multichain);
 	ADD_TEST("ToGmx options and disulfides", ProgramsTests::TestToGmx_options);
+	ADD_TEST("ToGmx AMBER99SB matches GROMACS", ProgramsTests::TestToGmx_amber);
 	ADD_TEST("ToGmx CIF matches GROMACS", ProgramsTests::TestToGmx_ciffile);
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall, false);
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder);

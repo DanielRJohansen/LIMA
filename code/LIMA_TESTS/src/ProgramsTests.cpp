@@ -178,6 +178,73 @@ namespace ProgramsTests {
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
 
+	// AMBER99SB: Villin's coordinates, written as a PDB without hydrogens, give pdb2gmx's topology (ForceComparisons/VillinAmber).
+	// The reference's charges are zeroed, so they are checked by the net charge instead
+	TestRoutine TestToGmx_amber(Environment&, EnvMode envmode) {
+		const fs::path referenceDir = AutomatedTestsDir() / "ForceComparisons" / "VillinAmber";
+		const fs::path input = AutomatedTestsDir() / "pdb2gmx" / "generated_villin.pdb";
+		{
+			const GroFile gro{ referenceDir / "conf.gro" };
+			std::ofstream pdb(input);
+			for (std::size_t i = 0; i < gro.atoms.size(); ++i) {
+				const auto& atom = gro.atoms[i];
+				const std::string name{ atom.atomName.View() };
+				char line[96];
+				std::snprintf(line, sizeof(line), "ATOM  %5d %-4s %3s  %4d    %8.3f%8.3f%8.3f  1.00  0.00",
+					static_cast<int>(i + 1), (name.size() < 4 ? " " + name : name).c_str(), std::string{ atom.residueName.View() }.c_str(), atom.residue_number,
+					atom.position.x * 10.f, atom.position.y * 10.f, atom.position.z * 10.f);
+				pdb << line << '\n';
+			}
+		}
+		Programs::ToGmxOptions options;
+		options.forceField = Programs::ToGmxOptions::ForceField::Amber99sb;
+		options.ignoreHydrogens = true;
+		const auto conversion = Programs::ToGmx(input, options);
+		TryDeleteFile(input);
+
+		const TopologyFile reference{ referenceDir / "topol.top" };
+		const auto& expected = *reference.GetSystem().molecules.front().moleculetype;
+		const auto& actual = *conversion.topology.GetSystem().molecules.front().moleculetype;
+		TEST_ASSERT(actual.atoms.size() == expected.atoms.size(),
+			Lima::Format("{} atoms, pdb2gmx {}", actual.atoms.size(), expected.atoms.size()));
+		double netCharge = 0.0;
+		for (std::size_t i = 0; i < actual.atoms.size(); ++i) {
+			const auto& a = actual.atoms[i];
+			const auto& e = expected.atoms[i];
+			TEST_ASSERT(a.atomname == e.atomname && a.type == e.type && a.resnr == e.resnr,
+				Lima::Format("Atom {}: {} {} {}, pdb2gmx {} {} {}", i + 1, a.resnr, a.atomname, a.type, e.resnr, e.atomname, e.type));
+			netCharge += a.charge.value_or(0.f);
+		}
+		TEST_ASSERT(std::abs(netCharge - 2.0) < 1e-3, Lima::Format("Net charge {:.4f}, expected +2", netCharge));
+
+		const auto sameIds = [](const auto& left, const auto& right) {
+			auto ids = [](const auto& entries) {
+				std::vector<std::vector<int>> result;
+				for (const auto& entry : entries) {
+					std::vector<int> v(entry.ids.begin(), entry.ids.end());
+					if (v.back() < v.front()) std::ranges::reverse(v);
+					result.push_back(std::move(v));
+				}
+				std::ranges::sort(result);
+				return result;
+			};
+			return ids(left) == ids(right);
+		};
+		TEST_ASSERT(sameIds(actual.singlebonds, expected.singlebonds), "Bonds differ from pdb2gmx");
+		TEST_ASSERT(sameIds(actual.pairbonds, expected.pairbonds), "Pairs differ from pdb2gmx");
+		TEST_ASSERT(sameIds(actual.anglebonds, expected.anglebonds), "Angles differ from pdb2gmx");
+		TEST_ASSERT(sameIds(actual.dihedralbonds, expected.dihedralbonds), "Proper dihedrals differ from pdb2gmx");
+		TEST_ASSERT(sameIds(actual.improperdihedralbonds, expected.improperdihedralbonds), "Impropers differ from pdb2gmx");
+
+		Programs::ToGmxOptions neutral = options;
+		neutral.cTerminus = Programs::ToGmxOptions::CTerminus::Neutral;
+		bool rejected = false;
+		try { Programs::ToGmx(AutomatedTestsDir() / "pdb2gmx" / "6lzm.pdb", neutral); }
+		catch (const std::runtime_error&) { rejected = true; }
+		TEST_ASSERT(rejected, "AMBER99SB accepted a neutral C-terminus");
+		co_return LimaUnittestResult{ true, OneLineMessage("{} atoms match pdb2gmx", actual.atoms.size()), envmode == Full };
+	}
+
 	TestRoutine TestToGmx_multichain(Environment&, EnvMode envmode) {
 		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
 		const fs::path input = directory / "generated_multichain.pdb";

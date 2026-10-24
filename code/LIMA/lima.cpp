@@ -593,11 +593,12 @@ int Cli::RunToGmx(const Context& ctx, int argc, char** argv) {
 
     ArgParser parser(helpText);
     fs::path structurePath, outputDir;
-    std::string name, water = "tip3p", chains, altloc = "A", his = "hsd", terN = "charged", terC = "charged";
+    std::string name, forceField = "charmm27", water = "tip3p", chains, altloc = "A", his = "hsd", terN = "charged", terC = "charged";
     Programs::ToGmxOptions options;
     parser.AddOption({ "--structure", "-f", "-structure" }, true, structurePath);
     parser.AddOption({ "--output-dir", "-o" }, false, outputDir);
     parser.AddOption({ "--name", "-n", "-name" }, false, name);
+    parser.AddOption({ "--ff", "-ff" }, false, forceField);
     parser.AddOption({ "--water-model", "-water-model", "-water" }, false, water);
     parser.AddOption({ "--chains", "-chains" }, false, chains);
     parser.AddOption({ "--altloc", "-altloc" }, false, altloc);
@@ -617,6 +618,7 @@ int Cli::RunToGmx(const Context& ctx, int argc, char** argv) {
         if (found == allowed.end()) throw CliError(Lima::Format("{} must be one of the listed values; got '{}'", option, value));
         return static_cast<int>(found - allowed.begin());
     };
+    options.forceField = static_cast<Programs::ToGmxOptions::ForceField>(choose("--ff", forceField, { "charmm27", "amber99sb" }));
     options.waterModel = Programs::ParseWaterModel(water);
     options.his = static_cast<Programs::ToGmxOptions::His>(choose("--his", his, { "hsd", "hse", "hsp", "auto" }));
     options.nTerminus = static_cast<Programs::ToGmxOptions::NTerminus>(choose("--ter-n", terN, { "charged", "neutral" }));

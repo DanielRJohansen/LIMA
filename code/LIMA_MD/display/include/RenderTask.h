@@ -7,6 +7,7 @@
 #include "MoleculeHull.cuh"
 #include "Simulation.cuh"
 
+#include <array>
 #include <memory>
 #include <set>
 #include <variant>
@@ -71,6 +72,10 @@ namespace Rendering {
 			LipidModels lipidModels = {},
 			ParticleCategories particleCategories = {});
 	};
+
+	// Covalent bonds guessed from distances in the task's current positions, for the licorice representation.
+	// Bonds across the periodic boundary are left out, as a stick through the whole box would be wrong
+	std::vector<std::array<int, 2>> FindBonds(const AtomRenderTask& task);
 
 	// One entry of the display's right-click menu
 	struct SelectionOption {

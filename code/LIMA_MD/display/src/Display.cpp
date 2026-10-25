@@ -11,6 +11,7 @@
 #include "AmbientOcclusion.h"
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
+#include "SurfaceRenderer.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"
@@ -247,6 +248,9 @@ void Display::ReleaseGraphics() {
         drawBoxOutlineShader.reset();
         drawFacetsShader.reset();
         drawAtomsFromCpuShader.reset();
+        drawAtomsLegacyShader.reset();
+        drawBondsShader.reset();
+        drawSurfaceShader.reset();
         drawNormalsShader.reset();
         drawTrianglesShader.reset();
         drawBackgroundGradientShader.reset();

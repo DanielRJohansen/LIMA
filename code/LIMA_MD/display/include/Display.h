@@ -26,6 +26,8 @@ class DrawFacetsShader;
 class DrawAtomsShader;
 class DrawAtomsPrettyShader;
 class DrawAtomsLegacyShader;
+class DrawBondsShader;
+class DrawSurfaceShader;
 class AmbientOcclusion;
 class DrawNormalsShader;
 class DrawTrianglesShader;
@@ -41,6 +43,7 @@ class RenderDataPipe;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
 class LipidRenderer;
+class SurfaceRenderer;
 
 struct SimulationTab {
 	SimulationId simulationId = 0;
@@ -61,8 +64,12 @@ struct RenderContext {
 
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
+	std::unique_ptr<SSBO> bondsBuffer;	// Built when licorice is first shown, as finding bonds takes a moment for large systems
+	int bondCount = 0;
+	bool hasLicorice = false;	// Any atom in licorice, so bonds are drawn
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
 	std::unique_ptr<LipidRenderer> lipidRenderer;
+	std::unique_ptr<SurfaceRenderer> surfaceRenderer;
 	std::shared_ptr<RenderDataPipe> renderDataPipe;
 	std::vector<Float3> renderPositionsHost;
 	std::string label;
@@ -178,6 +185,8 @@ private:
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
 	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader;
 	std::unique_ptr<DrawAtomsLegacyShader> drawAtomsLegacyShader;
+	std::unique_ptr<DrawBondsShader> drawBondsShader;
+	std::unique_ptr<DrawSurfaceShader> drawSurfaceShader;
 	std::unique_ptr<AmbientOcclusion> ambientOcclusion;
 	bool classicAtoms = false; // Display-wide, see RenderSettings::classicAtoms
 

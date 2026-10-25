@@ -6,6 +6,8 @@
 #include "RenderUtilities.cuh"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <stdexcept>
 #include <array>
 #include <utility>
@@ -199,4 +201,56 @@ std::vector<Rendering::SelectionOption> Rendering::SelectionOptions(const AtomRe
 	if (hasSelection)
 		options.push_back({ "Clear selection", "", MoleculeInfo{} });
 	return options;
+}
+
+std::vector<std::array<int, 2>> Rendering::FindBonds(const AtomRenderTask& task)
+{
+	// Longest covalent bonds: X-H ~0.11 nm, C-S ~0.18 nm, S-S ~0.205 nm. Shortest non-bonded distances are ~0.15 nm for
+	// H-H (in water and methyls) and ~0.24 nm for heavy atoms, so these cutoffs separate the two
+	constexpr float hydrogenCutoff = 0.125f;
+	constexpr float heavyCutoff = 0.19f;
+	constexpr float sulfurCutoff = 0.215f;
+	constexpr float cellSize = sulfurCutoff;
+
+	const auto Cutoff = [](char a, char b) {
+		if (a == 'H' || b == 'H')
+			return (a == 'H' && b == 'H') ? 0.f : hydrogenCutoff;
+		if (a == 'S' && b == 'S')
+			return sulfurCutoff;
+		return heavyCutoff;
+	};
+	const auto Cell = [](const Float3& p) {
+		return std::array<int, 3>{ static_cast<int>(std::floor(p.x / cellSize)),
+			static_cast<int>(std::floor(p.y / cellSize)), static_cast<int>(std::floor(p.z / cellSize)) };
+	};
+	const auto Key = [](const std::array<int, 3>& cell) {
+		return (static_cast<int64_t>(cell[0]) & 0x1FFFFF) | (static_cast<int64_t>(cell[1]) & 0x1FFFFF) << 21
+			| (static_cast<int64_t>(cell[2]) & 0x1FFFFF) << 42;
+	};
+
+	std::unordered_map<int64_t, std::vector<int>> cells;
+	for (int id = 0; id < static_cast<int>(task.atoms.size()); ++id)
+		if (task.atoms[id].atomLetter != 'I')
+			cells[Key(Cell(task.positions[id]))].push_back(id);
+
+	std::vector<std::array<int, 2>> bonds;
+	for (int id = 0; id < static_cast<int>(task.atoms.size()); ++id) {
+		const char letter = task.atoms[id].atomLetter;
+		if (letter == 'I')
+			continue;
+		const auto cell = Cell(task.positions[id]);
+		for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) for (int dz = -1; dz <= 1; ++dz) {
+			const auto neighbors = cells.find(Key({ cell[0] + dx, cell[1] + dy, cell[2] + dz }));
+			if (neighbors == cells.end())
+				continue;
+			for (int other : neighbors->second) {
+				if (other <= id)
+					continue;	// Each pair once
+				const float cutoff = Cutoff(letter, task.atoms[other].atomLetter);
+				if ((task.positions[other] - task.positions[id]).len() < cutoff)
+					bonds.push_back({ id, other });
+			}
+		}
+	}
+	return bonds;
 }

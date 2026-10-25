@@ -36,6 +36,7 @@ add_library(LIMA_MD STATIC
     display/src/NewCartoonRenderer.cpp
     display/src/LipidRenderer.cpp
     display/src/TubeMesh.cpp
+    display/src/SurfaceRenderer.cpp
 )
 
 

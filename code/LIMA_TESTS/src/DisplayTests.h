@@ -4,10 +4,12 @@
 #include "../../LIMA_MD/display/src/Shaders.h"
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
+#include "SurfaceRenderer.h"
 #include "BoxBuilder.cuh"
 #include "RenderDataPipe.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
+#include <map>
 #include <numeric>
 #include <stdexcept>
 
@@ -147,6 +149,38 @@ public:
 			// Coordinate-only tasks get a molecule per residue, Slipids names the POPC residue POP
 			Require(Find(lipidOptions, "All POP") != nullptr && Find(lipidOptions, "This molecule") != nullptr,
 				"Coordinate-only task has no molecule options");
+		}
+
+		std::cout << "Checking bond detection" << std::endl;
+		{
+			// A molecule's bond count is its atom count - 1, plus one per ring: POPC has no rings, cholesterol four
+			const Rendering::AtomRenderTask popc{ GroFile{ slipids / "POPC.gro" } };
+			Require(Rendering::FindBonds(popc).size() == popc.atoms.size() - 1, "Wrong bond count for POPC");
+			const Rendering::AtomRenderTask cholesterol{ GroFile{ slipids / "cholesterol.gro" } };
+			Require(Rendering::FindBonds(cholesterol).size() == cholesterol.atoms.size() - 1 + 4, "Wrong bond count for cholesterol");
+		}
+
+		std::cout << "Checking surface meshes" << std::endl;
+		{
+			const float radius = 0.17f;
+			const std::vector<Float3> positions{ { 1.f, 1.f, 1.f } };
+			const auto mesh = SurfaceRenderer::BuildMesh({ { 0, radius, glm::vec4(1.f) } }, positions);
+			Require(!mesh.indices.empty(), "A lone atom has no surface");
+			for (const auto& vertex : mesh.vertices) {
+				const glm::vec3 fromCenter = vertex.position - glm::vec3(1.f);
+				Require(std::abs(glm::length(fromCenter) - radius) < SurfaceRenderer::gridSpacing * 0.25f, "Surface is not at the atom's radius");
+				Require(glm::dot(glm::normalize(fromCenter), vertex.normal) > 0.9f, "Surface normal does not point outwards");
+				Require(vertex.atomId == 0, "Surface vertex has the wrong atom");
+			}
+			// Closed and consistently wound: each directed edge once, and its reverse once
+			std::map<std::pair<unsigned int, unsigned int>, int> edges;
+			for (std::size_t t = 0; t < mesh.indices.size(); t += 3)
+				for (int e = 0; e < 3; ++e)
+					++edges[{ mesh.indices[t + e], mesh.indices[t + (e + 1) % 3] }];
+			for (const auto& [edge, count] : edges) {
+				Require(count == 1, "Surface has a doubled or inconsistently wound edge");
+				Require(edges.contains({ edge.second, edge.first }), "Surface has a hole");
+			}
 		}
 
 		std::cout << "Starting OpenGL fixture" << std::endl;
@@ -312,6 +346,46 @@ public:
 				Require(!context.selectedMolecule, "Clear selection did not clear");
 				for (const auto& atom : context.renderAtomsHost)
 					Require(atom.flags.x == 0, "Clear selection left highlights");
+				// Licorice: bonds are found on first use, drawn, and picking a bond's middle gives one of its atoms
+				display.ApplyRepresentation(ColoringMethod::Licorice);
+				PrepareChanges(display);
+				Require(context.hasLicorice && context.bondCount == static_cast<int>(task->atoms.size()) - 1, "Licorice has no bonds");
+				Require(context.renderAtomsHost[0].position.w == DrawBondsShader::bondRadius, "Licorice atoms are not bond sized");
+				display.RenderFrame({});
+				{
+					const auto bonds = Rendering::FindBonds(*task);
+					int hits = 0;
+					for (const auto& [a, b] : bonds) {
+						const auto& pa = context.renderAtomsHost[a].position;
+						const auto& pb = context.renderAtomsHost[b].position;
+						const glm::vec4 middle{ (pa.x + pb.x) / 2.f, (pa.y + pb.y) / 2.f, (pa.z + pb.z) / 2.f, 1.f };
+						const auto clip = context.camera->ViewProjection() * middle;
+						const auto& viewport = display.viewports.at(50);
+						const glm::dvec2 pixel = viewport.origin + glm::dvec2((clip.x / clip.w + 1.) / 2., (1. - clip.y / clip.w) / 2.) * viewport.size;
+						const int picked = display.GetObjectIdAtPixel(pixel);
+						hits += picked == a || picked == b;
+					}
+					// Some bond middles are behind other bonds or atoms
+					Require(hits > static_cast<int>(bonds.size()) / 2, "Bonds are not drawn or not pickable");
+				}
+				display.ApplyRepresentation(ColoringMethod::Atomname);
+				PrepareChanges(display);
+				Require(!context.hasLicorice, "Licorice stayed on after switching back");
+
+				// Surface: hides the atoms, builds a mesh around the heavy atoms, and picking it gives one of them
+				display.ApplyRepresentation(ColoringMethod::Surface);
+				PrepareChanges(display);
+				Require(context.surfaceRenderer && context.surfaceRenderer->HasGeometry(), "Surface has no geometry");
+				Require(context.renderAtomsHost[0].color.w == 0.f, "Surface left the atoms drawn");
+				display.RenderFrame({});
+				{
+					const int picked = display.GetObjectIdAtPixel(AtomPixel(display, 50, carbons->selection.atomIds.front()));
+					Require(picked >= 0 && task->atoms[picked].atomLetter != 'H', "Picking the surface gave no heavy atom");
+				}
+				display.ApplyRepresentation(ColoringMethod::Atomname);
+				PrepareChanges(display);
+				Require(!context.surfaceRenderer->HasGeometry(), "Surface stayed after switching back");
+
 				// Classic style: the old shader must still draw pickable atoms
 				display.overlay->submittedCommands.push_back(Overlay::ClassicAtoms{ true });
 				display.ConsumeInputs();

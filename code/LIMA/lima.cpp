@@ -221,6 +221,8 @@ namespace RenderCli {
 			{ "compound", ColoringMethod::PersistentClusterId },
 			{ "backbone", ColoringMethod::NewCartoon },
 			{ "lipids", ColoringMethod::Lipids },
+			{ "licorice", ColoringMethod::Licorice },
+			{ "surface", ColoringMethod::Surface },
 		};
 		const auto found = representations.find(Lowercase(name));
 		if (found == representations.end())

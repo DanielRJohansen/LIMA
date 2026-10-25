@@ -8,6 +8,7 @@
 #include "RenderUtilities.cuh"
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
+#include "SurfaceRenderer.h"
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "SSBO.h"
@@ -48,6 +49,20 @@ public:
 	}
 };
 
+// With LIMA_RENDER_TIMING set, prints the time of a one-off CPU step, such as building geometry
+class ScopedCpuTimer {
+	static inline const bool enabled = std::getenv("LIMA_RENDER_TIMING") != nullptr;
+	const char* name;
+	std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+public:
+	explicit ScopedCpuTimer(const char* name) : name(name) {}
+	~ScopedCpuTimer() {
+		if (enabled)
+			std::printf("[render timing] %s: %.1f ms\n", name,
+				std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+	}
+};
+
 void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, size_t atomId, size_t atomCount,
 	const RenderSettings& settings, float forceMagnitude = 0.f) {
 	const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
@@ -55,13 +70,16 @@ void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, si
 	const auto coloringMethod = static_cast<ColoringMethod>(renderAtom.flags.y);
 	const bool lipidHead = coloringMethod == ColoringMethod::Lipids && atom.lipidPart == Rendering::LipidPart::Head;
 	const bool lipidBody = coloringMethod == ColoringMethod::Lipids && atom.lipidPart == Rendering::LipidPart::Body;
-	renderAtom.position.w = lipidHead ? LipidRenderer::headRadius : RenderUtilities::getRadius(atomType);
+	// Licorice atoms have the bond radius, so they round off the bonds' ends
+	renderAtom.position.w = lipidHead ? LipidRenderer::headRadius
+		: coloringMethod == ColoringMethod::Licorice ? DrawBondsShader::bondRadius
+		: RenderUtilities::getRadius(atomType);
 	if (lipidHead) {
 		const glm::vec4 color = LipidRenderer::HeadColor(atom.lipidHeadgroup);
 		renderAtom.color = float4{ color.r, color.g, color.b, color.a };
 	}
 	else if (coloringMethod == ColoringMethod::Atomname || coloringMethod == ColoringMethod::NewCartoon
-		|| coloringMethod == ColoringMethod::Lipids)
+		|| coloringMethod == ColoringMethod::Lipids || coloringMethod == ColoringMethod::Licorice)
 		renderAtom.color = RenderUtilities::getColor(atomType);
 	else if (coloringMethod == ColoringMethod::Charge)
 		renderAtom.color = RenderUtilities::GetColorInGradientBlueRed(chargeNormalized);
@@ -74,7 +92,8 @@ void ColorAtom(RenderAtom& renderAtom, const Rendering::AtomRenderData& atom, si
 		renderAtom.color = RenderUtilities::GetColorInGradientHue(static_cast<float>(atomId) / atomCount);
 	else if (coloringMethod == ColoringMethod::ForceMagnitude)
 		renderAtom.color = RenderUtilities::GetLogColorGradient(forceMagnitude, 1e5f, 1e11f);
-	if ((!settings.showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon || lipidBody)
+	if ((!settings.showSolvents && atom.isSolvent) || coloringMethod == ColoringMethod::NewCartoon || lipidBody
+		|| coloringMethod == ColoringMethod::Surface)
 		renderAtom.color.w = 0.f;
 }
 
@@ -168,6 +187,8 @@ void Display::_RenderAtoms(const RenderContext& renderContext) {
 
 	const glm::mat4 view = renderContext.camera->View();
 	const glm::mat4 projection = renderContext.camera->Projection();
+	if (renderContext.surfaceRenderer && renderContext.surfaceRenderer->HasGeometry())
+		renderContext.surfaceRenderer->Draw(*drawSurfaceShader, view, projection);
 
 	if (!renderContext.renderAtomsBuffer)
 		return;
@@ -176,6 +197,8 @@ void Display::_RenderAtoms(const RenderContext& renderContext) {
 		drawAtomsLegacyShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
 	else
 		drawAtomsFromCpuShader->Draw(*renderContext.renderAtomsBuffer, renderContext.renderAtomsHost.size(), view, projection);
+	if (renderContext.hasLicorice && renderContext.bondsBuffer)
+		drawBondsShader->Draw(*renderContext.renderAtomsBuffer, *renderContext.bondsBuffer, renderContext.bondCount, view, projection);
 }
 
 int Display::GetObjectIdAtPixel(glm::dvec2 cursor)
@@ -254,6 +277,10 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		drawAtomsFromCpuShader = std::make_unique<DrawAtomsShader>();
 	if (!drawAtomsLegacyShader)
 		drawAtomsLegacyShader = std::make_unique<DrawAtomsLegacyShader>();
+	if (!drawBondsShader)
+		drawBondsShader = std::make_unique<DrawBondsShader>();
+	if (!drawSurfaceShader)
+		drawSurfaceShader = std::make_unique<DrawSurfaceShader>();
 	renderContext.renderSettings->classicAtoms = classicAtoms;
 	if (!drawTrianglesShader)
 		drawTrianglesShader = std::make_unique<DrawTrianglesShader>();
@@ -264,8 +291,11 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 	renderTargetControl->Resize(framebufferSize);
 
 	// Preprocess all renderAtoms
-	if (!ignorePosition)
+	if (!ignorePosition) {
         renderContext.renderAtomsHost.assign(task.atoms.size(), RenderAtom{});
+        renderContext.bondsBuffer.reset();	// A new system has new bonds
+        renderContext.bondCount = 0;
+    }
 	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
 		const Rendering::AtomRenderData& atom = task.atoms[atomId];
 		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
@@ -340,6 +370,40 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		}
 	}
 
+	// The surface encloses the heavy atoms in the surface representation, leaving out hidden water
+	std::vector<SurfaceRenderer::Atom> surfaceAtoms;
+	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
+		const Rendering::AtomRenderData& atom = task.atoms[atomId];
+		if (renderContext.renderAtomsHost[atomId].flags.y != static_cast<unsigned int>(ColoringMethod::Surface)
+			|| atom.atomLetter == 'H' || (atom.isSolvent && !renderContext.renderSettings->showSolvents))
+			continue;
+		const auto atomType = RenderUtilities::RAS_getTypeFromAtomletter(atom.atomLetter, atom.isSolvent);
+		const float4 color = RenderUtilities::getColor(atomType);
+		surfaceAtoms.push_back({ static_cast<int>(atomId), RenderUtilities::getRadius(atomType),
+			glm::vec4(color.x, color.y, color.z, 1.f) });
+	}
+	if (!surfaceAtoms.empty()) {
+		if (!renderContext.surfaceRenderer)
+			renderContext.surfaceRenderer = std::make_unique<SurfaceRenderer>();
+		ScopedCpuTimer timer{ "building surface" };
+		renderContext.surfaceRenderer->Prepare(std::move(surfaceAtoms), task.positions);
+	}
+	else if (renderContext.surfaceRenderer) {
+		renderContext.surfaceRenderer->Clear();
+	}
+
+	renderContext.hasLicorice = std::ranges::any_of(renderContext.renderAtomsHost, [](const RenderAtom& atom) {
+		return atom.flags.y == static_cast<unsigned int>(ColoringMethod::Licorice);
+	});
+	if (renderContext.hasLicorice && !renderContext.bondsBuffer) {
+		ScopedCpuTimer timer{ "finding bonds" };
+		const auto bonds = Rendering::FindBonds(task);
+		renderContext.bondsBuffer = std::make_unique<SSBO>();
+		if (!bonds.empty())
+			renderContext.bondsBuffer->SetData(bonds);
+		renderContext.bondCount = static_cast<int>(bonds.size());
+	}
+
 	// Move the renderAtoms to device
 	if (!renderContext.renderAtomsBuffer)
 		renderContext.renderAtomsBuffer = std::make_unique<SSBO>();
@@ -369,6 +433,8 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 		renderContext.newCartoonRenderer->Update(currentTask.positions);
 	if (renderContext.lipidRenderer && renderContext.lipidRenderer->HasGeometry())
 		renderContext.lipidRenderer->Update(currentTask.positions);
+	if (renderContext.surfaceRenderer && renderContext.surfaceRenderer->HasGeometry())
+		renderContext.surfaceRenderer->Update(currentTask.positions);
 	if (renderContext.activeGizmo && renderContext.activeGizmo->idOfAtomAttachedTo != -1 && renderContext.activeGizmo->idOfAtomAttachedTo < renderContext.renderAtomsHost.size()) {
 		int attachedAtomId = renderContext.activeGizmo->idOfAtomAttachedTo;
 		if (attachedAtomId < renderContext.renderAtomsHost.size()) {
@@ -387,6 +453,8 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, const Rendering
 		renderContext.newCartoonRenderer->Clear();
 	if (renderContext.lipidRenderer)
 		renderContext.lipidRenderer->Clear();
+	if (renderContext.surfaceRenderer)
+		renderContext.surfaceRenderer->Clear();
 	if (!drawBoxOutlineShader)
 		drawBoxOutlineShader = std::make_unique<DrawBoxOutlineShader>();
 

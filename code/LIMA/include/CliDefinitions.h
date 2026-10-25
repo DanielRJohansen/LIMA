@@ -106,7 +106,8 @@ Options:
       --hide-water             Hide water molecules
       --highlight INDEX...     Highlight zero-based atom indices
   -r, --representation NAME    Initial representation: atomname, charge, atomid,
-                               compound, backbone or lipids (default: atomname)
+                               compound, backbone, lipids, licorice or surface
+                               (default: atomname)
   -h, --help                   Display this help and exit
 
 Water models: tip3p, tip4p, tips3p, tip5p, spc, spce

@@ -1,5 +1,6 @@
 #include "Display.h"
 #include "DisplayInternal.h"
+#include "TrajectoryFile.h"
 #include "imgui.h"
 #include "Utilities.h"
 #include "SSBO.h"
@@ -573,6 +574,22 @@ void Display::ConsumeInputs() {
                 classicAtoms = cmd.enabled;
                 for (auto& [id, context] : renderContexts)
                     context.renderSettings->classicAtoms = classicAtoms;
+            }
+            else if constexpr (std::is_same_v<T, Overlay::Playback>) {
+                const auto context = renderContexts.find(cmd.simulationId);
+                if (context == renderContexts.end() || !context->second.playback) return;
+                TrajectoryPlayback& playback = *context->second.playback;
+                if (cmd.frame) {
+                    const int frameCount = playback.file->FrameCount();
+                    playback.frame = ((*cmd.frame % frameCount) + frameCount) % frameCount;	// Steps wrap around
+                    playback.playing = false;
+                }
+                if (cmd.playing) {
+                    playback.playing = *cmd.playing;
+                    playback.lastAdvance = std::chrono::steady_clock::now();
+                }
+                if (cmd.framesPerSecond)
+                    playback.framesPerSecond = *cmd.framesPerSecond;
             }
             else if constexpr (std::is_same_v<T, Overlay::SetTiled>) {
                 CancelInteraction();

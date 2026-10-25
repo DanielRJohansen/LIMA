@@ -12,6 +12,7 @@
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
 #include "SurfaceRenderer.h"
+#include "TrajectoryFile.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"
@@ -126,6 +127,19 @@ void Display::SetupCallbacks() {
                     break;
                 case GLFW_KEY_N:
                     display->debugValue = 1;
+                    break;
+                // Trajectory playback: space plays and pauses, comma and period step a frame
+                case GLFW_KEY_SPACE:
+                case GLFW_KEY_COMMA:
+                case GLFW_KEY_PERIOD:
+                    if (hasMouseContext && display->activeRenderContext && display->activeRenderContext->playback) {
+                        const auto& playback = *display->activeRenderContext->playback;
+                        if (key == GLFW_KEY_SPACE)
+                            display->overlay->submittedCommands.push_back(Overlay::Playback{ *display->activeSimulationId, !playback.playing });
+                        else
+                            display->overlay->submittedCommands.push_back(Overlay::Playback{ *display->activeSimulationId, std::nullopt,
+                                playback.frame + (key == GLFW_KEY_PERIOD ? 1 : -1) });
+                    }
                     break;
                 case GLFW_KEY_P: {
                     std::lock_guard<std::mutex> lock2(display->liveEditCommandsQueueMutex);
@@ -421,6 +435,8 @@ void Display::Mainloop() {
                 currentRenderContext.shouldRecolorAtoms = false;
                 anyNewTask = true;
             }
+            if (currentRenderContext.playback)
+                updatedPositions |= AdvancePlayback(currentRenderContext);
 
 			if (currentRenderContext.renderDataPipe
 				&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {

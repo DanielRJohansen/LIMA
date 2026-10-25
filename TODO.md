@@ -144,6 +144,10 @@ nsys needs `--cuda-graph-trace=node` to show graph kernels, but node tracing per
 
 # 5. Tooling, CLI and codebase
 
+## Display: image and movie export
+- **Image:** save the current view as a PNG, at a resolution above the window's (eg. 4x), with ambient occlusion. Render offscreen into a larger target, like `AmbientOcclusion`'s scene framebuffer, and read it back. Menu item plus a `lima render --screenshot PATH` option for scripted figures.
+- **Movie:** a camera orbit, or a trajectory played back, written as frames or encoded to MP4 (ffmpeg if found on the PATH, else PNG frames).
+
 ## Compile times
 Compiling takes forever. Can we optimize a bit?
 

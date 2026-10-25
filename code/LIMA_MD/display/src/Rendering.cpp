@@ -3,12 +3,14 @@
 #include "Shaders.h"
 #include "AmbientOcclusion.h"
 #include "TimeIt.h"
+#include "Format.h"
 #include "MDFiles.h"
 
 #include "RenderUtilities.cuh"
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
 #include "SurfaceRenderer.h"
+#include "TrajectoryFile.h"
 //#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "SSBO.h"
@@ -295,6 +297,16 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
         renderContext.renderAtomsHost.assign(task.atoms.size(), RenderAtom{});
         renderContext.bondsBuffer.reset();	// A new system has new bonds
         renderContext.bondCount = 0;
+        renderContext.playback.reset();
+        if (!task.trajectory.empty()) {
+            auto playback = std::make_unique<TrajectoryPlayback>();
+            playback->file = std::make_unique<TrajectoryFile>(task.trajectory);
+            if (playback->file->AtomCount() != static_cast<int>(task.atoms.size()))
+                throw std::runtime_error(Lima::Format("The trajectory has {} atoms, but the structure has {}",
+                    playback->file->AtomCount(), task.atoms.size()));
+            playback->lastAdvance = std::chrono::steady_clock::now();
+            renderContext.playback = std::move(playback);
+        }
     }
 	for (std::size_t atomId = 0; atomId < task.atoms.size(); ++atomId) {
 		const Rendering::AtomRenderData& atom = task.atoms[atomId];
@@ -419,7 +431,8 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 	// Update the renderAtoms
 	{
 		for (std::size_t atomId = 0; atomId < currentTask.atoms.size(); ++atomId) {
-			const int packedPositionIndex = currentTask.packedPositionIndices[atomId];
+			const int packedPositionIndex = update.positionsInAtomOrder
+				? static_cast<int>(atomId) : currentTask.packedPositionIndices[atomId];
 			if (packedPositionIndex < 0)
 				continue;
 			currentTask.positions[atomId] = update.positions[packedPositionIndex];
@@ -447,6 +460,30 @@ void Display::PrepareNewRenderTask(RenderContext& renderContext, Rendering::Atom
 }
 
 
+
+bool Display::AdvancePlayback(RenderContext& renderContext) {
+	auto* task = std::get_if<std::unique_ptr<Rendering::AtomRenderTask>>(&renderContext.currentRenderTask);
+	if (!renderContext.playback || !task)
+		return false;
+	TrajectoryPlayback& playback = *renderContext.playback;
+
+	const auto now = std::chrono::steady_clock::now();
+	const auto framePeriod = std::chrono::duration<float>(1.f / playback.framesPerSecond);
+	if (playback.playing && playback.shownFrame >= 0 && now - playback.lastAdvance >= framePeriod) {
+		playback.frame = (playback.frame + 1) % playback.file->FrameCount();	// Loops
+		playback.lastAdvance = now;
+	}
+	if (playback.frame == playback.shownFrame)
+		return false;
+
+	const TrajectoryFile::Frame frame = playback.file->Read(playback.frame);
+	playback.shownFrame = playback.frame;
+	playback.frameTime = frame.time;
+	SimStatus status = (*task)->simStatus;
+	status.step = frame.step;
+	PrepareNewRenderTask(renderContext, **task, Rendering::SimulationTaskUpdate{ frame.positions.data(), nullptr, status, true });
+	return true;
+}
 
 void Display::PrepareNewRenderTask(RenderContext& renderContext, const Rendering::MoleculehullTask& task) {
 	if (renderContext.newCartoonRenderer)

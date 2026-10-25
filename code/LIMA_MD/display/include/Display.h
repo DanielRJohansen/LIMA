@@ -44,6 +44,7 @@ struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
 class LipidRenderer;
 class SurfaceRenderer;
+struct TrajectoryPlayback;
 
 struct SimulationTab {
 	SimulationId simulationId = 0;
@@ -70,6 +71,7 @@ struct RenderContext {
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
 	std::unique_ptr<LipidRenderer> lipidRenderer;
 	std::unique_ptr<SurfaceRenderer> surfaceRenderer;
+	std::unique_ptr<TrajectoryPlayback> playback;	// When showing a trajectory
 	std::shared_ptr<RenderDataPipe> renderDataPipe;
 	std::vector<Float3> renderPositionsHost;
 	std::string label;
@@ -150,6 +152,8 @@ private:
 	void HandleGizmo(int atomId);
 	void SelectMolecule(int atomId);
 	void SetSelection(RenderContext&, Rendering::MoleculeInfo selection);
+	// Shows the trajectory frame playback is at, advancing it first when playing and due
+	bool AdvancePlayback(RenderContext&);	// True when it showed a new frame
 	int GetObjectIdAtPixel(glm::dvec2);
 	void ConsumeInputs();
 

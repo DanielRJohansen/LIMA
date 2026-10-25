@@ -8,6 +8,7 @@
 #include "Simulation.cuh"
 
 #include <array>
+#include <filesystem>
 #include <memory>
 #include <set>
 #include <variant>
@@ -60,6 +61,7 @@ namespace Rendering {
 		std::vector<MoleculeInfo> molecules;
 		bool showSolvents = true;
 		std::optional<ColoringMethod> representation; // Initial representation, otherwise the display keeps its current
+		std::filesystem::path trajectory; // .xtc or .trr to play back, in the atom order of the structure
 
 		AtomRenderTask(const GroFile& grofile, bool showSolvents = true);
 		AtomRenderTask(
@@ -92,6 +94,8 @@ namespace Rendering {
 		const Float3* const positions = nullptr;
 		const float* const forceMagnitudes = nullptr;
 		SimStatus simStatus;
+		// Positions indexed by atom id, as in a trajectory, rather than in the engine's packed order
+		const bool positionsInAtomOrder = false;
 	};
 
 	struct MoleculehullTask {	

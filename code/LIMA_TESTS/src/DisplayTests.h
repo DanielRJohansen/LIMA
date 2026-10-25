@@ -5,6 +5,10 @@
 #include "NewCartoonRenderer.h"
 #include "LipidRenderer.h"
 #include "SurfaceRenderer.h"
+#include "TrajectoryFile.h"
+#include "Trajectory.h"
+#include "xdrfile.h"
+#include "xdrfile_xtc.h"
 #include "BoxBuilder.cuh"
 #include "RenderDataPipe.h"
 #include "imgui.h"
@@ -183,6 +187,39 @@ public:
 			}
 		}
 
+		std::cout << "Checking trajectory reading" << std::endl;
+		// POPC shifted 0.1 nm along x per frame, as .trr and .xtc
+		const GroFile trajectoryStructure{ slipids / "POPC.gro" };
+		const int trajectoryAtoms = static_cast<int>(trajectoryStructure.atoms.size());
+		const auto Expected = [&](int frame, int atom) {
+			return trajectoryStructure.atoms[atom].position + Float3{ 0.1f * frame, 0.f, 0.f };
+		};
+		const fs::path trrPath = fs::temp_directory_path() / "lima_display_test.trr";
+		const fs::path xtcPath = fs::temp_directory_path() / "lima_display_test.xtc";
+		{
+			Trajectory trajectory{ 3, trajectoryAtoms, trajectoryStructure.box_size, 0.01f, 10 };
+			for (int frame = 0; frame < 3; ++frame)
+				for (int atom = 0; atom < trajectoryAtoms; ++atom)
+					trajectory.Set(frame, atom, Expected(frame, atom));
+			MDFiles::Dump(trajectory, trrPath);
+
+			XDRFILE* xtc = xdrfile_open(xtcPath.string().c_str(), "w");
+			matrix box{ { trajectoryStructure.box_size.x, 0, 0 }, { 0, trajectoryStructure.box_size.y, 0 }, { 0, 0, trajectoryStructure.box_size.z } };
+			for (int frame = 0; frame < 3; ++frame)
+				write_xtc(xtc, trajectoryAtoms, frame * 10, frame * 10.f, box, reinterpret_cast<rvec*>(trajectory.GetFrame(frame)), 1000.f);
+			xdrfile_close(xtc);
+		}
+		for (const auto& [path, tolerance] : { std::pair{ trrPath, 0.f }, std::pair{ xtcPath, 0.001f } }) {
+			TrajectoryFile file{ path };
+			Require(file.AtomCount() == trajectoryAtoms && file.FrameCount() == 3, "Trajectory has the wrong size");
+			for (int frame : { 2, 0, 1, 2 }) {	// Out of order, as when scrubbing
+				const auto read = file.Read(frame);
+				Require(read.step == frame * 10, "Trajectory frame has the wrong step");
+				for (int atom = 0; atom < trajectoryAtoms; ++atom)
+					Require((read.positions[atom] - Expected(frame, atom)).len() <= tolerance, "Trajectory frame has the wrong positions");
+			}
+		}
+
 		std::cout << "Starting OpenGL fixture" << std::endl;
 		{
 			// Keep the window and OpenGL context on this thread for deterministic assertions.
@@ -320,6 +357,38 @@ public:
 					"Atoms were not restored after the lipid representation");
 			}
 			Require(glGetError() == GL_NO_ERROR, "OpenGL error during lipid tests");
+
+			std::cout << "Checking trajectory playback" << std::endl;
+			{
+				auto task = std::make_unique<Rendering::AtomRenderTask>(trajectoryStructure, true);
+				task->trajectory = trrPath;
+				auto& context = display.renderContexts[60];
+				context.currentRenderTask = std::move(task);
+				display.PrepareTask(context, context.currentRenderTask, false);
+				const auto ShowsFrame = [&](int frame) {
+					for (int atom = 0; atom < trajectoryAtoms; ++atom) {
+						const auto& p = context.renderAtomsHost[atom].position;
+						if ((Float3{ p.x, p.y, p.z } - Expected(frame, atom)).len() > 1e-6f)
+							return false;
+					}
+					return true;
+				};
+				Require(context.playback && display.AdvancePlayback(context) && ShowsFrame(0), "Playback did not show the first frame");
+				display.overlay->submittedCommands.push_back(Overlay::Playback{ 60, std::nullopt, 2 });
+				display.ConsumeInputs();
+				Require(!context.playback->playing, "Seeking did not pause");
+				Require(display.AdvancePlayback(context) && ShowsFrame(2), "Seeking did not show the frame");
+				Require(!display.AdvancePlayback(context), "A paused trajectory advanced");
+				display.overlay->submittedCommands.push_back(Overlay::Playback{ 60, std::nullopt, 0 });
+				display.ConsumeInputs();
+				Require(display.AdvancePlayback(context) && ShowsFrame(0), "Seeking to the first frame failed");
+				display.overlay->submittedCommands.push_back(Overlay::Playback{ 60, std::nullopt, -1 });
+				display.ConsumeInputs();
+				Require(display.AdvancePlayback(context) && ShowsFrame(2), "Stepping back from the first frame did not wrap");
+				display.renderContexts.erase(60);
+			}
+			fs::remove(trrPath);
+			fs::remove(xtcPath);
 
 			std::cout << "Checking menu selections" << std::endl;
 			{

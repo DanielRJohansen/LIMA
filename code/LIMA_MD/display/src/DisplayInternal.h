@@ -66,9 +66,11 @@ public:
 	struct RevolveCamera { SimulationId simulationId = 0; };
 	struct SetTiled { bool enabled = false; };
 	struct ClassicAtoms { bool enabled = false; };
+	// Changes to trajectory playback. A frame without playing pauses, as when scrubbing
+	struct Playback { SimulationId simulationId = 0; std::optional<bool> playing; std::optional<int> frame; std::optional<float> framesPerSecond; };
 	struct SelectSimulation { SimulationId simulationId = 0; };
 	struct Select { SimulationId simulationId = 0; Rendering::MoleculeInfo selection; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled, Select, ClassicAtoms>;
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled, Select, ClassicAtoms, Playback>;
 private:
 	bool didDrawThisFrame = false;
 	unsigned int logoTexture = 0;

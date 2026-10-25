@@ -208,4 +208,5 @@ private:
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
 	std::atomic_bool spinnerVisible = false;
+	std::chrono::steady_clock::time_point lastInputTime{};	// Of any GLFW input event; keeps the frame rate up while interacting
 };

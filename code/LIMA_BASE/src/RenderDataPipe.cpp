@@ -1,5 +1,6 @@
 #include "RenderDataPipe.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace {
@@ -11,7 +12,7 @@ namespace {
 
 RenderDataPipe::~RenderDataPipe() {
 	Stop();
-	if (!positions && !writeCompleted && !readStream)
+	if (!positions && !stagingPositions && !writeCompleted && !readStream)
 		return;
 	cudaSetDevice(deviceId);
 	if (readStream) {
@@ -24,6 +25,8 @@ RenderDataPipe::~RenderDataPipe() {
 	}
 	if (positions)
 		cudaFree(positions);
+	if (stagingPositions)
+		cudaFreeHost(stagingPositions);
 }
 
 void RenderDataPipe::Initialize(std::size_t count) {
@@ -37,6 +40,7 @@ void RenderDataPipe::Initialize(std::size_t count) {
 	}
 	CheckCuda(cudaGetDevice(&deviceId), "Could not get CUDA device for render data pipe");
 	CheckCuda(cudaMalloc(&positions, count * sizeof(Float3)), "Could not allocate render data pipe");
+	CheckCuda(cudaMallocHost(&stagingPositions, count * sizeof(Float3)), "Could not allocate render data staging buffer");
 	CheckCuda(cudaEventCreateWithFlags(&writeCompleted, cudaEventDisableTiming), "Could not create render data event");
 	CheckCuda(cudaStreamCreateWithFlags(&readStream, cudaStreamNonBlocking), "Could not create render data read stream");
 	positionCount = count;
@@ -71,10 +75,19 @@ bool RenderDataPipe::TryCopyToHost(Float3* destination, std::size_t destinationC
 		if (destinationCount < positionCount)
 			throw std::invalid_argument("Render destination is smaller than the render data pipe");
 		CheckCuda(cudaSetDevice(deviceId), "Could not select render data CUDA device");
-		CheckCuda(cudaStreamWaitEvent(readStream, writeCompleted), "Could not wait for render data");
-		CheckCuda(cudaMemcpyAsync(destination, positions, positionCount * sizeof(Float3), cudaMemcpyDeviceToHost, readStream),
+		// The engine's host side runs many steps ahead of the GPU, so waiting here for the write would block the render
+		// thread for most of StepsPerRender steps. Leave the data Ready and let the caller retry on its next frame
+		const cudaError_t written = cudaEventQuery(writeCompleted);
+		if (written == cudaErrorNotReady) {
+			State reading = State::Reading;
+			state.compare_exchange_strong(reading, State::Ready, std::memory_order_release, std::memory_order_relaxed);
+			return false;
+		}
+		CheckCuda(written, "Could not query render data event");
+		CheckCuda(cudaMemcpyAsync(stagingPositions, positions, positionCount * sizeof(Float3), cudaMemcpyDeviceToHost, readStream),
 			"Could not copy render data to host");
 		CheckCuda(cudaStreamSynchronize(readStream), "Could not finish copying render data to host");
+		std::copy_n(stagingPositions, positionCount, destination);
 		step = publishedStep.load(std::memory_order_relaxed);
 		State reading = State::Reading;
 		state.compare_exchange_strong(reading, State::Empty, std::memory_order_release, std::memory_order_relaxed);

@@ -14,6 +14,7 @@
 // Types and constants
 #define cudaError_t hipError_t
 #define cudaSuccess hipSuccess
+#define cudaErrorNotReady hipErrorNotReady
 #define cudaStream_t hipStream_t
 #define cudaEvent_t hipEvent_t
 #define cudaDeviceProp hipDeviceProp_t
@@ -72,6 +73,7 @@ inline hipError_t cudaHostGetDevicePointer(T** devicePtr, void* hostPtr, unsigne
 #define cudaEventDestroy hipEventDestroy
 #define cudaEventRecord hipEventRecord
 #define cudaEventSynchronize hipEventSynchronize
+#define cudaEventQuery hipEventQuery
 
 // Graphs: HIP builds launch steps directly (Engine.cu), but Engine keeps the members
 #define cudaGraphExec_t hipGraphExec_t

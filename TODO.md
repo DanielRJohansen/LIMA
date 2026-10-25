@@ -112,6 +112,9 @@ Profile both, then put the limits back.
   - Also check: `BoxImageBuilder.cpp` copies the whole `GroFile` into `BoxImage` (millions of atoms for 3J3Q). Move it if the caller doesn't need it afterwards.
 - **"ToGmx large CIF benchmark"** ~8.5 -> 10.2 s (limit 10 -> 12). Cause not investigated (ToGmx builds no box, so maybe the topology parser changes, or noise).
 
+## An open display costs ~15% simulation speed (2026-10-25)
+STMV runs at ~2.87 ms/step headless and ~3.3 ms/step with the display open, with the old and the new (ray-cast + AO) shaders alike, so it is not shader cost. Find out why and fix it. Each GL frame slows the CUDA steps (~0.6 ms of GL work per frame, yet 30 fps cost ~20% and 50 fps ~37%), so suspect WDDM context switching between the GL and CUDA contexts. Note the display also redraws on a timer when nothing changed. To measure: `Benchmarks::Bench` hardcodes `job.mode = EnvMode::Headless`, so pass `envmode` through and run limaprofile with `EnvMode::Full`.
+
 ## Startup latency for small systems
 Investigate time from command to first step, eg. T4 in a 7^3 nm^3 box.
 

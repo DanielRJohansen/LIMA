@@ -39,6 +39,7 @@ public:
 
 private:
 	Float3* positions = nullptr;
+	Float3* stagingPositions = nullptr;	// Pinned, so the copy to host runs at full speed
 	std::size_t positionCount = 0;
 	cudaEvent_t writeCompleted = nullptr;
 	cudaStream_t readStream = nullptr;

@@ -153,18 +153,14 @@ __device__ inline void calcDihedralbondForces(const Float3& pos_left, const Floa
 
 	const float cos_phi = A.dot(B) * (rAinv * rBinv);
 	const float sin_phi = C.dot(B) * (rCinv * rBinv);
+	// The negated IUPAC dihedral phi, so GROMACS' V = k (1 + cos(n phi - phi_0)) is k (1 + cos(n torsion + phi_0)). The sign of phi_0
+	// matters only for phases other than 0 and 180 degrees, eg. CHARMM36's glycerol torsions (60). torque is -dV/dtorsion
 	const float torsion = -atan2(sin_phi, cos_phi);
 
-	//if constexpr (ENABLE_POTE) {
-	//	potE = __half2float(dihedral.params.k_phi) * (1. + cos(__half2float(dihedral.params.n) * torsion - __half2float(dihedral.params.phi_0)));
-	//}
-	//const float torque = __half2float(dihedral.params.k_phi) * (__half2float(dihedral.params.n) * sin(__half2float(dihedral.params.n) * torsion 
-	//	- __half2float(dihedral.params.phi_0))) / NANO_TO_LIMA;
-
 	if constexpr (ENABLE_POTE) {
-		potE = dihedral.params.k_phi * (1. + cos(dihedral.params.n * torsion - dihedral.params.phi_0));
+		potE = dihedral.params.k_phi * (1. + cos(dihedral.params.n * torsion + dihedral.params.phi_0));
 	}
-	const float torque = dihedral.params.k_phi * (dihedral.params.n * sin(dihedral.params.n * torsion - dihedral.params.phi_0));
+	const float torque = dihedral.params.k_phi * (dihedral.params.n * sin(dihedral.params.n * torsion + dihedral.params.phi_0));
 
 	B = B * rBinv;
 	Float3 f1, f2, f3;

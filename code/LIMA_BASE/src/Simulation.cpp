@@ -1,4 +1,5 @@
 #include "Simulation.cuh"
+#include "Format.h"
 
 #include <functional>
 #include <type_traits> // For std::is_integral, std::is_floating_point, and static_assert
@@ -43,22 +44,36 @@ Simulation::Simulation(const SimParams& params, std::unique_ptr<Box> _box) :
 void Simulation::PrepareDataBuffers() {
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simParams.n_steps.value, uint64_t{ 1 });
-	// Standard Data Buffers 
+	// Standard Data Buffers
 	{
 		// Permanent Outputs for energy & trajectory analysis
 		const int nPclusters = box->persistentClusters.size();
 		const int particlesUpperbound = nPclusters * PersistentCluster::maxParticles;
-		const size_t n_datapoints = simParams.data_logging_interval > 0 ? particlesUpperbound * n_steps / simParams.data_logging_interval : 0;
-		const auto datasize_str = std::to_string((float)((2. * sizeof(float) * n_datapoints + sizeof(Float3) * n_datapoints) * 1e-6));
-		
-		//m_logger->print("Malloc " + datasize_str + " MB on host for data buffers\n");
+		const int interval = simParams.data_logging_interval;
+		// As ParticleDataBuffer sizes itself: one entry per logged step, and at least one
+		const uint64_t nEntries = interval > 0 ? std::max(n_steps / interval + (n_steps % interval != 0), uint64_t{ 1 }) : 1;
+		const uint64_t bytesPerEntry = static_cast<uint64_t>(particlesUpperbound) * ((logged.trajectory ? sizeof(Float3) : 0)
+			+ (logged.energy ? 2 * sizeof(float) : 0) + (logged.forces ? sizeof(Float3) : 0));
+		const uint64_t bytes = bytesPerEntry * nEntries;
+		// Fail before allocating, rather than swapping for hours or being killed partway into the run
+		if (const uint64_t available = FileUtils::AvailablePhysicalMemory(); available > 0 && bytes > available) {
+			std::string selected;
+			for (const auto& [on, name] : { std::pair{ logged.trajectory, "trajectory" }, { logged.energy, "energies" }, { logged.forces, "forces" } })
+				if (on) selected += (selected.empty() ? "" : ", ") + std::string{ name };
+			throw std::runtime_error(Lima::Format("Logging this run ({}) needs {:.1f} GB of RAM, {} frames of {:.1f} MB, but {:.1f} GB is available. "
+				"Raise data_logging_interval (now {}), run fewer steps, or leave out the outputs that need it (eg. --trajectory, save_energy)",
+				selected, bytes / 1e9, nEntries, bytesPerEntry / 1e6, available / 1e9, interval));
+		}
 
+		if (logged.energy) {
+			potE_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, n_steps, interval, nPclusters);
+			vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, n_steps, interval, nPclusters);
+		}
+		if (logged.forces)
+			forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, interval, nPclusters);
+		if (logged.trajectory)
+			traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, interval, nPclusters);
 
-		potE_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, n_steps, simParams.data_logging_interval, nPclusters);
-		vel_buffer = std::make_unique<ParticleDataBuffer<float>>(particlesUpperbound, n_steps, simParams.data_logging_interval, nPclusters);
-		forceBuffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, simParams.data_logging_interval, nPclusters);
-		traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, simParams.data_logging_interval, nPclusters);
-		
 		temperature_buffer.reserve(n_steps / simParams.steps_per_temperature_measurement + 1);
 	}
 

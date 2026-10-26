@@ -106,6 +106,9 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     job.topfile.emplace(topol);
     job.simParams = ip;
     job.mode = envmode;
+    // Only the trajectory is written from the logged data; sim_params outputs (save_energy, ...) add their own
+    job.logged = LoggedData::None();
+    job.logged.trajectory = !trajOut.empty() || uff;
     // Runs on an Environment worker thread while this thread waits in Get()
     job.onTimeEstimate = [&ctx](double secondsLeft) {
         if (secondsLeft >= 5.)
@@ -227,6 +230,7 @@ int Cli::RunBuildMembrane(const Context& ctx, int argc, char** argv) {
         SimParams::BasicEMSimParams(emtol), envmode);
     job.grofile->Get().title = "Membrane";
     job.topfile->Get().SetSystem("Membrane");
+    job.logged = LoggedData::None();
     auto emResult = Environment::Get().Submit(std::move(job)).Get();
 
     const MolecularSystem membrane = emResult.FinalSystem();
@@ -558,8 +562,9 @@ int Cli::RunInsertMolecules(const Context& ctx, int argc, char** argv) {
 
     // Always headless: a Full-mode job leaves the Environment's Display alive, and StaticbodyEnergyMinimize opens
     // its own. Two Displays drive GLFW from two threads at once, which crashes
-    auto emResult = Environment::Get().Submit(SimulationJob{
-        ctx.cwd, groSrc, *topSrc, SimParams::BasicEMSimParams(), Headless }).Get();
+    SimulationJob emJob{ ctx.cwd, groSrc, *topSrc, SimParams::BasicEMSimParams(), Headless };
+    emJob.logged = LoggedData::None();
+    auto emResult = Environment::Get().Submit(std::move(emJob)).Get();
     emResult.WriteCoordinatesTo(groSrc);
 
     SimulationBuilder::InsertSubmoleculesInSimulation(groTgt, topTgt, groSrc, topSrc, nInsertions, rotateRandomly);
@@ -662,8 +667,10 @@ int Cli::RunEnergyMinimization(const Context& ctx, int argc, char** argv) {
     parser.AddFlag({ "--display", "-d", "-display" }, [&render](){render=true;});
     parser.Parse(argc, argv);
 
-    auto emResult = Environment::Get().Submit(SimulationJob{ ctx.cwd, fs::canonical(ctx.Resolve(confPath)),
-        fs::canonical(ctx.Resolve(topPath)), SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly }).Get();
+    SimulationJob job{ ctx.cwd, fs::canonical(ctx.Resolve(confPath)),
+        fs::canonical(ctx.Resolve(topPath)), SimParams::BasicEMSimParams(emtol), render ? Full : ConsoleOnly };
+    job.logged = LoggedData::None();
+    auto emResult = Environment::Get().Submit(std::move(job)).Get();
     emResult.FinalSystem().coordinates.printToFile(ctx.Resolve(confPathOut));
 
     const auto& maxForces = emResult.simulation->maxForceBuffer;

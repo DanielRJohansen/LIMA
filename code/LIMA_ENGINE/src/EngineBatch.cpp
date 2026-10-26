@@ -209,7 +209,8 @@ namespace EngineBatch {
 			if (box.persistentClusters.size() != box.persistentClustersMetadata.size() || box.persistentClusters.size() != box.pclusterInterimStates.size()
 				|| box.particlesBondedToParticle.size() != box.boxparams.totalParticles || box.pclustersBondedToPcluster.size() != box.persistentClusters.size())
 				throw std::invalid_argument("Incomplete simulation particle metadata");
-			if (params.data_logging_interval > 0 && (!sim->traj_buffer || !sim->potE_buffer || !sim->vel_buffer || !sim->forceBuffer))
+			if (params.data_logging_interval > 0 && ((sim->logged.trajectory && !sim->traj_buffer)
+				|| (sim->logged.energy && (!sim->potE_buffer || !sim->vel_buffer)) || (sim->logged.forces && !sim->forceBuffer)))
 				throw std::invalid_argument("Simulation logging buffers have not been prepared");
 			if (sim->box->persistentClusters.empty()) throw std::invalid_argument("Cannot simulate an empty box");
 			if (auto mismatch = FindIncompatibility(*simulations.front(), *sim))

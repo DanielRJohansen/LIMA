@@ -157,6 +157,15 @@ struct Box {
 
 
 
+// The per-particle data logged every data_logging_interval steps, kept on host for the whole run. Only what a run's
+// outputs read is allocated, as it is O(particles * n_steps / interval)
+struct LoggedData {
+	bool trajectory = true;	// traj_buffer: trajectory files, self_diffusion, density_profile
+	bool energy = true;		// potE_buffer, vel_buffer: energy.xvg, SimAnalysis::analyzeEnergy
+	bool forces = true;		// forceBuffer: SimAnalysis::GetForces
+	static constexpr LoggedData None() { return { false, false, false }; }
+};
+
 // This stays on host
 class Simulation {
 	int64_t step=0;
@@ -165,7 +174,9 @@ public:
 	Simulation(const SimParams& simparams);
 	Simulation(const SimParams& simparams, std::unique_ptr<Box> box);
 	
+	// Allocates the buffers selected by 'logged'. Throws if they would not fit in the available RAM
 	void PrepareDataBuffers();
+	LoggedData logged;
 
 	inline int64_t getStep() const { return step; }
 	

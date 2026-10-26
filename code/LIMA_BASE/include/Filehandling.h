@@ -33,6 +33,9 @@ namespace FileUtils {
 	// Return the top level LIMA dir
 	fs::path GetLimaDir();
 
+	// Physical memory not in use by other processes, incl. reclaimable file cache [bytes]. 0 if unknown
+	uint64_t AvailablePhysicalMemory();
+
 	std::vector<std::array<fs::path, 2>> GetAllGroItpFilepairsInDir(const fs::path& dir);
 
 	template <typename T>

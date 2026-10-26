@@ -178,6 +178,12 @@ Compiling takes forever. Can we optimize a bit?
 - Undecided shape: a gmx-style `lima density -c conf.gro -f traj.trr` from files, an `mdrun --density` flag, and how to compare/average groups of runs (eg. LABEL=GLOB arguments).
 - The analyses behind ShowcaseMultisim (`SimAnalysis::WaterSelfDiffusion`) need the same before the showcase can be reproduced with lima commands.
 
+## Logging buffers are sized for the whole run: stream to disk
+`Simulation::PrepareDataBuffers` (`Simulation.cpp`) allocates `potE_buffer`, `vel_buffer`, `forceBuffer` and `traj_buffer` up front for every logged frame of the run, zero-initialized, so it is committed RAM: 32 B per padded particle slot (nPclusters * maxParticles) every `data_logging_interval` steps. STMV (~1.07M atoms, interval 5) needs >= 34 MB per frame: ~70 GB for 10k steps, ~700 GB for 100k. A large or long run fails or swaps long before the GPU is the limit.
+- **Done** (2026-10-26): `SimulationJob::logged` (`LoggedData`) selects the buffers; sim_params outputs add theirs, and the CLI asks only for the trajectory with --trajectory/--uff, nothing for em and buildmembrane. A plain mdrun of solvated 1UBQ now peaks at 0.19 GB whatever n_steps (was 4.3 GB at 20k steps). A run whose buffers exceed the available RAM is refused before it starts. Library jobs and tests still get all four by default.
+- **Left:** writing a trajectory needs twice its buffer, as `MakeTrajectory` builds a full second copy in input atom order (1UBQ, 20k steps: 2.9 GB).
+- Then stream to disk: a fixed-size ring of frames that a writer thread flushes to the .trr/.xtc/energy.xvg as the run goes, so RAM no longer scales with n_steps. Check the users of the whole buffers first: the analyses (self_diffusion, density_profile), the EM max-force history, display playback and the UFF export.
+
 ## Codebase TODOs
 Left from the 2026-10-20 sweep of TODO comments:
 - `TestBoxIsSavedCorrectlyBetweenSimulations` (`SetupTests.cpp`) only checks that the continued simulation exists. Make it compare frame 0 of the second run with the last frame of the first.

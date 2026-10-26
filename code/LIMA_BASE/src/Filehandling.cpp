@@ -142,6 +142,20 @@ namespace {
 	}
 }
 
+uint64_t FileUtils::AvailablePhysicalMemory() {
+#ifdef _WIN32
+	MEMORYSTATUSEX status{ .dwLength = sizeof(MEMORYSTATUSEX) };
+	return GlobalMemoryStatusEx(&status) ? status.ullAvailPhys : 0;
+#else
+	// MemAvailable counts reclaimable cache, unlike sysconf(_SC_AVPHYS_PAGES)
+	std::ifstream meminfo("/proc/meminfo");
+	for (std::string line; std::getline(meminfo, line);)
+		if (line.starts_with("MemAvailable:"))
+			return std::stoull(line.substr(13)) * 1024;	// [kB]
+	return 0;
+#endif
+}
+
 fs::path FileUtils::GetLimaDir() {
 	// Thread safe, as it is called concurrently by Environment's worker threads
 	static const fs::path limaDir = FindLimaDir();

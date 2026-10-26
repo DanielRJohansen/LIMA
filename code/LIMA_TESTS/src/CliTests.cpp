@@ -1136,6 +1136,11 @@ TestRoutine TestWait(fs::path workDir) {
 	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "boundarycondition=PBC",
 		"--conf-out", "setcase.gro" }, quiet));
 	ASSERT(ReadBytes(workDir / "setcase.gro") == ReadBytes(workDir / "set.gro"), "--set boundarycondition=PBC changed the run");
+	// A trajectory that can't fit in RAM is refused before the run, instead of allocating it all up front
+	auto tooLarge = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000000000000",
+		"--trajectory", "huge.trr" }, quiet);
+	ASSERT(tooLarge.exitCode == 1 && tooLarge.output.find("GB of RAM") != std::string::npos,
+		Lima::Format("A trajectory too large for RAM was not refused with its size. Output:\n{}", Tail(tooLarge.output)));
 	auto unknown = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "no_such_parameter=1" }, quiet);
 	ASSERT(unknown.exitCode != 0, "--set accepted an unknown parameter");
 

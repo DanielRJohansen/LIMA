@@ -426,8 +426,14 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 			next.job.configureSimulation(*simulation);
 		if (!next.job.name.empty())
 			simulation->name = next.job.name;
-		if (next.job.run)
+		if (next.job.run) {
+			// What RunAnalyses reads after an MD run
+			const SimParams& params = simulation->simParams;
+			simulation->logged = next.job.logged;
+			simulation->logged.energy |= params.save_energy && !params.em_variant;
+			simulation->logged.trajectory |= (params.self_diffusion || params.density_profile) && !params.em_variant;
 			simulation->PrepareDataBuffers();
+		}
 		if (next.job.run && simulation->simParams.em_variant)
 			Engine::PrepareEnergyMinimization(*simulation);
 		const auto elapsed = std::chrono::steady_clock::now() - started;

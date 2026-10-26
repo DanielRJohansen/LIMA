@@ -803,19 +803,29 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 	LogDrain& drain = *logDrains[simulationIndex];
 	drain.Join(); // Its buffers hold the previous drain until then
 
-	// A full ring or its final partial segment needs only four contiguous copies.
+	// A full ring or its final partial segment needs only four contiguous copies. Buffers the simulation's outputs don't
+	// read are not allocated on host (Simulation::logged), so they are not copied
 	const size_t width = sim.device.pclusters.count * PersistentCluster::maxParticles;
 	struct Copy { void* dst; const void* src; size_t bytes; };
 	std::vector<Copy> copies;
+	Simulation& host = *sim.simulation;
 	for (size_t entry = sim.nLogEntriesTransferred; entry < entries;) {
 		const size_t slot = entry % DatabuffersDeviceController::nStepsInBuffer;
 		const size_t chunk = std::min(entries - entry, DatabuffersDeviceController::nStepsInBuffer - slot);
 		const size_t src = sim.device.logOffset + slot * width;
-		copies.push_back({ sim.simulation->traj_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->traj_buffer + src, sizeof(Float3) * width * chunk });
-		copies.push_back({ sim.simulation->potE_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->potE_buffer + src, sizeof(float) * width * chunk });
-		copies.push_back({ sim.simulation->vel_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->vel_buffer + src, sizeof(float) * width * chunk });
-		copies.push_back({ sim.simulation->forceBuffer->getBufferAtIndex(entry), batch->dataBuffersDevice->forceBuffer + src, sizeof(Float3) * width * chunk });
+		if (host.traj_buffer)
+			copies.push_back({ host.traj_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->traj_buffer + src, sizeof(Float3) * width * chunk });
+		if (host.potE_buffer)
+			copies.push_back({ host.potE_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->potE_buffer + src, sizeof(float) * width * chunk });
+		if (host.vel_buffer)
+			copies.push_back({ host.vel_buffer->getBufferAtIndex(entry), batch->dataBuffersDevice->vel_buffer + src, sizeof(float) * width * chunk });
+		if (host.forceBuffer)
+			copies.push_back({ host.forceBuffer->getBufferAtIndex(entry), batch->dataBuffersDevice->forceBuffer + src, sizeof(Float3) * width * chunk });
 		entry += chunk;
+	}
+	if (copies.empty()) {	// Nothing logged is kept, eg. a plain mdrun or em
+		sim.nLogEntriesTransferred = entries;
+		return;
 	}
 	size_t totalBytes = 0;
 	for (const Copy& copy : copies) totalBytes += copy.bytes;

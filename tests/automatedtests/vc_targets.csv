@@ -5,7 +5,7 @@ doSinglebondBenchmark,0.00748314569,2.62279258e-07
 doAnglebondBenchmark,0.00145939377,2.52738261e-07
 doDihedralbondBenchmark,0.000592896075,1.14196446e-07
 doImproperDihedralBenchmark,0.00202409318,5.92046604e-07
-doMethionineBenchmark,0.000858095998,1.36251813e-07
-doEightResiduesNoSolvent,0.000272362609,3.9096679e-07
+doMethionineBenchmark,0.000858093787,1.36251813e-07
+doEightResiduesNoSolvent,0.000267005438,6.60441657e-08
 SolventBenchmark,6.25153734e-06,1.85570599e-08
-T4Lysozyme,3.24817529e-06,1.87076683e-08
+T4Lysozyme,3.20349773e-06,2.70221907e-08

@@ -93,6 +93,8 @@ struct SimulationJob {
 	std::function<void(GroFile&, TopologyFile&, SimParams&)> preprocess;
 	std::function<void(Simulation&)> configureSimulation;
 	std::function<void(SimulationResult&)> postprocess;
+	// Called once with the estimated remaining wall time [s] of an MD run, timed over steps 100-199 to skip the warm-up
+	std::function<void(double)> onTimeEstimate;
 	// Excludes the job from batch execution. Use this for reference runs and performance measurements.
 	bool mustRunAlone = false;
 	// Captures every CUDA kernel executed while this job's Engine exists.
@@ -168,6 +170,7 @@ class Environment
 		std::deque<LiveEdit::Command> liveEditCommandsQueue;
 		SimStatus simStatus{};
 		bool forceWriteSimstatusToDisplay = false;
+		std::function<void(double)> onTimeEstimate;
 		EnvMode mode;
 		fs::path workDir;
 	};
@@ -185,6 +188,11 @@ public:
 
 	// The most simulations in a batch that this simulation is the first member of: enough to fill the GPU
 	static size_t MaxBatchSize(const Simulation& first);
+
+	// resources/logo/logo_ascii.txt, or empty if missing
+	static std::string LogoAscii();
+	// Name of the GPU the engine runs on
+	static std::string GpuName();
 
 	// Closes the display window, unless a job is queued or running. For a long-lived process such as the lima
 	// daemon, where the window would otherwise outlive the simulations it showed
@@ -288,7 +296,7 @@ private:
 		std::unique_ptr<Simulation> simulation, EnvMode mode, const fs::path& workDir);
 	fs::path FixLiveEditPath(const fs::path& path) const;
 	
-	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate/*Performance hit*/, size_t simulationId = 0);
+	void UpdateSimstatus(SimulationSession& session, Engine& engine, bool alwaysUpdate/*Performance hit*/, size_t simulationId = 0);
 
 	// Returns false if display has been closed by user
 	bool HandleDisplay(Display* display);

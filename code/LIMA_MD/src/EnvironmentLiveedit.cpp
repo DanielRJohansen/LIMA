@@ -423,7 +423,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 			// Add step logic here
 			//shouldUpdateRender = true;
 			engine->step();
-			UpdateSimstatus(session, *engine, false, true);
+			UpdateSimstatus(session, *engine, true);
 
 			auto& pcBuffer = engine->OffloadPclusterState();
 			GatherPositionsIntoVector(liveeditData.positionData, pcBuffer, simulation->box->persistentClusters.size());

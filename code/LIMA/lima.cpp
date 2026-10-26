@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,30 @@
 #include "argparser.h"
 
 namespace fs = std::filesystem;
+
+// The logo with the version and device beside it, aligned to its bottom
+static std::string Banner() {
+    const std::vector<std::string> info{ "LIMA " LIMA_VERSION, "------------", "GPU: " + Environment::GpuName() };
+
+    std::vector<std::string> logo;
+    std::istringstream stream{ Environment::LogoAscii() };
+    for (std::string line; std::getline(stream, line);)
+        logo.push_back(line);
+    size_t width = 0;
+    for (const std::string& line : logo)
+        width = (std::max)(width, line.size());
+
+    const size_t rows = (std::max)(logo.size(), info.size());
+    const size_t firstInfoRow = rows - info.size();
+    std::string banner = "\n";
+    for (size_t row = 0; row < rows; ++row) {
+        std::string line = row < logo.size() ? logo[row] : std::string{};
+        if (row >= firstInfoRow && row - firstInfoRow < info.size())
+            line += std::string(width - line.size() + 4, ' ') + info[row - firstInfoRow];
+        banner += line + "\n";
+    }
+    return banner + "\n";
+}
 
 int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     const std::string helpText{ Cli::MdrunHelp };
@@ -81,10 +106,15 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     job.topfile.emplace(topol);
     job.simParams = ip;
     job.mode = envmode;
+    // Runs on an Environment worker thread while this thread waits in Get()
+    job.onTimeEstimate = [&ctx](double secondsLeft) {
+        if (secondsLeft >= 5.)
+            ctx.out << "Estimated time to finish: " << StringUtils::FormatTime(secondsLeft, 1, 1) << "\n" << std::flush;
+    };
+    ctx.out << Banner() << std::flush;
     auto result = env.Submit(std::move(job)).Get();
 
     const std::chrono::duration<double> enginetime = result.engineTime; // [s]
-    ctx.out << Lima::Format("Engine time {:f}\n", enginetime.count());
     if (result.execution.batchSize > 1)
         ctx.out << Lima::Format("Ran in a batch of {} simulations\n", result.execution.batchSize);
     result.FinalSystem().coordinates.printToFile(conf_out);
@@ -94,13 +124,20 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
 		MDFiles::Dump(traj, trajOut);
     }
 
+    std::vector<fs::path> written{ conf_out };
+    if (!trajOut.empty())
+        written.push_back(trajOut);
     if (uff) {
 		fs::path path = workDir / "trajectory.uff";
         result.WriteTrajectoryAsUff(path);
+        written.push_back(path);
     }
 
     const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
 	ctx.out << StringUtils::FormatPerformance(enginetime.count(), total_ns_simulated);
+    ctx.out << "\nFiles written:\n";
+    for (const fs::path& path : written)
+        ctx.out << "  " << path.string() << "\n";
 
     return 0;
 }

@@ -454,9 +454,11 @@ void Environment::RunPreparedSimulations(std::vector<PreparedSimulation> next, i
 	try {
 		BatchSession batch;
 		batch.sessions.reserve(next.size());
-		for (auto& member : next)
+		for (auto& member : next) {
 			batch.sessions.emplace_back(member.simulationId, std::move(member.simulation), member.job.mode,
 				member.job.workDir, member.job.maxRunTime);
+			batch.sessions.back().onTimeEstimate = member.job.onTimeEstimate;
+		}
 		if (next.front().job.run)
 			RunSimulation(batch, next.front().job.profileCuda);
 		// RunSimulation destroys Engine before any of its nonowning simulation
@@ -684,16 +686,20 @@ void Environment::sayHello() {
 	if (hasSaidHello)
 		return;
 	hasSaidHello = true;
+	std::cout << LogoAscii();
+}
 
+std::string Environment::LogoAscii() {
 	std::ifstream file(FileUtils::GetLimaDir() / "resources/logo/logo_ascii.txt");
-	if (!file) {
-		throw std::runtime_error("Failed to open logo file");
-	}
+	return { std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+}
 
-	std::string file_contents((std::istreambuf_iterator<char>(file)),
-		std::istreambuf_iterator<char>());
-
-	std::cout << file_contents;
+std::string Environment::GpuName() {
+	int device = 0;
+	cudaDeviceProp properties{};
+	if (cudaGetDevice(&device) != cudaSuccess || cudaGetDeviceProperties(&properties, device) != cudaSuccess)
+		return "unknown GPU";
+	return properties.name;
 }
 
 std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bool profileCuda) {
@@ -745,7 +751,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 		for (size_t i = 0; i < batch.sessions.size(); ++i) {
 			auto& session = batch.sessions[i];
 			if (session.engineTime) continue;
-			UpdateSimstatus(session, engine, true, true, i);
+			UpdateSimstatus(session, engine, true, i);
 			if (session.maxRunTime && std::chrono::steady_clock::now() - started >= *session.maxRunTime
 				&& !engine.GetRunStatus(i).simulation_finished) {
 				session.timedOut = true;
@@ -781,7 +787,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 	return elapsed;
 }
 
-void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bool printToConsole, bool alwaysUpdate, size_t simulationId) {
+void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bool alwaysUpdate, size_t simulationId) {
 	auto& simulation = session.simulation;
 	auto& simStatus = session.simStatus;
 	auto& time0 = session.time0;
@@ -801,14 +807,10 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		const double duration_ms = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() * 1e-3;
 		const double avgSteptime = duration_ms / (double)std::max<int64_t>(step - lastStep, 1);
 
-		if (printToConsole && session.mode == Full) {
-			//// First clear the current line
-			//printf("\r\033[K");
-			// Move cursor to the beginning of the line and clear it
-			printf("\033[1000D\033[K");
-
-			printf("Step #%06llu", step);
-			printf("\tAvg. time: %.2fms", avgSteptime);
+		if (session.onTimeEstimate && lastStep >= STEPS_PER_UPDATE - 1 && !simulation->simParams.em_variant) {
+			const int64_t stepsLeft = std::max<int64_t>(simulation->simParams.n_steps - 1 - step, 0);
+			session.onTimeEstimate(avgSteptime * 1e-3 * stepsLeft);
+			session.onTimeEstimate = nullptr;
 		}
 
 		time0 = std::chrono::steady_clock::now();

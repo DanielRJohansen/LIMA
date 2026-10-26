@@ -583,6 +583,8 @@ int Cli::RunEditConf(const Context& ctx, int argc, char** argv) {
     bool makeWhole = false;
     Float3 setCenter{FLT_MAX, FLT_MAX , FLT_MAX };
     Float3 rotate{FLT_MAX, FLT_MAX , FLT_MAX };
+    Float3 boxSize{ FLT_MAX };
+    std::optional<float> distance;
 
     parser.AddOption({ "--conf", "-c", "-conf" }, true, confInputPath);
     parser.AddOption({ "--topology", "-t", "-top" }, true, topInputPath);
@@ -590,7 +592,14 @@ int Cli::RunEditConf(const Context& ctx, int argc, char** argv) {
     parser.AddFlag({ "--whole", "-w", "-whole" }, [&makeWhole]() {makeWhole = true; });
     parser.AddOption({ "--set-center", "-set_center", "-sc" }, false, setCenter);
     parser.AddOption({ "--rotate", "-r", "-rotate" }, false, rotate);
+    parser.AddOption({ "--box-size", "-b", "-box" }, false, boxSize, true);
+    parser.AddOption({ "--distance", "-d" }, false, distance);
     parser.Parse(argc, argv);
+    const bool boxChosen = boxSize.x != FLT_MAX;
+    if (boxChosen && distance)
+        throw CliError("--box-size and --distance both set the box; choose one");
+    if (distance && *distance < 0.f)
+        throw CliError("--distance must not be negative");
     confInputPath = ctx.Resolve(confInputPath);
     topInputPath = ctx.Resolve(topInputPath);
     confOutputPath = ctx.Resolve(confOutputPath);
@@ -616,6 +625,16 @@ int Cli::RunEditConf(const Context& ctx, int argc, char** argv) {
     if (rotateChosen) {
         MoleculeUtils::RotateMolecule(grofile, rotate);
 	}
+
+    // The whole system, not a single molecule, so it also boxes a multi-chain protein from togmx
+    if (boxChosen) {
+        MoleculeUtils::SetBoxAndCenter(grofile, boxSize);
+    }
+    else if (distance) {
+        const float edge = MoleculeUtils::Diameter(grofile) + 2.f * *distance;
+        MoleculeUtils::SetBoxAndCenter(grofile, Float3{ edge });
+        ctx.out << Lima::Format("Cubic box of {:.3f} nm: the system's diameter plus 2 x {:.3f} nm\n", edge, *distance);
+    }
 
     grofile.printToFile(confOutputPath);
 

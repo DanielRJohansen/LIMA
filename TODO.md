@@ -17,10 +17,20 @@ Sections:
 Found with `D:\LIMA_ARTIFACTORY\release_battery` (`run_battery.sh`), lima 1.4.0.
 - **Done** (2026-10-26): togmx output solvates (internal-forcefield moleculetypes stay includes, each include written once), include paths use `/`, `--set` values are case-insensitive. Covered by limaclitest togmx and wait.
 - **Left:** `printToFile` still re-writes every moleculetype from a *local* include, so a local file with several moleculetypes (eg. a user-supplied `charmm27.ff/ions.itp`) is overwritten with only the last one.
-- **No CLI way to box a togmx protein:**
-  - `insertmolecule` throws `Illegal call to GetMoleculeType` (`MDFiles.h`), as the togmx topology also has the water and ion moleculetypes.
-  - `solvate` requires integer box sizes (`Box size must be integers`, and only checks x), which a CRYST1 cell never is; NMR and AlphaFold files have a 1 Å placeholder CRYST1. The engine handles any box, only `SolvateGrofile`'s 1 nm grid doesn't.
-  - Proposal: solvate any box (cells of box/floor(box) per axis); `editconf -b/--box-size` and `-d/--distance` for the whole system, as GROMACS' editconf; togmx keeps CRYST1 but hints when it's a placeholder or the protein doesn't fit.
+- **Done** (2026-10-26): boxing a togmx protein. `solvate` takes any box (cells of length/floor(length) per axis, as the engine; integer boxes give bitwise the same output), `editconf -b/--box-size` and `-d/--distance` (diameter + 2d, cubic, as GROMACS) for the whole system, and togmx notes when the crystal cell is missing or smaller than the protein.
+- **Left:** `insertmolecule` still throws `Illegal call to GetMoleculeType` for a togmx source, as its topology also has the water and ion moleculetypes. Decide whether it should insert every molecule of the source, or only the non-solvent ones.
+
+## togmx and topology findings from the full release battery (2026-10-26)
+Run `runs/20261026_190356` of `D:\LIMA_ARTIFACTORY\release_battery`; `tools/bondscan.py DIR...` lists bonds > 0.25 nm in togmx outputs. Ranked by severity:
+1. **togmx bonds the chain across every gap, silently.** Missing loops become stretched peptide bonds: 6VXX up to 2.81 nm, 1C3W 0.87 nm, `gap_missing_residues_20_25.pdb` 0.98 nm. Residues are renumbered consecutively, so the gap is hidden. EM then "converges" (max force < 100) by dragging the ends together; after EM no bond is > 0.25 nm. Split the chain at a gap (C(i)-N(i+1) far beyond a peptide bond, or a residue-number jump), with charged/capped ends, and report it.
+2. **In-chain modified residues are dropped as "ligands".** MSE, SEP, TPO, PTR, HYP, MLY, CSO and gramicidin's D-amino acids (1MAG keeps only its L residues) are listed under "Skipped HETATM records", and their neighbours are bonded across the hole (~0.45 nm, eg. 3EO6, 5EMB, 6CF4, 2ZPM, 1CAG). At least refuse or split the chain; better, map MSE->MET (and similar) as pdb2gmx users do by hand.
+3. **Residues without an `A` altloc vanish.** With only B/C altlocs, or lowercase altloc IDs, whole residues are dropped and bonded over as in 1 (`altloc_without_A.pdb`, `altloc_lowercase.pdb`). Keep the highest-occupancy altloc when the requested one is absent; compare altlocs case-insensitively.
+4. **Missing side-chain atoms are the most common real-world failure:** 13 of ~70 real entries (1AON, 1BRS, 3HHR, 1BL8, 2RH1, 6VSB, 1A28, 4DFR, 1TEN, ...) fail with "Heavy atom CG is missing in residue ...". pdb2gmx fails the same way, but the message should point to PDBFixer/MODELLER. `duplicate_atoms.pdb` also reports a missing heavy atom instead of the duplicate.
+5. **GROMACS topology compatibility:**
+   - `[ molecule_type ]` is rejected; GROMACS ignores `_` and `-` in directive names (`gmx_strcasecmp_min`).
+   - `[ molecules ]` names are matched case-sensitively; GROMACS matches them case-insensitively (angles1 defines `butane`, uses `Butane`).
+   - Pure-water OPLS systems (spc216, tip3p5) fail on an unused Ryckaert-Bellemans dihedraltype of the forcefield (`Unsupported dihedral funct 3`). Only error on dihedral types the system uses.
+6. **Investigate:** glycine_vacuo (10 atoms, CHARMM27, NoBC, no electrostatics, v-rescale 300 K) becomes unstable at step 300 unconstrained and at step 820 with h-bonds. Maybe [NoBC is only non-periodic in the force kernels](#nobc-is-only-non-periodic-in-the-force-kernels), maybe just a tiny thermostatted system.
 
 ## togmx: AMBER99SB force field
 **Done** (2026-10-24): `lima togmx --ff amber99sb`. Villin's coordinates give exactly pdb2gmx's topology (atoms, types, bonds, pairs, angles, dihedrals, impropers), test "ToGmx AMBER99SB matches GROMACS".

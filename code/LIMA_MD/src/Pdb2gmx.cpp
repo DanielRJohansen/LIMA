@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cfloat>
 #include <cmath>
 #include <execution>
 #include <fstream>
@@ -1529,8 +1530,25 @@ Programs::GmxConversionResult convertStructureToGmx(PdbInput input, const Progra
         positionRestraints.push_back(makePositionRestraints(molecules[i].residues));
     }
 
-    return Programs::GmxConversionResult{
-        makeGro(input.title, molecules, input.box), std::move(topology), std::move(positionRestraints), std::move(notes) };
+    GroFile gro = makeGro(input.title, molecules, input.box);
+
+    // The crystal cell is kept as the box, as pdb2gmx does. NMR and predicted structures have none, or a 1 A
+    // placeholder CRYST1, and an asymmetric unit need not fit its cell; then the box is only good for a new one
+    Float3 bbMin{ FLT_MAX }, bbMax{ -FLT_MAX };
+    for (const auto& atom : gro.atoms) {
+        bbMin = Float3::ElementwiseMin(bbMin, atom.position);
+        bbMax = Float3::ElementwiseMax(bbMax, atom.position);
+    }
+    const Float3 extent = bbMax - bbMin;
+    if (!input.box || extent.x > gro.box_size.x || extent.y > gro.box_size.y || extent.z > gro.box_size.z) {
+        const std::string problem = input.box
+            ? Lima::Format("the input's crystal cell ({:.2f} x {:.2f} x {:.2f} nm) is smaller than the protein ({:.2f} x {:.2f} x {:.2f} nm)",
+                gro.box_size.x, gro.box_size.y, gro.box_size.z, extent.x, extent.y, extent.z)
+            : std::string{ "the input has no crystal cell, so there is none" };
+        notes.push_back(Lima::Format("Box: {}. Set one before solvating, eg. 'lima editconf -c conf.gro -t topol.top -d 1.0'", problem));
+    }
+
+    return Programs::GmxConversionResult{ std::move(gro), std::move(topology), std::move(positionRestraints), std::move(notes) };
 }
 
 } // namespace

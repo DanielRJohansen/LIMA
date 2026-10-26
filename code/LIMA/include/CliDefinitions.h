@@ -183,7 +183,8 @@ Options:
 
 inline constexpr std::string_view EditConfHelp = R"(Usage: lima editconf [OPTION]...
 
-Transform a single molecule. Operations are applied in the order shown below.
+Transform a single molecule, or set the box of a whole system. Operations are
+applied in the order shown below.
 
 Options:
   -c, --conf PATH              Input coordinates (required)
@@ -192,7 +193,19 @@ Options:
   -w, --whole                  Make a PBC-fragmented molecule whole
       --set-center X Y Z       Set the geometric center
   -r, --rotate X Y Z           Rotate around z, y, then x, in radians
+  -b, --box-size NM [NM NM]    Set a cubic or x/y/z box and center the system in it
+  -d, --distance NM            Set a cubic box of the system's diameter (largest
+                               atom-atom distance) plus twice NM, and center the
+                               system in it, as GROMACS' editconf -d -bt cubic
   -h, --help                   Display this help and exit
+
+--whole, --set-center and --rotate need a single molecule; --box-size and
+--distance apply to every atom, eg. a multi-chain protein from togmx.
+
+Example:
+  lima togmx -f 1ubq.pdb
+  lima editconf -c conf.gro -t topol.top -d 1.0
+  lima solvate -c conf.gro -t topol.top
 )";
 
 inline constexpr std::string_view EnergyMinimizationHelp = R"(Usage: lima em [OPTION]...

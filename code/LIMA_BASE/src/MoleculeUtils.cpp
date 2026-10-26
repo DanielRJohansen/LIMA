@@ -78,6 +78,45 @@ float MoleculeUtils::Radius(const GroFile& grofile, const Float3& center) {
 }
 
 
+float MoleculeUtils::Diameter(const GroFile& grofile) {
+	if (grofile.atoms.empty())
+		return 0.f;
+	// Exact, but prunes the O(n^2) search: a pair is at most ri + rj apart, with r the distance to the centroid. With the
+	// atoms sorted by r, both loops stop once no remaining pair can beat the longest distance found
+	Float3 centroid{};
+	for (const auto& atom : grofile.atoms)
+		centroid += atom.position;
+	centroid = centroid / static_cast<float>(grofile.atoms.size());
+
+	struct Atom { Float3 position; float r; };
+	std::vector<Atom> atoms;
+	atoms.reserve(grofile.atoms.size());
+	for (const auto& atom : grofile.atoms)
+		atoms.push_back({ atom.position, (atom.position - centroid).len() });
+	std::ranges::sort(atoms, std::greater{}, &Atom::r);
+
+	float diameterSq = 0.f;
+	for (size_t i = 0; i < atoms.size(); i++) {
+		if ((atoms[i].r + atoms[0].r) * (atoms[i].r + atoms[0].r) <= diameterSq)
+			break;
+		for (size_t j = i + 1; j < atoms.size(); j++) {
+			if ((atoms[i].r + atoms[j].r) * (atoms[i].r + atoms[j].r) <= diameterSq)
+				break;
+			diameterSq = std::max(diameterSq, (atoms[i].position - atoms[j].position).lenSquared());
+		}
+	}
+	return std::sqrt(diameterSq);
+}
+
+void MoleculeUtils::SetBoxAndCenter(GroFile& grofile, Float3 boxSize) {
+	if (boxSize.x <= 0.f || boxSize.y <= 0.f || boxSize.z <= 0.f)
+		throw std::invalid_argument("Box size must be positive");
+	grofile.box_size = boxSize;
+	const Float3 translation = boxSize / 2.f - GeometricCenter(grofile);
+	for (auto& atom : grofile.atoms)
+		atom.position += translation;
+}
+
 void MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile::Moleculetype& moltype) {
 	MakeMoleculeWholeAtOffset(grofile, moltype, 0);
 }

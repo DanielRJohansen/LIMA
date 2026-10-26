@@ -253,16 +253,33 @@ struct ParticlePlaceholder {
 	int waterIndex = -1;	// Which water of the equilibrated water box a new water is a copy of
 };
 
-// 1 nm cells of atoms, for finding clashes between new waters and the atoms around them. Periodic: a cell index
-// at most one box length outside the grid wraps around
+// Cells of atoms, for finding clashes between new waters and the atoms around them. As in the engine, the box is
+// split into floor(length) cells per axis, so a cell is 1 nm in an integer box and up to 2 nm otherwise; never
+// shorter than the clash distances, so only the neighboring cells need searching. Periodic: a cell index at most
+// one box length outside the grid wraps around
 template<typename T>
 class SolvationGrid {
 	std::vector<std::vector<T>> nodes;
 	Int3 nodesPerDim{};
 
 public:
-	SolvationGrid(Int3 nodesPerDim) : nodesPerDim(nodesPerDim) {
+	const Float3 cellSize;	// [nm]
+
+	SolvationGrid(Float3 boxSize) : nodesPerDim(BoxParams::GridSizeForLength(boxSize)),
+		cellSize{ boxSize.x / nodesPerDim.x, boxSize.y / nodesPerDim.y, boxSize.z / nodesPerDim.z } {
 		nodes.resize(nodesPerDim.x * nodesPerDim.y * nodesPerDim.z);
+	}
+
+	Int3 Dims() const { return nodesPerDim; }
+
+	Float3 Origin(NodeIndex index3d) const {
+		return Float3{ index3d.x * cellSize.x, index3d.y * cellSize.y, index3d.z * cellSize.z };
+	}
+
+	// The cell of a position inside the box, clamped so a position rounding to the box length stays in the last cell
+	NodeIndex CellOf(Float3 position) const {
+		const auto Cell = [](float p, float size, int n) { return std::clamp(static_cast<int>(std::floor(p / size)), 0, n - 1); };
+		return NodeIndex{ Cell(position.x, cellSize.x, nodesPerDim.x), Cell(position.y, cellSize.y, nodesPerDim.y), Cell(position.z, cellSize.z, nodesPerDim.z) };
 	}
 
 	NodeIndex Wrap(NodeIndex index3d) const {
@@ -291,15 +308,11 @@ void DistributeGrofileparticlesInGrid(SolvationGrid<ParticlePlaceholder>& boxgri
 		Float3 absPosHyper = atom.position;
 		BoundaryConditionPublic::applyBCNM(absPosHyper, grofile.box_size, BoundaryConditionSelect::PBC);
 
-		const NodeIndex nodeindex = NodeIndex{ static_cast<int>(std::floor(absPosHyper.x)), static_cast<int>(std::floor(absPosHyper.y)), static_cast<int>(std::floor(absPosHyper.z)) };
+		const NodeIndex nodeindex = boxgrid.CellOf(absPosHyper);
 
 		// Make the positions relative to the nodeIndex
-		const Float3 relPos = absPosHyper - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
-		
-		if (relPos.x < 0.f || relPos.y < 0.f || relPos.z < 0.f || relPos.x >= 1.f || relPos.y >= 1.f || relPos.z >= 1.f) {
-			throw std::runtime_error("DistributeGrofileparticlesInGrid failed: Particle outside of box");
-		}
-		
+		const Float3 relPos = absPosHyper - boxgrid.Origin(nodeindex);
+
 
 		boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, true });
 	}
@@ -452,11 +465,11 @@ const EquilibratedWaterBox& LoadEquilibratedWaterBox() {
 }
 
 void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, int desiredSolventsPerNm3, const std::string& waterModel) {
-	if (grofile.box_size.x != ceil(grofile.box_size.x)) {
-		throw std::runtime_error("SolvateGroFile failed: Box size must be integers");
-	}
+	// A cell must be at least as long as the largest clash distance below, for the neighbor search to see every clash
+	if (grofile.box_size.x < 1.f || grofile.box_size.y < 1.f || grofile.box_size.z < 1.f)
+		throw std::invalid_argument(Lima::Format("Solvate needs a box of at least 1 nm per side, got {:.3f} x {:.3f} x {:.3f} nm",
+			grofile.box_size.x, grofile.box_size.y, grofile.box_size.z));
 
-	
 	// Solvating an empty box: the topology gets the forcefield of the water model, and a system to add the water to
 	if (!topfile.forcefieldInclude) {
 		topfile.forcefieldInclude = TopologyFile{ FileUtils::GetLimaDir() / "resources/forcefields/Slipids_2020.ff/forcefield.itp" }.forcefieldInclude;
@@ -468,11 +481,11 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 	if (topfile.moleculetypes.contains(waterMoltype->name) && topfile.moleculetypes.at(waterMoltype->name)->atoms != waterMoltype->atoms)
 		throw std::invalid_argument(Lima::Format("The topology already has a different moleculetype named {}", waterMoltype->name));
 
-	const Int3 gridDim = grofile.box_size.ToInt3();
 	const int nAtomsInput = grofile.atoms.size();
 	const int startResidueId = grofile.atoms.empty() ? 1 : grofile.atoms.back().residue_number + 1;
 
-	SolvationGrid<ParticlePlaceholder> boxgrid{ gridDim };
+	SolvationGrid<ParticlePlaceholder> boxgrid{ grofile.box_size };
+	const Int3 gridDim = boxgrid.Dims();
 
 
 	//SolvationGrid<Float3> nonSolventPositions{ gridDim };	// This is used to store the positions of the particles that are not solvents, so we can remove them later
@@ -512,8 +525,8 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 					const Float3 position = waterBox.oxygens[i] * scale + tileOffset;
 					if (position.x >= grofile.box_size.x || position.y >= grofile.box_size.y || position.z >= grofile.box_size.z)
 						continue;
-					const NodeIndex nodeindex{ static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y)), static_cast<int>(std::floor(position.z)) };
-					const Float3 relPos = position - Float3{ static_cast<float>(nodeindex.x), static_cast<float>(nodeindex.y), static_cast<float>(nodeindex.z) };
+					const NodeIndex nodeindex = boxgrid.CellOf(position);
+					const Float3 relPos = position - boxgrid.Origin(nodeindex);
 					boxgrid[nodeindex].emplace_back(ParticlePlaceholder{ relPos, false, false, i });
 				}
 			}
@@ -562,7 +575,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 
 							const NodeIndex otherNodeIndex = boxgrid.Wrap(NodeIndex{ x + offsetX, y + offsetY, z + offsetZ });
 
-							const Float3 relPosOffsetOther = Float3{ static_cast<float>(offsetX), static_cast<float>(offsetY), static_cast<float>(offsetZ) };
+							const Float3 relPosOffsetOther = boxgrid.Origin(NodeIndex{ offsetX, offsetY, offsetZ });
 
 							for (const auto& queryParticle : boxgrid[otherNodeIndex]) {
 								if (queryParticle.markedForDeletion)
@@ -616,7 +629,7 @@ void SimulationBuilder::SolvateGrofile(GroFile& grofile, TopologyFile& topfile, 
 					const Float3 h1Pos = (bisector * cosHalfAngle + inPlane * sinHalfAngle) * waterGeometry.bondLengths[0];
 					const Float3 h2Pos = (bisector * cosHalfAngle - inPlane * sinHalfAngle) * waterGeometry.bondLengths[1];
 
-					const Float3 blockOffset = Float3{ static_cast<float>(x), static_cast<float>(y), static_cast<float>(z) };
+					const Float3 blockOffset = boxgrid.Origin(nodeindex);
 					std::array<Float3, 3> positions;
 					positions[waterGeometry.center] = solvent.relPos + blockOffset;
 					positions[waterGeometry.others[0]] = solvent.relPos + blockOffset + h1Pos;

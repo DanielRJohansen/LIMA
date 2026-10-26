@@ -702,6 +702,22 @@ TestRoutine TestEditConf(fs::path workDir) {
 		maxRotationDisplacement = std::max(maxRotationDisplacement, ((out.atoms[i].position - center) - (in.atoms[i].position - inCenter)).Len());
 	ASSERT(maxRotationDisplacement > 0.05, "The molecule was not rotated");
 
+	// --box-size sets an x/y/z box and centers the system in it, without moving the atoms relative to each other
+	RequireSuccess(Run(workDir, { "editconf", "-c", "met.gro", "-t", "met.top", "--conf-out", "boxed.gro", "-b", "3.5", "4", "4.5" }));
+	const Gro boxed = ReadGro(workDir / "boxed.gro");
+	ASSERT(std::abs(boxed.box.x - 3.5) < 1e-4 && std::abs(boxed.box.y - 4) < 1e-4 && std::abs(boxed.box.z - 4.5) < 1e-4,
+		Lima::Format("-b 3.5 4 4.5 gave a {} {} {} box", boxed.box.x, boxed.box.y, boxed.box.z));
+	Vec3 bbMin = boxed.atoms[0].position, bbMax = bbMin;
+	for (const auto& atom : boxed.atoms) {
+		bbMin = { std::min(bbMin.x, atom.position.x), std::min(bbMin.y, atom.position.y), std::min(bbMin.z, atom.position.z) };
+		bbMax = { std::max(bbMax.x, atom.position.x), std::max(bbMax.y, atom.position.y), std::max(bbMax.z, atom.position.z) };
+	}
+	const Vec3 bbCenter = (bbMin + bbMax) / 2.0;
+	ASSERT((bbCenter - Vec3{ 1.75, 2, 2.25 }).Len() < 0.002, "-b did not center the system in the box");
+	ASSERT(std::abs((boxed.atoms[0].position - boxed.atoms[1].position).Len() - (in.atoms[0].position - in.atoms[1].position).Len()) < 0.002,
+		"-b moved atoms relative to each other");
+	RequireExitCode(Run(workDir, { "editconf", "-c", "met.gro", "-t", "met.top", "-b", "4", "-d", "1" }), 2);
+
 	Preview(workDir, "out.gro", "met.top");
 	co_return LimaUnittestResult{ true, OneLineMessage("Rigid, centered, rotated (distance error {:.4f} nm)", maxDistanceError), false };
 }
@@ -737,17 +753,33 @@ TestRoutine TestToGmx(fs::path workDir) {
 	ASSERT(hasRestraints, "No position restraint file was written");
 	ASSERT(ReadBytes(workDir / "lzm.top").find('\\') == std::string::npos, "lzm.top has a backslash in an include path");
 
+	// The workflow after togmx: a cubic box of the protein's diameter plus 2 x 1 nm, which is not a whole number of nm
+	RequireSuccess(Run(workDir, { "editconf", "-c", "lzm.gro", "-t", "lzm.top", "-d", "1.0", "--conf-out", "lzm_box.gro" }));
+	const Gro boxed = ReadGro(workDir / "lzm_box.gro");
+	double diameter = 0;
+	for (size_t i = 0; i < gro.atoms.size(); i++)
+		for (size_t j = i + 1; j < gro.atoms.size(); j++)
+			diameter = std::max(diameter, (gro.atoms[i].position - gro.atoms[j].position).Len());
+	RequireBox(boxed, diameter + 2.0, "lzm_box.gro");
+	for (const auto& atom : boxed.atoms)
+		ASSERT(atom.position.x > 0.9 && atom.position.y > 0.9 && atom.position.z > 0.9 && atom.position.x < boxed.box.x - 0.9
+			&& atom.position.y < boxed.box.y - 0.9 && atom.position.z < boxed.box.z - 0.9, "editconf -d did not center the protein in its box");
+
 	// The output solvates: the water and ions moleculetypes come from the internal forcefield, which has no copy beside
-	// the topology. Solvate needs an integer box, which the CRYST1 cell is not
-	{
-		std::string groText = ReadBytes(workDir / "lzm.gro");
-		groText.erase(groText.find_last_not_of("\r\n", groText.size()) + 1);
-		groText.erase(groText.find_last_of('\n') + 1);
-		std::ofstream(workDir / "lzm_box.gro") << groText << "  10.00000  10.00000  10.00000\n";
-	}
+	// the topology
 	RequireSuccess(Run(workDir, { "solvate", "-c", "lzm_box.gro", "-t", "lzm.top", "--water-model", "tip3p",
 		"--conf-out", "lzm_solv.gro", "--topology-out", "lzm_solv.top" }, { .timeout = 300s }));
-	RequireTopologyMatches(workDir / "lzm_solv.top", ReadGro(workDir / "lzm_solv.gro"));
+	const Gro solvated = ReadGro(workDir / "lzm_solv.gro");
+	RequireTopologyMatches(workDir / "lzm_solv.top", solvated);
+	for (size_t i = boxed.atoms.size(); i < solvated.atoms.size(); i++) {
+		const Vec3 p = solvated.atoms[i].position;
+		ASSERT(p.x > -0.2 && p.y > -0.2 && p.z > -0.2 && p.x < solvated.box.x + 0.2 && p.y < solvated.box.y + 0.2 && p.z < solvated.box.z + 0.2,
+			Lima::Format("Water atom {} is outside the non-integer box", i));
+	}
+	// Waters fill the box less the protein: at most the default density, and well above half of it
+	const double waters = (solvated.atoms.size() - boxed.atoms.size()) / 3.0;
+	const double boxWaters = SimulationBuilder::defaultSolventsPerNm3 * solvated.box.x * solvated.box.y * solvated.box.z;
+	ASSERT(waters < boxWaters && waters > 0.5 * boxWaters, Lima::Format("Added {:.0f} waters to a box that holds {:.0f}", waters, boxWaters));
 	const std::string solvatedTop = ReadBytes(workDir / "lzm_solv.top");
 	const size_t ionsInclude = solvatedTop.find("#include \"charmm27.ff/ions.itp\"");
 	ASSERT(ionsInclude != std::string::npos && solvatedTop.find("#include \"charmm27.ff/ions.itp\"", ionsInclude + 1) == std::string::npos,

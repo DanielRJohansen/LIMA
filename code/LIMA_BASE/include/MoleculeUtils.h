@@ -8,6 +8,12 @@ namespace MoleculeUtils {
 
 	float Radius(const GroFile& grofile, const Float3& center);
 
+	// The largest distance between two atoms [nm], as GROMACS' editconf uses for -d with a cubic box
+	float Diameter(const GroFile& grofile);
+
+	// Set the box, and translate all atoms so their geometric center is the box center, as GROMACS' editconf -box -c
+	void SetBoxAndCenter(GroFile& grofile, Float3 boxSize);
+
 	void MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile::Moleculetype& topfile);
 	void MakeMoleculeWholeAfterPBCFragmentation(GroFile& grofile, const TopologyFile& topfile);
 

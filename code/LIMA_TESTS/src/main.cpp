@@ -282,6 +282,8 @@ int RunAllUnitTests() {
 	ADD_TEST("ToGmx options and disulfides", ProgramsTests::TestToGmx_options);
 	ADD_TEST("ToGmx AMBER99SB matches GROMACS", ProgramsTests::TestToGmx_amber);
 	ADD_TEST("ToGmx CIF matches GROMACS", ProgramsTests::TestToGmx_ciffile);
+	ADD_TEST("ToGmx damaged input", ProgramsTests::TestToGmx_damagedInput);
+	ADD_TEST("Topology GROMACS conventions", ProgramsTests::TestTopology_gromacsConventions);
 	ADD_TEST("BuildSmallMembrane", TestBuildmembraneSmall, false);
 	ADD_TEST("BuildSphericalMembrane", TestSphericalMembraneBuilder);
 	ADD_TEST("TestBuildmembraneWithCustomlipidAndCustomForcefield", TestBuildmembraneWithCustomlipidAndCustomForcefield);

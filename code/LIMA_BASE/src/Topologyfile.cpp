@@ -32,7 +32,13 @@ using namespace FileUtils;
 // see DihedralSection
 class TopologySectionGetter {
 public:
-	constexpr TopologySection operator()(const std::string_view& directive) {
+	// Directive names compare as GROMACS' gmx_strcasecmp_min: case-insensitive, ignoring '-' and '_', so eg.
+	// [ molecule_type ] and [ Position-Restraints ] are valid
+	TopologySection operator()(const std::string_view& name) {
+		std::string directive;
+		for (const char c : name)
+			if (c != '_' && c != '-')
+				directive += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 		if (directive == "molecules") return molecules;
 		if (directive == "moleculetype") {
 			return moleculetype;
@@ -42,7 +48,7 @@ public:
 		if (directive == "pairs") return pairs;
 		if (directive == "angles") return angles;
 		if (directive == "dihedrals") return dihedrals;
-		if (directive == "position_restraints") return position_restraints;
+		if (directive == "positionrestraints") return position_restraints;
 		if (directive == "system") return _system;
 		if (directive == "cmap") return cmap;
 
@@ -59,9 +65,9 @@ public:
 
 		if (directive == "settles") return settles;
 		if (directive == "exclusions") return notimplemented;
-		if (directive == "nonbond_params") return notimplemented; // TODO implement this: https://manual.gromacs.org/current/reference-manual/topologies/parameter-files.html
+		if (directive == "nonbondparams") return notimplemented; // TODO implement this: https://manual.gromacs.org/current/reference-manual/topologies/parameter-files.html
 
-		throw std::runtime_error(Lima::Format("Got unexpected topology directive: {}", directive));
+		throw std::runtime_error(Lima::Format("Topology directive [ {} ] is not supported by LIMA", name));
 	}
 };
 
@@ -109,7 +115,7 @@ inline std::optional<fs::path> _SearchForFile(const fs::path& dir, const std::st
 
 
 /// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>
-constexpr bool HandleTopologySectionStartAndStop(std::string_view line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
+bool HandleTopologySectionStartAndStop(std::string_view line, TopologySection& currentSection, TopologySectionGetter& sectionGetter) {
 
 	if (line.empty() && currentSection == TopologySection::title) {
 		currentSection = no_section;
@@ -194,6 +200,10 @@ TopologySection DihedralSection(std::string_view line, bool types) {
 	case 2:
 		return types ? impropertypes : impropers;
 	default:
+		// A forcefield's parameters of other functs (eg. OPLS' Ryckaert-Bellemans, 3) are only an error once a
+		// [ dihedrals ] line uses that funct; [ dihedrals ] lines only match parameters of their own funct
+		if (types)
+			return notimplemented;
 		throw std::runtime_error(Lima::Format("Unsupported dihedral funct {}, LIMA has 1, 2, 4 and 9: {}", funct, line));
 	}
 }
@@ -784,6 +794,8 @@ private:
 		TopologySection section = state.section;
 		if (section == dihedraltypes || section == impropertypes)
 			section = DihedralSection(line, true);
+		if (section == notimplemented)
+			return;
 
 		switch (section) {
 		case TopologySection::moleculetype: {
@@ -823,7 +835,16 @@ private:
 
 			if (!topology.HasSystem())
 				throw std::runtime_error("Molecule section encountered before system section in file: " + path.string());
-			const auto moleculetype = topology.moleculetypes.find(molname);
+			auto moleculetype = topology.moleculetypes.find(molname);
+			// GROMACS matches the names case-insensitively
+			if (moleculetype == topology.moleculetypes.end()) {
+				moleculetype = std::ranges::find_if(topology.moleculetypes, [&molname](const auto& entry) {
+					return std::ranges::equal(entry.first, molname, [](char a, char b) {
+						return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
+					});
+				if (moleculetype != topology.moleculetypes.end())
+					molname = moleculetype->first;
+			}
 			if (moleculetype == topology.moleculetypes.end())
 				throw std::runtime_error(Lima::Format("Moleculetype {} not defined before being used in file: {}", molname, path.string()));
 			if (count > 0)

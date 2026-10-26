@@ -172,6 +172,8 @@ namespace ProgramsTests {
 	TestRoutine TestToGmx_multichain(Environment&, EnvMode envmode);
 	TestRoutine TestToGmx_options(Environment&, EnvMode envmode);
 	TestRoutine TestToGmx_amber(Environment&, EnvMode envmode);
+	TestRoutine TestToGmx_damagedInput(Environment&, EnvMode envmode);
+	TestRoutine TestTopology_gromacsConventions(Environment&, EnvMode envmode);
 }
 
 // SetupTests.cpp

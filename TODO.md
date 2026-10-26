@@ -21,16 +21,19 @@ Found with `D:\LIMA_ARTIFACTORY\release_battery` (`run_battery.sh`), lima 1.4.0.
 - **Left:** `insertmolecule` still throws `Illegal call to GetMoleculeType` for a togmx source, as its topology also has the water and ion moleculetypes. Decide whether it should insert every molecule of the source, or only the non-solvent ones.
 
 ## togmx and topology findings from the full release battery (2026-10-26)
-Run `runs/20261026_190356` of `D:\LIMA_ARTIFACTORY\release_battery`; `tools/bondscan.py DIR...` lists bonds > 0.25 nm in togmx outputs. Ranked by severity:
-1. **togmx bonds the chain across every gap, silently.** Missing loops become stretched peptide bonds: 6VXX up to 2.81 nm, 1C3W 0.87 nm, `gap_missing_residues_20_25.pdb` 0.98 nm. Residues are renumbered consecutively, so the gap is hidden. EM then "converges" (max force < 100) by dragging the ends together; after EM no bond is > 0.25 nm. Split the chain at a gap (C(i)-N(i+1) far beyond a peptide bond, or a residue-number jump), with charged/capped ends, and report it.
-2. **In-chain modified residues are dropped as "ligands".** MSE, SEP, TPO, PTR, HYP, MLY, CSO and gramicidin's D-amino acids (1MAG keeps only its L residues) are listed under "Skipped HETATM records", and their neighbours are bonded across the hole (~0.45 nm, eg. 3EO6, 5EMB, 6CF4, 2ZPM, 1CAG). At least refuse or split the chain; better, map MSE->MET (and similar) as pdb2gmx users do by hand.
-3. **Residues without an `A` altloc vanish.** With only B/C altlocs, or lowercase altloc IDs, whole residues are dropped and bonded over as in 1 (`altloc_without_A.pdb`, `altloc_lowercase.pdb`). Keep the highest-occupancy altloc when the requested one is absent; compare altlocs case-insensitively.
-4. **Missing side-chain atoms are the most common real-world failure:** 13 of ~70 real entries (1AON, 1BRS, 3HHR, 1BL8, 2RH1, 6VSB, 1A28, 4DFR, 1TEN, ...) fail with "Heavy atom CG is missing in residue ...". pdb2gmx fails the same way, but the message should point to PDBFixer/MODELLER. `duplicate_atoms.pdb` also reports a missing heavy atom instead of the duplicate.
-5. **GROMACS topology compatibility:**
-   - `[ molecule_type ]` is rejected; GROMACS ignores `_` and `-` in directive names (`gmx_strcasecmp_min`).
-   - `[ molecules ]` names are matched case-sensitively; GROMACS matches them case-insensitively (angles1 defines `butane`, uses `Butane`).
-   - Pure-water OPLS systems (spc216, tip3p5) fail on an unused Ryckaert-Bellemans dihedraltype of the forcefield (`Unsupported dihedral funct 3`). Only error on dihedral types the system uses.
-6. **Investigate:** glycine_vacuo (10 atoms, CHARMM27, NoBC, no electrostatics, v-rescale 300 K) becomes unstable at step 300 unconstrained and at step 820 with h-bonds. Maybe [NoBC is only non-periodic in the force kernels](#nobc-is-only-non-periodic-in-the-force-kernels), maybe just a tiny thermostatted system.
+Run `runs/20261026_190356` of `D:\LIMA_ARTIFACTORY
+elease_battery`; `tools/bondscan.py DIR...` lists bonds > 0.25 nm in togmx outputs.
+- **Done** (2026-10-26), tests "ToGmx damaged input" and "Topology GROMACS conventions":
+  - Chains are split where C(i)-N(i+1) > 0.3 nm, each piece its own molecule (`Protein_chain_A_2`, ...) with the --ter-n/--ter-c termini, and the breaks are listed (6VXX: 33 breaks, 36 molecules; no bond > 0.25 nm after EM or MD).
+  - MSE becomes MET. Other HETATM residues peptide-bonded into a chain are an error naming them; caps (ACE, NH2, NME, NMA, FOR) are dropped with a note.
+  - Altlocs compare case-insensitively; a residue without the requested one keeps its most occupied one, with a note.
+  - Missing heavy atoms point to PDBFixer/MODELLER; repeated atoms or residue records are an error.
+  - Topology directives ignore case, `_` and `-`; `[ molecules ]` names ignore case; `[ dihedraltypes ]` of unsupported functs are skipped, a molecule using one is still an error; unsupported directives say so.
+  - NoBC is rejected with a clear error (glycine_vacuo straddled the z=0 face, see [NoBC](#nobc-is-only-non-periodic-in-the-force-kernels)); with PBC the vacuum systems are stable.
+- **Left:**
+  - In-chain modified residues (SEP, TPO, PTR, HYP, MLY, CSO, PCA, D-amino acids, CRO) need templates to convert; for now they are an error. Capping groups could become the matching --ter-n/--ter-c instead of being dropped.
+  - Missing side chains are not rebuilt (13 of ~70 real entries).
+  - OPLS-AA: atomtypes whose `bond_type` differs from their name (`opls_001` -> `C`) are rejected, and Ryckaert-Bellemans dihedrals (funct 3) are unsupported; together they block every OPLS system in the battery.
 
 ## togmx: AMBER99SB force field
 **Done** (2026-10-24): `lima togmx --ff amber99sb`. Villin's coordinates give exactly pdb2gmx's topology (atoms, types, bonds, pairs, angles, dihedrals, impropers), test "ToGmx AMBER99SB matches GROMACS".
@@ -105,7 +108,7 @@ constraints = h-bonds (SHAKE/RATTLE per pcluster) and SETTLE are done. Left:
 
 ## NoBC is only non-periodic in the force kernels
 With `boundarycondition = NoBC` the force kernels use `NoBoundaryCondition`, but the rest of the pipeline stays periodic: `ApplyBoundaryCondition` (`ParticleClusters.cu`) wraps positions, `GetPclusterPositions` wraps the cluster centers, `ClusteringPretransferKernel` hyperpositions, and the neighbor search (`SuperclusterTaskBuilder.cu`) wraps cells and uses periodic images. A particle crossing the box edge is teleported to the other side, and its neighbors across the edge are listed but get no force. No test uses NoBC.
-- Either make clustering and neighbor search BC-aware end to end (no wrap, edge cells absorb out-of-box clusters via `CellOf`'s clamp, no periodic cell images), or reject NoBC for MD with a clear error.
+- **Rejected for now** (2026-10-26): `verifyEngine` throws for NoBC, as glycine_vacuo blew up from wrapped bonds. To support it, make clustering and neighbor search BC-aware end to end (no wrap, edge cells absorb out-of-box clusters via `CellOf`'s clamp, no periodic cell images).
 - Templating only `ApplyBoundaryCondition` is not enough: an unwrapped cluster would still be placed by its wrapped center.
 
 ## Exclusions differ from GROMACS in edge cases

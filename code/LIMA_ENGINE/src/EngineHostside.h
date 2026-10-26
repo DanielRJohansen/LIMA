@@ -21,8 +21,11 @@ void Engine::verifyEngine() {
 	const Int3 dim = batch->boxSize;
 	if (dim.x <= 0 || dim.y <= 0 || dim.z <= 0 || dim.x >= 1024 || dim.y >= 1024 || dim.z >= 1024)
 		throw std::invalid_argument("Unsupported engine box dimensions");
-	if (ENABLE_ES_LR && batch->params.enable_electrostatics && batch->params.bc_select != PBC)
-		throw std::invalid_argument("Electrostatics only supported with PBC");
+	// Only the force kernels are non-periodic with NoBC: positions, clusters and the neighbor search still wrap, so a
+	// molecule crossing a box face gets bonds across the box, and blows up. See TODO.md
+	if (batch->params.bc_select != PBC)
+		throw std::invalid_argument("boundarycondition=NoBC is not supported yet. For a molecule in vacuum, use PBC in a box that "
+			"keeps it far from its periodic images, eg. 'lima editconf -c conf.gro -t topol.top -d 3'");
 }
 
 ForceEnergyInterims::ForceEnergyInterims(int nBondgroupParticles, int nParticles, int nPclusters) {

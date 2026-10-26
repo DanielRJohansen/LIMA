@@ -312,4 +312,134 @@ namespace ProgramsTests {
 		}
 		co_return LimaUnittestResult{ true, "Success", envmode == Full };
 	}
+
+	// Inputs that used to convert silently into a wrong topology: chain gaps, in-chain HETATM residues, altlocs without
+	// the requested one, and repeated records. Each is 6lzm.pdb (one chain A, no HETATM, no altlocs) with one edit
+	TestRoutine TestToGmx_damagedInput(Environment&, EnvMode envmode) {
+		const fs::path directory = AutomatedTestsDir() / "pdb2gmx";
+		std::vector<std::string> lines;
+		{
+			std::ifstream source(directory / "6lzm.pdb");
+			for (std::string line; std::getline(source, line);) lines.push_back(line);
+		}
+		const auto isAtom = [](const std::string& line) { return line.starts_with("ATOM  "); };
+		const auto resnr = [](const std::string& line) { return std::stoi(line.substr(22, 4)); };
+		const fs::path input = directory / "generated_damaged.pdb";
+		const auto convert = [&](const std::vector<std::string>& edited) {
+			{
+				std::ofstream output(input);
+				for (const auto& line : edited) output << line << '\n';
+			}
+			return Programs::ToGmx(input);
+		};
+		const auto errorOf = [&](const std::vector<std::string>& edited) -> std::string {
+			try { convert(edited); }
+			catch (const std::exception& e) { return e.what(); }
+			return {};
+		};
+		const auto hasNote = [](const Programs::GmxConversionResult& result, std::string_view text) {
+			return std::ranges::any_of(result.notes, [&](const std::string& note) { return note.find(text) != std::string::npos; });
+		};
+		const size_t baseAtoms = Programs::ToGmx(directory / "6lzm.pdb").grofile.atoms.size();
+
+		// A gap: residues 20-25 removed. The chain is split there, instead of bonding 19 to 26 over ~1 nm
+		{
+			std::vector<std::string> gap;
+			for (const auto& line : lines)
+				if (!isAtom(line) || resnr(line) < 20 || resnr(line) > 25) gap.push_back(line);
+			const auto result = convert(gap);
+			TEST_ASSERT(result.topology.GetSystem().molecules.size() == 2 && result.topology.moleculetypes.contains("Protein_chain_A_2"),
+				"A chain with a gap was not split into Protein_chain_A and Protein_chain_A_2");
+			TEST_ASSERT(hasNote(result, "chain breaks"), "The chain break was not reported");
+			for (const auto& molecule : result.topology.GetSystem().molecules)
+				TEST_ASSERT(molecule.moleculetype->atoms.size() < baseAtoms, "A piece of the split chain has all the atoms");
+		}
+
+		// Selenomethionine as HETATM, as deposited, becomes MET
+		{
+			std::vector<std::string> mse;
+			for (auto line : lines) {
+				if (isAtom(line) && resnr(line) == 1) {
+					line.replace(0, 6, "HETATM");
+					line.replace(17, 3, "MSE");
+					if (line.substr(12, 4) == " SD ") line.replace(12, 4, "SE  ");
+				}
+				mse.push_back(line);
+			}
+			const auto result = convert(mse);
+			TEST_ASSERT(result.grofile.atoms.size() == baseAtoms, Lima::Format("MSE as MET gave {} atoms, MET {}", result.grofile.atoms.size(), baseAtoms));
+			TEST_ASSERT(hasNote(result, "selenomethionines"), "The MSE conversion was not reported");
+		}
+
+		// Any other HETATM residue inside the chain is an error, not dropped
+		{
+			std::vector<std::string> sep;
+			for (auto line : lines) {
+				if (isAtom(line) && resnr(line) == 44) {
+					line.replace(0, 6, "HETATM");
+					line.replace(17, 3, "SEP");
+				}
+				sep.push_back(line);
+			}
+			const std::string error = errorOf(sep);
+			TEST_ASSERT(error.find("non-standard residues inside a chain") != std::string::npos && error.find("SEP44") != std::string::npos,
+				"An in-chain HETATM residue did not give an error naming it: " + error);
+		}
+
+		// Altlocs: lowercase matches the requested A, and a residue with only B keeps B
+		for (const char altloc : { 'a', 'B' }) {
+			std::vector<std::string> alt;
+			for (auto line : lines) {
+				if (isAtom(line) && resnr(line) == 10) line[16] = altloc;
+				alt.push_back(line);
+			}
+			const auto result = convert(alt);
+			TEST_ASSERT(result.grofile.atoms.size() == baseAtoms, Lima::Format("Altloc {} on residue 10 lost atoms: {} vs {}", altloc, result.grofile.atoms.size(), baseAtoms));
+			TEST_ASSERT(hasNote(result, "most occupied") == (altloc == 'B'), Lima::Format("Altloc {}: wrong fallback note", altloc));
+		}
+
+		// Repeated records are an error, rather than a residue with half its atoms
+		{
+			std::vector<std::string> repeated = lines;
+			const auto firstAtom = std::ranges::find_if(repeated, isAtom);
+			repeated.insert(repeated.end() - 1, firstAtom, firstAtom + 5);
+			TEST_ASSERT(errorOf(repeated).find("appears twice") != std::string::npos, "Repeated residue records were not an error");
+			std::vector<std::string> duplicateAtom = lines;
+			const auto atom = std::ranges::find_if(duplicateAtom, isAtom);
+			duplicateAtom.insert(atom + 1, *atom);
+			TEST_ASSERT(errorOf(duplicateAtom).find("appears twice") != std::string::npos, "A duplicate atom was not an error");
+		}
+		TryDeleteFile(input);
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
+	}
+
+	// GROMACS topology conventions: directive names ignore case, '_' and '-', moleculetype names in [ molecules ] ignore
+	// case, and a forcefield's parameters of an unsupported funct are fine until a molecule uses them
+	TestRoutine TestTopology_gromacsConventions(Environment&, EnvMode envmode) {
+		const fs::path path = AutomatedTestsDir() / "generated_conventions.top";
+		const auto write = [&](std::string_view dihedrals) {
+			std::ofstream(path) << "[ defaults ]\n1 2 yes 0.5 0.8333\n\n"
+				"[ atomtypes ]\nCT 12.011 0.0 A 0.35 0.276\n\n"
+				"[ dihedraltypes ]\nCT CT CT CT 3 9.2789 12.156 -13.120 -3.0597 26.240 -31.495\n\n"
+				"[ Molecule_Type ]\nbutane 3\n\n"
+				"[ atoms ]\n1 CT 1 BUT C1 1 0 12.011\n2 CT 1 BUT C2 1 0 12.011\n3 CT 1 BUT C3 1 0 12.011\n4 CT 1 BUT C4 1 0 12.011\n\n"
+				"[ bonds ]\n1 2 1 0.153 334700\n2 3 1 0.153 334700\n3 4 1 0.153 334700\n\n"
+				"[ angles ]\n1 2 3 1 111 460\n2 3 4 1 111 460\n\n"
+				<< dihedrals
+				<< "[ position-restraints ]\n1 1 1000 1000 1000\n\n"
+				"[ system ]\nButane\n\n[ molecules ]\nButane 2\n";
+		};
+		write("");
+		const TopologyFile topology{ path };
+		TEST_ASSERT(topology.GetSystem().MoleculeCount() == 2 && topology.moleculetypes.contains("butane"),
+			"[ Molecule_Type ] butane, used as Butane, was not read as 2 molecules");
+
+		write("[ dihedrals ]\n1 2 3 4 3\n\n");
+		bool rejected = false;
+		try { TopologyFile{ path }; }
+		catch (const std::runtime_error& e) { rejected = std::string{ e.what() }.find("funct 3") != std::string::npos; }
+		TEST_ASSERT(rejected, "A Ryckaert-Bellemans dihedral used by a molecule was not rejected");
+		TryDeleteFile(path);
+		co_return LimaUnittestResult{ true, "Success", envmode == Full };
+	}
 }

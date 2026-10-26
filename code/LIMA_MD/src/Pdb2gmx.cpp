@@ -75,6 +75,7 @@ struct PdbResidue {
     std::string chain;
     int number{};
     char insertionCode{};
+    int segment = 0;                    // Pieces of a chain between chain breaks, see splitChainsAtBreaks
     std::unordered_map<std::string, PdbAtom, StringHash, StringEqual> atoms;
     std::string rtpOverride;            // Template chosen by the conversion (CYS2, HSE, ...), else from the name
     std::vector<int> disulfidePartners; // Indices of the residues, in the same chain, whose SG bonds to this SG
@@ -87,6 +88,9 @@ struct PdbInput {
     std::vector<PdbResidue> residues;
     std::optional<CrystalBox> box;
     std::map<std::string, int> skippedHetero;   // HETATM records by residue name
+    std::map<std::string, int> droppedCaps;     // Capping groups (ACE, NH2, ...) by residue name
+    std::vector<std::string> altlocFallbacks;   // Residues without the requested altloc, and the one kept instead
+    int convertedSelenomethionines = 0;
     int skippedAltlocs = 0;
     int skippedHydrogens = 0;
 };
@@ -94,6 +98,15 @@ struct PdbInput {
 struct ReadOptions {
     char altloc = 'A';
     bool ignoreHydrogens = false;
+};
+
+// An ATOM or HETATM record as read, before residues are assembled from them
+struct RawAtom {
+    PdbAtom atom;
+    bool hetero = false;
+    char altloc = ' ';      // ' ' when the atom has no alternate locations
+    float occupancy = 1.f;
+    bool hydrogen = false;
 };
 
 // Element from the record if given, else from the atom name (PDB names may start with a digit, eg. 1HB)
@@ -121,12 +134,148 @@ std::string lowercase(std::string value) {
     return value;
 }
 
+std::string residueLabel(const PdbResidue& residue) {
+    return Lima::Format("{}{}{}", residue.chain.empty() ? "" : residue.chain + ":", residue.name, residue.number);
+}
+
+// Groups the records of the first model into residues, and decides what of each residue to keep:
+// - Alternate locations: the requested one, compared case-insensitively, else the residue's most occupied one
+// - HETATM residues: selenomethionine (MSE) becomes MET. Other HETATM residues peptide-bonded into a chain (modified
+//   residues, D-amino acids, chromophores) have no template, and dropping them would join the chain across the hole,
+//   so they are an error; capping groups (ACE, NH2, ...) are dropped with a note. The rest (waters, ions, ligands) is skipped
+void assembleResidues(PdbInput& result, std::vector<RawAtom>& records, const ReadOptions& options, const fs::path& path) {
+    struct Group { std::size_t begin, end; bool hetero; };
+    std::vector<Group> groups;
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        const PdbAtom& atom = records[i].atom;
+        if (groups.empty() || [&] {
+                const PdbAtom& first = records[groups.back().begin].atom;
+                return first.chain != atom.chain || first.residueNumber != atom.residueNumber
+                    || first.insertionCode != atom.insertionCode || groups.back().hetero != records[i].hetero; }())
+            groups.push_back({ i, i, records[i].hetero });
+        groups.back().end = i + 1;
+    }
+
+    const char requested = static_cast<char>(std::toupper(static_cast<unsigned char>(options.altloc)));
+    std::vector<PdbResidue> residues;
+    std::vector<bool> hetero;
+    std::vector<std::optional<char>> fallbacks;    // The altloc kept instead of the requested one
+    residues.reserve(groups.size());
+    result.residues.reserve(groups.size());
+    for (const Group& group : groups) {
+        // The altloc to keep: the requested one if the residue has it, else its most occupied one
+        std::map<char, float> occupancies;
+        for (std::size_t i = group.begin; i < group.end; ++i)
+            if (records[i].altloc != ' ')
+                occupancies[static_cast<char>(std::toupper(static_cast<unsigned char>(records[i].altloc)))] += records[i].occupancy;
+        char kept = requested;
+        if (!occupancies.empty() && !occupancies.contains(requested)) {
+            kept = std::ranges::max_element(occupancies, {}, [](const auto& entry) { return entry.second; })->first;
+        }
+
+        PdbResidue residue;
+        for (std::size_t i = group.begin; i < group.end; ++i) {
+            RawAtom& record = records[i];
+            if (record.altloc != ' ' && std::toupper(static_cast<unsigned char>(record.altloc)) != kept) {
+                ++result.skippedAltlocs;
+                continue;
+            }
+            if (options.ignoreHydrogens && record.hydrogen) {
+                ++result.skippedHydrogens;
+                continue;
+            }
+            if (residue.atoms.empty()) {
+                residue = PdbResidue{ record.atom.residueName, record.atom.chain, record.atom.residueNumber, record.atom.insertionCode };
+            }
+            // try_emplace leaves the atom untouched when the name is taken, so it can still be named in the error
+            if (!residue.atoms.try_emplace(record.atom.name, std::move(record.atom)).second)
+                throw std::runtime_error(Lima::Format("Atom {} appears twice in residue {} of {}", record.atom.name, residueLabel(residue), path.string()));
+        }
+        if (residue.atoms.empty()) continue;
+        fallbacks.push_back(!occupancies.empty() && kept != requested ? std::optional<char>{ kept } : std::nullopt);
+        residues.push_back(std::move(residue));
+        hetero.push_back(group.hetero);
+    }
+
+    // Whether a HETATM residue is peptide-bonded to its neighbor in the file, of the same chain
+    constexpr float peptideBond = 0.2f;    // [nm], a C-N peptide bond is 0.133 nm
+    const auto distance = [](const PdbResidue& a, std::string_view atomA, const PdbResidue& b, std::string_view atomB) {
+        const auto first = a.atoms.find(atomA);
+        const auto second = b.atoms.find(atomB);
+        return first == a.atoms.end() || second == b.atoms.end() ? FLT_MAX : glm::distance(first->second.position, second->second.position);
+    };
+    const auto bondedToChain = [&](std::size_t r) {
+        const PdbResidue& residue = residues[r];
+        const auto anyAtomNear = [&](const PdbResidue& other, std::string_view otherAtom) {
+            return std::ranges::any_of(residue.atoms, [&](const auto& atom) { return distance(residue, atom.first, other, otherAtom) < peptideBond; });
+        };
+        return (r > 0 && residues[r - 1].chain == residue.chain && anyAtomNear(residues[r - 1], "C"))
+            || (r + 1 < residues.size() && residues[r + 1].chain == residue.chain && anyAtomNear(residues[r + 1], "N"));
+    };
+    static const std::set<std::string, std::less<>> caps{ "ACE", "NH2", "NME", "NMA", "FOR" };
+
+    // Before any residue is moved out, as the test looks at both neighbors
+    std::vector<bool> bonded(residues.size());
+    for (std::size_t r = 0; r < residues.size(); ++r)
+        bonded[r] = hetero[r] && bondedToChain(r);
+
+    std::vector<std::string> inChain;
+    for (std::size_t r = 0; r < residues.size(); ++r) {
+        PdbResidue& residue = residues[r];
+        const bool kept = !hetero[r] || residue.name == "MSE";
+        if (kept && fallbacks[r])
+            result.altlocFallbacks.push_back(Lima::Format("{} ({})", residueLabel(residue), *fallbacks[r]));
+        if (!hetero[r]) {
+            result.residues.push_back(std::move(residue));
+            continue;
+        }
+        if (residue.name == "MSE") {
+            residue.name = "MET";
+            if (auto selenium = residue.atoms.extract(std::string_view{ "SE" })) {
+                selenium.key() = "SD";
+                selenium.mapped().name = "SD";
+                residue.atoms.insert(std::move(selenium));
+            }
+            for (auto& [_, atom] : residue.atoms) atom.residueName = "MET";
+            ++result.convertedSelenomethionines;
+            result.residues.push_back(std::move(residue));
+        }
+        else if (bonded[r]) {
+            if (caps.contains(residue.name)) result.droppedCaps[residue.name]++;
+            else inChain.push_back(residueLabel(residue));
+        }
+        else {
+            result.skippedHetero[residue.name] += static_cast<int>(residue.atoms.size());
+        }
+    }
+    if (!inChain.empty()) {
+        std::string list;
+        for (std::size_t i = 0; i < inChain.size() && i < 10; ++i) list += (i ? ", " : "") + inChain[i];
+        if (inChain.size() > 10) list += Lima::Format(" and {} more", inChain.size() - 10);
+        throw std::runtime_error(Lima::Format("{} has non-standard residues inside a chain, which togmx has no templates for: {}. "
+            "Dropping them would join the chain across the gap; replace them with standard residues (eg. with PDBFixer) or remove them, "
+            "which splits the chain", path.string(), list));
+    }
+
+    // The same residue in two places, eg. records repeated further down the file
+    std::set<std::tuple<std::string, int, char>> seen;
+    for (const PdbResidue& residue : result.residues)
+        if (!seen.emplace(residue.chain, residue.number, residue.insertionCode).second)
+            throw std::runtime_error(Lima::Format("Residue {} appears twice in {}, in separate blocks of records", residueLabel(residue), path.string()));
+
+    if (result.residues.empty()) throw std::runtime_error(Lima::Format("No ATOM records were found in {}", path.string()));
+    if (result.title.empty()) result.title = path.stem().string();
+}
+
 PdbInput readPdb(const fs::path& path, const ReadOptions& options) {
     std::ifstream input(path);
     if (!input) throw std::runtime_error(Lima::Format("Failed to open PDB file {}", path.string()));
 
     PdbInput result;
+    std::vector<RawAtom> records;
+    records.reserve(fs::file_size(path) / 81);    // At most one atom per 81-byte line
     for (std::string line; std::getline(input, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.starts_with("COMPND") && line.size() > 20) {
             const std::string contents = trim(std::string_view(line).substr(10));
             if (const auto marker = contents.find("MOLECULE:"); marker != std::string::npos && result.title.empty()) {
@@ -143,42 +292,30 @@ PdbInput readPdb(const fs::path& path, const ReadOptions& options) {
         }
 
         if (line.starts_with("ENDMDL")) break;  // Only the first model
-        if (line.starts_with("HETATM") && line.size() >= 20) {
-            ++result.skippedHetero[trim(std::string_view(line).substr(17, 3))];
-            continue;
-        }
-        if (!line.starts_with("ATOM  ") || line.size() < 54) continue;
-        const char alternateLocation = line.size() > 16 ? line[16] : ' ';
-        if (alternateLocation != ' ' && alternateLocation != options.altloc) {
-            ++result.skippedAltlocs;
-            continue;
-        }
+        const bool hetero = line.starts_with("HETATM");
+        if ((!hetero && !line.starts_with("ATOM  ")) || line.size() < 54) continue;
 
-        PdbAtom atom;
-        atom.name = trim(std::string_view(line).substr(12, 4));
-        if (options.ignoreHydrogens && isHydrogen(line.size() >= 78 ? trim(std::string_view(line).substr(76, 2)) : std::string{}, atom.name)) {
-            ++result.skippedHydrogens;
-            continue;
+        RawAtom record;
+        record.hetero = hetero;
+        record.altloc = line[16];
+        // Occupancy (cols 55-60) may be missing in hand-made files; it only breaks ties between altlocs
+        if (line.size() >= 60) {
+            try { record.occupancy = std::stof(line.substr(54, 6)); } catch (const std::exception&) {}
         }
+        PdbAtom& atom = record.atom;
+        atom.name = trim(std::string_view(line).substr(12, 4));
+        record.hydrogen = isHydrogen(line.size() >= 78 ? trim(std::string_view(line).substr(76, 2)) : std::string{}, atom.name);
         atom.residueName = trim(std::string_view(line).substr(17, 3));
-        atom.chain = line.size() > 21 && line[21] != ' ' ? std::string(1, line[21]) : std::string{};
+        atom.chain = line[21] != ' ' ? std::string(1, line[21]) : std::string{};
         atom.residueNumber = std::stoi(line.substr(22, 4));
-        atom.insertionCode = line.size() > 26 ? line[26] : ' ';
+        atom.insertionCode = line[26];
         atom.position = { std::stof(line.substr(30, 8)) * 0.1f,
                           std::stof(line.substr(38, 8)) * 0.1f,
                           std::stof(line.substr(46, 8)) * 0.1f };
-
-        if (result.residues.empty()
-            || result.residues.back().chain != atom.chain
-            || result.residues.back().number != atom.residueNumber
-            || result.residues.back().insertionCode != atom.insertionCode) {
-            result.residues.push_back(PdbResidue{ atom.residueName, atom.chain, atom.residueNumber, atom.insertionCode, {} });
-        }
-        result.residues.back().atoms.try_emplace(atom.name, std::move(atom));
+        records.push_back(std::move(record));
     }
 
-    if (result.residues.empty()) throw std::runtime_error(Lima::Format("No ATOM records were found in {}", path.string()));
-    if (result.title.empty()) result.title = path.stem().string();
+    assembleResidues(result, records, options, path);
     return result;
 }
 
@@ -374,7 +511,10 @@ PdbInput readCif(const fs::path& path, const ReadOptions& options) {
     const auto insertion = optionalColumn("_atom_site.pdbx_pdb_ins_code");
     const auto model = optionalColumn("_atom_site.pdbx_pdb_model_num");
     const auto element = optionalColumn("_atom_site.type_symbol");
+    const auto occupancy = optionalColumn("_atom_site.occupancy");
     std::string firstModel;
+    std::vector<RawAtom> records;
+    records.reserve(atomLoop->rowCount);
 
     const auto preferredValue = [](std::span<const std::string_view> row, std::optional<std::size_t> preferred,
                                    std::optional<std::size_t> fallback, std::string_view description) -> std::string_view {
@@ -391,22 +531,18 @@ PdbInput readCif(const fs::path& path, const ReadOptions& options) {
             if (firstModel.empty()) firstModel = row[*model];
             if (row[*model] != firstModel) continue;
         }
-        if (row[group] == "HETATM") {
-            ++result.skippedHetero[std::string(preferredValue(row, authResidueName, labelResidueName, "residue name"))];
-            continue;
-        }
-        if (row[group] != "ATOM") continue;
-        if (alternate && !cifValueMissing(row[*alternate]) && row[*alternate] != std::string_view(&options.altloc, 1)) {
-            ++result.skippedAltlocs;
-            continue;
-        }
+        const bool hetero = row[group] == "HETATM";
+        if (!hetero && row[group] != "ATOM") continue;
 
-        PdbAtom atom;
-        atom.name = std::string(preferredValue(row, authAtomName, labelAtomName, "atom name"));
-        if (options.ignoreHydrogens && isHydrogen(element && !cifValueMissing(row[*element]) ? row[*element] : std::string_view{}, atom.name)) {
-            ++result.skippedHydrogens;
-            continue;
+        RawAtom record;
+        record.hetero = hetero;
+        record.altloc = alternate && !cifValueMissing(row[*alternate]) ? row[*alternate].front() : ' ';
+        if (occupancy && !cifValueMissing(row[*occupancy])) {
+            try { record.occupancy = std::stof(std::string(row[*occupancy])); } catch (const std::exception&) {}
         }
+        PdbAtom& atom = record.atom;
+        atom.name = std::string(preferredValue(row, authAtomName, labelAtomName, "atom name"));
+        record.hydrogen = isHydrogen(element && !cifValueMissing(row[*element]) ? row[*element] : std::string_view{}, atom.name);
         atom.residueName = std::string(preferredValue(row, authResidueName, labelResidueName, "residue name"));
         const std::string_view chainValue = preferredValue(row, authChain, labelChain, "chain identifier");
         atom.chain = cifValueMissing(chainValue) ? std::string{} : chainValue;
@@ -415,16 +551,9 @@ PdbInput readCif(const fs::path& path, const ReadOptions& options) {
         atom.position = { std::stof(std::string(row[x])) * 0.1f,
                           std::stof(std::string(row[y])) * 0.1f,
                           std::stof(std::string(row[z])) * 0.1f };
-
-        if (result.residues.empty() || result.residues.back().chain != atom.chain
-            || result.residues.back().number != atom.residueNumber
-            || result.residues.back().insertionCode != atom.insertionCode) {
-            result.residues.push_back(PdbResidue{ atom.residueName, atom.chain, atom.residueNumber, atom.insertionCode, {} });
-        }
-        result.residues.back().atoms.try_emplace(atom.name, std::move(atom));
+        records.push_back(std::move(record));
     }
-    if (result.residues.empty()) throw std::runtime_error(Lima::Format("No ATOM records were found in {}", path.string()));
-    if (result.title.empty()) result.title = path.stem().string();
+    assembleResidues(result, records, options, path);
     return result;
 }
 
@@ -1026,7 +1155,8 @@ std::vector<OutputResidue> makeAtoms(
             }
             else if (!atom.name.starts_with('H') && !patchAdded.contains(atom.name) && !constructible.contains(atom.name)) {
                 throw std::runtime_error(Lima::Format(
-                    "Heavy atom {} is missing in residue {} {}", atom.name, source.name, source.number));
+                    "Heavy atom {} is missing in residue {}. togmx builds hydrogens, but not missing side chains or "
+                    "backbone; complete the structure first, eg. with PDBFixer or MODELLER", atom.name, residueLabel(source)));
             }
             output.localIndex.emplace(atom.name, static_cast<int>(output.atoms.size()));
             output.atoms.push_back(std::move(atom));
@@ -1230,16 +1360,20 @@ std::vector<std::span<const PdbResidue>> splitInputByChain(const PdbInput& input
     std::vector<std::span<const PdbResidue>> chains;
     if (input.residues.empty()) return chains;
 
+    // One span per chain, or per piece of a chain between breaks
     std::set<std::string> completedChains;
     std::size_t chainBegin = 0;
     for (std::size_t i = 1; i <= input.residues.size(); ++i) {
-        if (i == input.residues.size() || input.residues[i].chain != input.residues[chainBegin].chain) {
+        const bool chainEnds = i == input.residues.size() || input.residues[i].chain != input.residues[chainBegin].chain;
+        if (chainEnds || input.residues[i].segment != input.residues[chainBegin].segment) {
             const auto& chain = input.residues[chainBegin].chain;
-            if (completedChains.contains(chain)) {
-                throw std::runtime_error(Lima::Format(
-                    "Chain {} occurs in multiple non-contiguous blocks", chain.empty() ? "<blank>" : chain));
+            if (chainEnds) {
+                if (completedChains.contains(chain)) {
+                    throw std::runtime_error(Lima::Format(
+                        "Chain {} occurs in multiple non-contiguous blocks", chain.empty() ? "<blank>" : chain));
+                }
+                completedChains.insert(chain);
             }
-            completedChains.insert(chain);
             chains.emplace_back(input.residues.data() + chainBegin, i - chainBegin);
             chainBegin = i;
         }
@@ -1353,10 +1487,6 @@ std::shared_ptr<TopologyFile::Moleculetype> makeMoleculeTopology(
     return output;
 }
 
-std::string residueLabel(const PdbResidue& residue) {
-    return Lima::Format("{}{}{}", residue.chain.empty() ? "" : residue.chain + ":", residue.name, residue.number);
-}
-
 // Spatial hash of the input's N and O atoms, for the histidine H-bond search
 struct PolarAtomGrid {
     static constexpr float cell = 0.35f;	// [nm], >= the search radius
@@ -1386,6 +1516,35 @@ struct PolarAtomGrid {
     }
 };
 
+// Where the backbone of a chain is broken, eg. by unresolved loops, its pieces become separate molecules with their own
+// termini. Bonding across the gap would give a peptide bond stretched to the gap's length, which energy minimization
+// then closes by dragging the protein together. Residues missing C or N are left to the missing-atom check
+void splitChainsAtBreaks(PdbInput& input, std::vector<std::string>& notes) {
+    // [nm] A peptide C-N bond is 0.133 nm; one missing residue leaves >= 0.4 nm, poorly refined bonds stay below 0.2 nm
+    constexpr float breakDistance = 0.3f;
+    std::vector<std::string> breaks;
+    for (std::size_t i = 1; i < input.residues.size(); ++i) {
+        PdbResidue& residue = input.residues[i];
+        const PdbResidue& previous = input.residues[i - 1];
+        if (residue.chain != previous.chain) continue;
+        residue.segment = previous.segment;
+        const auto c = previous.atoms.find(std::string_view{ "C" });
+        const auto n = residue.atoms.find(std::string_view{ "N" });
+        if (c == previous.atoms.end() || n == residue.atoms.end()) continue;
+        const float distance = glm::distance(c->second.position, n->second.position);
+        if (distance > breakDistance) {
+            ++residue.segment;
+            breaks.push_back(Lima::Format("{}-{} ({:.2f} nm)", residueLabel(previous), residueLabel(residue), distance));
+        }
+    }
+    if (breaks.empty()) return;
+    std::string list;
+    for (std::size_t i = 0; i < breaks.size() && i < 10; ++i) list += (i ? ", " : "") + breaks[i];
+    if (breaks.size() > 10) list += Lima::Format(" and {} more", breaks.size() - 10);
+    notes.push_back(Lima::Format("Warning: {} chain breaks (missing residues), each piece is its own molecule with the "
+        "--ter-n/--ter-c termini: {}", breaks.size(), list));
+}
+
 // Applies the options that select or reinterpret input residues, and records what was decided
 void prepareInput(PdbInput& input, const Programs::ToGmxOptions& options, std::vector<std::string>& notes) {
     using His = Programs::ToGmxOptions::His;
@@ -1403,8 +1562,23 @@ void prepareInput(PdbInput& input, const Programs::ToGmxOptions& options, std::v
     }
     if (input.skippedAltlocs > 0)
         notes.push_back(Lima::Format("Skipped {} atoms of other alternate locations (kept {})", input.skippedAltlocs, options.altloc));
+    if (!input.altlocFallbacks.empty()) {
+        std::string list;
+        for (std::size_t i = 0; i < input.altlocFallbacks.size() && i < 10; ++i) list += (i ? ", " : "") + input.altlocFallbacks[i];
+        if (input.altlocFallbacks.size() > 10) list += Lima::Format(" and {} more", input.altlocFallbacks.size() - 10);
+        notes.push_back(Lima::Format("Residues without altloc {}, which kept their most occupied one: {}", options.altloc, list));
+    }
     if (input.skippedHydrogens > 0)
         notes.push_back(Lima::Format("Ignored {} input hydrogens; all hydrogens are built", input.skippedHydrogens));
+    if (input.convertedSelenomethionines > 0)
+        notes.push_back(Lima::Format("Converted {} selenomethionines (MSE) to MET", input.convertedSelenomethionines));
+    if (!input.droppedCaps.empty()) {
+        std::string list;
+        for (const auto& [name, count] : input.droppedCaps) list += Lima::Format("{}{} x{}", list.empty() ? "" : ", ", name, count);
+        notes.push_back("Dropped capping groups, so those ends get the --ter-n/--ter-c termini instead (eg. --ter-c amide for NH2): " + list);
+    }
+
+    splitChainsAtBreaks(input, notes);
 
     // Disulfides. The S-S bond is ~0.204 nm; free cysteines are rarely closer than 0.3 nm
     if (options.disulfides) {
@@ -1420,13 +1594,14 @@ void prepareInput(PdbInput& input, const Programs::ToGmxOptions& options, std::v
                 const float distance = glm::distance(first.atoms.at("SG").position, second.atoms.at("SG").position);
                 if (distance < minDistance || distance > maxDistance) continue;
                 const std::string pair = residueLabel(first) + "-" + residueLabel(second);
-                if (first.chain != second.chain) {
+                if (first.chain != second.chain || first.segment != second.segment) {
                     skipped += (skipped.empty() ? "" : ", ") + pair;
                     continue;
                 }
-                // Chain-local indices: the residues of a chain are contiguous, see splitInputByChain
+                // Molecule-local indices: the residues of a chain segment are contiguous, see splitInputByChain
                 std::size_t chainBegin = cysteines[a];
-                while (chainBegin > 0 && input.residues[chainBegin - 1].chain == first.chain) --chainBegin;
+                while (chainBegin > 0 && input.residues[chainBegin - 1].chain == first.chain
+                    && input.residues[chainBegin - 1].segment == first.segment) --chainBegin;
                 first.rtpOverride = second.rtpOverride = "CYS2";
                 first.disulfidePartners.push_back(static_cast<int>(cysteines[b] - chainBegin));
                 second.disulfidePartners.push_back(static_cast<int>(cysteines[a] - chainBegin));
@@ -1435,7 +1610,7 @@ void prepareInput(PdbInput& input, const Programs::ToGmxOptions& options, std::v
         }
         if (!bonded.empty()) notes.push_back("Disulfides: " + bonded);
         if (!skipped.empty())
-            notes.push_back("Warning: not bonded, as each chain is its own molecule (inter-chain disulfides): " + skipped);
+            notes.push_back("Warning: not bonded, as each chain (or chain piece between breaks) is its own molecule (disulfides between molecules): " + skipped);
     }
 
     // Histidines named plain HIS. Auto protonates the ring N that has an N or O of another residue within H-bond distance
@@ -1492,6 +1667,9 @@ Programs::GmxConversionResult convertStructureToGmx(PdbInput input, const Progra
             auto& molecule = molecules[i];
             molecule.chain = chainInputs[i].front().chain;
             molecule.name = moleculeNameForChain(molecule.chain, i, chainInputs.size());
+            // Blank chains are already named by their index
+            if (const int segment = chainInputs[i].front().segment; segment > 0 && !molecule.chain.empty())
+                molecule.name += "_" + std::to_string(segment + 1);
             molecule.residues = makeAtoms(
                 chainInputs[i], templates, hydrogenDatabase, nTerminalPatches, cTerminalPatches, options, ff);
         }

@@ -1,7 +1,7 @@
 # LIMA TODO
 
 Sections:
-1. Priority: GROMACS parity (Salad benchmark)
+1. Priority
 2. Missing MD features
 3. Correctness issues
 4. Performance
@@ -11,7 +11,16 @@ Sections:
 
 ---
 
-# 1. Priority: GROMACS parity (Salad benchmark)
+# 1. Priority: 
+
+## CLI bugs from the release battery (2026-10-26)
+Found with `D:\LIMA_ARTIFACTORY\release_battery` (`run_battery.sh`), lima 1.4.0.
+- **Done** (2026-10-26): togmx output solvates (internal-forcefield moleculetypes stay includes, each include written once), include paths use `/`, `--set` values are case-insensitive. Covered by limaclitest togmx and wait.
+- **Left:** `printToFile` still re-writes every moleculetype from a *local* include, so a local file with several moleculetypes (eg. a user-supplied `charmm27.ff/ions.itp`) is overwritten with only the last one.
+- **No CLI way to box a togmx protein:**
+  - `insertmolecule` throws `Illegal call to GetMoleculeType` (`MDFiles.h`), as the togmx topology also has the water and ion moleculetypes.
+  - `solvate` requires integer box sizes (`Box size must be integers`, and only checks x), which a CRYST1 cell never is; NMR and AlphaFold files have a 1 Å placeholder CRYST1. The engine handles any box, only `SolvateGrofile`'s 1 nm grid doesn't.
+  - Proposal: solvate any box (cells of box/floor(box) per axis); `editconf -b/--box-size` and `-d/--distance` for the whole system, as GROMACS' editconf; togmx keeps CRYST1 but hints when it's a placeholder or the protein doesn't fit.
 
 ## togmx: AMBER99SB force field
 **Done** (2026-10-24): `lima togmx --ff amber99sb`. Villin's coordinates give exactly pdb2gmx's topology (atoms, types, bonds, pairs, angles, dihedrals, impropers), test "ToGmx AMBER99SB matches GROMACS".

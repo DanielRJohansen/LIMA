@@ -735,6 +735,24 @@ TestRoutine TestToGmx(fs::path workDir) {
 	for (const auto& entry : fs::directory_iterator(workDir))
 		hasRestraints |= entry.path().extension() == ".itp" && entry.path().filename().string().find("posre") != std::string::npos;
 	ASSERT(hasRestraints, "No position restraint file was written");
+	ASSERT(ReadBytes(workDir / "lzm.top").find('\\') == std::string::npos, "lzm.top has a backslash in an include path");
+
+	// The output solvates: the water and ions moleculetypes come from the internal forcefield, which has no copy beside
+	// the topology. Solvate needs an integer box, which the CRYST1 cell is not
+	{
+		std::string groText = ReadBytes(workDir / "lzm.gro");
+		groText.erase(groText.find_last_not_of("\r\n", groText.size()) + 1);
+		groText.erase(groText.find_last_of('\n') + 1);
+		std::ofstream(workDir / "lzm_box.gro") << groText << "  10.00000  10.00000  10.00000\n";
+	}
+	RequireSuccess(Run(workDir, { "solvate", "-c", "lzm_box.gro", "-t", "lzm.top", "--water-model", "tip3p",
+		"--conf-out", "lzm_solv.gro", "--topology-out", "lzm_solv.top" }, { .timeout = 300s }));
+	RequireTopologyMatches(workDir / "lzm_solv.top", ReadGro(workDir / "lzm_solv.gro"));
+	const std::string solvatedTop = ReadBytes(workDir / "lzm_solv.top");
+	const size_t ionsInclude = solvatedTop.find("#include \"charmm27.ff/ions.itp\"");
+	ASSERT(ionsInclude != std::string::npos && solvatedTop.find("#include \"charmm27.ff/ions.itp\"", ionsInclude + 1) == std::string::npos,
+		"lzm_solv.top should include charmm27.ff/ions.itp exactly once");
+	ASSERT(!fs::exists(workDir / "charmm27.ff"), "solvate wrote a copy of the internal forcefield beside the topology");
 
 	Preview(workDir, "lzm.gro", "lzm.top");
 	co_return LimaUnittestResult{ true, OneLineMessage("{} residues, {} atoms", static_cast<int>(gro.ResidueCount()), static_cast<int>(gro.atoms.size())), false };
@@ -1082,6 +1100,10 @@ TestRoutine TestWait(fs::path workDir) {
 	// --set overrides the simparams file, and rejects unknown parameters
 	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "--conf-out", "set.gro" }, quiet));
 	ASSERT(ReadBytes(workDir / "set.gro") != ReadBytes(workDir / "reference.gro"), "--set n_steps=1000 did not change the run");
+	// Values as makesimparams writes them (PBC, not pbc)
+	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "boundarycondition=PBC",
+		"--conf-out", "setcase.gro" }, quiet));
+	ASSERT(ReadBytes(workDir / "setcase.gro") == ReadBytes(workDir / "set.gro"), "--set boundarycondition=PBC changed the run");
 	auto unknown = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "no_such_parameter=1" }, quiet);
 	ASSERT(unknown.exitCode != 0, "--set accepted an unknown parameter");
 

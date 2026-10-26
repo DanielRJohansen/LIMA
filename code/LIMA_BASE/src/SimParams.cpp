@@ -342,11 +342,13 @@ SimParams::SimParams(const fs::path& path) {
 
 void SimParams::Set(std::string_view key, std::string_view value) {
     const std::string lowercaseKey = Lowercase(key);
+    // Values are compared lowercase, as DumpToFile writes eg. PBC and Atomname, and --set passes them on as typed
+    const std::string lowercaseValue = Lowercase(value);
     bool known = false;
     ForEachParam(*this, [&](auto& param) {
         if (known || Lowercase(param.name) != lowercaseKey) return;
         known = true;
-        ParseValue(param.name, value, param.value);
+        ParseValue(param.name, lowercaseValue, param.value);
         if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>)
             if (param.name == "dt") param.value *= FEMTO_TO_NANO;
     });

@@ -12,6 +12,7 @@
 #include <atomic>
 #include <deque>
 #include <span>
+#include <unordered_set>
 
 
 
@@ -1183,7 +1184,7 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 			if (forcefieldInclude) {
 				bool usesInternalForcefield = fs::exists(GetLimaDir() / "resources/forcefields" / forcefieldInclude->filename);
 				if (usesInternalForcefield) {
-					file << ("#include \"" + forcefieldInclude->filename.string() + "\"\n");
+					file << ("#include \"" + forcefieldInclude->filename.generic_string() + "\"\n");
 				}
 				else {
 					forcefieldInclude.value().SaveToDir(path.parent_path());
@@ -1192,9 +1193,19 @@ void TopologyFile::printToFile(const std::filesystem::path& path) const {
 				file << "\n";
 			}			
 		}
+		// A file such as charmm27.ff/ions.itp holds several moleculetypes, so each include is written once
+		std::unordered_set<std::string> includedFiles;
 		for (const auto& [_, moleculetype] : moleculetypes) {
-			moleculetype->ToFile(path.parent_path());
-			file << "#include \"" << moleculetype->includePath.value_or(fs::path(moleculetype->name + ".itp")).string() << "\"\n";
+			const fs::path includePath = moleculetype->includePath.value_or(fs::path(moleculetype->name + ".itp"));
+			// Moleculetypes from LIMA's own forcefields (eg. togmx's water and ions) stay includes of those files,
+			// as there is no forcefield directory to write them to beside the topology
+			const bool usesInternalForcefield = moleculetype->includePath
+				&& !fs::exists(path.parent_path() / includePath)
+				&& fs::exists(GetLimaDir() / "resources/forcefields" / includePath);
+			if (!usesInternalForcefield)
+				moleculetype->ToFile(path.parent_path());
+			if (includedFiles.insert(includePath.generic_string()).second)
+				file << "#include \"" << includePath.generic_string() << "\"\n";
 		}
 		for (const auto& include : otherIncludes) file << "#include \"" << include << "\"\n";
 		file << "\n";

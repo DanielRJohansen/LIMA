@@ -18,6 +18,7 @@
 #include "MDFiles.h"
 #include "SimulationBuilder.h"
 #include "xdrfile_trr.h"
+#include "xdrfile_xtc.h"
 
 #include <cctype>
 #include <cfloat>
@@ -559,20 +560,26 @@ struct Trr {
 	std::vector<Vec3> lastFrame;
 };
 
-// Reads a GROMACS .trr trajectory with the standard xdrfile library
+// Reads a GROMACS .trr or .xtc trajectory, by its extension, with the standard xdrfile library
 Trr ReadTrr(const fs::path& path) {
 	ASSERT(fs::exists(path), Lima::Format("Expected output {} does not exist", path.string()));
 	std::string pathString = path.string();
+	const bool xtc = path.extension() == ".xtc";
 	Trr trr;
-	ASSERT(read_trr_natoms(pathString.data(), &trr.nAtoms) == exdrOK && trr.nAtoms > 0, Lima::Format("{} is not a readable .trr file", path.filename().string()));
+	ASSERT((xtc ? read_xtc_natoms(pathString.data(), &trr.nAtoms) : read_trr_natoms(pathString.data(), &trr.nAtoms)) == exdrOK && trr.nAtoms > 0,
+		Lima::Format("{} is not a readable {} file", path.filename().string(), xtc ? ".xtc" : ".trr"));
 
 	XDRFILE* file = xdrfile_open(pathString.c_str(), "r");
 	ASSERT(file != nullptr, Lima::Format("Could not open {}", path.string()));
 	std::vector<float> x(3 * static_cast<size_t>(trr.nAtoms));
 	matrix box;
 	int step = 0;
-	float time = 0, lambda = 0;
-	while (read_trr(file, trr.nAtoms, &step, &time, &lambda, box, reinterpret_cast<rvec*>(x.data()), nullptr, nullptr) == exdrOK) {
+	float time = 0, lambda = 0, precision = 0;
+	const auto readFrame = [&] {
+		return (xtc ? read_xtc(file, trr.nAtoms, &step, &time, box, reinterpret_cast<rvec*>(x.data()), &precision)
+			: read_trr(file, trr.nAtoms, &step, &time, &lambda, box, reinterpret_cast<rvec*>(x.data()), nullptr, nullptr)) == exdrOK;
+	};
+	while (readFrame()) {
 		if (trr.nFrames == 0) {
 			trr.firstStep = step;
 			trr.firstTime = time;
@@ -949,23 +956,20 @@ TestRoutine TestMdrun(fs::path workDir) {
 	const Gro in = ReadGro(workDir / "metsol.gro");
 	const Gro out = ReadGro(workDir / "out.gro");
 	RequireSameAtoms(in, out, "out.gro");
-	// md_params.txt runs 20000 steps and logs every 200th
-	constexpr int maxFrames = 20000 / 200 + 1;
+	// md_params.txt runs 20000 steps. The trajectory has a frame every trajectory_interval (default 1000) steps from step 0,
+	// which never logs step 20000, and then the final coordinates
+	constexpr int trajectoryInterval = 1000, nSteps = 20000;
+	constexpr int expectedFrames = nSteps / trajectoryInterval + 1;
 	const Trr trr = ReadTrr(workDir / "traj.trr");
 	ASSERT(trr.nAtoms == static_cast<int>(in.atoms.size()), Lima::Format("The trajectory has {} atoms, the system has {}", trr.nAtoms, in.atoms.size()));
-	ASSERT(trr.nFrames >= 2 && trr.nFrames <= maxFrames,
-		Lima::Format("The trajectory has {} frames, expected at most {} with the requested logging interval", trr.nFrames, maxFrames));
+	ASSERT(trr.nFrames == expectedFrames,
+		Lima::Format("The trajectory has {} frames, expected {}: every {} steps and the final one", trr.nFrames, expectedFrames, trajectoryInterval));
 	ASSERT(trr.firstStep == 0 && trr.firstTime == 0.f, "The first trajectory frame must be at step 0 and time 0 ps");
-	constexpr float frameSpacingPs = 0.4f; // 200 steps * 2 fs
-	ASSERT(trr.lastStep == (trr.nFrames - 1) * 200,
-		Lima::Format("The last trajectory frame is at step {}, expected {}", trr.lastStep, (trr.nFrames - 1) * 200));
-	ASSERT(std::abs(trr.lastTime - (trr.nFrames - 1) * frameSpacingPs) < 1e-5f,
-		Lima::Format("The last trajectory frame is at {:.6f} ps, expected {:.6f} ps",
-			trr.lastTime, (trr.nFrames - 1) * frameSpacingPs));
+	constexpr float frameSpacingPs = 2.f; // 1000 steps * 2 fs
 	for (int frame = 0; frame < trr.nFrames; frame++) {
-		ASSERT(trr.steps[frame] == frame * 200,
-			Lima::Format("Trajectory frame {} reports step {}, expected {}", frame, trr.steps[frame], frame * 200));
-		ASSERT(std::abs(trr.times[frame] - frame * frameSpacingPs) < 1e-5f,
+		ASSERT(trr.steps[frame] == frame * trajectoryInterval,
+			Lima::Format("Trajectory frame {} reports step {}, expected {}", frame, trr.steps[frame], frame * trajectoryInterval));
+		ASSERT(std::abs(trr.times[frame] - frame * frameSpacingPs) < 1e-4f,
 			Lima::Format("Trajectory frame {} reports time {:.6f} ps, expected {:.6f} ps",
 				frame, trr.times[frame], frame * frameSpacingPs));
 	}
@@ -978,15 +982,31 @@ TestRoutine TestMdrun(fs::path workDir) {
 	const double moved = MaxDisplacement(in, out);
 	ASSERT(moved > 0.01, "No atom moved during the simulation");
 
-	// The last logged frame is at most one logging interval (0.4 ps) before the final coordinates
-	double meanDistanceToFinal = 0;
+	// The last frame is the final coordinates, which out.gro rounds to 0.001 nm
+	double maxDistanceToFinal = 0;
 	for (size_t i = 0; i < out.atoms.size(); i++) {
 		ASSERT(trr.lastFrame[i].Finite(), Lima::Format("Atom {} has a non-finite position in the trajectory", i));
-		meanDistanceToFinal += PbcDistance(trr.lastFrame[i], out.atoms[i].position, out.box) / out.atoms.size();
+		maxDistanceToFinal = std::max(maxDistanceToFinal, PbcDistance(trr.lastFrame[i], out.atoms[i].position, out.box));
 	}
-	ASSERT(meanDistanceToFinal < 0.2, Lima::Format("The last trajectory frame does not resemble the final coordinates (mean distance {:.2f} nm)", meanDistanceToFinal));
+	ASSERT(maxDistanceToFinal < 0.001, Lima::Format("The last trajectory frame is not the final coordinates (an atom is {:.4f} nm off)", maxDistanceToFinal));
 	const auto trajectoryBytes = fs::file_size(workDir / "traj.trr");
 	ASSERT(fs::exists(workDir / "trajectory.uff") && fs::file_size(workDir / "trajectory.uff") > 0, "--uff did not write trajectory.uff");
+
+	// An .xtc path gives a compressed xtc file, with the same frames as a .trr
+	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "-s", "md_params.txt",
+		"--set", "n_steps=2000", "--conf-out", "out_xtc.gro", "--trajectory", "traj.xtc" }, { .timeout = 300s }));
+	const Trr xtc = ReadTrr(workDir / "traj.xtc");
+	ASSERT(xtc.nAtoms == trr.nAtoms && xtc.nFrames == 3 && xtc.lastStep == 2000,
+		Lima::Format("traj.xtc has {} atoms and {} frames up to step {}, expected {} atoms and 3 frames (0, 1000, 2000)",
+			xtc.nAtoms, xtc.nFrames, xtc.lastStep, trr.nAtoms));
+
+	// trajectory_interval must be a multiple of data_logging_interval (200), as its frames are logged ones
+	auto misaligned = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "-s", "md_params.txt",
+		"--set", "n_steps=1000", "trajectory_interval=300", "--conf-out", "out_bad.gro", "--trajectory", "bad.trr" }, { .timeout = 300s });
+	ASSERT(misaligned.exitCode == 1 && misaligned.output.find("multiple of data_logging_interval") != std::string::npos,
+		"A trajectory_interval that is not a multiple of data_logging_interval was not refused");
+	ASSERT(fs::file_size(workDir / "traj.xtc") * 2 < (trajectoryBytes / trr.nFrames) * xtc.nFrames,
+		"traj.xtc is not compressed: it is more than half the size of the same frames as .trr");
 
 	co_return LimaUnittestResult{ true, OneLineMessage("{} atoms, trajectory {:.1f} MB", out.atoms.size(), trajectoryBytes / 1e6), false };
 }
@@ -1136,11 +1156,12 @@ TestRoutine TestWait(fs::path workDir) {
 	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "boundarycondition=PBC",
 		"--conf-out", "setcase.gro" }, quiet));
 	ASSERT(ReadBytes(workDir / "setcase.gro") == ReadBytes(workDir / "set.gro"), "--set boundarycondition=PBC changed the run");
-	// A trajectory that can't fit in RAM is refused before the run, instead of allocating it all up front
+	// Logged data that can't fit in RAM is refused before the run, instead of allocating it all up front. The energies
+	// are kept in RAM (unlike the trajectory, which is written during the run)
 	auto tooLarge = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000000000000",
-		"--trajectory", "huge.trr" }, quiet);
+		"save_energy=true", "--conf-out", "huge.gro" }, quiet);
 	ASSERT(tooLarge.exitCode == 1 && tooLarge.output.find("GB of RAM") != std::string::npos,
-		Lima::Format("A trajectory too large for RAM was not refused with its size. Output:\n{}", Tail(tooLarge.output)));
+		Lima::Format("Energies too large for RAM were not refused with their size. Output:\n{}", Tail(tooLarge.output)));
 	auto unknown = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "no_such_parameter=1" }, quiet);
 	ASSERT(unknown.exitCode != 0, "--set accepted an unknown parameter");
 

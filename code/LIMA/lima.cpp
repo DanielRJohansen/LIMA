@@ -106,15 +106,20 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     job.topfile.emplace(topol);
     job.simParams = ip;
     job.mode = envmode;
-    // Only the trajectory is written from the logged data; sim_params outputs (save_energy, ...) add their own
+    // The trajectory file is written during the run; only --uff keeps every logged frame in RAM. sim_params outputs
+    // (save_energy, ...) add the data they need
     job.logged = LoggedData::None();
-    job.logged.trajectory = !trajOut.empty() || uff;
+    job.logged.trajectory = uff;
+    job.trajectoryFile = trajOut;
     // Runs on an Environment worker thread while this thread waits in Get()
     job.onTimeEstimate = [&ctx](double secondsLeft) {
         if (secondsLeft >= 5.)
             ctx.out << "Estimated time to finish: " << StringUtils::FormatTime(secondsLeft, 1, 1) << "\n" << std::flush;
     };
     ctx.out << Banner() << std::flush;
+    if (!trajOut.empty())
+        ctx.out << Lima::Format("Trajectory: a frame every {} steps ({:.3f} ps) and the final one; set trajectory_interval to change\n",
+            ip.trajectory_interval.value, ip.trajectory_interval * ip.dt * NANO_TO_PICO) << std::flush;
     auto result = env.Submit(std::move(job)).Get();
 
     const std::chrono::duration<double> enginetime = result.engineTime; // [s]
@@ -122,10 +127,6 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
         ctx.out << Lima::Format("Ran in a batch of {} simulations\n", result.execution.batchSize);
     result.FinalSystem().coordinates.printToFile(conf_out);
 
-    if (!trajOut.empty()) {
-        Trajectory traj = result.MakeTrajectory();
-		MDFiles::Dump(traj, trajOut);
-    }
 
     std::vector<fs::path> written{ conf_out };
     if (!trajOut.empty())

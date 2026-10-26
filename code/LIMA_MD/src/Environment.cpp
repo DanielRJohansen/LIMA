@@ -433,6 +433,8 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 			simulation->logged.energy |= params.save_energy && !params.em_variant;
 			simulation->logged.trajectory |= (params.self_diffusion || params.density_profile) && !params.em_variant;
 			simulation->PrepareDataBuffers();
+			if (!next.job.trajectoryFile.empty())
+				simulation->StartTrajectoryStream(next.job.trajectoryFile);
 		}
 		if (next.job.run && simulation->simParams.em_variant)
 			Engine::PrepareEnergyMinimization(*simulation);

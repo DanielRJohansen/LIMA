@@ -132,7 +132,12 @@ struct SimParams {
     SimParam<float> tau_p{ "tau_p", 2.f, SimParamSection::Barostat, "[ps] Time constant of the barostat" };
     SimParam<float> compressibility{ "compressibility", 4.5e-5f, SimParamSection::Barostat, "[bar^-1]" };
 
-    SimParam<int> data_logging_interval{ "data_logging_interval", 5, SimParamSection::Output, "[steps]" };
+    SimParam<int> data_logging_interval{ "data_logging_interval", 5, SimParamSection::Output,
+        "[steps] Energies and analyses (save_energy, self_diffusion, density_profile) and --uff, kept in RAM for the run. "
+        "Not the trajectory file, see trajectory_interval" };
+    SimParam<int> trajectory_interval{ "trajectory_interval", 1000, SimParamSection::Output,
+        "[steps] A frame of mdrun --trajectory, written to the file during the run; a multiple of data_logging_interval. "
+        "The first and the final frame are always written" };
     SimParam<bool> save_energy{ "save_energy", false, SimParamSection::Output,
         "Write energy.xvg: potential, kinetic and total energy [kJ/mol] and temperature [K] every data_logging_interval steps, "
         "in the format of GROMACS' gmx energy" };
@@ -151,7 +156,7 @@ struct SimParams {
             bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, tau_t, thermostat_seed, initial_temperature, velocity_seed,
             apply_barostat, steps_per_pressure_measurement, ref_p, tau_p, compressibility,
-            data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
+            data_logging_interval, trajectory_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 
     auto Params() const {
@@ -159,6 +164,6 @@ struct SimParams {
             bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, snf_select, constraints,
             steps_per_temperature_measurement, apply_thermostat, ref_t, tau_t, thermostat_seed, initial_temperature, velocity_seed,
             apply_barostat, steps_per_pressure_measurement, ref_p, tau_p, compressibility,
-            data_logging_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
+            data_logging_interval, trajectory_interval, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
     }
 };

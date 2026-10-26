@@ -41,6 +41,63 @@ Simulation::Simulation(const SimParams& params, std::unique_ptr<Box> _box) :
 	box = std::move(_box);
 }
 
+struct TrajectoryStream {
+	TrajectoryStream(const std::filesystem::path& path, std::vector<int> atomOfSlot, int nAtoms, int interval, float dt)
+		: writer{ path, nAtoms }, atomOfSlot(std::move(atomOfSlot)), frame(nAtoms), interval(interval),
+		// As Trajectory, so a frame's time is the same float as when the whole trajectory was kept and written at the end
+		frameSpacingPs(static_cast<float>(dt * interval * NANO_TO_PICO)), dtPs(static_cast<float>(dt * NANO_TO_PICO)) {}
+
+	MDFiles::TrajectoryWriter writer;
+	std::vector<int> atomOfSlot;	// By logging slot: the atom's index in the input coordinates, or -1 for a padding lane
+	std::vector<Float3> frame;		// [nm] In input atom order
+	int interval = 0;				// [steps]
+	float frameSpacingPs = 0.f;
+	float dtPs = 0.f;
+	int64_t lastStep = -1;
+};
+
+Simulation::~Simulation() = default;
+
+void Simulation::StartTrajectoryStream(const std::filesystem::path& path) {
+	const int loggingInterval = simParams.data_logging_interval;
+	const int interval = simParams.trajectory_interval;
+	if (loggingInterval <= 0)
+		throw std::invalid_argument("A trajectory needs data_logging_interval > 0, as its frames come from the logged data");
+	if (interval <= 0 || interval % loggingInterval != 0)
+		throw std::invalid_argument(Lima::Format("trajectory_interval ({}) must be a positive multiple of data_logging_interval ({})",
+			interval, loggingInterval));
+
+	std::vector<int> atomOfSlot;
+	atomOfSlot.reserve(box->persistentClustersMetadata.size() * PersistentCluster::maxParticles);
+	int nAtoms = 0;
+	for (const auto& metadata : box->persistentClustersMetadata)
+		for (const int atom : metadata.particleIdsGlobal) {
+			atomOfSlot.push_back(atom);
+			nAtoms = std::max(nAtoms, atom + 1);
+		}
+	trajectoryStream = std::make_unique<TrajectoryStream>(path, std::move(atomOfSlot), nAtoms, interval, simParams.dt.value);
+}
+
+bool Simulation::TrajectoryFrameAt(int64_t step) const {
+	return trajectoryStream && step % trajectoryStream->interval == 0;
+}
+
+void Simulation::WriteTrajectoryFrame(int64_t step, Float3 boxSize, const Float3* slots) {
+	TrajectoryStream& stream = *trajectoryStream;
+	if (step <= stream.lastStep)
+		return;	// The final frame, when it is also a regular one
+	for (size_t slot = 0; slot < stream.atomOfSlot.size(); ++slot)
+		if (const int atom = stream.atomOfSlot[slot]; atom >= 0)
+			stream.frame[atom] = slots[slot];
+	const float timePs = step % stream.interval == 0 ? stream.frameSpacingPs * static_cast<int>(step / stream.interval) : step * stream.dtPs;
+	stream.writer.WriteFrame(step, timePs, boxSize, stream.frame.data());
+	stream.lastStep = step;
+}
+
+void Simulation::FinishTrajectoryStream() {
+	trajectoryStream.reset();
+}
+
 void Simulation::PrepareDataBuffers() {
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
 	const auto n_steps = std::max(simParams.n_steps.value, uint64_t{ 1 });

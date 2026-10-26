@@ -255,7 +255,12 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         if (ParseNumber<float>("rvdw", found->second) != params.cutoff_nm)
             throw std::runtime_error(Lima::Format("rvdw = {} differs from rcoulomb = {}. LIMA uses one cutoff for both", found->second, params.cutoff_nm.value));
 
-    constexpr std::array outputKeys{ "nstxout", "nstvout", "nstenergy", "nstlog", "nstcomm" };
+    // The trajectory file has its own interval. 0 means none in GROMACS; LIMA writes one only for mdrun --trajectory
+    for (const std::string_view key : { "nstxout", "nstxout-compressed" })
+        if (const auto found = mdp.find(std::string{ key }); found != mdp.end())
+            if (const int interval = ParseNumber<int>(key, found->second); interval > 0)
+                params.trajectory_interval.value = interval;	// nstxout-compressed wins, as it comes last
+    constexpr std::array outputKeys{ "nstvout", "nstenergy", "nstlog", "nstcomm" };
     std::optional<int> outputInterval;
     for (const std::string_view key : outputKeys) {
         if (const auto found = mdp.find(std::string{ key }); found != mdp.end()) {

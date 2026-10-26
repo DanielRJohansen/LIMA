@@ -167,16 +167,31 @@ struct LoggedData {
 };
 
 // This stays on host
+struct TrajectoryStream;	// Simulation.cpp
+
 class Simulation {
 	int64_t step=0;
+	std::unique_ptr<TrajectoryStream> trajectoryStream;
 public:
 	// Empty simulation, i dont like this very much
 	Simulation(const SimParams& simparams);
 	Simulation(const SimParams& simparams, std::unique_ptr<Box> box);
 	
+	~Simulation();
+
 	// Allocates the buffers selected by 'logged'. Throws if they would not fit in the available RAM
 	void PrepareDataBuffers();
 	LoggedData logged;
+
+	// A trajectory file written during the run, a frame every trajectory_interval steps and the final one, instead of
+	// keeping the frames in traj_buffer. The engine's log drain calls WriteTrajectoryFrame from its own thread, and
+	// FinalizeSimulation the final frame once the drains are joined
+	void StartTrajectoryStream(const std::filesystem::path& path);
+	bool StreamsTrajectory() const { return trajectoryStream != nullptr; }
+	bool TrajectoryFrameAt(int64_t step) const;
+	// Positions by logging slot (pcluster * maxParticles + lane), as the engine logs them
+	void WriteTrajectoryFrame(int64_t step, Float3 box, const Float3* slots);
+	void FinishTrajectoryStream();
 
 	inline int64_t getStep() const { return step; }
 	

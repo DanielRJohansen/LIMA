@@ -4,6 +4,8 @@
 #include <condition_variable>
 #include <functional>
 #include <mutex>
+#include <exception>
+#include <utility>
 
 #include "BoundaryCondition.cuh"
 #include "EngineBodies.cuh"
@@ -657,6 +659,15 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 		sizeof(PersistentclusterInterimState) * range.count, cudaMemcpyDeviceToHost);
 	cudaMemcpy(sim.simulation->box->persistentClusters.data(), batch->pClusterDevice.Get() + range.offset,
 		sizeof(PersistentCluster) * range.count, cudaMemcpyDeviceToHost);
+	// A trajectory always ends with the final coordinates, the drains having written the logged frames
+	if (sim.simulation->StreamsTrajectory()) {
+		std::vector<Float3> slots(size_t(range.count) * PersistentCluster::maxParticles);
+		for (int pc = 0; pc < range.count; ++pc)
+			for (int lane = 0; lane < PersistentCluster::maxParticles; ++lane)
+				slots[size_t(pc) * PersistentCluster::maxParticles + lane] = sim.simulation->box->persistentClusters[pc].pqd[lane].position;
+		sim.simulation->WriteTrajectoryFrame(sim.step, batch->boxLength, slots.data());
+		sim.simulation->FinishTrajectoryStream();
+	}
 	if (sim.device.particles.count > 0)
 		sim.finalForcesMagnitudeSquared = GenericCopyToHost(batch->forcesMagnitudeSquareDevice.Get() + sim.device.particles.offset, sim.device.particles.count);
 	sim.device.active = false;
@@ -712,6 +723,7 @@ struct Engine::LogDrain {
 	cudaEvent_t snapshotted = nullptr;
 	std::array<cudaEvent_t, 2> copied{};	// Of the last two slices issued
 	cudaError_t error = cudaSuccess;
+	std::exception_ptr failure;	// Of writing the trajectory file, rethrown by Join
 
 	// One thread for the drain's lifetime: a thread's first CUDA call initializes its runtime state, which on WDDM blocked
 	// the main thread's launches for ~10 ms, so a new thread per drain stalled the steps (T4 every 100 steps)
@@ -770,6 +782,8 @@ struct Engine::LogDrain {
 			error = cudaSuccess;
 			throw std::runtime_error(std::string("Error offloading logging data: ") + cudaGetErrorString(e));
 		}
+		if (failure)
+			std::rethrow_exception(std::exchange(failure, nullptr));
 	}
 	// Must be joined
 	void Reserve(size_t bytes) {
@@ -806,7 +820,7 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 	// A full ring or its final partial segment needs only four contiguous copies. Buffers the simulation's outputs don't
 	// read are not allocated on host (Simulation::logged), so they are not copied
 	const size_t width = sim.device.pclusters.count * PersistentCluster::maxParticles;
-	struct Copy { void* dst; const void* src; size_t bytes; };
+	struct Copy { void* dst; const void* src; size_t bytes; int64_t trajectoryStep = -1; };	// dst nullptr: a trajectory frame
 	std::vector<Copy> copies;
 	Simulation& host = *sim.simulation;
 	for (size_t entry = sim.nLogEntriesTransferred; entry < entries;) {
@@ -823,6 +837,12 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 			copies.push_back({ host.forceBuffer->getBufferAtIndex(entry), batch->dataBuffersDevice->forceBuffer + src, sizeof(Float3) * width * chunk });
 		entry += chunk;
 	}
+	// The frames of a streamed trajectory, written to its file from the pinned snapshot instead of kept in a host buffer
+	if (host.StreamsTrajectory())
+		for (size_t entry = sim.nLogEntriesTransferred; entry < entries; ++entry)
+			if (const int64_t step = static_cast<int64_t>(entry) * interval; host.TrajectoryFrameAt(step))
+				copies.push_back({ nullptr, batch->dataBuffersDevice->traj_buffer + sim.device.logOffset
+					+ (entry % DatabuffersDeviceController::nStepsInBuffer) * width, sizeof(Float3) * width, step });
 	if (copies.empty()) {	// Nothing logged is kept, eg. a plain mdrun or em
 		sim.nLogEntriesTransferred = entries;
 		return;
@@ -834,11 +854,14 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 	// The snapshot is ordered after the steps that logged the entries, and before those that overwrite them
 	constexpr size_t sliceBytes = size_t(8) << 20;
 	std::vector<LogDrain::Unpack> slices;
+	std::vector<std::pair<int64_t, size_t>> trajectoryFrames;	// {step, offset in the snapshot}
 	size_t offset = 0;
 	for (const Copy& copy : copies) {
 		cudaMemcpyAsync(drain.device + offset, copy.src, copy.bytes, cudaMemcpyDeviceToDevice, cudaStreams[0]);
 		for (size_t sliceOffset = 0; sliceOffset < copy.bytes; sliceOffset += sliceBytes)
-			slices.push_back({ static_cast<char*>(copy.dst) + sliceOffset, offset + sliceOffset, std::min(sliceBytes, copy.bytes - sliceOffset) });
+			slices.push_back({ copy.dst ? static_cast<char*>(copy.dst) + sliceOffset : nullptr, offset + sliceOffset, std::min(sliceBytes, copy.bytes - sliceOffset) });
+		if (!copy.dst)
+			trajectoryFrames.emplace_back(copy.trajectoryStep, offset);
 		offset += copy.bytes;
 	}
 	cudaEventRecord(drain.snapshotted, cudaStreams[0]);
@@ -848,7 +871,10 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 	// The thread copies the snapshot to the host on its own stream, so the steps continue meanwhile. It keeps only two slices queued:
 	// the steps' own readbacks share the copy engine, and would otherwise wait for the whole copy. Each slice is unpacked while the
 	// next is copied
-	drain.Start([&drain, slices = std::move(slices), stream = logCopyStream] {
+	// The box at the drain, at most nStepsInBuffer logging intervals after the frames; pressure coupling changes it far less
+	// than a frame's precision in that time
+	drain.Start([&drain, slices = std::move(slices), stream = logCopyStream, trajectoryFrames = std::move(trajectoryFrames),
+		&host, box = batch->boxLength] {
 		auto issue = [&](size_t i) {
 			cudaMemcpyAsync(drain.pinned + slices[i].offset, drain.device + slices[i].offset, slices[i].bytes, cudaMemcpyDeviceToHost, stream);
 			cudaEventRecord(drain.copied[i % 2], stream);
@@ -860,8 +886,15 @@ void Engine::OffloadLoggingData(EngineSimulationData& sim) {
 			if (drain.error != cudaSuccess) return;
 			if (i + 2 < slices.size())
 				issue(i + 2);
-			std::memcpy(slices[i].dst, drain.pinned + slices[i].offset, slices[i].bytes);
+			if (slices[i].dst)
+				std::memcpy(slices[i].dst, drain.pinned + slices[i].offset, slices[i].bytes);
 		}
+		// Disk writes stay off the step thread. A failure, eg. a full disk, is rethrown by Join
+		try {
+			for (const auto& [step, frameOffset] : trajectoryFrames)
+				host.WriteTrajectoryFrame(step, box, reinterpret_cast<const Float3*>(drain.pinned + frameOffset));
+		}
+		catch (...) { drain.failure = std::current_exception(); }
 	});
 	sim.nLogEntriesTransferred = entries;
 }

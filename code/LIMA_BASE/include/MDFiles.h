@@ -133,6 +133,7 @@ public:
 };
 
 class TopologyFile;
+struct XDRFILE;	// xdrfile's file handle
 
 namespace MDFiles {
 	namespace fs = std::filesystem;
@@ -140,6 +141,25 @@ namespace MDFiles {
 	struct FilePair {
 		std::shared_ptr<GroFile> grofile;
 		std::shared_ptr<TopologyFile> topfile;
+	};
+
+	// Writes a GROMACS trajectory one frame at a time, chosen by the extension: .trr (exact) or .xtc (compressed to
+	// 0.001 nm, as GROMACS' default xtc-precision)
+	class TrajectoryWriter {
+	public:
+		TrajectoryWriter(const fs::path& path, int nAtoms);
+		~TrajectoryWriter();
+		TrajectoryWriter(const TrajectoryWriter&) = delete;
+		TrajectoryWriter& operator=(const TrajectoryWriter&) = delete;
+
+		void WriteFrame(int64_t step, float timePs, Float3 box, const Float3* positions);
+		const fs::path& Path() const { return path; }
+
+	private:
+		fs::path path;
+		int nAtoms = 0;
+		bool xtc = false;
+		::XDRFILE* file = nullptr;
 	};
 
 	void Dump(Trajectory& trajectory, const fs::path& path);

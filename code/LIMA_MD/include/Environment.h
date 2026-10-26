@@ -92,6 +92,9 @@ struct SimulationJob {
 	// default; a job that only needs its final coordinates should choose LoggedData::None(), as the buffers grow with
 	// particles * n_steps. The outputs selected in simParams (save_energy, self_diffusion, density_profile) add their own
 	LoggedData logged;
+	// Written during the run, a frame every simParams.trajectory_interval steps and the final one (.trr or .xtc).
+	// It does not need logged.trajectory, which keeps every logged frame in RAM instead
+	fs::path trajectoryFile;
 	// Callbacks of different jobs may run concurrently on Environment's worker threads,
 	// so they must not modify state shared with other jobs without synchronization.
 	std::function<void(GroFile&, TopologyFile&, SimParams&)> preprocess;

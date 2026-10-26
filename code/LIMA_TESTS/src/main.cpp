@@ -36,7 +36,7 @@ void TestDisplayT4() {
 
 
 	display.Submit(0, std::make_unique<Rendering::AtomRenderTask>(
-		box->persistentClusters, box->persistentClustersMetadata, box->boxparams, SimStatus{}, box->backboneChains), true);
+		box->persistentClusters, box->persistentClustersMetadata, box->boxparams, SimStatus{}, box->backboneChains, std::vector<Rendering::MoleculeInfo>{}, box->lipidModels, box->particleCategories), true);
 	display.Submit(0, std::make_unique<Rendering::SimulationTaskUpdate>(positions.data(), nullptr, SimStatus{}), true);
 }
 

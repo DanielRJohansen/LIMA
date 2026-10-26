@@ -581,6 +581,7 @@ private:
         uniform vec3 LightDir;
         uniform vec4 Color;
         uniform int ObjectId;
+        uniform float Ambient;
 
         layout(location = 0) out vec4 outColor;
         layout(location = 1) out int outObjectId;
@@ -591,8 +592,7 @@ private:
             vec3 L = normalize(-LightDir);
 
             float diffuse = max(dot(N, L), 0.0);
-            float ambient = 0.25;
-            float lighting = ambient + diffuse * 0.75;
+            float lighting = Ambient + diffuse * (1.0 - Ambient);
 
             outColor = vec4(Color.rgb * lighting, Color.a);
             outObjectId = ObjectId;
@@ -642,7 +642,31 @@ public:
         if (vertices.empty())
             return;
 
+        Upload(vertices);
+        DrawUploaded(0, vertices.size(), MVP, Model, color, objectId, defaultAmbient, lightDir);
+    }
+
+    static constexpr float defaultAmbient = 0.25f;
+
+    // For many small meshes: upload them once as one buffer, then draw each by its range
+    void Upload(const std::vector<Vertex>& vertices)
+    {
         glNamedBufferData(vbo, static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)), vertices.data(), GL_DYNAMIC_DRAW);
+    }
+
+    void DrawUploaded(
+        std::size_t first,
+        std::size_t count,
+        const glm::mat4& MVP,
+        const glm::mat4& Model,
+        const glm::vec4& color,
+        int objectId,
+        float ambient = defaultAmbient,
+        const glm::vec3& lightDir = glm::normalize(glm::vec3(0.1f, 0.1f, -1.0f))
+    )
+    {
+        if (count == 0)
+            return;
 
         use();
         SetUniformMat4("MVP", MVP);
@@ -650,9 +674,10 @@ public:
         SetUniform("Color", color);
         SetUniform("LightDir", lightDir);
         SetUniformI("ObjectId", objectId);
+        SetUniform("Ambient", ambient);
 
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+        glDrawArrays(GL_TRIANGLES, static_cast<GLint>(first), static_cast<GLsizei>(count));
         glBindVertexArray(0);
         glUseProgram(0);
     }
@@ -661,7 +686,334 @@ public:
 
 
 
+// The fragment shader header of the ray-cast atoms and bonds, so both are lit identically.
+// Fully matte, like chalk or clay: no highlight or rim, as any shine reads as plastic. A key light from the upper left
+// with wrap-around diffuse, a dim fill from the right and a sky/ground ambient, with low contrast between them.
+// N and V are the surface normal and the direction to the camera, in view space
+inline constexpr const char* matteLightingSource = R"(
+#version 430 core
+
+vec3 ShadeMatte(vec3 baseColor, vec3 N, vec3 V, bool highlighted) {
+    const vec3 keyDir = normalize(vec3(-0.45, 0.65, 0.6));
+    const vec3 fillDir = normalize(vec3(0.7, -0.15, 0.7));
+    const float wrap = 0.5;
+    const float key = max((dot(N, keyDir) + wrap) / (1.0 + wrap), 0.0);
+    const float fill = max(dot(N, fillDir), 0.0);
+    const float ambient = mix(0.26, 0.38, N.y * 0.5 + 0.5);
+    vec3 color = baseColor * (ambient + 0.55 * key + 0.12 * fill);
+
+    if (highlighted) {
+        const float rim = 1.0 - max(dot(N, V), 0.0);
+        const vec3 highlightColor = vec3(1.0, 0.85, 0.35);
+        color = mix(color, highlightColor, 0.25) + highlightColor * pow(rim, 0.6) * 0.9;
+    }
+    return min(color, vec3(1.0));
+}
+)";
+
+// Atoms as ray-cast sphere impostors: each atom is a camera-facing quad, and the fragment shader intersects the view
+// ray with the sphere, so silhouettes, normals and depth are exact per pixel at the cost of 4 vertices per atom
 class DrawAtomsShader : public Shader {
+    static constexpr const char* vertexShaderSource = R"(
+#version 430 core
+
+struct RenderAtom {
+    vec4 position; // {posX, posY, posZ, radius}
+    vec4 color;    // {r, g, b, a}
+    uvec4 flags;   // {x=highlight, y=coloring method, z=atom ID}
+};
+
+layout(std430, binding = 0) buffer RenderAtoms {
+    RenderAtom atoms[];
+};
+
+uniform mat4 View;
+uniform mat4 Proj;
+
+out vec3 quadPositionView;
+flat out vec3 sphereCenterView;
+flat out float sphereRadius;
+flat out vec4 atomColor;
+flat out int atomId;
+flat out uint highlight;
+
+void main() {
+    const RenderAtom atom = atoms[gl_InstanceID];
+    atomId = int(atom.flags.z);
+    highlight = atom.flags.x;
+    atomColor = atom.color;
+    sphereRadius = atom.position.w;
+    sphereCenterView = (View * vec4(atom.position.xyz, 1.0)).xyz;
+
+    // Hidden atoms collapse to a point, so they cost no fragments
+    const float centerDistance = length(sphereCenterView);
+    if (atom.color.a <= 0.0 || centerDistance <= sphereRadius) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
+
+    // A quad through the center, perpendicular to the view ray, just large enough to cover the sphere's silhouette
+    const vec3 toCamera = -sphereCenterView / centerDistance;
+    const vec3 helper = abs(toCamera.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    const vec3 right = normalize(cross(helper, toCamera));
+    const vec3 up = cross(toCamera, right);
+    const float halfSize = sphereRadius * centerDistance / sqrt(centerDistance * centerDistance - sphereRadius * sphereRadius);
+    const vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.0 - 1.0;
+
+    quadPositionView = sphereCenterView + (right * corner.x + up * corner.y) * halfSize;
+    gl_Position = Proj * vec4(quadPositionView, 1.0);
+}
+)";
+
+    static constexpr const char* fragmentShaderSource = R"(
+in vec3 quadPositionView;
+flat in vec3 sphereCenterView;
+flat in float sphereRadius;
+flat in vec4 atomColor;
+flat in int atomId;
+flat in uint highlight;
+
+uniform mat4 Proj;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out int  FragAtomId;
+
+void main() {
+    // Camera at the origin of view space
+    const vec3 ray = normalize(quadPositionView);
+    const float b = dot(ray, sphereCenterView);
+    const float discriminant = b * b - dot(sphereCenterView, sphereCenterView) + sphereRadius * sphereRadius;
+    if (discriminant < 0.0)
+        discard;
+    const vec3 hit = ray * (b - sqrt(discriminant));
+    const vec3 N = (hit - sphereCenterView) / sphereRadius;
+    const vec3 V = -ray;
+
+    const vec4 clip = Proj * vec4(hit, 1.0);
+    gl_FragDepth = (clip.z / clip.w) * 0.5 + 0.5;
+
+    FragColor = vec4(ShadeMatte(atomColor.rgb, N, V, highlight == 1u), atomColor.a);
+    FragAtomId = atomId;
+}
+)";
+
+public:
+    DrawAtomsShader()
+        : Shader(vertexShaderSource, std::string(matteLightingSource) + fragmentShaderSource)
+    {
+    }
+
+    void Draw(const SSBO& renderAtomsBuffer, int nAtoms, const glm::mat4& view, const glm::mat4& projection) {
+        use();
+        renderAtomsBuffer.Bind(0);
+
+        SetUniformMat4("View", view);
+        SetUniformMat4("Proj", projection);
+
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, nAtoms);
+        glUseProgram(0);
+    }
+};
+
+// Bonds as ray-cast cylinder impostors, for the licorice representation. Reads both atoms from the atom buffer, so
+// bonds follow the atoms without uploads; the bond list itself is static. Each half takes its atom's color and id.
+// Drawn only when both atoms are in licorice, whose spheres have the bond radius and so round off the ends
+class DrawBondsShader : public Shader {
+    static constexpr const char* vertexShaderSource = R"(
+#version 430 core
+
+struct RenderAtom {
+    vec4 position; // {posX, posY, posZ, radius}
+    vec4 color;    // {r, g, b, a}
+    uvec4 flags;   // {x=highlight, y=coloring method, z=atom ID}
+};
+
+layout(std430, binding = 0) buffer RenderAtoms {
+    RenderAtom atoms[];
+};
+layout(std430, binding = 1) buffer Bonds {
+    ivec2 bonds[];
+};
+
+uniform mat4 View;
+uniform mat4 Proj;
+uniform uint LicoriceMethod;
+uniform float BondRadius;
+
+out vec3 quadPositionView;
+flat out vec3 endpointsView[2];
+flat out vec4 colors[2];
+flat out int atomIds[2];
+flat out uint highlights[2];
+
+void main() {
+    const ivec2 bond = bonds[gl_InstanceID];
+    const RenderAtom a = atoms[bond.x];
+    const RenderAtom b = atoms[bond.y];
+    endpointsView[0] = (View * vec4(a.position.xyz, 1.0)).xyz;
+    endpointsView[1] = (View * vec4(b.position.xyz, 1.0)).xyz;
+    colors[0] = a.color;
+    colors[1] = b.color;
+    atomIds[0] = int(a.flags.z);
+    atomIds[1] = int(b.flags.z);
+    highlights[0] = a.flags.x;
+    highlights[1] = b.flags.x;
+
+    const vec3 axis = endpointsView[1] - endpointsView[0];
+    const vec3 middle = (endpointsView[0] + endpointsView[1]) * 0.5;
+    const vec3 toCamera = normalize(-middle);
+    const vec3 side = cross(axis, toCamera);
+    // Hidden or not in licorice, or pointing at the camera, where the atom spheres cover it: no fragments
+    if (a.flags.y != LicoriceMethod || b.flags.y != LicoriceMethod || a.color.a <= 0.0 || b.color.a <= 0.0
+        || dot(side, side) < 1e-10) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
+
+    // A quad along the axis, moved a radius towards the camera so the whole cylinder projects inside it
+    const vec3 along = normalize(axis) * BondRadius;
+    const vec3 across = normalize(side) * BondRadius * 1.1;
+    const vec3 end = (gl_VertexID & 1) == 0 ? endpointsView[0] - along : endpointsView[1] + along;
+    quadPositionView = end + toCamera * BondRadius + across * ((gl_VertexID >> 1) == 0 ? -1.0 : 1.0);
+    gl_Position = Proj * vec4(quadPositionView, 1.0);
+}
+)";
+
+    static constexpr const char* fragmentShaderSource = R"(
+in vec3 quadPositionView;
+flat in vec3 endpointsView[2];
+flat in vec4 colors[2];
+flat in int atomIds[2];
+flat in uint highlights[2];
+
+uniform mat4 Proj;
+uniform float BondRadius;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out int  FragAtomId;
+
+void main() {
+    // Ray from the camera at the view-space origin against the infinite cylinder, then cut to the bond
+    const vec3 ray = normalize(quadPositionView);
+    const vec3 axis = endpointsView[1] - endpointsView[0];
+    const float length_ = length(axis);
+    const vec3 A = axis / length_;
+    const vec3 rayPerp = ray - A * dot(ray, A);
+    const vec3 originPerp = -endpointsView[0] - A * dot(-endpointsView[0], A);
+    const float a = dot(rayPerp, rayPerp);
+    const float b = 2.0 * dot(rayPerp, originPerp);
+    const float c = dot(originPerp, originPerp) - BondRadius * BondRadius;
+    const float discriminant = b * b - 4.0 * a * c;
+    if (discriminant < 0.0 || a < 1e-12)
+        discard;
+    const vec3 hit = ray * ((-b - sqrt(discriminant)) / (2.0 * a));
+    const float s = dot(hit - endpointsView[0], A);
+    if (s < 0.0 || s > length_)
+        discard;	// Beyond the ends, where the atom spheres are
+    const vec3 N = normalize(hit - endpointsView[0] - A * s);
+
+    const vec4 clip = Proj * vec4(hit, 1.0);
+    gl_FragDepth = (clip.z / clip.w) * 0.5 + 0.5;
+
+    const int half_ = s < length_ * 0.5 ? 0 : 1;
+    FragColor = vec4(ShadeMatte(colors[half_].rgb, N, -ray, highlights[half_] == 1u), colors[half_].a);
+    FragAtomId = atomIds[half_];
+}
+)";
+
+public:
+    static constexpr float bondRadius = 0.035f; // [nm] Also the radius of licorice atoms
+
+    DrawBondsShader()
+        : Shader(vertexShaderSource, std::string(matteLightingSource) + fragmentShaderSource)
+    {
+    }
+
+    void Draw(const SSBO& renderAtomsBuffer, const SSBO& bondsBuffer, int nBonds, const glm::mat4& view, const glm::mat4& projection) {
+        if (nBonds == 0)
+            return;
+        use();
+        renderAtomsBuffer.Bind(0);
+        bondsBuffer.Bind(1);
+
+        SetUniformMat4("View", view);
+        SetUniformMat4("Proj", projection);
+        glUniform1ui(glGetUniformLocation(programID, "LicoriceMethod"), static_cast<GLuint>(ColoringMethod::Licorice));
+        SetUniform("BondRadius", bondRadius);
+
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, nBonds);
+        glUseProgram(0);
+    }
+};
+
+// Triangle meshes with a color and an atom id per vertex, for molecular surfaces. Lit like the atoms
+class DrawSurfaceShader : public Shader {
+    static constexpr const char* vertexShaderSource = R"(
+#version 430 core
+
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec4 inColor;
+layout(location = 3) in int inAtomId;
+
+uniform mat4 View;
+uniform mat4 Proj;
+
+out vec3 positionView;
+out vec3 normalView;
+out vec4 color;
+flat out int atomId;
+
+void main() {
+    const vec4 view = View * vec4(inPosition, 1.0);
+    positionView = view.xyz;
+    normalView = mat3(View) * inNormal;
+    color = inColor;
+    atomId = inAtomId;
+    gl_Position = Proj * view;
+}
+)";
+
+    static constexpr const char* fragmentShaderSource = R"(
+in vec3 positionView;
+in vec3 normalView;
+in vec4 color;
+flat in int atomId;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out int  FragAtomId;
+
+void main() {
+    const vec3 V = normalize(-positionView);
+    vec3 N = normalize(normalView);
+    // Inside surfaces, eg. seen through a cut by the near plane, are lit from the camera's side
+    if (dot(N, V) < 0.0)
+        N = -N;
+    FragColor = vec4(ShadeMatte(color.rgb, N, V, false), 1.0);
+    FragAtomId = atomId;
+}
+)";
+
+public:
+    DrawSurfaceShader()
+        : Shader(vertexShaderSource, std::string(matteLightingSource) + fragmentShaderSource)
+    {
+    }
+
+    void Draw(GLuint vao, int indexCount, const glm::mat4& view, const glm::mat4& projection) {
+        use();
+        SetUniformMat4("View", view);
+        SetUniformMat4("Proj", projection);
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
+        glUseProgram(0);
+    }
+};
+
+// The original atom shader, kept as the "Classic atoms" style: each atom is a flat 24-vertex cone facing the camera,
+// lit per vertex. Cheap, but faceted and without exact depth where atoms overlap
+class DrawAtomsLegacyShader : public Shader {
     static constexpr const char* vertexShaderSource = R"(
 #version 430 core
 
@@ -771,12 +1123,12 @@ void main() {
     static constexpr int numVerticesPerAtom = 24;
 
 public:
-    DrawAtomsShader()
+    DrawAtomsLegacyShader()
         : Shader(vertexShaderSource, fragmentShaderSource)
     {
     }
 
-    ~DrawAtomsShader() {
+    ~DrawAtomsLegacyShader() {
     }
 
     void Draw(const SSBO& renderAtomsBuffer, int nAtoms, const glm::mat4& view, const glm::mat4& projection) {

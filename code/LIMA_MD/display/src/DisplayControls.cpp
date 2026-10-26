@@ -1,5 +1,6 @@
 #include "Display.h"
 #include "DisplayInternal.h"
+#include "TrajectoryFile.h"
 #include "imgui.h"
 #include "Utilities.h"
 #include "SSBO.h"
@@ -334,14 +335,23 @@ void Display::SelectMolecule(int atomId) {
 		for (const auto& candidate : molecules)
 			if (candidate.name == molecule->name)
 				selection.atomIds.insert(selection.atomIds.end(), candidate.atomIds.begin(), candidate.atomIds.end());
-		renderContext.selectedMolecule = std::move(selection);
+		SetSelection(renderContext, std::move(selection));
 	}
 	else {
-		renderContext.selectedMolecule = *molecule;
+		SetSelection(renderContext, *molecule);
 	}
-	_UpdateSelection(renderContext, std::set<int>{ renderContext.selectedMolecule->atomIds.begin(),
-		renderContext.selectedMolecule->atomIds.end() });
 	renderContext.lastSelectedAtomId = atomId;
+}
+
+void Display::SetSelection(RenderContext& renderContext, Rendering::MoleculeInfo selection) {
+	renderContext.lastSelectedAtomId = -1;
+	if (selection.atomIds.empty()) {
+		renderContext.selectedMolecule.reset();
+		_UpdateSelection(renderContext, {});
+		return;
+	}
+	_UpdateSelection(renderContext, std::set<int>{ selection.atomIds.begin(), selection.atomIds.end() });
+	renderContext.selectedMolecule = std::move(selection);
 }
 
 void Display::OnMouseButton(int button, int action, int mods) {
@@ -416,6 +426,10 @@ void Display::OnMouseButton(int button, int action, int mods) {
     else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         if (action == GLFW_PRESS) {
             popupSimulationId = activeSimulationId;
+            contextMenuOptions.clear();
+            if (const auto* task = std::get_if<std::unique_ptr<Rendering::AtomRenderTask>>(&renderContext.currentRenderTask))
+                contextMenuOptions = Rendering::SelectionOptions(**task, ElementIdIsAtomid(objectId) ? objectId : -1,
+                    renderContext.selectedMolecule.has_value());
             mousePosAtRightBtnDown.emplace();
             glfwGetCursorPos(window, &mousePosAtRightBtnDown->x, &mousePosAtRightBtnDown->y);            
 		}
@@ -481,6 +495,7 @@ void Display::ApplyRepresentation(ColoringMethod method) {
     for (auto& [id, context] : renderContexts) {
         if (anySelection && !context.selectedMolecule) continue;
         if (method == ColoringMethod::NewCartoon && !context.renderSettings->hasBackbone) continue;
+        if (method == ColoringMethod::Lipids && !context.renderSettings->hasLipids) continue;
         if (method == ColoringMethod::ForceMagnitude && !context.renderSettings->hasForceData) continue;
         context.renderSettings->coloringMethod = method;
         context.shouldRecolorAtoms = true;
@@ -542,6 +557,39 @@ void Display::ConsumeInputs() {
                     activeRenderContext = &renderContexts.at(cmd.simulationId);
                     viewports.clear();
                 }
+            }
+            else if constexpr (std::is_same_v<T, Overlay::Select>) {
+                const auto context = renderContexts.find(cmd.simulationId);
+                if (context == renderContexts.end()) return;
+                if (allowUserInputs) {
+                    // Live-edit owns the selection, as it acts on it
+                    std::lock_guard<std::mutex> lock(liveEditCommandsQueueMutex);
+                    liveEditCommandsQueue.push_back(LiveEdit::SelectAtoms{
+                        cmd.selection.name, cmd.selection.atomIds, cmd.selection.typeCount });
+                }
+                else
+                    SetSelection(context->second, cmd.selection);
+            }
+            else if constexpr (std::is_same_v<T, Overlay::ClassicAtoms>) {
+                classicAtoms = cmd.enabled;
+                for (auto& [id, context] : renderContexts)
+                    context.renderSettings->classicAtoms = classicAtoms;
+            }
+            else if constexpr (std::is_same_v<T, Overlay::Playback>) {
+                const auto context = renderContexts.find(cmd.simulationId);
+                if (context == renderContexts.end() || !context->second.playback) return;
+                TrajectoryPlayback& playback = *context->second.playback;
+                if (cmd.frame) {
+                    const int frameCount = playback.file->FrameCount();
+                    playback.frame = ((*cmd.frame % frameCount) + frameCount) % frameCount;	// Steps wrap around
+                    playback.playing = false;
+                }
+                if (cmd.playing) {
+                    playback.playing = *cmd.playing;
+                    playback.lastAdvance = std::chrono::steady_clock::now();
+                }
+                if (cmd.framesPerSecond)
+                    playback.framesPerSecond = *cmd.framesPerSecond;
             }
             else if constexpr (std::is_same_v<T, Overlay::SetTiled>) {
                 CancelInteraction();

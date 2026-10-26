@@ -1,103 +1,25 @@
 #include "NewCartoonRenderer.h"
 
 #include "Shaders.h"
+#include "TubeMesh.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 
 namespace NewCartoon {
+
+using TubeMesh::AnyPerpendicular;
+using TubeMesh::BuildTube;
+using TubeMesh::MinimumImage;
+using TubeMesh::Sample;
+using TubeMesh::SafeNormalize;
+using TubeMesh::SamplePath;
+
 namespace {
 
 constexpr int samplesPerResidue = 6;
 constexpr int tubeSides = 10;
-constexpr float pi = 3.14159265358979323846f;
-
-struct Sample {
-	glm::vec3 position{};
-	glm::vec3 tangent{};
-	glm::vec3 widthDirection{};
-};
-
-glm::vec3 ToCartoonVec3(const Float3& value)
-{
-	return { value.x, value.y, value.z };
-}
-
-glm::vec3 MinimumImage(glm::vec3 delta, const Float3& box)
-{
-	const std::array<float, 3> lengths{ box.x, box.y, box.z };
-	for (int axis = 0; axis < 3; ++axis) {
-		if (lengths[axis] > 0.f)
-			delta[axis] -= std::round(delta[axis] / lengths[axis]) * lengths[axis];
-	}
-	return delta;
-}
-
-glm::vec3 SafeNormalize(const glm::vec3& value, const glm::vec3& fallback)
-{
-	return glm::dot(value, value) > 1e-10f ? glm::normalize(value) : fallback;
-}
-
-glm::vec3 AnyPerpendicular(const glm::vec3& direction)
-{
-	const glm::vec3 helper = std::abs(direction.z) < 0.9f
-		? glm::vec3(0.f, 0.f, 1.f)
-		: glm::vec3(0.f, 1.f, 0.f);
-	return SafeNormalize(glm::cross(helper, direction), glm::vec3(1.f, 0.f, 0.f));
-}
-
-glm::vec3 CatmullRom(
-	const glm::vec3& p0,
-	const glm::vec3& p1,
-	const glm::vec3& p2,
-	const glm::vec3& p3,
-	float t)
-{
-	const float t2 = t * t;
-	const float t3 = t2 * t;
-	return 0.5f * ((2.f * p1)
-		+ (-p0 + p2) * t
-		+ (2.f * p0 - 5.f * p1 + 4.f * p2 - p3) * t2
-		+ (-p0 + 3.f * p1 - 3.f * p2 + p3) * t3);
-}
-
-std::vector<Sample> SamplePath(
-	const std::vector<glm::vec3>& positions,
-	std::size_t firstPoint,
-	std::size_t lastPoint)
-{
-	std::vector<Sample> samples;
-	if (lastPoint <= firstPoint || lastPoint >= positions.size())
-		return samples;
-
-	samples.reserve((lastPoint - firstPoint) * samplesPerResidue + 1);
-	for (std::size_t point = firstPoint; point < lastPoint; ++point) {
-		const glm::vec3& p0 = positions[point > 0 ? point - 1 : point];
-		const glm::vec3& p1 = positions[point];
-		const glm::vec3& p2 = positions[point + 1];
-		const glm::vec3& p3 = positions[std::min(point + 2, positions.size() - 1)];
-		for (int subdivision = 0; subdivision < samplesPerResidue; ++subdivision) {
-			const float t = static_cast<float>(subdivision) / samplesPerResidue;
-			samples.push_back({ CatmullRom(p0, p1, p2, p3, t) });
-		}
-	}
-	samples.push_back({ positions[lastPoint] });
-
-	for (std::size_t i = 0; i < samples.size(); ++i) {
-		const glm::vec3 before = samples[i > 0 ? i - 1 : i].position;
-		const glm::vec3 after = samples[std::min(i + 1, samples.size() - 1)].position;
-		samples[i].tangent = SafeNormalize(after - before, glm::vec3(0.f, 0.f, 1.f));
-
-		const glm::vec3 previousWidth = i > 0
-			? samples[i - 1].widthDirection
-			: AnyPerpendicular(samples[i].tangent);
-		const glm::vec3 transportedWidth = previousWidth
-			- glm::dot(previousWidth, samples[i].tangent) * samples[i].tangent;
-		samples[i].widthDirection = SafeNormalize(transportedWidth, AnyPerpendicular(samples[i].tangent));
-	}
-	return samples;
-}
 
 void AppendTriangle(
 	std::vector<Vertex>& vertices,
@@ -121,35 +43,6 @@ void AppendQuad(
 {
 	AppendTriangle(vertices, a, b, c, normal);
 	AppendTriangle(vertices, a, c, d, normal);
-}
-
-std::vector<Vertex> BuildTube(const std::vector<Sample>& samples, float radius)
-{
-	std::vector<Vertex> vertices;
-	if (samples.size() < 2)
-		return vertices;
-	vertices.reserve((samples.size() - 1) * tubeSides * 6);
-
-	for (std::size_t i = 0; i + 1 < samples.size(); ++i) {
-		const glm::vec3 b0 = SafeNormalize(glm::cross(samples[i].tangent, samples[i].widthDirection), AnyPerpendicular(samples[i].tangent));
-		const glm::vec3 b1 = SafeNormalize(glm::cross(samples[i + 1].tangent, samples[i + 1].widthDirection), b0);
-		for (int side = 0; side < tubeSides; ++side) {
-			const float a0 = 2.f * pi * side / tubeSides;
-			const float a1 = 2.f * pi * (side + 1) / tubeSides;
-			const glm::vec3 n00 = std::cos(a0) * samples[i].widthDirection + std::sin(a0) * b0;
-			const glm::vec3 n01 = std::cos(a1) * samples[i].widthDirection + std::sin(a1) * b0;
-			const glm::vec3 n10 = std::cos(a0) * samples[i + 1].widthDirection + std::sin(a0) * b1;
-			const glm::vec3 n11 = std::cos(a1) * samples[i + 1].widthDirection + std::sin(a1) * b1;
-
-			vertices.push_back({ samples[i].position + n00 * radius, n00 });
-			vertices.push_back({ samples[i].position + n01 * radius, n01 });
-			vertices.push_back({ samples[i + 1].position + n11 * radius, n11 });
-			vertices.push_back({ samples[i].position + n00 * radius, n00 });
-			vertices.push_back({ samples[i + 1].position + n11 * radius, n11 });
-			vertices.push_back({ samples[i + 1].position + n10 * radius, n10 });
-		}
-	}
-	return vertices;
 }
 
 float SheetArrowScale(float fraction)
@@ -293,7 +186,7 @@ void Renderer::Update(const std::vector<Float3>& positions)
 			if (globalParticleId < 0 || static_cast<std::size_t>(globalParticleId) >= positions.size())
 				continue;
 
-			const glm::vec3 rawPosition = ToCartoonVec3(positions[globalParticleId]);
+			const glm::vec3 rawPosition = TubeMesh::ToVec3(positions[globalParticleId]);
 			if (i == 0)
 				chain.positions[i] = rawPosition;
 			else
@@ -308,7 +201,7 @@ void Renderer::RebuildMeshes()
 {
 	for (DrawableRun& run : drawableRuns) {
 		const std::vector<Sample> samples = SamplePath(
-			boundChains[run.chainIndex].positions, run.firstPoint, run.lastPoint);
+			boundChains[run.chainIndex].positions, run.firstPoint, run.lastPoint, samplesPerResidue);
 		switch (run.secondaryStructure) {
 		case SecondaryStructure::Helix:
 			run.vertices = BuildRibbon(samples, 0.085f, 0.025f, false);
@@ -317,7 +210,7 @@ void Renderer::RebuildMeshes()
 			run.vertices = BuildRibbon(samples, 0.075f, 0.012f, true);
 			break;
 		case SecondaryStructure::Coil:
-			run.vertices = BuildTube(samples, 0.030f);
+			run.vertices = BuildTube(samples, 0.030f, tubeSides);
 			break;
 		}
 	}

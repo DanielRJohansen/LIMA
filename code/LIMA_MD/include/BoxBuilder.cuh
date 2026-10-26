@@ -3,6 +3,7 @@
 #include "Simulation.cuh"
 #include "BoxImageBuilder.h"
 
+#include <string_view>
 #include <vector>
 
 namespace BoxBuilder
@@ -14,4 +15,7 @@ namespace BoxBuilder
 
 
 	BackboneChains InterpretBackboneChains(const GroFile& grofile);
+	bool IsProteinResidue(std::string_view residueName);
+	LipidModels InterpretLipids(const GroFile& grofile);
+	ParticleCategories InterpretParticleCategories(const GroFile& grofile, const LipidModels& lipids);
 };

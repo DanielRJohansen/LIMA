@@ -25,6 +25,10 @@ class DrawBoxOutlineShader;
 class DrawFacetsShader;
 class DrawAtomsShader;
 class DrawAtomsPrettyShader;
+class DrawAtomsLegacyShader;
+class DrawBondsShader;
+class DrawSurfaceShader;
+class AmbientOcclusion;
 class DrawNormalsShader;
 class DrawTrianglesShader;
 class DrawBackgroundGradientShader;
@@ -38,6 +42,9 @@ class SSBO;
 class RenderDataPipe;
 struct TransformGizmo;
 namespace NewCartoon { class Renderer; }
+class LipidRenderer;
+class SurfaceRenderer;
+struct TrajectoryPlayback;
 
 struct SimulationTab {
 	SimulationId simulationId = 0;
@@ -58,7 +65,13 @@ struct RenderContext {
 
 	std::vector<RenderAtom> renderAtomsHost;
 	std::unique_ptr<SSBO> renderAtomsBuffer;
+	std::unique_ptr<SSBO> bondsBuffer;	// Built when licorice is first shown, as finding bonds takes a moment for large systems
+	int bondCount = 0;
+	bool hasLicorice = false;	// Any atom in licorice, so bonds are drawn
 	std::unique_ptr<NewCartoon::Renderer> newCartoonRenderer;
+	std::unique_ptr<LipidRenderer> lipidRenderer;
+	std::unique_ptr<SurfaceRenderer> surfaceRenderer;
+	std::unique_ptr<TrajectoryPlayback> playback;	// When showing a trajectory
 	std::shared_ptr<RenderDataPipe> renderDataPipe;
 	std::vector<Float3> renderPositionsHost;
 	std::string label;
@@ -138,6 +151,9 @@ private:
 	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
 	void SelectMolecule(int atomId);
+	void SetSelection(RenderContext&, Rendering::MoleculeInfo selection);
+	// Shows the trajectory frame playback is at, advancing it first when playing and due
+	bool AdvancePlayback(RenderContext&);	// True when it showed a new frame
 	int GetObjectIdAtPixel(glm::dvec2);
 	void ConsumeInputs();
 
@@ -148,6 +164,7 @@ private:
 	glm::dvec2 mousePos{};
 	std::optional<SimulationId> dragSimulationId;
 	std::optional<SimulationId> popupSimulationId;
+	std::vector<Rendering::SelectionOption> contextMenuOptions; // For the popup, built when it is opened
 	std::map<SimulationId, RenderContext> renderContexts;
 	std::map<SimulationId, RenderViewport> viewports;
 	bool tiled = false;
@@ -171,6 +188,11 @@ private:
 	std::unique_ptr<DrawTrianglesShader> drawTrianglesShader;
 	std::unique_ptr<DrawBackgroundGradientShader> drawBackgroundGradientShader;
 	std::unique_ptr<DrawAtomsPrettyShader> drawAtomsPrettyShader;
+	std::unique_ptr<DrawAtomsLegacyShader> drawAtomsLegacyShader;
+	std::unique_ptr<DrawBondsShader> drawBondsShader;
+	std::unique_ptr<DrawSurfaceShader> drawSurfaceShader;
+	std::unique_ptr<AmbientOcclusion> ambientOcclusion;
+	bool classicAtoms = false; // Display-wide, see RenderSettings::classicAtoms
 
 	std::unique_ptr<RenderTargetControl> renderTargetControl;
 
@@ -190,4 +212,5 @@ private:
 	std::atomic_bool kill = false;
 	std::atomic_bool displaySelfTerminated = false;
 	std::atomic_bool spinnerVisible = false;
+	std::chrono::steady_clock::time_point lastInputTime{};	// Of any GLFW input event; keeps the frame rate up while interacting
 };

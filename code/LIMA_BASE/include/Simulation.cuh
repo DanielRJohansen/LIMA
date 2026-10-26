@@ -7,6 +7,8 @@
 #include "BoxGrid.cuh"
 #include "SimParams.h"
 #include "Backbone.h"
+#include "LipidModel.h"
+#include "ParticleCategory.h"
 
 #include <algorithm>
 #include <cmath>
@@ -149,6 +151,8 @@ struct Box {
 
 	// Backbone chains
 	BackboneChains backboneChains; // Only for rendering
+	LipidModels lipidModels; // Only for rendering
+	ParticleCategories particleCategories; // Only for rendering
 };
 
 

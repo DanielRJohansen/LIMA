@@ -54,6 +54,8 @@ struct RenderSettings {
 	ColoringMethod coloringMethod{}; // Guides what (selected) renderatoms will be set to upon change
 	bool hasForceData = false;
 	bool hasBackbone = false;
+	bool hasLipids = false;
+	bool classicAtoms = false; // The original cone-shaded atoms, for the whole display. Here only for the menu checkbox
 };
 
 class Overlay {
@@ -63,8 +65,12 @@ public:
 	struct ResetCamera { SimulationId simulationId = 0; };
 	struct RevolveCamera { SimulationId simulationId = 0; };
 	struct SetTiled { bool enabled = false; };
+	struct ClassicAtoms { bool enabled = false; };
+	// Changes to trajectory playback. A frame without playing pauses, as when scrubbing
+	struct Playback { SimulationId simulationId = 0; std::optional<bool> playing; std::optional<int> frame; std::optional<float> framesPerSecond; };
 	struct SelectSimulation { SimulationId simulationId = 0; };
-	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled>;
+	struct Select { SimulationId simulationId = 0; Rendering::MoleculeInfo selection; };
+	using Command = std::variant<SubmittedCmd, ColoringMethod, SolventVisibility, ResetCamera, RevolveCamera, SelectSimulation, SetTiled, Select, ClassicAtoms, Playback>;
 private:
 	bool didDrawThisFrame = false;
 	unsigned int logoTexture = 0;
@@ -73,7 +79,8 @@ private:
 	std::deque<std::string> consoleLines;
 
 	void HandleConsole();
-	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos, SimulationId simulationId);
+	void HandleContextMenu(RenderSettings& renderSettings, std::optional<glm::dvec2> rightClickedPos, SimulationId simulationId,
+		const std::vector<Rendering::SelectionOption>& selectionOptions);
 
 public:
 	std::deque<Command> submittedCommands;
@@ -85,7 +92,7 @@ public:
 	float BeginFrame(RenderSettings&, int fps, const std::vector<SimulationTab>& tabs, bool tiled, SimulationId simulationId);
 	void DrawTile(SimulationId simulationId, const RenderContext&, const RenderViewport&, bool tiled);
 	void EndFrame(RenderSettings&, std::optional<glm::dvec2> rightClickedPos,
-		std::optional<SimulationId> popupSimulationId, bool spinnerVisible);
+		std::optional<SimulationId> popupSimulationId, const std::vector<Rendering::SelectionOption>& selectionOptions, bool spinnerVisible);
 	void Render();
 };
 

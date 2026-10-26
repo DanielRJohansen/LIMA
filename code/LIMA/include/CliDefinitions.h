@@ -105,6 +105,11 @@ Options:
   -w, --whole                  Unwrap and center the molecule
       --hide-water             Hide water molecules
       --highlight INDEX...     Highlight zero-based atom indices
+  -x, --trajectory PATH        Play back an .xtc or .trr trajectory of the structure
+                               (space plays/pauses, comma and period step a frame)
+  -r, --representation NAME    Initial representation: atomname, charge, atomid,
+                               compound, backbone, lipids, licorice or surface
+                               (default: atomname)
   -h, --help                   Display this help and exit
 
 Water models: tip3p, tip4p, tips3p, tip5p, spc, spce

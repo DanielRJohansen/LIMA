@@ -89,7 +89,7 @@ void Environment::InsertMolecule(LiveEditData* liveeditData, GroFile& grofile, T
 	
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus, simulation->box->backboneChains
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains, Rendering::GetMoleculeInfo(*simulation), simulation->box->lipidModels, simulation->box->particleCategories
 	));
 }
 
@@ -174,6 +174,16 @@ void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::At
 		liveeditData->selectedMolecule);
 }
 
+void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtoms& cmd) {
+	liveeditData->selectedParticleId = std::nullopt;
+	liveeditData->activeSelection = { cmd.particleIds.begin(), cmd.particleIds.end() };
+	if (cmd.particleIds.empty())
+		liveeditData->selectedMolecule.reset();
+	else
+		liveeditData->selectedMolecule = Rendering::MoleculeInfo{ cmd.label, 0, cmd.moleculeCount, cmd.particleIds };
+	display->UpdateSelection(0, liveeditData->activeSelection, liveeditData->selectedMolecule);
+}
+
 void Environment::UpdateSelection(LiveEditData* liveeditData, const LiveEdit::SelectAtomsBasedOnQualifier& cmd) {
 	const auto& simulation = LiveEditSession().simulation;
 	liveeditData->selectedParticleId = std::nullopt;
@@ -226,7 +236,7 @@ void Environment::BuildMembrane(LiveEditData* liveeditData, const LiveEdit::Buil
 	liveeditData->remainingStepsCount = 4000;
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus, simulation->box->backboneChains
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains, Rendering::GetMoleculeInfo(*simulation), simulation->box->lipidModels, simulation->box->particleCategories
 	));
 
 	display->SetSpinnerVisible(false);
@@ -290,7 +300,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	display->WaitForDisplayReady();
 	display->Submit(0, std::make_unique<Rendering::AtomRenderTask>(
 		simulation->box->persistentClusters, simulation->box->persistentClustersMetadata,
-		simulation->box->boxparams, simStatus, simulation->box->backboneChains
+		simulation->box->boxparams, simStatus, simulation->box->backboneChains, Rendering::GetMoleculeInfo(*simulation), simulation->box->lipidModels, simulation->box->particleCategories
 	), false, nullptr, simulation->name);
 	display->allowUserInputs = true;
 
@@ -356,6 +366,9 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 						else if constexpr (std::is_same_v<T, LiveEdit::AtomSelected>) {
 							UpdateSelection(&liveeditData, cmd);
 						}
+						else if constexpr (std::is_same_v<T, LiveEdit::SelectAtoms>) {
+							UpdateSelection(&liveeditData, cmd);
+						}
 						else if constexpr (std::is_same_v<T, LiveEdit::SelectAtomsBasedOnQualifier>) {
 							UpdateSelection(&liveeditData, cmd);
 						}
@@ -382,9 +395,11 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				);
 			}
 		}
-		else if (const auto newCmd = display->GetLiveEditCommand(); newCmd
-			&& std::holds_alternative<LiveEdit::AtomSelected>(*newCmd)) {
-			UpdateSelection(&liveeditData, std::get<LiveEdit::AtomSelected>(*newCmd));
+		else if (const auto newCmd = display->GetLiveEditCommand(); newCmd) {
+			if (const auto* atomSelected = std::get_if<LiveEdit::AtomSelected>(&*newCmd))
+				UpdateSelection(&liveeditData, *atomSelected);
+			else if (const auto* selectAtoms = std::get_if<LiveEdit::SelectAtoms>(&*newCmd))
+				UpdateSelection(&liveeditData, *selectAtoms);
 		}
 
 

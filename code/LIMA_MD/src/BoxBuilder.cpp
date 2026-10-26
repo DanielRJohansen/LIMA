@@ -51,9 +51,12 @@ std::unique_ptr<Box> BoxBuilder::BuildBox(const SimParams& simparams, BoxImage& 
 	box->particlesBondedToParticle = std::move(boxImage.particleBondedToParticle);
 	box->pclustersBondedToPcluster = std::move(boxImage.pclusterBondedToPcluster);
 
-	// Only display uses backbones, so if no display we dont need backbone
-	if (envmode == EnvMode::Full)
+	// Only display uses backbones and lipid models, so if no display we dont need them
+	if (envmode == EnvMode::Full) {
 		box->backboneChains = InterpretBackboneChains(boxImage.grofile);
+		box->lipidModels = InterpretLipids(boxImage.grofile);
+		box->particleCategories = InterpretParticleCategories(boxImage.grofile, box->lipidModels);
+	}
 	//box->particleToCompoundOrSolventMapping = boxImage.particleToCompoundOrSolventMapping;
 
 	return box;

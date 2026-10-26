@@ -1,11 +1,20 @@
 #pragma once
 
-#include "../../LIMA_MD/src/DisplayInternal.h"
-#include "../../LIMA_MD/src/Shaders.h"
+#include "../../LIMA_MD/display/src/DisplayInternal.h"
+#include "../../LIMA_MD/display/src/Shaders.h"
 #include "NewCartoonRenderer.h"
+#include "LipidRenderer.h"
+#include "SurfaceRenderer.h"
+#include "TrajectoryFile.h"
+#include "Trajectory.h"
+#include "xdrfile.h"
+#include "xdrfile_xtc.h"
+#include "BoxBuilder.cuh"
 #include "RenderDataPipe.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
+#include <map>
+#include <numeric>
 #include <stdexcept>
 
 class DisplayTests {
@@ -73,6 +82,141 @@ public:
 					Require(std::abs(clip.x) <= clip.w && std::abs(clip.y) <= clip.w,
 						"Default camera clipped a box corner in a narrow tile");
 				}
+			}
+		}
+
+		std::cout << "Checking lipid interpretation" << std::endl;
+		const fs::path slipids = FileUtils::GetLimaDir() / "resources" / "Slipids";
+		struct ExpectedLipid { const char* file; LipidHeadgroup headgroup; std::size_t tails; const char* head; };
+		// SITS names its atoms C1..C48 rather than by chain, so it checks the interpretation does not rely on names
+		for (const auto& expected : std::initializer_list<ExpectedLipid>{
+			{ "POPC", LipidHeadgroup::Choline, 2, "P" }, { "POPE", LipidHeadgroup::Ethanolamine, 2, "P" },
+			{ "POPS", LipidHeadgroup::Serine, 2, "P" }, { "DOPG", LipidHeadgroup::Anionic, 2, "P" },
+			{ "SM16", LipidHeadgroup::Choline, 2, "P" }, { "SITS", LipidHeadgroup::Choline, 2, "P" },
+			{ "cholesterol", LipidHeadgroup::Sterol, 1, "O3" } }) {
+			const GroFile grofile{ slipids / (std::string{ expected.file } + ".gro") };
+			const LipidModels lipids = BoxBuilder::InterpretLipids(grofile);
+			Require(lipids.size() == 1, "Lipid was not recognised as exactly one lipid");
+			Require(lipids[0].headgroup == expected.headgroup, "Lipid headgroup misclassified");
+			Require(lipids[0].tails.size() == expected.tails, "Lipid has the wrong number of tails");
+			Require(grofile.atoms[lipids[0].headParticleId].atomName == expected.head, "Lipid head is the wrong atom");
+			for (const auto& tail : lipids[0].tails)
+				Require(tail.size() >= 8, "Lipid tail is too short to be a chain");
+		}
+		Require(BoxBuilder::InterpretLipids(GroFile{ FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures" / "metsol.gro" }).empty(),
+			"A protein in water was interpreted as lipids");
+
+		std::cout << "Checking selection options" << std::endl;
+		GroFile mixedSystem{ slipids / "POPC.gro" };
+		const int lipidAtoms = static_cast<int>(mixedSystem.atoms.size());
+		mixedSystem.atoms.push_back({ 2, SmallString{ "ALA" }, SmallString{ "CA" }, 0, { 1.f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 2, SmallString{ "ALA" }, SmallString{ "N" }, 0, { 1.1f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 3, SmallString{ "SOL" }, SmallString{ "OW" }, 0, { 2.f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 3, SmallString{ "SOL" }, SmallString{ "HW1" }, 0, { 2.1f, 1.f, 1.f } });
+		mixedSystem.atoms.push_back({ 4, SmallString{ "NA" }, SmallString{ "NA" }, 0, { 3.f, 1.f, 1.f } });
+		{
+			Rendering::AtomRenderTask task{ mixedSystem };
+			std::vector<int> lipidIds(lipidAtoms);
+			std::iota(lipidIds.begin(), lipidIds.end(), 0);
+			task.molecules = { { "POPC", 1, 1, lipidIds }, { "Protein", 1, 1, { lipidAtoms, lipidAtoms + 1 } },
+				{ "SOL", 1, 1, { lipidAtoms + 2, lipidAtoms + 3 } }, { "NA", 1, 1, { lipidAtoms + 4 } } };
+			const auto Find = [](const std::vector<Rendering::SelectionOption>& options, const std::string& label) {
+				const auto option = std::ranges::find(options, label, &Rendering::SelectionOption::label);
+				return option == options.end() ? nullptr : &*option;
+			};
+
+			const int carbon = task.lipidModels.at(0).tails[0].back();
+			const auto options = Rendering::SelectionOptions(task, carbon, false);
+			Require(Find(options, "This atom (#" + std::to_string(carbon) + ")")->selection.atomIds == std::vector<int>{ carbon }, "This atom selects other atoms");
+			for (int id : Find(options, "All C atoms")->selection.atomIds)
+				Require(task.atoms[id].atomLetter == 'C', "All C atoms selected a non-carbon");
+			Require(Find(options, "This molecule")->selection.atomIds == lipidIds, "This molecule is not the lipid");
+			Require(Find(options, "All POPC") != nullptr, "No option for all molecules of the type");
+			Require(Find(options, "All lipids")->selection.atomIds == lipidIds, "All lipids is not the lipid");
+			Require(Find(options, "All protein")->selection.atomIds == std::vector<int>{ lipidAtoms, lipidAtoms + 1 }, "All protein is wrong");
+			Require(Find(options, "All water")->selection.atomIds.size() == 2, "All water is wrong");
+			Require(Find(options, "All ions")->selection.atomIds == std::vector<int>{ lipidAtoms + 4 }, "All ions is wrong");
+			Require(Find(options, "All other") == nullptr, "A category with no atoms was offered");
+			Require(Find(options, "All atoms")->selection.atomIds.size() == task.atoms.size(), "All atoms is wrong");
+			Require(Find(options, "Clear selection") == nullptr, "Clear offered without a selection");
+
+			const auto emptySpace = Rendering::SelectionOptions(task, -1, true);
+			Require(emptySpace.front().label == "All protein", "Empty space offers per-atom options");
+			Require(Find(emptySpace, "Clear selection") != nullptr, "No way to clear the selection");
+			const auto ion = Rendering::SelectionOptions(task, lipidAtoms + 4, false);
+			Require(Find(ion, "All I atoms") == nullptr, "Ions offered as an element");
+
+			// A membrane-only system: the category is everything, and must still be offered
+			const Rendering::AtomRenderTask lipidsOnly{ GroFile{ slipids / "POPC.gro" } };
+			const auto lipidOptions = Rendering::SelectionOptions(lipidsOnly, carbon, false);
+			Require(Find(lipidOptions, "All lipids") != nullptr, "All lipids missing when the system is only lipids");
+			// Coordinate-only tasks get a molecule per residue, Slipids names the POPC residue POP
+			Require(Find(lipidOptions, "All POP") != nullptr && Find(lipidOptions, "This molecule") != nullptr,
+				"Coordinate-only task has no molecule options");
+		}
+
+		std::cout << "Checking bond detection" << std::endl;
+		{
+			// A molecule's bond count is its atom count - 1, plus one per ring: POPC has no rings, cholesterol four
+			const Rendering::AtomRenderTask popc{ GroFile{ slipids / "POPC.gro" } };
+			Require(Rendering::FindBonds(popc).size() == popc.atoms.size() - 1, "Wrong bond count for POPC");
+			const Rendering::AtomRenderTask cholesterol{ GroFile{ slipids / "cholesterol.gro" } };
+			Require(Rendering::FindBonds(cholesterol).size() == cholesterol.atoms.size() - 1 + 4, "Wrong bond count for cholesterol");
+		}
+
+		std::cout << "Checking surface meshes" << std::endl;
+		{
+			const float radius = 0.17f;
+			const std::vector<Float3> positions{ { 1.f, 1.f, 1.f } };
+			const auto mesh = SurfaceRenderer::BuildMesh({ { 0, radius, glm::vec4(1.f) } }, positions);
+			Require(!mesh.indices.empty(), "A lone atom has no surface");
+			for (const auto& vertex : mesh.vertices) {
+				const glm::vec3 fromCenter = vertex.position - glm::vec3(1.f);
+				Require(std::abs(glm::length(fromCenter) - radius) < SurfaceRenderer::gridSpacing * 0.25f, "Surface is not at the atom's radius");
+				Require(glm::dot(glm::normalize(fromCenter), vertex.normal) > 0.9f, "Surface normal does not point outwards");
+				Require(vertex.atomId == 0, "Surface vertex has the wrong atom");
+			}
+			// Closed and consistently wound: each directed edge once, and its reverse once
+			std::map<std::pair<unsigned int, unsigned int>, int> edges;
+			for (std::size_t t = 0; t < mesh.indices.size(); t += 3)
+				for (int e = 0; e < 3; ++e)
+					++edges[{ mesh.indices[t + e], mesh.indices[t + (e + 1) % 3] }];
+			for (const auto& [edge, count] : edges) {
+				Require(count == 1, "Surface has a doubled or inconsistently wound edge");
+				Require(edges.contains({ edge.second, edge.first }), "Surface has a hole");
+			}
+		}
+
+		std::cout << "Checking trajectory reading" << std::endl;
+		// POPC shifted 0.1 nm along x per frame, as .trr and .xtc
+		const GroFile trajectoryStructure{ slipids / "POPC.gro" };
+		const int trajectoryAtoms = static_cast<int>(trajectoryStructure.atoms.size());
+		const auto Expected = [&](int frame, int atom) {
+			return trajectoryStructure.atoms[atom].position + Float3{ 0.1f * frame, 0.f, 0.f };
+		};
+		const fs::path trrPath = fs::temp_directory_path() / "lima_display_test.trr";
+		const fs::path xtcPath = fs::temp_directory_path() / "lima_display_test.xtc";
+		{
+			Trajectory trajectory{ 3, trajectoryAtoms, trajectoryStructure.box_size, 0.01f, 10 };
+			for (int frame = 0; frame < 3; ++frame)
+				for (int atom = 0; atom < trajectoryAtoms; ++atom)
+					trajectory.Set(frame, atom, Expected(frame, atom));
+			MDFiles::Dump(trajectory, trrPath);
+
+			XDRFILE* xtc = xdrfile_open(xtcPath.string().c_str(), "w");
+			matrix box{ { trajectoryStructure.box_size.x, 0, 0 }, { 0, trajectoryStructure.box_size.y, 0 }, { 0, 0, trajectoryStructure.box_size.z } };
+			for (int frame = 0; frame < 3; ++frame)
+				write_xtc(xtc, trajectoryAtoms, frame * 10, frame * 10.f, box, reinterpret_cast<rvec*>(trajectory.GetFrame(frame)), 1000.f);
+			xdrfile_close(xtc);
+		}
+		for (const auto& [path, tolerance] : { std::pair{ trrPath, 0.f }, std::pair{ xtcPath, 0.001f } }) {
+			TrajectoryFile file{ path };
+			Require(file.AtomCount() == trajectoryAtoms && file.FrameCount() == 3, "Trajectory has the wrong size");
+			for (int frame : { 2, 0, 1, 2 }) {	// Out of order, as when scrubbing
+				const auto read = file.Read(frame);
+				Require(read.step == frame * 10, "Trajectory frame has the wrong step");
+				for (int atom = 0; atom < trajectoryAtoms; ++atom)
+					Require((read.positions[atom] - Expected(frame, atom)).len() <= tolerance, "Trajectory frame has the wrong positions");
 			}
 		}
 
@@ -184,6 +328,142 @@ public:
 			Require(display.viewports.size() == 1 && display.viewports.contains(4), "Single view did not retain its context");
 			Require(display.GetObjectIdAtPixel(AtomPixel(display, 4, 0)) == 0, "Single-view picking regressed");
 			Require(glGetError() == GL_NO_ERROR, "OpenGL error during tile tests");
+
+			std::cout << "Checking lipid representation" << std::endl;
+			for (auto& [id, context] : display.renderContexts) context.selectedMolecule.reset();
+			{
+				auto task = std::make_unique<Rendering::AtomRenderTask>(GroFile{ slipids / "POPC.gro" }, true);
+				task->representation = ColoringMethod::Lipids;
+				Require(task->lipidModels.size() == 1, "Coordinate-only render task found no lipid");
+				const int head = task->lipidModels[0].headParticleId;
+				const int body = task->lipidModels[0].tails[0].back();
+				auto& context = display.renderContexts[50];
+				context.currentRenderTask = std::move(task);
+				display.PrepareTask(context, context.currentRenderTask, false);
+				display.activeSimulationId = 50;
+				display.activeRenderContext = &context;
+				display.RenderFrame({});
+				Require(context.lipidRenderer && context.lipidRenderer->HasGeometry(), "Lipid representation has no tails");
+				Require(context.renderAtomsHost[head].position.w == LipidRenderer::headRadius && context.renderAtomsHost[head].color.w > 0.f,
+					"Lipid head is not drawn as a bead");
+				Require(context.renderAtomsHost[body].color.w == 0.f, "Lipid body atoms are still drawn");
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, head)) == head, "Picking the lipid head failed");
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, body)) == head, "Picking a lipid tail did not select its lipid");
+
+				display.ApplyRepresentation(ColoringMethod::Atomname);
+				PrepareChanges(display);
+				Require(!context.lipidRenderer->HasGeometry(), "Lipid tails survived switching back to atoms");
+				Require(context.renderAtomsHost[head].position.w != LipidRenderer::headRadius && context.renderAtomsHost[body].color.w > 0.f,
+					"Atoms were not restored after the lipid representation");
+			}
+			Require(glGetError() == GL_NO_ERROR, "OpenGL error during lipid tests");
+
+			std::cout << "Checking trajectory playback" << std::endl;
+			{
+				auto task = std::make_unique<Rendering::AtomRenderTask>(trajectoryStructure, true);
+				task->trajectory = trrPath;
+				auto& context = display.renderContexts[60];
+				context.currentRenderTask = std::move(task);
+				display.PrepareTask(context, context.currentRenderTask, false);
+				const auto ShowsFrame = [&](int frame) {
+					for (int atom = 0; atom < trajectoryAtoms; ++atom) {
+						const auto& p = context.renderAtomsHost[atom].position;
+						if ((Float3{ p.x, p.y, p.z } - Expected(frame, atom)).len() > 1e-6f)
+							return false;
+					}
+					return true;
+				};
+				Require(context.playback && display.AdvancePlayback(context) && ShowsFrame(0), "Playback did not show the first frame");
+				display.overlay->submittedCommands.push_back(Overlay::Playback{ 60, std::nullopt, 2 });
+				display.ConsumeInputs();
+				Require(!context.playback->playing, "Seeking did not pause");
+				Require(display.AdvancePlayback(context) && ShowsFrame(2), "Seeking did not show the frame");
+				Require(!display.AdvancePlayback(context), "A paused trajectory advanced");
+				display.overlay->submittedCommands.push_back(Overlay::Playback{ 60, std::nullopt, 0 });
+				display.ConsumeInputs();
+				Require(display.AdvancePlayback(context) && ShowsFrame(0), "Seeking to the first frame failed");
+				display.overlay->submittedCommands.push_back(Overlay::Playback{ 60, std::nullopt, -1 });
+				display.ConsumeInputs();
+				Require(display.AdvancePlayback(context) && ShowsFrame(2), "Stepping back from the first frame did not wrap");
+				display.renderContexts.erase(60);
+			}
+			fs::remove(trrPath);
+			fs::remove(xtcPath);
+
+			std::cout << "Checking menu selections" << std::endl;
+			{
+				auto& context = display.renderContexts.at(50);
+				const auto* task = std::get<std::unique_ptr<Rendering::AtomRenderTask>>(context.currentRenderTask).get();
+				const auto options = Rendering::SelectionOptions(*task, 0, false);
+				const auto carbons = std::ranges::find(options, std::string{ "All C atoms" }, &Rendering::SelectionOption::label);
+				Require(carbons != options.end(), "No element option for a lipid carbon");
+				display.overlay->submittedCommands.push_back(Overlay::Select{ 50, carbons->selection });
+				display.ConsumeInputs();
+				Require(context.selectedMolecule && context.selectedMolecule->name == "All C atoms", "Menu selection was not applied");
+				for (std::size_t id = 0; id < context.renderAtomsHost.size(); ++id)
+					Require((context.renderAtomsHost[id].flags.x == 1) == (task->atoms[id].atomLetter == 'C'), "Menu selection highlighted the wrong atoms");
+
+				display.ApplyRepresentation(ColoringMethod::Charge);
+				PrepareChanges(display);
+				for (std::size_t id = 0; id < context.renderAtomsHost.size(); ++id)
+					Require((context.renderAtomsHost[id].flags.y == static_cast<unsigned int>(ColoringMethod::Charge)) == (task->atoms[id].atomLetter == 'C'),
+						"Representation did not follow the menu selection");
+
+
+				display.overlay->submittedCommands.push_back(Overlay::Select{ 50, {} });
+				display.ConsumeInputs();
+				Require(!context.selectedMolecule, "Clear selection did not clear");
+				for (const auto& atom : context.renderAtomsHost)
+					Require(atom.flags.x == 0, "Clear selection left highlights");
+				// Licorice: bonds are found on first use, drawn, and picking a bond's middle gives one of its atoms
+				display.ApplyRepresentation(ColoringMethod::Licorice);
+				PrepareChanges(display);
+				Require(context.hasLicorice && context.bondCount == static_cast<int>(task->atoms.size()) - 1, "Licorice has no bonds");
+				Require(context.renderAtomsHost[0].position.w == DrawBondsShader::bondRadius, "Licorice atoms are not bond sized");
+				display.RenderFrame({});
+				{
+					const auto bonds = Rendering::FindBonds(*task);
+					int hits = 0;
+					for (const auto& [a, b] : bonds) {
+						const auto& pa = context.renderAtomsHost[a].position;
+						const auto& pb = context.renderAtomsHost[b].position;
+						const glm::vec4 middle{ (pa.x + pb.x) / 2.f, (pa.y + pb.y) / 2.f, (pa.z + pb.z) / 2.f, 1.f };
+						const auto clip = context.camera->ViewProjection() * middle;
+						const auto& viewport = display.viewports.at(50);
+						const glm::dvec2 pixel = viewport.origin + glm::dvec2((clip.x / clip.w + 1.) / 2., (1. - clip.y / clip.w) / 2.) * viewport.size;
+						const int picked = display.GetObjectIdAtPixel(pixel);
+						hits += picked == a || picked == b;
+					}
+					// Some bond middles are behind other bonds or atoms
+					Require(hits > static_cast<int>(bonds.size()) / 2, "Bonds are not drawn or not pickable");
+				}
+				display.ApplyRepresentation(ColoringMethod::Atomname);
+				PrepareChanges(display);
+				Require(!context.hasLicorice, "Licorice stayed on after switching back");
+
+				// Surface: hides the atoms, builds a mesh around the heavy atoms, and picking it gives one of them
+				display.ApplyRepresentation(ColoringMethod::Surface);
+				PrepareChanges(display);
+				Require(context.surfaceRenderer && context.surfaceRenderer->HasGeometry(), "Surface has no geometry");
+				Require(context.renderAtomsHost[0].color.w == 0.f, "Surface left the atoms drawn");
+				display.RenderFrame({});
+				{
+					const int picked = display.GetObjectIdAtPixel(AtomPixel(display, 50, carbons->selection.atomIds.front()));
+					Require(picked >= 0 && task->atoms[picked].atomLetter != 'H', "Picking the surface gave no heavy atom");
+				}
+				display.ApplyRepresentation(ColoringMethod::Atomname);
+				PrepareChanges(display);
+				Require(!context.surfaceRenderer->HasGeometry(), "Surface stayed after switching back");
+
+				// Classic style: the old shader must still draw pickable atoms
+				display.overlay->submittedCommands.push_back(Overlay::ClassicAtoms{ true });
+				display.ConsumeInputs();
+				display.RenderFrame({});
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, 0)) >= 0, "Classic atoms drew no pickable atom");
+				display.overlay->submittedCommands.push_back(Overlay::ClassicAtoms{ false });
+				display.ConsumeInputs();
+				Require(display.GetObjectIdAtPixel(AtomPixel(display, 50, 0)) >= 0, "Leaving classic atoms drew no pickable atom");
+			}
 			display.renderContexts.clear();
 			display.activeRenderContext = nullptr;
 			auto stoppedPipe = std::make_shared<RenderDataPipe>();

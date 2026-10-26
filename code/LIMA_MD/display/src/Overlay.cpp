@@ -7,6 +7,7 @@
 
 #include "Display.h"
 #include "DisplayInternal.h"
+#include "TrajectoryFile.h"
 #include "Utilities.h"
 
 #include <algorithm>
@@ -194,6 +195,9 @@ namespace
         case ColoringMethod::PersistentClusterId: return "Compound ID";
         case ColoringMethod::ForceMagnitude: return "Force magnitude";
         case ColoringMethod::NewCartoon: return "Backbone";
+        case ColoringMethod::Lipids: return "Lipids";
+        case ColoringMethod::Licorice: return "Licorice";
+        case ColoringMethod::Surface: return "Surface";
         default: return "Default";
         }
     }
@@ -203,10 +207,12 @@ namespace
         constexpr std::array methods{
             ColoringMethod::Atomname, ColoringMethod::Charge,
             ColoringMethod::GradientFromAtomid, ColoringMethod::PersistentClusterId,
-            ColoringMethod::ForceMagnitude, ColoringMethod::NewCartoon
+            ColoringMethod::ForceMagnitude, ColoringMethod::NewCartoon, ColoringMethod::Lipids, ColoringMethod::Licorice, ColoringMethod::Surface
         };
         for (const auto method : methods) {
             if (method == ColoringMethod::ForceMagnitude && !settings.hasForceData)
+                continue;
+            if (method == ColoringMethod::Lipids && !settings.hasLipids)
                 continue;
             if (method == ColoringMethod::NewCartoon && !settings.hasBackbone)
                 continue;
@@ -237,6 +243,68 @@ namespace
             ImGui::SameLine(0.f, 7.f * cardLayout.scale);
             ImGui::TextColored(mutedText, "%s", unit);
         }
+    }
+
+    // A square button showing a pause icon (two bars) while playing, else a play icon (a triangle)
+    bool PlayPauseButton(bool playing)
+    {
+        const float size = ImGui::GetFrameHeight();
+        const bool pressed = ImGui::Button("##PlayPause", ImVec2(size, size));
+        const ImVec2 min = ImGui::GetItemRectMin();
+        const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        const float pad = size * 0.3f;
+        if (playing) {
+            const float barWidth = size * 0.14f;
+            draw->AddRectFilled(ImVec2(min.x + pad, min.y + pad), ImVec2(min.x + pad + barWidth, min.y + size - pad), color, 1.f);
+            draw->AddRectFilled(ImVec2(min.x + size - pad - barWidth, min.y + pad), ImVec2(min.x + size - pad, min.y + size - pad), color, 1.f);
+        }
+        else {
+            // Shifted right a little, so the triangle looks centered
+            const float shift = size * 0.04f;
+            draw->AddTriangleFilled(ImVec2(min.x + pad + shift, min.y + pad), ImVec2(min.x + pad + shift, min.y + size - pad),
+                ImVec2(min.x + size - pad + shift, min.y + size * 0.5f), color);
+        }
+        return pressed;
+    }
+
+    // Along the bottom of the tile, with the cards laid out above it
+    void DrawPlaybackBar(const TrajectoryPlayback& playback, SimulationId simulationId, std::deque<Overlay::Command>& commands)
+    {
+        const float scale = cardLayout.scale;
+        const float inset = margin * scale;
+        const float height = ImGui::GetFrameHeight() + 2.f * ImGui::GetStyle().WindowPadding.y;
+        const float width = std::max(1.f, cardLayout.width - 2.f * inset);
+        cardLayout.bottom -= height + inset;
+        BeginPanel(Lima::Format("##Playback{}", simulationId).c_str(),
+            ImVec2(cardLayout.left + inset, cardLayout.bottom + inset), ImVec2(width, height));
+
+        if (PlayPauseButton(playback.playing))
+            commands.push_back(Overlay::Playback{ simulationId, !playback.playing });
+        ImGui::SameLine();
+
+        const int frameCount = playback.file->FrameCount();
+        const std::string label = Lima::Format("{} / {}   {:.1f} ps", playback.frame + 1, frameCount, playback.frameTime);
+        constexpr std::array speeds{ 1.f, 5.f, 10.f, 20.f, 50.f, 100.f };
+        const float speedWidth = ImGui::CalcTextSize("100 fps").x + ImGui::GetFrameHeight() + 2.f * ImGui::GetStyle().FramePadding.x;
+        const float labelWidth = ImGui::CalcTextSize(label.c_str()).x;
+        ImGui::SetNextItemWidth(std::max(40.f * scale, ImGui::GetContentRegionAvail().x - labelWidth - speedWidth
+            - 2.f * ImGui::GetStyle().ItemSpacing.x));
+        int frame = playback.frame;
+        if (ImGui::SliderInt("##Frame", &frame, 0, frameCount - 1, ""))
+            commands.push_back(Overlay::Playback{ simulationId, std::nullopt, frame });
+        ImGui::SameLine();
+        ImGui::TextUnformatted(label.c_str());
+        ImGui::SameLine();
+
+        ImGui::SetNextItemWidth(speedWidth);
+        if (ImGui::BeginCombo("##Speed", Lima::Format("{:g} fps", playback.framesPerSecond).c_str())) {
+            for (const float speed : speeds)
+                if (ImGui::Selectable(Lima::Format("{:g} fps", speed).c_str(), speed == playback.framesPerSecond))
+                    commands.push_back(Overlay::Playback{ simulationId, std::nullopt, std::nullopt, speed });
+            ImGui::EndCombo();
+        }
+        ImGui::End();
     }
 
     void DrawTelemetry(const SimStatus& status)
@@ -283,8 +351,8 @@ namespace
 		const std::string name = molecule->number > 0
 			? Lima::Format("{} (#{})", molecule->name, molecule->number)
 			: molecule->name;
-		CardSection section{ "Molecule info", { { "Name", name } } };
-		if (molecule->number == 0)
+		CardSection section{ "Selection", { { "Name", name } } };
+		if (molecule->number == 0 && molecule->typeCount > 0)
 			section.lines.push_back({ "Molecules selected", Lima::Format("{}", molecule->typeCount) });
 		section.lines.push_back({ "Atoms", Lima::Format("{}", molecule->atomIds.size()) });
         DrawCard("##MoleculeInfo", CardSide::Right, {
@@ -315,6 +383,8 @@ namespace
                 ImGui::Separator();
                 if (ImGui::MenuItem("Show solvents", nullptr, &settings.showSolvents))
                     commands.push_back(Overlay::SolventVisibility{ settings.showSolvents });
+                if (ImGui::MenuItem("Classic atoms", nullptr, &settings.classicAtoms))
+                    commands.push_back(Overlay::ClassicAtoms{ settings.classicAtoms });
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Camera")) {
@@ -491,17 +561,25 @@ void Overlay::HandleConsole()
     ImGui::End();
 }
 
-void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos, SimulationId simulationId)
+void Overlay::HandleContextMenu(RenderSettings& settings, std::optional<glm::dvec2> pos, SimulationId simulationId,
+    const std::vector<Rendering::SelectionOption>& selectionOptions)
 {
     if (pos) {
         ImGui::SetNextWindowPos(ImVec2(static_cast<float>(pos->x), static_cast<float>(pos->y)));
         ImGui::OpenPopup("##ViewportMenu");
     }
     if (ImGui::BeginPopup("##ViewportMenu")) {
-        SectionLabel("APPEARANCE");
-    ColoringMenu(settings, submittedCommands);
-        ImGui::Separator();
-        CameraMenu(submittedCommands, simulationId);
+        if (!selectionOptions.empty()) {
+            SectionLabel("SELECT");
+            for (const auto& option : selectionOptions)
+                if (ImGui::MenuItem(option.label.c_str(), option.count.c_str()))
+                    submittedCommands.push_back(Select{ simulationId, option.selection });
+            ImGui::Separator();
+        }
+        if (ImGui::BeginMenu("Show as")) {
+            ColoringMenu(settings, submittedCommands);
+            ImGui::EndMenu();
+        }
         ImGui::EndPopup();
     }
 }
@@ -527,6 +605,8 @@ void Overlay::DrawTile(SimulationId simulationId, const RenderContext& context,
     cardLayout = { top, top, bottom, static_cast<float>(viewport.origin.x),
         static_cast<float>(viewport.size.x), tiled, simulationId, scale };
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
+    if (context.playback)
+        DrawPlaybackBar(*context.playback, simulationId, submittedCommands);
     if (tiled) {
         const auto label = context.label.empty() ? Lima::Format("Simulation {}", simulationId + 1) : context.label;
         const auto name = Lima::Format("##TileTitle{}", simulationId);
@@ -553,12 +633,12 @@ void Overlay::DrawTile(SimulationId simulationId, const RenderContext& context,
 
 
 void Overlay::EndFrame(RenderSettings& settings, std::optional<glm::dvec2> rightClickedPos,
-    std::optional<SimulationId> popupSimulationId, bool spinnerVisible)
+    std::optional<SimulationId> popupSimulationId, const std::vector<Rendering::SelectionOption>& selectionOptions, bool spinnerVisible)
 {
     if (enableConsole)
         HandleConsole();
     if (popupSimulationId)
-        HandleContextMenu(settings, rightClickedPos, *popupSimulationId);
+        HandleContextMenu(settings, rightClickedPos, *popupSimulationId, selectionOptions);
     if (spinnerVisible) {
         const auto displaySize = ImGui::GetIO().DisplaySize;
         const ImVec2 center(displaySize.x - 35.f, 70.f);

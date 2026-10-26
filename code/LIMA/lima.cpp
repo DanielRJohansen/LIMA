@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -21,6 +22,7 @@
 #include "Programs.h"
 #include "WindowsIntegration.h"
 #include "SimulationBuilder.h"
+#include "TrajectoryFile.h"
 #include "argparser.h"
 
 namespace fs = std::filesystem;
@@ -211,6 +213,23 @@ namespace RenderCli {
 		});
 		return value;
 	}
+
+	inline ColoringMethod ParseRepresentation(const std::string& name) {
+		static const std::map<std::string, ColoringMethod> representations{
+			{ "atomname", ColoringMethod::Atomname },
+			{ "charge", ColoringMethod::Charge },
+			{ "atomid", ColoringMethod::GradientFromAtomid },
+			{ "compound", ColoringMethod::PersistentClusterId },
+			{ "backbone", ColoringMethod::NewCartoon },
+			{ "lipids", ColoringMethod::Lipids },
+			{ "licorice", ColoringMethod::Licorice },
+			{ "surface", ColoringMethod::Surface },
+		};
+		const auto found = representations.find(Lowercase(name));
+		if (found == representations.end())
+			throw CliError(Lima::Format("unknown representation '{}'", name));
+		return found->second;
+	}
 }
 
 
@@ -226,6 +245,8 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
     bool whole = false;
     bool hidewater = false;
     std::vector<int> highlightAtomsInput{};
+	std::string representation;
+	fs::path trajectory;
 
     parser.AddOption({ "--structure", "-f", "--conf", "-c", "-structure", "-conf" }, false, conf);
     parser.AddOption({ "--topology", "-t", "-topology", "-top" }, false, topol);
@@ -233,7 +254,11 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 	parser.AddFlag({ "--whole", "-w", "-whole" }, [&whole]() { whole = true; });
 	parser.AddFlag({ "--hide-water", "-hidewater", "-hw" }, [&hidewater]() { hidewater = true; });
 	parser.AddOption({ "--highlight", "-highlight", "-hl" }, false, highlightAtomsInput);
+	parser.AddOption({ "--representation", "-r" }, false, representation);
+	parser.AddOption({ "--trajectory", "-x", "-traj" }, false, trajectory);
     parser.Parse(argc, argv);
+	const std::optional<ColoringMethod> initialRepresentation = representation.empty()
+		? std::nullopt : std::optional{ RenderCli::ParseRepresentation(representation) };
     conf = ctx.Resolve(conf);
     topol = ctx.Resolve(topol);
 
@@ -248,6 +273,13 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 	}
 
 	GroFile grofile = conversion ? std::move(conversion->grofile) : GroFile{ conf };
+	if (!trajectory.empty()) {
+		trajectory = ctx.Resolve(trajectory);
+		const TrajectoryFile trajectoryFile{ trajectory };
+		if (trajectoryFile.AtomCount() != static_cast<int>(grofile.atoms.size()))
+			throw CliError(Lima::Format("{} has {} atoms, but {} has {}", trajectory.filename().string(),
+				trajectoryFile.AtomCount(), conf.filename().string(), grofile.atoms.size()));
+	}
 
     if (whole) {
 		if (conversion) MoleculeUtils::MakeMoleculeWholeAfterPBCFragmentation(grofile, conversion->topology);
@@ -295,7 +327,7 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 				simulation->box->persistentClusters,
 				simulation->box->persistentClustersMetadata,
 				simulation->box->boxparams,
-				SimStatus{}, simulation->box->backboneChains);
+				SimStatus{}, simulation->box->backboneChains, Rendering::GetMoleculeInfo(*simulation), simulation->box->lipidModels, simulation->box->particleCategories);
 		}
 		catch (const std::exception&) {
 			// Coordinate-only rendering remains valid when the topology or
@@ -308,6 +340,8 @@ int Cli::RunRender(const Context& ctx, int argc, char** argv) {
 	}
 	renderTask->showSolvents = !hidewater;
 	renderTask->highlightedAtoms = highlightedAtoms;
+	renderTask->representation = initialRepresentation;
+	renderTask->trajectory = trajectory;
     d.Submit(1, std::move(renderTask), true);
 
     return 0;

@@ -8,7 +8,11 @@
 #include "Display.h"
 #include "DisplayInternal.h"
 #include "Shaders.h"
+#include "AmbientOcclusion.h"
 #include "NewCartoonRenderer.h"
+#include "LipidRenderer.h"
+#include "SurfaceRenderer.h"
+#include "TrajectoryFile.h"
 #include "TimeIt.h"
 #include "MDFiles.h"
 #include "SSBO.h"
@@ -78,6 +82,7 @@ void SetWindowIcon(GLFWwindow* window, const char* iconPath) {
 void Display::SetupCallbacks() {
 	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
 		Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
+		if (display) display->lastInputTime = std::chrono::steady_clock::now();
 		if (display)
 			display->windowSize = glm::ivec2{ width, height };
 	});
@@ -91,6 +96,8 @@ void Display::SetupCallbacks() {
 	});
 
     auto keyCallback = [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+        if (Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window)))
+            display->lastInputTime = std::chrono::steady_clock::now();
         if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureKeyboard)
             return;
         if (action == GLFW_PRESS) {
@@ -121,6 +128,19 @@ void Display::SetupCallbacks() {
                 case GLFW_KEY_N:
                     display->debugValue = 1;
                     break;
+                // Trajectory playback: space plays and pauses, comma and period step a frame
+                case GLFW_KEY_SPACE:
+                case GLFW_KEY_COMMA:
+                case GLFW_KEY_PERIOD:
+                    if (hasMouseContext && display->activeRenderContext && display->activeRenderContext->playback) {
+                        const auto& playback = *display->activeRenderContext->playback;
+                        if (key == GLFW_KEY_SPACE)
+                            display->overlay->submittedCommands.push_back(Overlay::Playback{ *display->activeSimulationId, !playback.playing });
+                        else
+                            display->overlay->submittedCommands.push_back(Overlay::Playback{ *display->activeSimulationId, std::nullopt,
+                                playback.frame + (key == GLFW_KEY_PERIOD ? 1 : -1) });
+                    }
+                    break;
                 case GLFW_KEY_P: {
                     std::lock_guard<std::mutex> lock2(display->liveEditCommandsQueueMutex);
                     display->liveEditCommandsQueue.push_back(LiveEdit::TogglePause{});
@@ -147,6 +167,7 @@ void Display::SetupCallbacks() {
     glfwSetCursorPosCallback(window, [](GLFWwindow* window, double xpos, double ypos) {
         Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
         if (display) {
+            display->lastInputTime = std::chrono::steady_clock::now();
             display->OnMouseMove(xpos, ypos);
         }
         });
@@ -154,6 +175,7 @@ void Display::SetupCallbacks() {
     glfwSetMouseButtonCallback(window, [](GLFWwindow* window, int button, int action, int mods) {
         Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
         if (display) {
+            display->lastInputTime = std::chrono::steady_clock::now();
             display->OnMouseButton(button, action, mods);
         }
         });
@@ -161,6 +183,7 @@ void Display::SetupCallbacks() {
     glfwSetScrollCallback(window, [](GLFWwindow* window, double xoffset, double yoffset) {
         Display* display = static_cast<Display*>(glfwGetWindowUserPointer(window));
         if (display) {
+            display->lastInputTime = std::chrono::steady_clock::now();
             display->OnMouseScroll(xoffset, yoffset);
         }
         });
@@ -241,9 +264,13 @@ void Display::ReleaseGraphics() {
         renderContexts.clear();
         overlay.reset();
         renderTargetControl.reset();
+        ambientOcclusion.reset();
         drawBoxOutlineShader.reset();
         drawFacetsShader.reset();
         drawAtomsFromCpuShader.reset();
+        drawAtomsLegacyShader.reset();
+        drawBondsShader.reset();
+        drawSurfaceShader.reset();
         drawNormalsShader.reset();
         drawTrianglesShader.reset();
         drawBackgroundGradientShader.reset();
@@ -359,7 +386,7 @@ void Display::Mainloop() {
 				glDisable(GL_SCISSOR_TEST);
 				glViewport(0, 0, framebufferSize.x, framebufferSize.y);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-				overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, std::nullopt, spinnerVisible.load());
+				overlay->EndFrame(menuSettings, mousePosAtRightBtnDown, std::nullopt, {}, spinnerVisible.load());
 				mousePosAtRightBtnDown.reset();
 				overlay->Render();
                 glfwSwapBuffers(window);
@@ -408,6 +435,8 @@ void Display::Mainloop() {
                 currentRenderContext.shouldRecolorAtoms = false;
                 anyNewTask = true;
             }
+            if (currentRenderContext.playback)
+                updatedPositions |= AdvancePlayback(currentRenderContext);
 
 			if (currentRenderContext.renderDataPipe
 				&& std::holds_alternative<std::unique_ptr<AtomRenderTask>>(currentRenderTask)) {
@@ -443,15 +472,31 @@ void Display::Mainloop() {
 
 
 
-        const int msPerFrame = std::floor(1. / 60. * 1000.);
+        // Every frame slows a running simulation (the GPU is shared), so redraw at full rate only while something moves:
+        // a revolving camera, the spinner, held mouse buttons or input in the last 0.5 s (also lets ImGui finish hover
+        // effects). Otherwise only new positions trigger a frame, plus a slow redraw for anything this misses
+        const bool anyRevolving = std::ranges::any_of(renderContexts, [](const auto& entry) { return entry.second.revolveCamera; });
+        const bool mouseHeld = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS
+            || glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS
+            || glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+        const bool animating = anyRevolving || spinnerVisible.load() || mouseHeld
+            || std::chrono::steady_clock::now() - lastInputTime < std::chrono::milliseconds(500);
+        // Measured from the previous frame's start and a bit under 1/60 s, so with vsync the swap paces the frames.
+        // Measuring from the frame's end made every frame miss a vblank, halving the frame rate
+        const int msPerFrame = animating ? 15 : 250;
         bool shouldDraw = viewports.empty() || anyNewTask || updatedPositions || newInput || framebufferWasResized
-			|| frameTime.elapsed().count() > msPerFrame;
+			|| frameTime.elapsed().count() >= msPerFrame;
 
         if (shouldDraw && framebufferSize.x > 0 && framebufferSize.y > 0) {
+            frameTime = TimeIt{};
             RenderFrame(tabs);
 
 			fps->NewFrame();
-            frameTime = TimeIt{};
+        }
+        else {
+            // Without this the loop spins a core and polls the render data pipe's CUDA event ~100k times/s, which slows
+            // the simulation
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
     activeRenderContext = nullptr;
@@ -568,6 +613,9 @@ bool Display::initGLFW() {
 
     // Make the window's context current
     glfwMakeContextCurrent(window);
+    // Renderer profiling: without vsync, so frame rates are not capped at the refresh rate
+    if (std::getenv("LIMA_RENDER_TIMING"))
+        glfwSwapInterval(0);
     return 1;
 }
 

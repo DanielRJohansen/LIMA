@@ -31,6 +31,7 @@ int RunEnergyMinimization(const Context& ctx, int argc, char** argv);
 int RunToGmx(const Context& ctx, int argc, char** argv);
 int RunDaemon(const Context& ctx, int argc, char** argv);
 int RunWait(const Context& ctx, int argc, char** argv);
+int RunGromacsCompare(const Context& ctx, int argc, char** argv);
 
 inline constexpr std::string_view MdrunHelp = R"(Usage: lima mdrun [OPTION]...
 
@@ -46,6 +47,8 @@ Options:
                                during the run: a frame every trajectory_interval
                                steps (default 1000) and the final one. Disabled by
                                default
+      --forces-out PATH        Write the step-0 forces as fx,fy,fz [kJ/mol/nm] per atom,
+                               in the order of the input coordinates
   -d, --display                Display the running simulation
       --async                  Run on the lima daemon and return at once; see 'lima wait'
       --uff                    Export trajectory.uff for ML training, every
@@ -293,6 +296,31 @@ Disulfides between chains are not bonded (each chain is its own molecule); they
 are reported as a warning.
 )";
 
+inline constexpr std::string_view GromacsCompareHelp = R"(Usage: lima gromacscompare [OPTION]...
+
+Compare LIMA with GROMACS on the GROMACS heterogeneous-parallelization benchmark
+systems (Pall et al., J. Chem. Phys. 2020): step-0 forces, performance, and the
+structure of 1 ns runs. Writes report.md; nothing is pass/fail. Downloads the
+systems on first use. Needs Python 3.8+ and GROMACS built with CUDA (natively, or
+in WSL on Windows).
+
+Options:
+      --systems SET            small (villin, rnase_cubic), all (also adh_dodec,
+                               aqp_ensemble, ion_channel, stmv), or a list, eg.
+                               villin,stmv (default: small)
+      --reference MODE         prebuilt: the downloaded 1 ns GROMACS runs; generate:
+                               run them here, hours for --systems all (default: prebuilt)
+      --only PART              forces, performance or structure; may be repeated
+      --rounds N               Performance rounds per engine (default: 2)
+      --gmx PATH               GROMACS, or wsl:/path/to/gmx (default: gmx on the PATH,
+                               then in WSL)
+      --wsl-distro NAME        WSL distribution of GROMACS (default: WSL's default)
+      --data-dir DIR           Where the downloaded data is kept
+  -o, --output-dir DIR         Runs and report (default: ./gromacscompare)
+  -y, --yes                    Don't ask before a run of more than an hour
+  -h, --help                   Display this help and exit
+)";
+
 inline constexpr std::array Commands{
     CommandDefinition{ "mdrun", "Run a molecular dynamics simulation.", MdrunHelp },
     CommandDefinition{ "buildmembrane", "Build a membrane structure.", BuildMembraneHelp },
@@ -306,6 +334,7 @@ inline constexpr std::array Commands{
     CommandDefinition{ "editconf", "Transform molecular coordinates.", EditConfHelp },
     CommandDefinition{ "em", "Energy-minimize a simulation.", EnergyMinimizationHelp },
     CommandDefinition{ "togmx", "Convert a protein structure to CHARMM27 or AMBER99SB files.", ToGmxHelp },
+    CommandDefinition{ "gromacscompare", "Compare LIMA with GROMACS on standard benchmark systems.", GromacsCompareHelp },
     CommandDefinition{ "daemon", "Show or stop the background GPU process.", DaemonHelp },
     CommandDefinition{ "wait", "Wait for commands started with --async.", WaitHelp },
 };

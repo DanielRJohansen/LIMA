@@ -1,0 +1,584 @@
+"""lima gromacscompare: LIMA vs GROMACS on the GROMACS heterogeneous-parallelization benchmark systems (Pall et al.,
+J. Chem. Phys. 153, 134110 (2020)), for force parity, structure and performance. Writes a report; nothing is pass/fail.
+
+Run as `lima gromacscompare [OPTION]...`, which runs this script with the same options; see --help. Needs Python 3.8+
+(standard library only) and GROMACS with CUDA: natively, or in WSL on Windows.
+
+Per system, in <output-dir>/<system>/:
+- forces/   step-0 forces of both engines from the same conf.gro/topol.top (single point, no constraints), compared as
+            relative RMS error sqrt(sum |F_lima - F_gmx|^2 / sum |F_gmx|^2), overall and for the worst residue name
+- perf/     ns/day of both engines, alternating, on this machine
+- md/       a 1 ns LIMA run, and with --reference generate two 1 ns GROMACS runs differing only in the thermostat seed
+            (else the downloaded ones). For each trajectory gmx makes the protein whole and unwrapped, then the C-alpha
+            RMSD to the start and the per-atom C-alpha RMSF over the second half. LIMA's RMSF is compared to GROMACS' by
+            Pearson correlation, next to the correlation between the two GROMACS runs, ie. how much runs differ by chance
+
+The data (inputs and the GROMACS 1 ns references) comes from https://lima-dynamics.com/benchdata/v1, made by
+LIMA_data/salad_gromacs_bench/bundle/make_bundle.py, whose README describes it."""
+import argparse
+import hashlib
+import json
+import math
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+import urllib.request
+from pathlib import Path, PureWindowsPath
+
+BASE_URL = os.environ.get("LIMA_BENCHDATA_URL", "https://lima-dynamics.com/benchdata/v1")
+DATASET = "v1"
+SYSTEMS = {  # name: (tier, atoms, bytes, sha256), from make_bundle.py
+    "villin": ("small", 5006, 212764, "585214930d7b408316c42cf4b4b6c43f8fab182a75188752f0c2ba2bf27d5b64"),
+    "rnase_cubic": ("small", 24040, 918469, "911047bc119d34d391e5b4c367c665a216ddf916d9d975d816329bafd49d8dbd"),
+    "adh_dodec": ("all", 191122, 7404326, "9cad6bb6a270441c07d72c494b8c75153c420803edfbfa766129dd90132606dd"),
+    "aqp_ensemble": ("all", 219984, 9461686, "2969033e61961273f810d488c170638d3978b0630ee1b98002a7d1afb7d406a2"),
+    "ion_channel": ("all", 283354, 10017547, "9fef98e85b4871c3d2ccaa198146210400139ac5f478801314cd77ea2782003a"),
+    "stmv": ("all", 1066628, 54429044, "e5f51dd3da6758931f905ab4f51c72c7545d7d6ecc29be76f69d368e275cbfb8"),
+}
+# Steps per performance run, ~30-60 s each on an RTX 4090 (as LIMA_data/salad_gromacs_bench/bench.sh)
+PERF_STEPS = {"villin": 150000, "rnase_cubic": 120000, "adh_dodec": 30000, "aqp_ensemble": 25000, "ion_channel": 20000, "stmv": 6000}
+MD_STEPS = 500000           # 1 ns at 2 fs
+MD_FRAME_INTERVAL = 5000    # 10 ps
+SECOND_SEED = 271828        # ld-seed of the second GROMACS run
+DT_PS = 0.002
+
+
+class Failure(Exception):
+    pass
+
+
+def log(message=""):
+    print(message, flush=True)
+
+
+def lima_mdp_with(mdp, **values):
+    """An .mdp's text with keys replaced or added, eg. nsteps."""
+    lines, seen = [], set()
+    for line in Path(mdp).read_text().splitlines():
+        key = line.split("=")[0].strip().lower().replace("_", "-")
+        if key in values:
+            seen.add(key)
+            line = f"{key} = {values[key]}"
+        lines.append(line)
+    lines += [f"{key} = {value}" for key, value in values.items() if key not in seen]
+    return "\n".join(lines) + "\n"
+
+
+def write_mdp(path, source, **values):
+    path.write_text(lima_mdp_with(source, **{k.replace("_", "-"): v for k, v in values.items()}))
+    return path
+
+
+# ------------------------------------------------ Data ------------------------------------------------ #
+
+def default_data_dir():
+    if os.environ.get("LIMA_BENCHDATA_DIR"):
+        return Path(os.environ["LIMA_BENCHDATA_DIR"])
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "LIMA" / "benchdata"
+    cache = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(cache) / "lima" / "benchdata"
+
+
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch(system, data_dir):
+    """The system's directory, downloaded, verified and extracted on first use."""
+    _, _, size, sha256 = SYSTEMS[system]
+    root = data_dir / DATASET
+    target = root / system
+    marker = target / ".sha256"
+    if marker.exists() and marker.read_text().strip() == sha256:
+        return target
+
+    root.mkdir(parents=True, exist_ok=True)
+    archive = root / f"{system}.tar.gz.part"
+    url = f"{BASE_URL.rstrip('/')}/{system}.tar.gz"
+    log(f"Downloading {url} ({size / 1e6:.1f} MB)")
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response, open(archive, "wb") as out:
+            shutil.copyfileobj(response, out, 1 << 20)
+    except OSError as error:
+        archive.unlink(missing_ok=True)
+        raise Failure(f"Downloading {url} failed: {error}")
+    if archive.stat().st_size != size or sha256_of(archive) != sha256:
+        archive.unlink()
+        raise Failure(f"{url} does not match the expected size and SHA-256: the download is damaged, or the dataset "
+                      f"changed and this LIMA is outdated")
+
+    staging = root / f".extract-{system}"
+    shutil.rmtree(staging, ignore_errors=True)
+    with tarfile.open(archive) as tar:
+        for member in tar.getmembers():
+            name = PureWindowsPath(member.name)
+            if not (member.isfile() or member.isdir()) or name.is_absolute() or ".." in name.parts or name.parts[0] != system:
+                raise Failure(f"{archive.name} contains an unexpected entry {member.name}")
+        tar.extractall(staging, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+    shutil.rmtree(target, ignore_errors=True)
+    (staging / system).rename(target)
+    staging.rmdir()
+    archive.unlink()
+    marker.write_text(sha256 + "\n")
+    return target
+
+
+# ------------------------------------------------ Engines ------------------------------------------------ #
+
+def run(command, cwd, logfile, stdin=None):
+    """Runs a command with its output in logfile; raises Failure with the log's tail if it fails."""
+    with open(logfile, "w", errors="replace") as out:
+        result = subprocess.run(command, cwd=cwd, stdout=out, stderr=subprocess.STDOUT, input=stdin,
+                                text=True, errors="replace")
+    if result.returncode != 0:
+        tail = "\n".join(Path(logfile).read_text(errors="replace").replace("\0", "").splitlines()[-15:])
+        raise Failure(f"'{' '.join(map(str, command))}' failed with exit code {result.returncode}; see {logfile}:\n{tail}")
+    return Path(logfile).read_text(errors="replace").replace("\0", "")
+
+
+class Gromacs:
+    """gmx, natively or in WSL. Every file argument is relative to cwd, so the paths work in both."""
+
+    def __init__(self, path, wsl_distro):
+        self.path = path
+        self.wsl = wsl_distro
+
+    def command(self, args, cwd):
+        if self.wsl is None:
+            return [self.path] + args
+        distro = ["-d", self.wsl] if self.wsl else []
+        return ["wsl.exe"] + distro + ["--cd", str(cwd), "-e", self.path] + args
+
+    def run(self, args, cwd, logfile, stdin=None):
+        return run(self.command(args, cwd), cwd, logfile, stdin)
+
+    def describe(self):
+        return f"{self.path} (in WSL{' ' + self.wsl if self.wsl else ''})" if self.wsl is not None else self.path
+
+
+def find_gromacs(option, wsl_distro, scratch):
+    """The GROMACS to use and its version line. Fails unless it is a CUDA build."""
+    candidates = []
+    if option:
+        if option.startswith("wsl:"):
+            candidates.append(Gromacs(option[4:], wsl_distro or ""))
+        else:
+            candidates.append(Gromacs(option, None))
+    else:
+        for name in ("gmx", "gmx_mpi"):
+            if shutil.which(name):
+                candidates.append(Gromacs(shutil.which(name), None))
+        if os.name == "nt" and shutil.which("wsl.exe"):
+            distro = ["-d", wsl_distro] if wsl_distro else []
+            for name in ("gmx", "gmx_mpi"):
+                found = subprocess.run(["wsl.exe"] + distro + ["-e", "bash", "-lc", f"command -v {name}"],
+                                       capture_output=True, text=True, errors="replace")
+                if found.returncode == 0 and found.stdout.strip():
+                    candidates.append(Gromacs(found.stdout.strip().splitlines()[-1], wsl_distro or ""))
+    if not candidates:
+        raise Failure("GROMACS was not found. Install a GROMACS built with CUDA, or point to it with --gmx PATH "
+                      "(--gmx wsl:/path/to/gmx for one in WSL, whose PATH is often not set up for non-interactive shells)")
+
+    reasons = []
+    for gmx in candidates:
+        try:
+            text = gmx.run(["--version"], scratch, scratch / "gmx_version.log")
+        except (Failure, OSError) as error:
+            reasons.append(f"{gmx.describe()}: {error}")
+            continue
+        version = re.search(r"GROMACS version:\s*(\S+)", text)
+        gpu = re.search(r"GPU support:\s*(\S+)", text)
+        precision = re.search(r"Precision:\s*(\S+)", text)
+        if gpu and gpu.group(1).upper() == "CUDA":
+            return gmx, {"version": version.group(1) if version else "?", "precision": precision.group(1) if precision else "?"}
+        reasons.append(f"{gmx.describe()}: GPU support is {gpu.group(1) if gpu else 'unknown'}, not CUDA")
+    raise Failure("No GROMACS with CUDA was found. The comparison runs GROMACS on the GPU, as it is normally run.\n  "
+                  + "\n  ".join(reasons))
+
+
+def find_lima(option):
+    if option:
+        return option
+    found = shutil.which("lima")
+    if not found:
+        raise Failure("lima was not found on the PATH; give it with --lima PATH")
+    return found
+
+
+def lima_mdrun(lima, cwd, inputs, mdp, logfile, *extra):
+    text = run([lima, "--no-daemon", "mdrun", "-c", str(inputs / "conf.gro"), "-t", str(inputs / "topol.top"), "-s", str(mdp),
+                "--conf-out", "out.gro"] + list(extra), cwd, logfile)
+    seconds = re.search(r"^\s*Time:\s*([\d.]+)", text, re.MULTILINE)
+    if not seconds:
+        raise Failure(f"No engine time in {logfile}")
+    return float(seconds.group(1))
+
+
+def gmx_grompp(gmx, cwd, mdp, tpr, logfile):
+    gmx.run(["grompp", "-f", mdp, "-c", "../inputs/conf.gro", "-p", "../inputs/topol.top", "-o", tpr, "-maxwarn", "5",
+             "-quiet"], cwd, logfile)
+
+
+GMX_MDRUN_GPU = ["-nb", "gpu", "-pme", "gpu", "-bonded", "gpu", "-update", "gpu", "-ntmpi", "1", "-notunepme"]
+
+
+def gmx_mdrun_flags(gmx):
+    # Thread pinning is slower under WSL
+    return GMX_MDRUN_GPU + (["-pin", "off"] if gmx.wsl is not None else [])
+
+
+# ------------------------------------------------ Measurements ------------------------------------------------ #
+
+def read_forces_csv(path):
+    with open(path) as f:
+        return [tuple(map(float, line.split(","))) for line in f if line.strip()]
+
+
+def read_xvg(path):
+    rows = []
+    for line in Path(path).read_text().splitlines():
+        if line and line[0] not in "#@":
+            rows.append([float(v) for v in line.split()])
+    return rows
+
+
+def residue_names(gro):
+    lines = Path(gro).read_text().splitlines()
+    return [line[5:10].strip() for line in lines[2:2 + int(lines[1])]]
+
+
+def force_parity(system, data, work, lima, gmx):
+    work.mkdir(parents=True, exist_ok=True)
+    # The reference single point: no constraints, the system's cutoff and PME spacing, nstfout 1
+    shutil.copy(data / "reference" / "forces" / "forces.mdp", work / "gmx_forces.mdp")
+    gmx_grompp(gmx, work, "gmx_forces.mdp", "gmx_forces.tpr", work / "gmx_grompp.log")
+    gmx.run(["mdrun", "-s", "gmx_forces.tpr", "-deffnm", "gmx_forces", "-quiet", "-nb", "gpu", "-pme", "gpu", "-ntmpi", "1"],
+            work, work / "gmx_mdrun.log")
+    gmx.run(["traj", "-s", "gmx_forces.tpr", "-f", "gmx_forces.trr", "-of", "gmx_forces.xvg", "-quiet"], work,
+            work / "gmx_traj.log", stdin="System\n")
+    values = read_xvg(work / "gmx_forces.xvg")[0][1:]
+    reference = [tuple(values[i:i + 3]) for i in range(0, len(values), 3)]
+
+    mdp = write_mdp(work / "lima_forces.mdp", data / "inputs" / "lima.mdp", nsteps=1, constraints="none")
+    lima_mdrun(lima, work, work.parent / "inputs", mdp, work / "lima_mdrun.log", "--forces-out", "lima_forces.csv")
+    forces = read_forces_csv(work / "lima_forces.csv")
+
+    residues = residue_names(data / "inputs" / "conf.gro")
+    if not (len(forces) == len(reference) == len(residues)):
+        raise Failure(f"{system}: {len(forces)} LIMA forces, {len(reference)} GROMACS forces, {len(residues)} atoms")
+    error = norm = 0.0
+    per_residue = {}
+    for f, g, residue in zip(forces, reference, residues):
+        e = sum((a - b) ** 2 for a, b in zip(f, g))
+        r = sum(b * b for b in g)
+        error += e
+        norm += r
+        acc = per_residue.setdefault(residue, [0.0, 0.0])
+        acc[0] += e
+        acc[1] += r
+    worst = max(per_residue.items(), key=lambda kv: kv[1][0] / kv[1][1] if kv[1][1] > 0 else 0)
+    return {"relativeRmsError": math.sqrt(error / norm), "worstResidue": worst[0],
+            "worstResidueRelativeRmsError": math.sqrt(worst[1][0] / worst[1][1])}
+
+
+def performance(system, data, work, lima, gmx, rounds):
+    """ns/day of both engines, alternating per round so clock drift hits both alike. LIMA from the engine-time difference
+    of a 1/5 and a full run, so setup and the first steps are excluded; GROMACS with -resethway."""
+    work.mkdir(parents=True, exist_ok=True)
+    steps = PERF_STEPS[system]
+    short_mdp = write_mdp(work / "lima_short.mdp", data / "inputs" / "lima.mdp", nsteps=steps // 5)
+    full_mdp = write_mdp(work / "lima_full.mdp", data / "inputs" / "lima.mdp", nsteps=steps)
+    write_mdp(work / "gmx.mdp", data / "inputs" / "gmx.mdp", nsteps=steps)
+    gmx_grompp(gmx, work, "gmx.mdp", "gmx.tpr", work / "gmx_grompp.log")
+    inputs = work.parent / "inputs"
+    results = {"steps": steps, "lima": [], "gromacs": []}
+    for round_ in range(1, rounds + 1):
+        short = lima_mdrun(lima, work, inputs, short_mdp, work / f"lima_short_{round_}.log")
+        full = lima_mdrun(lima, work, inputs, full_mdp, work / f"lima_full_{round_}.log")
+        results["lima"].append((steps - steps // 5) * DT_PS * 1e-3 / ((full - short) / 86400))
+        gmx.run(["mdrun", "-s", "gmx.tpr", "-deffnm", f"gmx_{round_}", "-quiet", "-resethway", "-noconfout"] + gmx_mdrun_flags(gmx),
+                work, work / f"gmx_mdrun_{round_}.log")
+        text = (work / f"gmx_{round_}.log").read_text(errors="replace")
+        match = re.search(r"^Performance:\s*([\d.]+)", text, re.MULTILINE)
+        if not match:
+            raise Failure(f"No performance line in {work / f'gmx_{round_}.log'}")
+        results["gromacs"].append(float(match.group(1)))
+        log(f"  round {round_}: LIMA {results['lima'][-1]:.1f}, GROMACS {results['gromacs'][-1]:.1f} ns/day")
+    for engine in ("lima", "gromacs"):
+        values = sorted(results[engine])
+        results[engine + "Median"] = values[len(values) // 2] if len(values) % 2 else (values[len(values) // 2 - 1] + values[len(values) // 2]) / 2
+    return results
+
+
+def analyze_trajectory(gmx, work, tpr, trajectory, name):
+    """C-alpha RMSD to the start (fitted) and per-atom RMSF over the second half, as LIMA_data's parity/analyze.sh."""
+    gmx.run(["trjconv", "-s", tpr, "-f", trajectory, "-pbc", "whole", "-o", f"{name}_whole.xtc", "-quiet"], work,
+            work / f"{name}_trjconv_whole.log", stdin="System\n")
+    gmx.run(["trjconv", "-s", tpr, "-f", f"{name}_whole.xtc", "-pbc", "nojump", "-o", f"{name}_nojump.xtc", "-quiet"], work,
+            work / f"{name}_trjconv_nojump.log", stdin="System\n")
+    gmx.run(["rms", "-s", tpr, "-f", f"{name}_nojump.xtc", "-o", f"{name}_rmsd.xvg", "-quiet"], work,
+            work / f"{name}_rms.log", stdin="C-alpha\nC-alpha\n")
+    end = read_xvg(work / f"{name}_rmsd.xvg")[-1][0]
+    gmx.run(["rmsf", "-s", tpr, "-f", f"{name}_nojump.xtc", "-o", f"{name}_rmsf.xvg", "-b", str(end / 2), "-quiet"], work,
+            work / f"{name}_rmsf.log", stdin="C-alpha\n")
+    for suffix in ("whole", "nojump"):
+        (work / f"{name}_{suffix}.xtc").unlink(missing_ok=True)
+    return work / f"{name}_rmsd.xvg", work / f"{name}_rmsf.xvg"
+
+
+def pearson(a, b):
+    ma, mb = sum(a) / len(a), sum(b) / len(b)
+    cov = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+    return cov / math.sqrt(sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b))
+
+
+def structure(system, data, work, lima, gmx, generate):
+    work.mkdir(parents=True, exist_ok=True)
+    inputs = work.parent / "inputs"
+    reference = data / "reference"
+    # Both seeds' .mdp as GROMACS ran them; the tpr of the first also gives the topology for analyzing LIMA's trajectory
+    shutil.copy(reference / "md_seed1" / "md.mdp", work / "gmx_seed1.mdp")
+    shutil.copy(reference / "md_seed2" / "md.mdp", work / "gmx_seed2.mdp")
+    gmx_grompp(gmx, work, "gmx_seed1.mdp", "gmx_seed1.tpr", work / "gmx_seed1_grompp.log")
+
+    xvgs = {}
+    if generate:
+        gmx_grompp(gmx, work, "gmx_seed2.mdp", "gmx_seed2.tpr", work / "gmx_seed2_grompp.log")
+        for seed in (1, 2):
+            log(f"  GROMACS 1 ns, seed {seed}")
+            gmx.run(["mdrun", "-s", f"gmx_seed{seed}.tpr", "-deffnm", f"gmx_seed{seed}", "-quiet"] + gmx_mdrun_flags(gmx),
+                    work, work / f"gmx_seed{seed}_mdrun.log")
+            xvgs[f"gmx{seed}"] = analyze_trajectory(gmx, work, f"gmx_seed{seed}.tpr", f"gmx_seed{seed}.xtc", f"gmx_seed{seed}")
+    else:
+        for seed in (1, 2):
+            xvgs[f"gmx{seed}"] = (reference / f"md_seed{seed}" / "rmsd.xvg", reference / f"md_seed{seed}" / "rmsf.xvg")
+
+    log("  LIMA 1 ns")
+    mdp = write_mdp(work / "lima_md.mdp", data / "inputs" / "lima.mdp", nsteps=MD_STEPS)
+    seconds = lima_mdrun(lima, work, inputs, mdp, work / "lima_md_mdrun.log", "--trajectory", "lima_md.xtc",
+                         "--set", f"trajectory_interval={MD_FRAME_INTERVAL}")
+    xvgs["lima"] = analyze_trajectory(gmx, work, "gmx_seed1.tpr", "lima_md.xtc", "lima_md")
+
+    result = {"simulatedNs": MD_STEPS * DT_PS * 1e-3, "limaNsPerDay": MD_STEPS * DT_PS * 1e-3 / (seconds / 86400),
+              "gromacsReference": "generated on this machine" if generate else "downloaded (GROMACS 2024.2, RTX 4090)"}
+    rmsf = {}
+    for engine, (rmsd_path, rmsf_path) in xvgs.items():
+        rmsd = read_xvg(rmsd_path)
+        end = rmsd[-1][0]
+        late = [r for t, r in rmsd if t >= end / 2]
+        result[f"rmsdNm_{engine}"] = sum(late) / len(late)
+        rmsf[engine] = [r for _, r in read_xvg(rmsf_path)]
+    if not (len(rmsf["lima"]) == len(rmsf["gmx1"]) == len(rmsf["gmx2"])):
+        raise Failure(f"{system}: RMSF over {len(rmsf['lima'])}, {len(rmsf['gmx1'])} and {len(rmsf['gmx2'])} C-alpha atoms")
+    result["calphaAtoms"] = len(rmsf["lima"])
+    result["rmsfCorrelationLimaGromacs"] = pearson(rmsf["gmx1"], rmsf["lima"])
+    result["rmsfCorrelationGromacsGromacs"] = pearson(rmsf["gmx1"], rmsf["gmx2"])
+    return result
+
+
+# ------------------------------------------------ Report ------------------------------------------------ #
+
+def write_report(out_dir, results, setup):
+    (out_dir / "results.json").write_text(json.dumps({"setup": setup, "systems": results}, indent=2) + "\n")
+    lines = ["# LIMA vs GROMACS", "",
+             f"{setup['date']}. LIMA: {setup['lima']}. GROMACS {setup['gromacs']['version']} ({setup['gromacs']['precision']} "
+             f"precision, CUDA): {setup['gromacsPath']}. GPU: {setup['gpu']}. CPU: {setup['cpu']}.", "",
+             "Systems from Pall et al., J. Chem. Phys. 153, 134110 (2020), https://doi.org/10.5281/zenodo.3893789 (CC BY 4.0). "
+             "Both engines run the same conf.gro and topology with the same physics (see each system's inputs/lima.mdp and "
+             "gmx.mdp); GROMACS uses leap-frog, LIMA velocity Verlet.", ""]
+
+    if any("forces" in r for r in results.values()):
+        lines += ["## Forces", "",
+                  "Step-0 forces of the same structure, no constraints. Relative RMS error of LIMA's forces vs GROMACS', "
+                  "overall and for the worst residue name.", "",
+                  "| System | Atoms | Relative RMS error | Worst residue |", "|---|---:|---:|---|"]
+        for system, r in results.items():
+            if "forces" in r:
+                f = r["forces"]
+                lines.append(f"| {system} | {SYSTEMS[system][1]:,} | {f['relativeRmsError']:.2e} | "
+                             f"{f['worstResidue']} {f['worstResidueRelativeRmsError']:.2e} |")
+        lines.append("")
+
+    if any("performance" in r for r in results.values()):
+        lines += ["## Performance", "",
+                  "Median ns/day over the rounds on this machine, engines alternating. GROMACS: "
+                  f"`mdrun {' '.join(GMX_MDRUN_GPU)}` -resethway; LIMA: engine time of a full minus a 1/5 run.", "",
+                  "| System | Atoms | LIMA [ns/day] | GROMACS [ns/day] | LIMA/GROMACS | Runs (LIMA; GROMACS) |",
+                  "|---|---:|---:|---:|---:|---|"]
+        for system, r in results.items():
+            if "performance" in r:
+                p = r["performance"]
+                lines.append(f"| {system} | {SYSTEMS[system][1]:,} | {p['limaMedian']:.1f} | {p['gromacsMedian']:.1f} | "
+                             f"{p['limaMedian'] / p['gromacsMedian']:.2f}x | "
+                             f"{', '.join(f'{v:.0f}' for v in p['lima'])}; {', '.join(f'{v:.0f}' for v in p['gromacs'])} |")
+        lines.append("")
+
+    if any("structure" in r for r in results.values()):
+        lines += ["## Structure (1 ns)", "",
+                  "Mean C-alpha RMSD to the start over the second half, and the Pearson correlation of the per-atom "
+                  "C-alpha RMSF of LIMA vs GROMACS. Two GROMACS runs that differ only in the thermostat seed give the "
+                  "spread to expect by chance: a LIMA-GROMACS correlation like the GROMACS-GROMACS one means LIMA differs "
+                  "from GROMACS no more than GROMACS differs from itself.", "",
+                  "| System | C-alpha | RMSD LIMA [nm] | RMSD GROMACS 1 / 2 [nm] | RMSF r LIMA-GROMACS | RMSF r GROMACS-GROMACS | GROMACS runs |",
+                  "|---|---:|---:|---:|---:|---:|---|"]
+        for system, r in results.items():
+            if "structure" in r:
+                s = r["structure"]
+                lines.append(f"| {system} | {s['calphaAtoms']} | {s['rmsdNm_lima']:.3f} | {s['rmsdNm_gmx1']:.3f} / "
+                             f"{s['rmsdNm_gmx2']:.3f} | {s['rmsfCorrelationLimaGromacs']:.3f} | "
+                             f"{s['rmsfCorrelationGromacsGromacs']:.3f} | {s['gromacsReference']} |")
+        lines.append("")
+
+    failed = {system: r["error"] for system, r in results.items() if "error" in r}
+    if failed:
+        lines += ["## Not completed", ""] + [f"- {system}: {error.splitlines()[0]}" for system, error in failed.items()] + [""]
+    lines += ["Every number above comes from the logs and files in this directory; `results.json` holds them unrounded.", ""]
+    (out_dir / "report.md").write_text("\n".join(lines))
+
+
+def machine_info():
+    gpu = "unknown"
+    try:
+        smi = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=30)
+        if smi.returncode == 0 and smi.stdout.strip():
+            name, driver = (smi.stdout.strip().splitlines()[0].split(",") + ["?"])[:2]
+            gpu = f"{name.strip()} (driver {driver.strip()})"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    cpu = platform.processor() or platform.machine()
+    if os.name == "nt":
+        try:
+            ps = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor).Name"],
+                                capture_output=True, text=True, timeout=30)
+            cpu = ps.stdout.strip() or cpu
+        except (OSError, subprocess.SubprocessError):
+            pass
+    elif Path("/proc/cpuinfo").exists():
+        match = re.search(r"^model name\s*:\s*(.+)$", Path("/proc/cpuinfo").read_text(), re.MULTILINE)
+        cpu = match.group(1) if match else cpu
+    return gpu, cpu
+
+
+# ------------------------------------------------ Main ------------------------------------------------ #
+
+def estimate_hours(systems, generate):
+    """Rough wall time on an RTX 4090, from the measured ns/day of each system."""
+    lima_ns_per_day = {"villin": 2400, "rnase_cubic": 1600, "adh_dodec": 360, "aqp_ensemble": 245, "ion_channel": 230, "stmv": 51}
+    gmx_ns_per_day = {"villin": 1100, "rnase_cubic": 920, "adh_dodec": 180, "aqp_ensemble": 96, "ion_channel": 130, "stmv": 33}
+    ns = MD_STEPS * DT_PS * 1e-3
+    hours = sum(ns / lima_ns_per_day[s] * 24 + (2 * ns / gmx_ns_per_day[s] * 24 if generate else 0) for s in systems)
+    return hours + len(systems) * 0.05  # performance rounds, forces, analysis
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="lima gromacscompare", description=__doc__.split("\n\n")[0],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--systems", default="small",
+                        help="small (villin, rnase_cubic), all (also adh_dodec, aqp_ensemble, ion_channel, stmv), or a "
+                             "comma-separated list (default: small)")
+    parser.add_argument("--reference", choices=("prebuilt", "generate"), default="prebuilt",
+                        help="prebuilt: the downloaded 1 ns GROMACS runs; generate: run them on this machine "
+                             "(two 1 ns GROMACS runs per system; hours for --systems all). Forces and performance are "
+                             "always measured on this machine (default: prebuilt)")
+    parser.add_argument("--only", choices=("forces", "performance", "structure"), action="append",
+                        help="Run only this part; may be repeated (default: all three)")
+    parser.add_argument("--rounds", type=int, default=2, help="Performance rounds per engine (default: 2)")
+    parser.add_argument("--gmx", help="GROMACS executable, or wsl:/path/to/gmx for one in WSL (default: gmx on the PATH, "
+                                      "then in WSL on Windows)")
+    parser.add_argument("--wsl-distro", help="WSL distribution of GROMACS (default: WSL's default)")
+    parser.add_argument("--lima", help="lima executable (default: the lima that runs this script)")
+    parser.add_argument("--data-dir", type=Path, help=f"Where the downloaded data is kept (default: {default_data_dir()})")
+    parser.add_argument("-o", "--output-dir", type=Path, default=Path("gromacscompare"),
+                        help="Where the runs and report.md go (default: ./gromacscompare)")
+    parser.add_argument("-y", "--yes", action="store_true", help="Don't ask before a run of more than an hour")
+    return parser.parse_args(argv)
+
+
+def select_systems(selection):
+    if selection in ("small", "all"):
+        return [s for s, (tier, *_) in SYSTEMS.items() if selection == "all" or tier == "small"]
+    names = [s for s in selection.split(",") if s]
+    unknown = [s for s in names if s not in SYSTEMS]
+    if unknown or not names:
+        raise Failure(f"Unknown system(s) {', '.join(unknown) or selection!r}; choose small, all, or from {', '.join(SYSTEMS)}")
+    return [s for s in SYSTEMS if s in names]
+
+
+def main(argv):
+    args = parse_args(argv)
+    systems = select_systems(args.systems)
+    parts = args.only or ["forces", "performance", "structure"]
+    generate = args.reference == "generate"
+    out_dir = Path(os.path.abspath(args.output_dir))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = Path(os.path.abspath(args.data_dir or default_data_dir()))
+
+    gmx, gmx_version = find_gromacs(args.gmx, args.wsl_distro, out_dir)
+    lima = find_lima(args.lima)
+    log(f"GROMACS {gmx_version['version']} with CUDA: {gmx.describe()}")
+    log(f"LIMA: {lima}")
+
+    hours = estimate_hours(systems, generate) if "structure" in parts else 0.05 * len(systems)
+    log(f"Systems: {', '.join(systems)}. Roughly {hours:.1f} h on an RTX 4090; slower GPUs take longer")
+    if hours > 1:
+        log("WARNING: this takes several hours." if hours > 2 else "WARNING: this takes over an hour.")
+        if not args.yes:
+            if not sys.stdin.isatty():
+                raise Failure("Pass --yes to start a run this long without a terminal to confirm in")
+            if input("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
+                return 1
+
+    lima_version = subprocess.run([lima, "--version"], capture_output=True, text=True).stdout.strip()
+    gpu, cpu = machine_info()
+    setup = {"date": time.strftime("%Y-%m-%d %H:%M"), "lima": f"{lima_version} ({lima})", "gromacs": gmx_version,
+             "gromacsPath": gmx.describe(), "gpu": gpu, "cpu": cpu, "reference": args.reference, "parts": parts}
+    results = {}
+    for system in systems:
+        log(f"\n== {system} ({SYSTEMS[system][1]:,} atoms)")
+        results[system] = {}
+        try:
+            data = fetch(system, data_dir)
+            work = out_dir / system
+            shutil.rmtree(work / "inputs", ignore_errors=True)
+            # A copy, so both engines read the inputs by paths relative to their run directory, also from WSL
+            shutil.copytree(data / "inputs", work / "inputs", ignore=shutil.ignore_patterns("*.bin"))
+            if "forces" in parts:
+                log("  forces")
+                r = results[system]["forces"] = force_parity(system, data, work / "forces", lima, gmx)
+                log(f"  force relative RMS error {r['relativeRmsError']:.2e}")
+            if "performance" in parts:
+                log("  performance")
+                results[system]["performance"] = performance(system, data, work / "perf", lima, gmx, args.rounds)
+            if "structure" in parts:
+                r = results[system]["structure"] = structure(system, data, work / "md", lima, gmx, generate)
+                log(f"  RMSF correlation LIMA-GROMACS {r['rmsfCorrelationLimaGromacs']:.3f}, "
+                    f"GROMACS-GROMACS {r['rmsfCorrelationGromacsGromacs']:.3f}")
+        except Failure as error:
+            results[system]["error"] = str(error)
+            log(f"  {system} not completed: {error}")
+        write_report(out_dir, results, setup)  # After every system, so an interrupted run keeps what it has
+
+    log(f"\nReport: {out_dir / 'report.md'}")
+    log((out_dir / "report.md").read_text())
+    return 1 if any("error" in r for r in results.values()) else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Failure as error:
+        print(f"lima gromacscompare: {error}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(130)

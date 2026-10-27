@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -12,7 +13,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
 
+#include "Analyzer.h"
 #include "CliDefinitions.h"
 #include "Daemon.h"
 #include "CommandlineUtils.h"
@@ -63,6 +68,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     fs::path simpar = "sim_params.txt";
     fs::path conf_out = "out.gro";
     fs::path trajOut{};
+    fs::path forcesOut{};
 
     bool render = false;
 	bool uff = false;
@@ -73,6 +79,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
 	parser.AddOption({ "--simparams", "-s", "-simparams" }, false, simpar);
 	parser.AddOption({ "--conf-out", "-conf_out", "-co" }, false, conf_out);
 	parser.AddOption({ "--trajectory", "-trr", "-traj" }, false, trajOut);
+    parser.AddOption({ "--forces-out" }, false, forcesOut);
 	parser.AddFlag({ "--display", "-d", "-display" }, [&render]() { render = true; });
     parser.AddFlag({ "--uff", "-uff" }, [&uff]() {uff = true; });
     parser.AddOption({ "--set" }, false, [&overrides](const std::vector<std::string>& args) {
@@ -89,6 +96,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     simpar = ctx.Resolve(simpar);
     conf_out = ctx.Resolve(conf_out);
     trajOut = ctx.Resolve(trajOut);
+    forcesOut = ctx.Resolve(forcesOut);
 
     EnvMode envmode = render ? Full : ConsoleOnly;
 
@@ -110,6 +118,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     // (save_energy, ...) add the data they need
     job.logged = LoggedData::None();
     job.logged.trajectory = uff;
+    job.logged.forces = !forcesOut.empty();
     job.trajectoryFile = trajOut;
     // Runs on an Environment worker thread while this thread waits in Get()
     job.onTimeEstimate = [&ctx](double secondsLeft) {
@@ -131,6 +140,13 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     std::vector<fs::path> written{ conf_out };
     if (!trajOut.empty())
         written.push_back(trajOut);
+    if (!forcesOut.empty()) {
+        std::ofstream file(forcesOut);
+        for (const Float3& force : SimAnalysis::GetForces(*result.simulation, 0))
+            file << Lima::Format("{},{},{}\n", force.x, force.y, force.z);
+        if (!file) throw std::runtime_error("Cannot write " + forcesOut.string());
+        written.push_back(forcesOut);
+    }
     if (uff) {
 		fs::path path = workDir / "trajectory.uff";
         result.WriteTrajectoryAsUff(path);
@@ -800,6 +816,36 @@ int Cli::RunSelfTest(const Context& ctx, int argc, char** argv) {
     return 0;
 }
 
+// The comparison is a Python script in resources (see its docstring); this runs it with the same options
+int Cli::RunGromacsCompare(const Context& ctx, int argc, char** argv) {
+    const fs::path script = FileUtils::GetLimaDir() / "resources" / "gromacscompare" / "gromacscompare.py";
+#ifdef _WIN32
+    const std::string python = "python";
+    const fs::path lima = WindowsIntegration::detail::ExePath();
+#else
+    const std::string python = "python3";
+    const fs::path lima = fs::read_symlink("/proc/self/exe");
+#endif
+    const auto quote = [](const std::string& arg) { return "\"" + arg + "\""; };
+    std::string command = python + " " + quote(script.string()) + " --lima " + quote(lima.string());
+    for (int i = 2; i < argc; i++) command += " " + quote(argv[i]);
+#ifdef _WIN32
+    command = "\"" + command + "\"";	// cmd /c removes the outer quotes
+#endif
+    ctx.out << std::flush;
+    const int status = std::system(command.c_str());
+#ifdef _WIN32
+    const int exitCode = status;
+    constexpr int notFound = 9009;
+#else
+    const int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    constexpr int notFound = 127;
+#endif
+    if (exitCode == notFound)
+        throw std::runtime_error("gromacscompare needs Python 3.8 or later as '" + python + "' on the PATH");
+    return exitCode;
+}
+
 int Cli::RunWait(const Context& ctx, int argc, char** argv) {
     ArgParser parser{ std::string{ WaitHelp } };
     parser.Parse(argc, argv);
@@ -835,6 +881,7 @@ constexpr std::array CommandHandlers{
     CommandHandlerEntry{ "editconf", Cli::RunEditConf },
     CommandHandlerEntry{ "em", Cli::RunEnergyMinimization },
     CommandHandlerEntry{ "togmx", Cli::RunToGmx },
+    CommandHandlerEntry{ "gromacscompare", Cli::RunGromacsCompare },
     CommandHandlerEntry{ "daemon", Cli::RunDaemon },
     CommandHandlerEntry{ "wait", Cli::RunWait },
 };

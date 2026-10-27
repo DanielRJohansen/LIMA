@@ -44,7 +44,7 @@ Options:
       --set KEY=VALUE...       Override parameters of the simparams file, eg. --set ref_t=310
       --conf-out PATH          Output coordinates (default: ./out.gro)
       --trajectory PATH        Output trajectory, .trr or .xtc (compressed), written
-                               during the run: a frame every trajectory_interval
+                               during the run: a frame every nstxout_compressed
                                steps (default 1000) and the final one. Disabled by
                                default
       --forces-out PATH        Write the step-0 forces as fx,fy,fz [kJ/mol/nm] per atom,
@@ -52,7 +52,7 @@ Options:
   -d, --display                Display the running simulation
       --async                  Run on the lima daemon and return at once; see 'lima wait'
       --uff                    Export trajectory.uff for ML training, every
-                               data_logging_interval steps, kept in RAM for the run
+                               nstenergy steps, kept in RAM for the run
   -h, --help                   Display this help and exit
 )";
 

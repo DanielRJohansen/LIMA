@@ -93,8 +93,8 @@ void TestDisplayT4Batch() {
 		auto job = BatchingTests::MakeT4Job(EnvMode::Full, false);
 		job.mode = EnvMode::Full;
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
-			params.n_steps = 90000;
-			params.data_logging_interval = 200;
+			params.nsteps = 90000;
+			params.nstenergy = 200;
 			};
 		handle = environment.Submit(std::move(job));
 	}
@@ -119,9 +119,9 @@ void ShowcaseSTMV(int nSteps = 50000) {
 	job.mode = EnvMode::Full;
 	job.mustRunAlone = true;
 	job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
-		params.data_logging_interval = 20;
+		params.nstenergy = 20;
 		params.enable_electrostatics = true;
-		params.n_steps = nSteps;
+		params.nsteps = nSteps;
 	};
 	auto result = Environment::Get().Submit(std::move(job)).Get();
 	if (!result.simulation || result.simulation->getStep() != nSteps)

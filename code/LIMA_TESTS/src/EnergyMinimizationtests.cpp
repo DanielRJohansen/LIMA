@@ -93,8 +93,8 @@ namespace EnergyMinimizationTests {
 
 		Result RunTestCase(const TestCase& testCase) {
 			SimParams params = SimParams::BasicEMSimParams(fineForceTolerance);
-			params.n_steps = maximumSteps;
-			params.data_logging_interval = 0; // Trajectory buffers are preallocated for n_steps, which does not fit in memory for 3J3Q
+			params.nsteps = maximumSteps;
+			params.nstenergy = 0; // Trajectory buffers are preallocated for nsteps, which does not fit in memory for 3J3Q
 
 			SimulationJob job{
 				testCase.directory,

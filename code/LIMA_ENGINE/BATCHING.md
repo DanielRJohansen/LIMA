@@ -39,7 +39,7 @@ the small amount of simulation-specific state used by kernels.
 - Logging uses concatenated per-simulation ring buffers, each with its own stride.
 
 All members must start at step zero, have equal box dimensions and agree on
-`SimParams` except `dt`, `n_steps`, thermostat `ref_t`, `initial_temperature` and the analysis switches. Particle counts, topology, degrees of freedom
+`SimParams` except `dt`, `nsteps`, thermostat `ref_t`, `initial_temperature` and the analysis switches. Particle counts, topology, degrees of freedom
 and PME self-energy corrections are simulation-specific. Pressure-coupled jobs run alone because a batch currently shares one box and spatial grid. The engine and scheduler
 use the compatibility check in `BatchCompatibility.h`; the scheduler additionally applies standalone-job rules before forming a batch.
 

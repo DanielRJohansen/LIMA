@@ -37,7 +37,7 @@ namespace ForceCorrectness {
 		auto job = MakeJob(workDir, envmode, true);
 		job.simParams = SimParams{};
 		job.simParams->enable_electrostatics = false;
-		job.simParams->n_steps = LIMA_UTILS::roundUp(3000000 / static_cast<int>(velocity), 100);
+		job.simParams->nsteps = LIMA_UTILS::roundUp(3000000 / static_cast<int>(velocity), 100);
 		job.configureSimulation = [velocity](Simulation& simulation) {
 			simulation.box->pclusterInterimStates[0].vels_prev[0] = Float3{ velocity, 0.f, 0.f };
 			simulation.box->pclusterInterimStates[1].vels_prev[0] = Float3{ -velocity, 0.f, 0.f };
@@ -52,7 +52,7 @@ namespace ForceCorrectness {
 		// Displace the second carbon from equilibrium along x.
 		auto job = MakeJob(workDir, envmode);
 		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams& params) {
-			params.n_steps = 1; params.data_logging_interval = 1;
+			params.nsteps = 1; params.nstenergy = 1;
 			grofile.atoms[1].position = grofile.atoms[0].position + Float3{ expectedB0 + bondLengthError, 0.f, 0.f };
 		};
 		auto completed = co_await environment.Submit(std::move(job));
@@ -84,7 +84,7 @@ namespace ForceCorrectness {
 		// Simulate 1000 fs and record every step so oscillations can be counted.
 		auto job = MakeJob(workDir, envmode);
 		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams& params) {
-			params.dt = 1.f * FEMTO_TO_NANO; params.n_steps = 1000; params.data_logging_interval = 1;
+			params.dt = 1.f * FEMTO_TO_NANO; params.nsteps = 1000; params.nstenergy = 1;
 			grofile.atoms[1].position.x = grofile.atoms[0].position.x + expectedB0 + bondLengthError;
 		};
 		auto completed = co_await environment.Submit(std::move(job));
@@ -96,10 +96,10 @@ namespace ForceCorrectness {
 		const double springConstant = parameters.kb / NANO / NANO;  // [J/(mol m^2)]
 		const double expectedFrequency = std::sqrt(springConstant / reducedMass) / (2.f * PI) * FEMTO; // [1/fs]
 
-		std::vector<float> lengths(simulation.simParams.n_steps); // [nm]
-		for (int i = 0; i < simulation.simParams.n_steps; i++)
+		std::vector<float> lengths(simulation.simParams.nsteps); // [nm]
+		for (int i = 0; i < simulation.simParams.nsteps; i++)
 			lengths[i] = (simulation.traj_buffer->GetDatapoint(0, 0, i) - simulation.traj_buffer->GetDatapoint(0, 1, i)).len();
-		const float elapsed = simulation.simParams.dt * simulation.simParams.n_steps * NANO_TO_FEMTO; // [fs]
+		const float elapsed = simulation.simParams.dt * simulation.simParams.nsteps * NANO_TO_FEMTO; // [fs]
 		const float actualFrequency = static_cast<float>(SimAnalysis::CountOscillations(lengths)) / elapsed; // [1/fs]
 		const float error = std::abs(actualFrequency - expectedFrequency) / expectedFrequency;
 		co_return LimaUnittestResult{ error < 1e-2f,
@@ -110,7 +110,7 @@ namespace ForceCorrectness {
 		const fs::path workDir = TestsDir() / "Anglebond";
 		auto expected = std::make_shared<ExpectedForceEnergy>();
 		auto job = MakeJob(workDir, envmode);
-		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.nsteps = 1; params.nstenergy = 1; };
 		job.configureSimulation = [expected](Simulation& simulation) {
 			// This used to require creating the simulation twice: once to discover
 			// force-field parameters and again after adjusting the coordinates.
@@ -158,7 +158,7 @@ namespace ForceCorrectness {
 		auto expected = std::make_shared<ExpectedForceEnergy>();
 		auto particleId = std::make_shared<int>(0);
 		auto job = MakeJob(workDir, envmode);
-		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; params.data_logging_interval = 1; };
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.nsteps = 1; params.nstenergy = 1; };
 		job.configureSimulation = [expected, particleId](Simulation& simulation) {
 			auto& groups = simulation.box->bondgroups;
 			auto& group = groups.groups[0];
@@ -197,8 +197,8 @@ namespace ForceCorrectness {
 		const float velocity = PhysicsUtils::tempToVelocity(400.f, mass); // [m/s] == [nm/ns]
 		auto job = MakeJob(workDir, envmode, true);
 		job.preprocess = [velocity](GroFile&, TopologyFile&, SimParams& params) {
-			params.data_logging_interval = 1;
-			params.n_steps = LIMA_UTILS::roundUp(6000000 / static_cast<int>(velocity), 100);
+			params.nstenergy = 1;
+			params.nsteps = LIMA_UTILS::roundUp(6000000 / static_cast<int>(velocity), 100);
 		};
 		job.configureSimulation = [velocity](Simulation& simulation) {
 			simulation.box->pclusterInterimStates[0].vels_prev[0] = Float3{ velocity, 0.f, 0.f };
@@ -210,7 +210,7 @@ namespace ForceCorrectness {
 		const fs::path workDir = TestsDir() / "Singlebond";
 		auto job = MakeJob(workDir, envmode, true);
 		job.preprocess = [](GroFile& grofile, TopologyFile&, SimParams& params) {
-			params.data_logging_interval = 1; params.n_steps = 5000;
+			params.nstenergy = 1; params.nsteps = 5000;
 			constexpr float equilibriumLength = .1335f; // [nm]
 			constexpr float bondLengthError = .02f;     // (r-r0) [nm]
 			grofile.atoms[1].position.x += equilibriumLength + bondLengthError;
@@ -267,9 +267,9 @@ namespace VerletintegrationTesting {
 		constexpr float fieldStrength = .5f; // [V/nm]
 		auto job = ForceCorrectness::MakeJob(workDir, envmode, true);
 		job.simParams = SimParams{};
-		job.simParams->n_steps = 1000;
+		job.simParams->nsteps = 1000;
 		job.simParams->enable_electrostatics = true;
-		job.simParams->data_logging_interval = 1;
+		job.simParams->nstenergy = 1;
 		job.simParams->snf_select.insert(HorizontalChargeField);
 		job.preprocess = [](GroFile& grofile, TopologyFile& topfile, SimParams&) {
 			grofile.atoms.pop_back(); topfile.GetMoleculeType().atoms.pop_back();
@@ -282,7 +282,7 @@ namespace VerletintegrationTesting {
 		const float charge = simulation.box->persistentClusters[0].pqd[0].params.charge * KILO; // [C/mol]
 		const float mass = simulation.box->persistentClustersMetadata[0].mass[0]; // [kg/mol]
 		const double elapsed = simulation.simParams.dt
-			* static_cast<double>(simulation.simParams.n_steps) * NANO; // [s]
+			* static_cast<double>(simulation.simParams.nsteps) * NANO; // [s]
 		const float expectedVelocity = charge * fieldStrength / NANO * elapsed / mass; // [m/s]
 		const float expectedEnergy = PhysicsUtils::calcKineticEnergy(expectedVelocity, mass); // [J/mol]
 		const float actualEnergy = completed.analysis->kin_energy.back();

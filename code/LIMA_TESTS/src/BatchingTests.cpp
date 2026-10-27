@@ -16,8 +16,8 @@ namespace BatchingTests {
 		job.mode = Headless;// envmode;
 		job.mustRunAlone = mustRunAlone;
 		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) {
-			params.n_steps = 4000;
-			params.data_logging_interval = 20; // must NOT be 0
+			params.nsteps = 4000;
+			params.nstenergy = 20; // must NOT be 0
 		};
 		return job;
 	}
@@ -232,8 +232,8 @@ namespace BatchingTests {
 				auto configure = std::move(job.configureSimulation);
 				job.configureSimulation = [configure](Simulation& simulation) {
 					configure(simulation);
-					simulation.simParams.apply_barostat = true;
-					simulation.simParams.steps_per_pressure_measurement = 1;
+					simulation.simParams.pcoupl = PcouplSelect::Berendsen;
+					simulation.simParams.nstpcouple = 1;
 					simulation.simParams.compressibility = 1e-12f;
 				};
 				jobs.push_back(std::move(job));
@@ -266,7 +266,7 @@ namespace BatchingTests {
 
 			const auto MakeJob = [&](FileInput<GroFile> gro, FileInput<TopologyFile> top) {
 				SimParams params;
-				params.n_steps = 10;
+				params.nsteps = 10;
 				SimulationJob job{ fixtures, std::move(gro), std::move(top), params, Headless };
 				job.preprocess = [](GroFile& coordinates, TopologyFile&, SimParams&) { coordinates.title = "edited"; };
 				return job;

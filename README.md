@@ -26,7 +26,8 @@ LIMA includes third-party software under its own licenses, see [THIRD_PARTY_NOTI
 ## Building from source
 - Windows: Visual Studio 2022 with the C++ workload and the CUDA toolkit. Open the folder in Visual Studio, or
   configure with CMake and Ninja.
-- Linux: run `install.sh`, which builds LIMA and installs it to /usr/bin and /usr/share/LIMA.
+- Linux: gcc 14 and CUDA 13, configured with CMake and Ninja
+  (`CC=gcc-14 CXX=g++-14 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release`).
 
 Releases are built with `distribution/release.bat`, see [distribution/README.md](distribution/README.md).
 

@@ -1,6 +1,6 @@
-n_steps=1
-dt=2
-data_logging_interval=1
+nsteps=1
+dt=0.002
+nstenergy=1
 cutoff_nm=0.9
 enable_electrostatics=true
-apply_thermostat=false
+tcoupl=no

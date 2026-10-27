@@ -182,25 +182,25 @@ namespace EngineBatch {
 			if (sim->finished || sim->getStep() != 0)
 				throw std::invalid_argument("Engine requires fresh simulations at step zero");
 			const auto& params = sim->simParams;
-			if (params.stepsPerNlistupdate <= 0 || params.steps_per_temperature_measurement <= 0
-				|| (params.apply_barostat && params.steps_per_pressure_measurement <= 0) || params.data_logging_interval < 0)
+			if (params.nstlist <= 0 || params.nsttcouple <= 0
+				|| (params.pcoupl != PcouplSelect::No && params.nstpcouple <= 0) || params.nstenergy < 0)
 				throw std::invalid_argument("Invalid engine measurement or update interval");
 			if (!FinitePositive(params.dt))
 				throw std::invalid_argument("Timestep must be finite and positive");
-			if (params.apply_thermostat && !FinitePositive(params.tau_t))
+			if (params.tcoupl != TcouplSelect::No && !FinitePositive(params.tau_t))
 				throw std::invalid_argument("tau_t must be finite and positive");
-			if (params.apply_barostat && (!FinitePositive(params.tau_p) || !FinitePositive(params.compressibility)
+			if (params.pcoupl != PcouplSelect::No && (!FinitePositive(params.tau_p) || !FinitePositive(params.compressibility)
 				|| !std::isfinite(params.ref_p.value)))
 				throw std::invalid_argument("Barostat tau_p and compressibility must be finite and positive, and ref_p finite");
-			if (params.apply_barostat && (params.em_variant || params.bc_select != PBC))
+			if (params.pcoupl != PcouplSelect::No && (params.em_variant || params.bc_select != PBC))
 				throw std::invalid_argument("The barostat requires periodic-boundary molecular dynamics");
-			if (params.apply_barostat && !params.snf_select.empty())
+			if (params.pcoupl != PcouplSelect::No && !params.snf_select.empty())
 				throw std::invalid_argument("The barostat is not compatible with supernatural forces");
 			if (!FinitePositive(params.cutoff_nm))
 				throw std::invalid_argument("Cutoff must be finite and positive");
 			if (!(FinitePositive(params.verlet_buffer_tolerance) || params.verlet_buffer_tolerance == -1.f) || !std::isfinite(params.rlist.value))
 				throw std::invalid_argument("verlet_buffer_tolerance must be positive, or -1 to use rlist");
-			if (params.n_steps.value > INT64_MAX)
+			if (params.nsteps.value > INT64_MAX)
 				throw std::invalid_argument("Simulation step count exceeds engine limit");
 			const auto& box = *sim->box;
 			const auto dim = box.boxparams.boxSize;
@@ -209,7 +209,7 @@ namespace EngineBatch {
 			if (box.persistentClusters.size() != box.persistentClustersMetadata.size() || box.persistentClusters.size() != box.pclusterInterimStates.size()
 				|| box.particlesBondedToParticle.size() != box.boxparams.totalParticles || box.pclustersBondedToPcluster.size() != box.persistentClusters.size())
 				throw std::invalid_argument("Incomplete simulation particle metadata");
-			if (params.data_logging_interval > 0 && ((sim->logged.trajectory && !sim->traj_buffer)
+			if (params.nstenergy > 0 && ((sim->logged.trajectory && !sim->traj_buffer)
 				|| (sim->logged.energy && (!sim->potE_buffer || !sim->vel_buffer)) || (sim->logged.forces && !sim->forceBuffer)))
 				throw std::invalid_argument("Simulation logging buffers have not been prepared");
 			if (sim->box->persistentClusters.empty()) throw std::invalid_argument("Cannot simulate an empty box");
@@ -217,7 +217,7 @@ namespace EngineBatch {
 				throw std::invalid_argument("Incompatible batch parameter: " + std::string(*mismatch));
 		}
 		if (simulations.size() != 1 && std::ranges::any_of(simulations, [](const Simulation* simulation) {
-			return simulation->simParams.apply_barostat.value;
+			return simulation->simParams.pcoupl != PcouplSelect::No;
 		}))
 			throw std::invalid_argument("Pressure coupling currently requires a single simulation; independently scaled boxes cannot share a batch");
 		// The per-particle checks rely on the metadata checked above, and are by far the most expensive
@@ -285,17 +285,17 @@ namespace EngineBatch {
 
 		// As GROMACS: the reference temperature, or without a thermostat the starting temperature, and without one either a 10% buffer
 		constexpr double gasConstant = BOLTZMANNCONSTANT * AVOGADROSNUMBER;	// [J/mol/K]
-		const double temperature = params.apply_thermostat ? params.ref_t.value
+		const double temperature = params.tcoupl != TcouplSelect::No ? params.ref_t.value
 			: params.initial_temperature > 0.f ? params.initial_temperature.value
 			: kineticEnergy * 2.0 / (3.0 * nAtoms * gasConstant);
 		if (temperature <= 0.0)
 			return 0.1f * cutoff;
 
 		// Over the list's lifetime, the steps after the one it was built for [ns]
-		const double elapsed = (params.stepsPerNlistupdate - 1) * double(params.dt);
+		const double elapsed = (params.nstlist - 1) * double(params.dt);
 		if (elapsed <= 0.0)
 			return 0.f;
-		const double driftTarget = nAtoms * params.verlet_buffer_tolerance * 1e6 * params.stepsPerNlistupdate * double(params.dt);	// [J/mol]
+		const double driftTarget = nAtoms * params.verlet_buffer_tolerance * 1e6 * params.nstlist * double(params.dt);	// [J/mol]
 		const Float3 boxSize = box.boxparams.BoxSizeFloat();
 		const double volume = double(boxSize.x) * boxSize.y * boxSize.z;	// [nm^3]
 
@@ -423,7 +423,7 @@ namespace EngineBatch {
 			const auto& box = *simulation->box;
 			EngineSimulationData sim;
 			sim.simulation = simulation;
-			sim.thermostat = VRescale(static_cast<uint64_t>(simulation->simParams.thermostat_seed.value));
+			sim.thermostat = VRescale(static_cast<uint64_t>(simulation->simParams.ld_seed.value));
 			auto& layout = sim.device;
 			layout.particles = { batch.nParticles, box.boxparams.totalParticles };
 			layout.pclusters = { CheckedCount(pclusters.size()), CheckedCount(box.persistentClusters.size()) };
@@ -432,7 +432,7 @@ namespace EngineBatch {
 			layout.logOffset = pclusters.size() * PersistentCluster::maxParticles * DatabuffersDeviceController::nStepsInBuffer;
 			layout.dt = simulation->simParams.dt;
 			layout.uniformElectricField = box.uniformElectricField;
-			layout.active = simulation->simParams.n_steps != 0;
+			layout.active = simulation->simParams.nsteps != 0;
 			sim.runstatus.simulation_finished = !layout.active;
 			batch.nParticles = CheckedCount(size_t(batch.nParticles) + layout.particles.count);
 			batch.nGridnodes = CheckedCount(size_t(batch.nGridnodes) + layout.gridnodes.count);

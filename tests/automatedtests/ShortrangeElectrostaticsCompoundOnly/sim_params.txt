@@ -1,9 +1,9 @@
 // Main parameters
-n_steps=1000
-dt=2 # [fs]
+nsteps=1000
+dt=0.002 # [ps]
 em=false # Is an energy-minimization simulation
-em_force_tolerance=1000 # [kJ/mol/nm], only relevant if em=true
-stepsPerNlistupdate=20 # [steps]
+emtol=1000 # [kJ/mol/nm], only relevant if em=true
+nstlist=20 # [steps]
 
 // Physics parameters
 boundarycondition=PBC # PBC or NoBC
@@ -12,12 +12,12 @@ cutoff_nm=1.2 # [nm]
 supernatural_forces=None
 
 // Thermostat parameters
-steps_per_temperature_measurement=200 # [steps]
-apply_thermostat=false # Thermostat on/off
+nsttcouple=200 # [steps]
+tcoupl=no # Thermostat on/off
 ref_t=300 # Reference temperature [K]
 
 // Output parameters
-data_logging_interval=5 # [steps]
+nstenergy=5 # [steps]
 save_energy=false # Save kinetic and potential energy to file
 coloring_method=Atomname
 

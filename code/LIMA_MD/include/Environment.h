@@ -90,9 +90,9 @@ struct SimulationJob {
 	EnvMode mode = EnvMode::Headless;
 	// The per-particle data kept on host for the whole run, read from SimulationResult::simulation afterwards. All by
 	// default; a job that only needs its final coordinates should choose LoggedData::None(), as the buffers grow with
-	// particles * n_steps. The outputs selected in simParams (save_energy, self_diffusion, density_profile) add their own
+	// particles * nsteps. The outputs selected in simParams (save_energy, self_diffusion, density_profile) add their own
 	LoggedData logged;
-	// Written during the run, a frame every simParams.trajectory_interval steps and the final one (.trr or .xtc).
+	// Written during the run, a frame every simParams.nstxout_compressed steps and the final one (.trr or .xtc).
 	// It does not need logged.trajectory, which keeps every logged frame in RAM instead
 	fs::path trajectoryFile;
 	// Callbacks of different jobs may run concurrently on Environment's worker threads,

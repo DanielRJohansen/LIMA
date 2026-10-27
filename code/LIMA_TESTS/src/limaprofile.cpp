@@ -10,7 +10,7 @@ static int ProfileT4(int batchSize, int steps) {
 		job.mode = Headless;
 		job.profileCuda = true;
 		job.preprocess = [steps](GroFile&, TopologyFile&, SimParams& params) {
-			params.n_steps = steps;
+			params.nsteps = steps;
 		};
 		handles.push_back(Environment::Get().Submit(std::move(job)));
 	}
@@ -30,9 +30,9 @@ static int ProfileBatchScaling(int steps) {
 		job.workDir = TestUtils::AutomatedTestsDir() / "T4Lysozyme";
 		job.mode = Headless;
 		job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
-			params.n_steps = nSteps;
+			params.nsteps = nSteps;
 			params.enable_electrostatics = true;
-			params.data_logging_interval = 50;
+			params.nstenergy = 50;
 		};
 		return job;
 	};

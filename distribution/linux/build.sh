@@ -85,7 +85,7 @@ LIMA="$STAGE/bin/lima"
     "$LIMA" makebox --box-size 5
     "$LIMA" solvate -c met_box4.gro -t met_box4.top
     "$LIMA" em -c metsol_clash.gro -t metsol.top --conf-out em.gro
-    printf 'n_steps=500\ndt=2\ndata_logging_interval=50\n' > params.txt
+    printf 'nsteps=500\ndt=0.002\nnstenergy=50\n' > params.txt
     "$LIMA" mdrun -c metsol.gro -t metsol.top -s params.txt --conf-out md.gro --trajectory md.trr
 )
 for file in conf.gro met_box4_solvated.gro em.gro md.gro md.trr; do

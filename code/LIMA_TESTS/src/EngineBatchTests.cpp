@@ -24,15 +24,15 @@ namespace EngineBatchTests {
 
 	std::unique_ptr<Simulation> MakeSimulation(int particles, int steps, float dt, bool electrostatics, bool em, int loggingInterval) {
 		SimParams params;
-		params.n_steps = steps;
+		params.nsteps = steps;
 		params.dt = dt;
 		params.enable_electrostatics = electrostatics;
 		params.em_variant = em;
-		params.em_force_tolerance = 0.f;
-		params.stepsPerNlistupdate = 3;
-		params.data_logging_interval = loggingInterval;
-		params.steps_per_temperature_measurement = 10;
-		params.apply_thermostat = !em;
+		params.emtol = 0.f;
+		params.nstlist = 3;
+		params.nstenergy = loggingInterval;
+		params.nsttcouple = 10;
+		params.tcoupl = em ? TcouplSelect::No : TcouplSelect::VRescale;
 		auto sim = std::make_unique<Simulation>(params, std::make_unique<Box>(Float3{4.f}));
 		auto& box = *sim->box;
 		box.boxparams.totalParticles = particles;
@@ -79,7 +79,7 @@ namespace EngineBatchTests {
 
 	double PotentialEnergyAtScale(bool electrostatics, double volumeScale) {
 		auto simulation = MakeSimulation(29, 1, 1e-8f, electrostatics, false, 1);
-		simulation->simParams.apply_thermostat = false;
+		simulation->simParams.tcoupl = TcouplSelect::No;
 		const float coordinateScale = static_cast<float>(std::cbrt(volumeScale));
 		for (size_t pc = 0; pc < simulation->box->persistentClusters.size(); ++pc)
 			for (int lane = 0; lane < simulation->box->persistentClustersMetadata[pc].nParticles; ++lane)
@@ -91,10 +91,10 @@ namespace EngineBatchTests {
 
 	double MeasuredPotentialPressure(bool electrostatics) {
 		auto simulation = MakeSimulation(29, 1, 1e-8f, electrostatics, false, 1);
-		simulation->simParams.apply_thermostat = false;
-		simulation->simParams.steps_per_temperature_measurement = 1;
-		simulation->simParams.apply_barostat = true;
-		simulation->simParams.steps_per_pressure_measurement = 1;
+		simulation->simParams.tcoupl = TcouplSelect::No;
+		simulation->simParams.nsttcouple = 1;
+		simulation->simParams.pcoupl = PcouplSelect::Berendsen;
+		simulation->simParams.nstpcouple = 1;
 		simulation->simParams.tau_p = 1.f;
 		simulation->simParams.compressibility = 1e-12f;
 		const Float3 length = simulation->box->boxparams.BoxSizeFloat();
@@ -152,10 +152,10 @@ namespace EngineBatchTests {
 	std::unique_ptr<Simulation> MakeMetsol(int steps, bool em) {
 		const auto fixtures = FileUtils::GetLimaDir() / "tests" / "clitests" / "fixtures";
 		SimParams params = em ? SimParams::BasicEMSimParams(0.f) : SimParams{};
-		params.n_steps = steps;
-		params.data_logging_interval = 20;
-		params.steps_per_temperature_measurement = 50;
-		params.apply_thermostat = !em;
+		params.nsteps = steps;
+		params.nstenergy = 20;
+		params.nsttcouple = 50;
+		params.tcoupl = em ? TcouplSelect::No : TcouplSelect::VRescale;
 		GroFile gro{ fixtures / "metsol.gro" };
 		TopologyFile top{ fixtures / "metsol.top" };
 		auto image = LIMA_MOLECULEBUILD::buildMolecules(gro, top, params);
@@ -165,19 +165,19 @@ namespace EngineBatchTests {
 		return sim;
 	}
 
-	// A member retiring on a step that is not an nlist update step (n_steps, StopSimulation as used for maxRunTime)
+	// A member retiring on a step that is not an nlist update step (nsteps, StopSimulation as used for maxRunTime)
 	// must leave the survivor bitwise identical to a standalone run
 	void RetirementOffNlistStep() {
 		constexpr int survivorSteps = 300;
-		constexpr int retireStep = 137; // Not a multiple of stepsPerNlistupdate
+		constexpr int retireStep = 137; // Not a multiple of nstlist
 		for (bool em : {false, true}) {
 			for (bool stop : {false, true}) {
-				const auto label = Lima::Format("EM {} {}", em, stop ? "StopSimulation" : "n_steps");
+				const auto label = Lima::Format("EM {} {}", em, stop ? "StopSimulation" : "nsteps");
 				auto retiring = MakeMetsol(stop ? survivorSteps : retireStep, em);
 				auto survivor = MakeMetsol(survivorSteps, em);
 				auto referenceRetiring = MakeMetsol(retireStep, em);
 				auto referenceSurvivor = MakeMetsol(survivorSteps, em);
-				Require(retireStep % survivor->simParams.stepsPerNlistupdate != 0, "Retirement step is an nlist update step");
+				Require(retireStep % survivor->simParams.nstlist != 0, "Retirement step is an nlist update step");
 				Run(*referenceRetiring);
 				Run(*referenceSurvivor);
 				Engine engine({ retiring.get(), survivor.get() });
@@ -208,16 +208,16 @@ namespace EngineBatchTests {
 		CheckPressureAgainstFiniteDifference(true);
 		{
 			auto noPressure = MakeSimulation(5, 1, 0.00001f, false);
-			noPressure->simParams.apply_barostat = false;
-			noPressure->simParams.steps_per_pressure_measurement = -1;
+			noPressure->simParams.pcoupl = PcouplSelect::No;
+			noPressure->simParams.nstpcouple = -1;
 			Run(*noPressure);
 		}
 		{
 			auto first = MakeSimulation(29, 20, 0.000002f, true);
 			auto second = MakeSimulation(29, 20, 0.000002f, true);
 			for (Simulation* simulation : {first.get(), second.get()}) {
-				simulation->simParams.apply_barostat = true;
-				simulation->simParams.steps_per_pressure_measurement = 2;
+				simulation->simParams.pcoupl = PcouplSelect::Berendsen;
+				simulation->simParams.nstpcouple = 2;
 				simulation->simParams.tau_p = 0.2f;
 				simulation->simParams.compressibility = 4.5e-5f;
 				simulation->simParams.constraints = ConstraintsSelect::HBonds;
@@ -330,7 +330,7 @@ namespace EngineBatchTests {
 		Run(*disabledLogging);
 		Require(disabledLogging->getStep() == 7, "Disabled logging broke completion");
 		auto early = MakeSimulation(5, 200, 0.00001f, false, true);
-		early->simParams.em_force_tolerance = 1e20f;
+		early->simParams.emtol = 1e20f;
 		Run(*early);
 		Require(early->getStep() == 1, "EM early stopping failed");
 		// The live editor intentionally uses zero steps and disabled logging.
@@ -339,7 +339,7 @@ namespace EngineBatchTests {
 			Engine engine({interactive.get()}, EngineRunMode::Interactive);
 			engine.step();
 			interactive->simParams.em_variant = true;
-			interactive->simParams.em_force_tolerance = 1e20f;
+			interactive->simParams.emtol = 1e20f;
 			engine.step();
 			interactive->simParams.em_variant = false;
 			engine.step();
@@ -348,7 +348,7 @@ namespace EngineBatchTests {
 		}
 		{
 			auto pressureInteractive = MakeSimulation(5, 0, 0.00001f, false, false, 0);
-			pressureInteractive->simParams.apply_barostat = true;
+			pressureInteractive->simParams.pcoupl = PcouplSelect::Berendsen;
 			bool rejected = false;
 			try { Engine engine({pressureInteractive.get()}, EngineRunMode::Interactive); }
 			catch (const std::invalid_argument&) { rejected = true; }
@@ -400,18 +400,18 @@ namespace EngineBatchTests {
 		const MolecularSystem water = environment.Submit(std::move(minimization)).Get().FinalSystem();
 
 		SimParams production;
-		production.n_steps = 12500;	// 25 ps
-		production.apply_thermostat = true;
+		production.nsteps = 12500;	// 25 ps
+		production.tcoupl = TcouplSelect::VRescale;
 		production.self_diffusion = true;	// Each run writes its self_diffusion.csv
 		// The thermostat changes velocities by at most 0.1% per measurement, so it needs frequent measurements to hold
 		// each box at its temperature as kinetic energy flows into potential energy early in the run
-		production.steps_per_temperature_measurement = 20;
-		production.data_logging_interval = 100;
+		production.nsttcouple = 20;
+		production.nstenergy = 100;
 		const auto MakeJob = [&](float temperature, uint64_t steps, EnvMode mode) {
 			SimParams params = production;
 			params.ref_t = temperature;
 			params.initial_temperature = temperature;
-			params.n_steps = steps;
+			params.nsteps = steps;
 			return Programs::MakeSimulationJob(workDir / Lima::Format("{:.0f}K", temperature), water, params, mode);
 		};
 
@@ -424,7 +424,7 @@ namespace EngineBatchTests {
 		const auto start = std::chrono::steady_clock::now();
 		std::vector<SimulationHandle> handles;
 		for (int i = 0; i < nTemperatures; ++i)
-			handles.push_back(environment.Submit(MakeJob(280.f + 3.f * i, production.n_steps, EnvMode::Full)));
+			handles.push_back(environment.Submit(MakeJob(280.f + 3.f * i, production.nsteps, EnvMode::Full)));
 		std::vector<SimulationResult> results;
 		for (auto& handle : handles)
 			results.push_back(handle.Get());
@@ -435,7 +435,7 @@ namespace EngineBatchTests {
 		csv << "ref_t_K,temperature_K,D_m2s\n";
 		std::map<int, double> batchSeconds;	// [batchId] engine time of its slowest member
 		for (const auto& result : results) {
-			if (!result.simulation || result.simulation->getStep() != production.n_steps)
+			if (!result.simulation || result.simulation->getStep() != production.nsteps)
 				throw std::runtime_error("A showcase simulation did not run fully");
 			std::ifstream runCsv(workDir / Lima::Format("{:.0f}K", result.simulation->simParams.ref_t.value) / "self_diffusion.csv");
 			std::string header, row;
@@ -449,10 +449,10 @@ namespace EngineBatchTests {
 
 		double batchedSeconds = 0.0;
 		for (const auto& [batchId, seconds] : batchSeconds) batchedSeconds += seconds;
-		const double aloneSeconds = aloneSecondsPerStep * production.n_steps * nTemperatures;
+		const double aloneSeconds = aloneSecondsPerStep * production.nsteps * nTemperatures;
 		const size_t nAtoms = water.coordinates.atoms.size();
 		std::cout << Lima::Format("\n{} simulations of {} atoms, {:.0f} ps each, in {} batch(es)\n", nTemperatures, nAtoms,
-			production.n_steps * production.dt * NANO_TO_PICO, batchSeconds.size());
+			production.nsteps * production.dt * NANO_TO_PICO, batchSeconds.size());
 		std::cout << Lima::Format("Engine time: {:.1f} s batched, {:.1f} s one at a time ({:.1f}x faster). Wall time {:.1f} s\n",
 			batchedSeconds, aloneSeconds, aloneSeconds / batchedSeconds, wallSeconds);
 		std::cout << "Self-diffusion written to " << csvPath.string() << '\n';

@@ -87,7 +87,7 @@ namespace Benchmarks {
 		job.simParams.emplace(workDir / "../sim_params.txt");
 		job.mode = EnvMode::Headless;
 		job.mustRunAlone = true;
-		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.n_steps = 1; };
+		job.preprocess = [](GroFile&, TopologyFile&, SimParams& params) { params.nsteps = 1; };
 
 		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation || completed.simulation->getStep() != 1)
@@ -116,10 +116,10 @@ namespace Benchmarks {
 			job.mode = EnvMode::Headless;
 			job.mustRunAlone = true;
 			job.preprocess = [steps, barostat, constrained](GroFile&, TopologyFile&, SimParams& params) {
-				params.data_logging_interval = 20;
+				params.nstenergy = 20;
 				params.enable_electrostatics = true;
-				params.n_steps = steps;
-				params.apply_barostat = barostat;
+				params.nsteps = steps;
+				params.pcoupl = barostat ? PcouplSelect::Berendsen : PcouplSelect::No;
 				if (constrained)
 					params.constraints = ConstraintsSelect::HBonds;
 			};
@@ -139,7 +139,7 @@ namespace Benchmarks {
 		// Await each run before submitting the next, so a run's preparation never overlaps the previous run's timed steps
 		for (int run = 0; run < nRuns; run++) {
 			auto completed = co_await environment.Submit(MakeJob(nSteps));
-			if (!completed.simulation || completed.simulation->getStep() != completed.simulation->simParams.n_steps)
+			if (!completed.simulation || completed.simulation->getStep() != completed.simulation->simParams.nsteps)
 				co_return LimaUnittestResult::Fail("Simulation did not run fully", envmode != Headless);
 			timesPerStep.push_back(std::chrono::duration_cast<std::chrono::microseconds>(completed.engineTime / nSteps));
 			if (printPerformance)

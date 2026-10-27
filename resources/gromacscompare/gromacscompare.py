@@ -35,9 +35,9 @@ DATASET = "v1"
 SYSTEMS = {  # name: (tier, atoms, bytes, sha256), from make_bundle.py
     "villin": ("small", 5006, 212764, "585214930d7b408316c42cf4b4b6c43f8fab182a75188752f0c2ba2bf27d5b64"),
     "rnase_cubic": ("small", 24040, 918469, "911047bc119d34d391e5b4c367c665a216ddf916d9d975d816329bafd49d8dbd"),
-    "adh_dodec": ("all", 191122, 7404326, "9cad6bb6a270441c07d72c494b8c75153c420803edfbfa766129dd90132606dd"),
-    "aqp_ensemble": ("all", 219984, 9461686, "2969033e61961273f810d488c170638d3978b0630ee1b98002a7d1afb7d406a2"),
-    "ion_channel": ("all", 283354, 10017547, "9fef98e85b4871c3d2ccaa198146210400139ac5f478801314cd77ea2782003a"),
+    "adh_dodec": ("all", 191122, 7433786, "875492bb2a1186190dfd30c680c250fc0912d77b98c18c049229030ba1baaf84"),
+    "aqp_ensemble": ("all", 219984, 9744534, "894c6e817ab92d72d283dd1cce7d468ca7766b5e2a1ac939821c827faa19a9e8"),
+    "ion_channel": ("all", 283354, 10049822, "63bf9a45f3880072147b37c71b250c313a006d3d9adaab7c56fcdc0c70588dad"),
     "stmv": ("all", 1066628, 54429044, "e5f51dd3da6758931f905ab4f51c72c7545d7d6ecc29be76f69d368e275cbfb8"),
 }
 # Steps per performance run, ~30-60 s each on an RTX 4090 (as LIMA_data/salad_gromacs_bench/bench.sh)
@@ -366,7 +366,7 @@ def structure(system, data, work, lima, gmx, generate):
     log("  LIMA 1 ns")
     mdp = write_mdp(work / "lima_md.mdp", data / "inputs" / "lima.mdp", nsteps=MD_STEPS)
     seconds = lima_mdrun(lima, work, inputs, mdp, work / "lima_md_mdrun.log", "--trajectory", "lima_md.xtc",
-                         "--set", f"trajectory_interval={MD_FRAME_INTERVAL}")
+                         "--set", f"nstxout_compressed={MD_FRAME_INTERVAL}")
     xvgs["lima"] = analyze_trajectory(gmx, work, "gmx_seed1.tpr", "lima_md.xtc", "lima_md")
 
     result = {"simulatedNs": MD_STEPS * DT_PS * 1e-3, "limaNsPerDay": MD_STEPS * DT_PS * 1e-3 / (seconds / 86400),

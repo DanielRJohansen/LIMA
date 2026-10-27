@@ -42,7 +42,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 {
 	if (mode == EngineRunMode::Interactive && simulations.size() != 1)
 		throw std::invalid_argument("Interactive engines require one simulation");
-	if (mode == EngineRunMode::Interactive && simulations.front() && simulations.front()->simParams.apply_barostat)
+	if (mode == EngineRunMode::Interactive && simulations.front() && simulations.front()->simParams.pcoupl != PcouplSelect::No)
 		throw std::invalid_argument("Pressure coupling is not supported during live editing");
 	if (!renderDataPipes.empty() && renderDataPipes.size() != simulations.size())
 		throw std::invalid_argument("Render data pipe count does not match simulation count");
@@ -82,7 +82,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		cudaEventCreateWithFlags(&stepStartEvent, cudaEventDisableTiming);
 		LIMA_UTILS::genericErrorCheck(cudaMalloc(&stepCounterDevice, sizeof(int64_t)));
 		LIMA_UTILS::genericErrorCheck(cudaMemset(stepCounterDevice, 0xFF, sizeof(int64_t))); // -1, before step 0
-		if (batch->params.data_logging_interval != 0)
+		if (batch->params.nstenergy != 0)
 			for (size_t i = 0; i < batch->simulations.size(); ++i)
 				logDrains.push_back(std::make_unique<LogDrain>());
 		for (size_t simulationId = 0; simulationId < renderDataPipes.size(); ++simulationId) {
@@ -90,7 +90,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 			const auto count = batch->simulations[simulationId].device.pclusters.count * PersistentCluster::maxParticles;
 			renderDataPipes[simulationId]->Initialize(count);
 		}
-		batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
+		batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.nstenergy);
 		batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
 		batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
 		batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
@@ -98,7 +98,7 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 			std::vector<VRescale> rngs;
 			for (const auto& sim : batch->simulations)
 				rngs.push_back(sim.thermostat);
-			deviceThermostat = std::make_unique<DeviceThermostat>(rngs, std::max<int>(1, static_cast<int>(batch->params.steps_per_temperature_measurement.value)), batch->step);
+			deviceThermostat = std::make_unique<DeviceThermostat>(rngs, std::max<int>(1, static_cast<int>(batch->params.nsttcouple.value)), batch->step);
 			UploadDeviceThermostatSimulations();
 		}
 		BootstrapClustering(cudaStreams[0]);
@@ -356,7 +356,7 @@ void Engine::RebuildActiveBatch() {
 	batch = std::move(rebuilt);
 	rebuildPending = false;
 	if (UsesEnergyMinimization()) UploadEnergyMinimizationPreconditioner();
-	batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.data_logging_interval);
+	batch->dataBuffersDevice = std::make_unique<DatabuffersDeviceController>(batch->nPclusters, batch->params.nstenergy);
 	batch->superClustersControl = std::make_unique<SuperClustersControl>(batch->nGridnodes, batch->nPclusters);
 	batch->pclusterTransfermodule = std::make_unique<PClusterTransfermodule>(PClusterTransfermodule::Create(batch->nGridnodes));
 	batch->thermostat = std::make_unique<Thermostat>(batch->nPclusters);
@@ -426,19 +426,19 @@ bool Engine::IsPlainReplayStep() const {
 	const int64_t step = batch->step;	// The step to run, the steps' host work below sees step + 1
 	if (params.em_variant || !params.snf_select.empty() || batch->nSuperclusters == 0)
 		return false;
-	if (params.data_logging_interval != 0 && step % params.data_logging_interval == 0)
+	if (params.nstenergy != 0 && step % params.nstenergy == 0)
 		return false;
-	if (params.apply_barostat && (step + 1) % params.steps_per_pressure_measurement == 0)
+	if (params.pcoupl != PcouplSelect::No && (step + 1) % params.nstpcouple == 0)
 		return false;
-	if ((!UsesDeviceThermostat() && (step + 1) % params.steps_per_temperature_measurement == 0) || (step + 1) % params.stepsPerNlistupdate == 0)
+	if ((!UsesDeviceThermostat() && (step + 1) % params.nsttcouple == 0) || (step + 1) % params.nstlist == 0)
 		return false;
 	if ((step + 1) % StepsPerRender == 0 && std::any_of(renderDataPipes.begin(), renderDataPipes.end(), [](auto* pipe) { return pipe != nullptr; }))
 		return false;
 	for (const auto& sim : batch->simulations) {
 		if (!sim.device.active) continue;
 		const auto& simParams = sim.simulation->simParams;
-		if (DatabuffersDeviceController::IsBufferFull(sim.step + 1, simParams.data_logging_interval)
-			|| sim.device.thermostatScalar != 1.f || sim.step + 1 >= simParams.n_steps
+		if (DatabuffersDeviceController::IsBufferFull(sim.step + 1, simParams.nstenergy)
+			|| sim.device.thermostatScalar != 1.f || sim.step + 1 >= simParams.nsteps
 			|| sim.runstatus.critical_error_occured || sim.runstatus.simulation_finished)
 			return false;
 	}
@@ -452,7 +452,7 @@ void Engine::FullStep() {
 		// Live editing changes EM/MD and force selections between steps.
 		const bool wasEnergyMinimizing = batch->params.em_variant;
 		batch->params = sim.simulation->simParams;
-		if (batch->params.apply_barostat)
+		if (batch->params.pcoupl != PcouplSelect::No)
 			throw std::invalid_argument("Pressure coupling is not supported during live editing");
 		if (batch->params.em_variant && !wasEnergyMinimizing)
 			ResetEnergyMinimization();
@@ -466,7 +466,7 @@ void Engine::FullStep() {
 	PublishRenderData();
 	const bool rebuilt = hostMaster();
 	flushNextStepLaunch |= rebuilt;
-	if (!rebuilt && !IsFinished() && batch->step % batch->params.stepsPerNlistupdate == 0) {
+	if (!rebuilt && !IsFinished() && batch->step % batch->params.nstlist == 0) {
 		batch->superClustersControl->Reset(batch->nGridnodes, cudaStreams[0]);
 		RunClustering(cudaStreams[0]);
 		MakeSuperClusterTasksGPU(cudaStreams[0]);
@@ -505,9 +505,9 @@ bool Engine::hostMaster() {
 	bool thermostatScalarsChanged = false;
 	float barostatCoordinateScale = 1.f;
 	// Temperature cadence is independent of logging, otherwise the logging interval changes the thermostat's dynamics
-	const bool measureTemperature = !UsesDeviceThermostat() && batch->step % batch->params.steps_per_temperature_measurement == 0;
-	const bool measurePressure = batch->params.apply_barostat
-		&& batch->step % batch->params.steps_per_pressure_measurement == 0;
+	const bool measureTemperature = !UsesDeviceThermostat() && batch->step % batch->params.nsttcouple == 0;
+	const bool measurePressure = batch->params.pcoupl != PcouplSelect::No
+		&& batch->step % batch->params.nstpcouple == 0;
 	if (measureTemperature || measurePressure) {
 		flushNextStepLaunch = true; // The measurements wait for the GPU
 		StoreIntegrationStates(cudaStreams[0]);
@@ -518,12 +518,12 @@ bool Engine::hostMaster() {
 		if (!sim.device.active) continue;
 		const auto step = sim.step;
 		const auto& params = sim.simulation->simParams;
-		if (DatabuffersDeviceController::IsBufferFull(step, params.data_logging_interval))
+		if (DatabuffersDeviceController::IsBufferFull(step, params.nstenergy))
 			OffloadLoggingData(sim);
 		if (UsesDeviceThermostat())
 			HarvestTemperatures(sim);
 		// v-rescale is one impulse on a coupling step, not a factor spread over the interval.
-		if ((!measureTemperature || !params.apply_thermostat) && sim.device.thermostatScalar != 1.f) {
+		if ((!measureTemperature || params.tcoupl == TcouplSelect::No) && sim.device.thermostatScalar != 1.f) {
 			sim.device.thermostatScalar = 1.f;
 			thermostatScalarsChanged = true;
 		}
@@ -547,8 +547,8 @@ bool Engine::hostMaster() {
 			const float temperature = Thermostat::Temperature(boxparams, kineticEnergy);
 			sim.simulation->temperature_buffer.push_back(temperature);
 			sim.runstatus.current_temperature = temperature;
-			if (params.apply_thermostat) {
-				const int64_t interval = params.steps_per_temperature_measurement;
+			if (params.tcoupl != TcouplSelect::No) {
+				const int64_t interval = params.nsttcouple;
 				const double tauInCouplings = params.tau_t * PICO_TO_NANO / (interval * double(params.dt));
 				const double factor = sim.thermostat.Factor(temperature, params.ref_t, boxparams.degreesOfFreedom, tauInCouplings);
 				const float scalar = static_cast<float>(factor);
@@ -564,7 +564,7 @@ bool Engine::hostMaster() {
 			const double pressure = (2.0 * kineticEnergy + virial) / (3.0 * volume) * pressureUnit;
 			sim.simulation->pressure_buffer.push_back(static_cast<float>(pressure));
 			sim.runstatus.current_pressure = static_cast<float>(pressure);
-			const double couplingTime = params.steps_per_pressure_measurement * double(params.dt);
+			const double couplingTime = params.nstpcouple * double(params.dt);
 			const double tau = params.tau_p * PICO_TO_NANO;
 			const double volumeScale = 1.0 + params.compressibility * couplingTime / tau * (pressure - params.ref_p);
 			if (!(volumeScale > 0.0) || !std::isfinite(volumeScale))
@@ -573,14 +573,14 @@ bool Engine::hostMaster() {
 		}
 		HandleEarlyStoppingInEM(sim);
 		sim.runstatus.current_step = step;
-		if (step >= params.n_steps || sim.runstatus.critical_error_occured) sim.runstatus.simulation_finished = true;
+		if (step >= params.nsteps || sim.runstatus.critical_error_occured) sim.runstatus.simulation_finished = true;
 		if (mode == EngineRunMode::Simulation && sim.runstatus.simulation_finished) {
 			FinalizeSimulation(sim);
 			retired = true;
 		}
 	}
 	rebuildPending |= retired;
-	if (rebuildPending && !IsFinished() && batch->step % batch->params.stepsPerNlistupdate == 0) {
+	if (rebuildPending && !IsFinished() && batch->step % batch->params.nstlist == 0) {
 		RebuildActiveBatch(); // Uploads the integration data itself
 		return true;
 	}
@@ -677,7 +677,7 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 }
 
 bool Engine::UsesDeviceThermostat() const {
-	return deviceThermostat && mode == EngineRunMode::Simulation && !batch->params.em_variant && !batch->params.apply_barostat;
+	return deviceThermostat && mode == EngineRunMode::Simulation && !batch->params.em_variant && batch->params.pcoupl == PcouplSelect::No;
 }
 
 bool Engine::DeviceThermostatStep() const {
@@ -687,7 +687,7 @@ bool Engine::DeviceThermostatStep() const {
 void Engine::UploadDeviceThermostatSimulations() {
 	if (!deviceThermostat)
 		return;
-	const int interval = std::max<int>(1, static_cast<int>(batch->params.steps_per_temperature_measurement.value));
+	const int interval = std::max<int>(1, static_cast<int>(batch->params.nsttcouple.value));
 	std::vector<_Thermostat::DeviceThermostatSimulation> simulations;
 	std::vector<BatchRange> pclusters;
 	for (const auto& sim : batch->simulations) {
@@ -697,7 +697,7 @@ void Engine::UploadDeviceThermostatSimulations() {
 		simulation.degreesOfFreedom = sim.simulation->box->boxparams.degreesOfFreedom;
 		simulation.referenceTemperature = params.ref_t;
 		simulation.tauInCouplings = params.tau_t * PICO_TO_NANO / (interval * double(params.dt));	// As hostMaster
-		simulation.applyThermostat = params.apply_thermostat;
+		simulation.applyThermostat = params.tcoupl != TcouplSelect::No;
 		simulations.push_back(simulation);
 		pclusters.push_back(simulation.measure ? sim.device.pclusters : BatchRange{});
 	}
@@ -804,7 +804,7 @@ void Engine::JoinLogDrains() {
 }
 
 void Engine::OffloadLoggingData(EngineSimulationData& sim) {
-	const int interval = batch->params.data_logging_interval;
+	const int interval = batch->params.nstenergy;
 	if (interval == 0 || sim.step == 0) return;
 	const size_t entries = (sim.step - 1) / interval + 1;
 	const size_t count = entries - sim.nLogEntriesTransferred;
@@ -969,14 +969,14 @@ void Engine::SetElasticPositions(const std::vector<Float3>& positions, size_t si
 }
 
 void Engine::BootstrapTrajbufferWithCoords(EngineSimulationData& sim) {
-	if (batch->params.data_logging_interval == 0 || !sim.simulation->traj_buffer) return;
+	if (batch->params.nstenergy == 0 || !sim.simulation->traj_buffer) return;
 	for (int pc = 0; pc < sim.device.pclusters.count; ++pc)
 		for (int lane = 0; lane < PersistentCluster::maxParticles; ++lane)
 			sim.simulation->traj_buffer->GetDatapoint(pc, lane, 0) = sim.simulation->box->persistentClusters[pc].pqd[lane].position;
 }
 
 void Engine::HandleEarlyStoppingInEM(EngineSimulationData& sim) {
-	if (!batch->params.em_variant || sim.step == sim.simulation->simParams.n_steps) return;
+	if (!batch->params.em_variant || sim.step == sim.simulation->simParams.nsteps) return;
 	const EM::SimState& state = batch->emStatesHost[&sim - batch->simulations.data()];
 	sim.runstatus.greatestForce = state.maxForce / KILO;
 	sim.simulation->maxForceBuffer.emplace_back(sim.step, sim.runstatus.greatestForce);
@@ -986,7 +986,7 @@ void Engine::HandleEarlyStoppingInEM(EngineSimulationData& sim) {
 	entry.dt = state.dt;
 	if (!std::isfinite(sim.runstatus.greatestForce))
 		throw std::runtime_error("Energy minimization produced non-finite forces at step " + std::to_string(sim.step));
-	if (sim.runstatus.greatestForce <= batch->params.em_force_tolerance) sim.runstatus.simulation_finished = true;
+	if (sim.runstatus.greatestForce <= batch->params.emtol) sim.runstatus.simulation_finished = true;
 }
 
 void Engine::ResetEnergyMinimization() {
@@ -1112,7 +1112,7 @@ void Engine::_deviceMaster(bool measureTemperature) {
 		JoinStreamsIntoMainStream();
 
 		const LogBuffers log{ batch->dataBuffersDevice->traj_buffer, batch->dataBuffersDevice->potE_buffer, batch->dataBuffersDevice->vel_buffer,
-			batch->dataBuffersDevice->forceBuffer, batch->params.data_logging_interval, batch->step };
+			batch->dataBuffersDevice->forceBuffer, batch->params.nstenergy, batch->step };
 		const int nBlocks = (nScs + 4 - 1) / 4;
 		if constexpr (emvariant) {
 			EmCollectForcesKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
@@ -1154,10 +1154,10 @@ void Engine::_deviceMaster(bool measureTemperature) {
 }
 
 void Engine::deviceMaster() {
-	const bool logData = batch->params.data_logging_interval != 0 && batch->step % batch->params.data_logging_interval == 0;
+	const bool logData = batch->params.nstenergy != 0 && batch->step % batch->params.nstenergy == 0;
 	const bool measureTemperature = DeviceThermostatStep();
-	const bool pressureStep = batch->params.apply_barostat
-		&& (batch->step + 1) % batch->params.steps_per_pressure_measurement == 0;
+	const bool pressureStep = batch->params.pcoupl != PcouplSelect::No
+		&& (batch->step + 1) % batch->params.nstpcouple == 0;
 	switch (batch->params.bc_select) {
 	case NoBC:
 		if (batch->params.em_variant) {

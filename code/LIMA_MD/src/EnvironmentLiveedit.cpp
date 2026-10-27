@@ -292,8 +292,8 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 	auto& liveEditCommandsQueue = session.liveEditCommandsQueue;
 	auto& simStatus = session.simStatus;
 	auto& forceWriteSimstatusToDisplay = session.forceWriteSimstatusToDisplay;
-	simulation->simParams.n_steps = 0;
-	simulation->simParams.data_logging_interval = 0;
+	simulation->simParams.nsteps = 0;
+	simulation->simParams.nstenergy = 0;
 	simulation->simParams.em_variant = false;
 
 	display = std::make_unique<Display>();
@@ -434,7 +434,7 @@ void Environment::LiveEdit(GroFile& grofile, TopologyFile& topfile) {
 				//forceWriteSimstatusToDisplay = false;
 				// check engine if we should continue..
 			}
-			if (simulation->simParams.em_variant && engine->GetRunStatus().greatestForce < simulation->simParams.em_force_tolerance) {
+			if (simulation->simParams.em_variant && engine->GetRunStatus().greatestForce < simulation->simParams.emtol) {
 				simulation->simParams.em_variant = false;
 				liveeditData.remainingStepsCount = 0;
 			}

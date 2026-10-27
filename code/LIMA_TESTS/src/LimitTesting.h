@@ -81,13 +81,13 @@ namespace LimitTesting {
 
 	inline std::unique_ptr<Simulation> MakeSimulation(int particles, int steps = 3, int loggingInterval = 0) {
 		SimParams params;
-		params.n_steps = steps;
+		params.nsteps = steps;
 		params.dt = 0.1f * FEMTO_TO_NANO;
 		params.enable_electrostatics = false;
-		params.apply_thermostat = false;
-		params.stepsPerNlistupdate = 1;
-		params.steps_per_temperature_measurement = 1;
-		params.data_logging_interval = loggingInterval;
+		params.tcoupl = TcouplSelect::No;
+		params.nstlist = 1;
+		params.nsttcouple = 1;
+		params.nstenergy = loggingInterval;
 		auto simulation = std::make_unique<Simulation>(params, std::make_unique<Box>(Float3{4.f}));
 		auto& box = *simulation->box;
 		box.boxparams.totalParticles = particles;
@@ -185,9 +185,9 @@ namespace LimitTesting {
 			{"zero cutoff", [](Simulation& s) { s.simParams.cutoff_nm = 0.f; }},
 			{"zero mass", [](Simulation& s) { s.box->persistentClustersMetadata[0].mass[0] = 0.f; }},
 			{"nan position", [](Simulation& s) { s.box->persistentClusters[0].pqd[0].position.x = std::numeric_limits<float>::quiet_NaN(); }},
-			{"zero nlist interval", [](Simulation& s) { s.simParams.stepsPerNlistupdate = 0; }},
-			{"negative logging interval", [](Simulation& s) { s.simParams.data_logging_interval = -1; }},
-			{"zero temperature interval", [](Simulation& s) { s.simParams.steps_per_temperature_measurement = 0; }},
+			{"zero nlist interval", [](Simulation& s) { s.simParams.nstlist = 0; }},
+			{"negative logging interval", [](Simulation& s) { s.simParams.nstenergy = -1; }},
+			{"zero temperature interval", [](Simulation& s) { s.simParams.nsttcouple = 0; }},
 		}};
 		for (const auto& [name, mutate] : inputs) {
 			// Mutate after buffer preparation to test the engine entry contract separately from builders.
@@ -260,9 +260,9 @@ namespace LimitTesting {
 			constexpr int steps = 20, temperatureInterval = 4;
 			std::array simulations{ MakeSimulation(2, steps, 0), MakeSimulation(2, steps, 1), MakeSimulation(2, steps, 7) };
 			for (auto& simulation : simulations) {
-				simulation->simParams.apply_thermostat = true;
+				simulation->simParams.tcoupl = TcouplSelect::VRescale;
 				simulation->simParams.ref_t = 600.f;
-				simulation->simParams.steps_per_temperature_measurement = temperatureInterval;
+				simulation->simParams.nsttcouple = temperatureInterval;
 				for (auto& state : simulation->box->pclusterInterimStates) state.vels_prev[0] = Float3{0.01f, 0.02f, 0.f};
 				Run(*simulation);
 				Require(simulation->temperature_buffer.size() == steps / temperatureInterval,

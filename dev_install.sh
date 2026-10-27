@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # DO NOT USE THIS SCRIPT
-# It is for developers to find compilebugs only, please use install.sh
+# It is for developers to find compilebugs only
 
 
 

@@ -35,9 +35,9 @@ namespace ElectrostaticsTests {
 
 
 		SimParams params{};
-		params.n_steps = nSteps;
+		params.nsteps = nSteps;
 		params.enable_electrostatics = true;
-		params.data_logging_interval = 1;
+		params.nstenergy = 1;
 		params.cutoff_nm = 2.f;
 		Environment& environment = Environment::Get();
 		SimulationJob job;
@@ -98,7 +98,7 @@ namespace ElectrostaticsTests {
 		SimParams simparams;
 		simparams.dt = 0.2f * FEMTO_TO_NANO;
 		simparams.coloring_method = ColoringMethod::Charge;
-		simparams.data_logging_interval = 1;
+		simparams.nstenergy = 1;
 		simparams.snf_select.insert(HorizontalChargeField);
 		SimulationJob job;
 		job.workDir = workDir;
@@ -187,8 +187,8 @@ namespace ElectrostaticsTests {
 		};
 
 		SimParams params{};
-		params.n_steps = 1;
-		params.data_logging_interval = 1;
+		params.nsteps = 1;
+		params.nstenergy = 1;
 		SimulationJob job;
 		job.workDir = workDir;
 		job.grofile.emplace();
@@ -292,8 +292,8 @@ namespace ElectrostaticsTests {
 		Environment& environment = Environment::Get();
 
 		SimParams params{};
-		params.n_steps = 1;
-		params.data_logging_interval = 1;
+		params.nsteps = 1;
+		params.nstenergy = 1;
 
 		const float c0 = -1.f * elementaryChargeToKiloCoulombPerMole;
 		const float c1 = 1.f * elementaryChargeToKiloCoulombPerMole;
@@ -362,8 +362,8 @@ namespace ElectrostaticsTests {
 
 
 		SimParams params{};
-		params.n_steps = 500;
-		params.data_logging_interval = 1;
+		params.nsteps = 500;
+		params.nstenergy = 1;
 		params.dt = 1.f * FEMTO_TO_NANO;
 
 		const Float3 p0{ 7.0f, 10.f, 10.f };
@@ -395,7 +395,7 @@ namespace ElectrostaticsTests {
 
 		// First go trough the traj data and find the step where the particles are less than 0.5 nm apart
 		int step = -1;
-		for (int i = 0; i < params.n_steps; i++)
+		for (int i = 0; i < params.nsteps; i++)
 		{
 			const Float3 pos0 = result.simulation->traj_buffer->GetDatapoint(0, 0, i);
 			const Float3 pos1 = result.simulation->traj_buffer->GetDatapoint(1, 0, i);
@@ -430,8 +430,8 @@ namespace ElectrostaticsTests {
 		
 		
 		SimParams params{};
-		params.n_steps = 2;
-		params.data_logging_interval = 1;
+		params.nsteps = 2;
+		params.nstenergy = 1;
 		SimulationJob job;
 		job.workDir = work_folder;
 		job.grofile.emplace();

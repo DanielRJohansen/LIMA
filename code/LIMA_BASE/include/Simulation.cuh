@@ -157,8 +157,8 @@ struct Box {
 
 
 
-// The per-particle data logged every data_logging_interval steps, kept on host for the whole run. Only what a run's
-// outputs read is allocated, as it is O(particles * n_steps / interval)
+// The per-particle data logged every nstenergy steps, kept on host for the whole run. Only what a run's
+// outputs read is allocated, as it is O(particles * nsteps / interval)
 struct LoggedData {
 	bool trajectory = true;	// traj_buffer: trajectory files, self_diffusion, density_profile
 	bool energy = true;		// potE_buffer, vel_buffer: energy.xvg, SimAnalysis::analyzeEnergy
@@ -183,7 +183,7 @@ public:
 	void PrepareDataBuffers();
 	LoggedData logged;
 
-	// A trajectory file written during the run, a frame every trajectory_interval steps and the final one, instead of
+	// A trajectory file written during the run, a frame every nstxout_compressed steps and the final one, instead of
 	// keeping the frames in traj_buffer. The engine's log drain calls WriteTrajectoryFrame from its own thread, and
 	// FinalizeSimulation the final frame once the drains are joined
 	void StartTrajectoryStream(const std::filesystem::path& path);
@@ -240,7 +240,7 @@ private:
 struct SimStatus {
 	// SimulationStatus
 	std::optional<size_t> step = 0;	
-	std::optional<float> progress = std::nullopt;				// [0,1]. For bounded simulations, step/n_steps. For EM the log reduction in maximum force from its initial value to em_force_tolerance.
+	std::optional<float> progress = std::nullopt;				// [0,1]. For bounded simulations, step/nsteps. For EM the log reduction in maximum force from its initial value to emtol.
 	std::optional<float> temperature = std::nullopt;			// [K]
 	std::optional<float> maxForce = std::nullopt;				// [kJ/mol/nm]
 	std::optional<double> expectedTimeToFinish = std::nullopt;	// [s]

@@ -659,7 +659,7 @@ TestRoutine TestMakeSimParams(fs::path workDir) {
 		ASSERT(equals != std::string::npos, Lima::Format("sim_params.txt has a line that is not 'key = value': '{}'", line));
 		keys.insert(Trim(line.substr(0, equals)));
 	}
-	ASSERT(keys.contains("n_steps") && keys.contains("dt"), "sim_params.txt does not define n_steps and dt");
+	ASSERT(keys.contains("nsteps") && keys.contains("dt"), "sim_params.txt does not define nsteps and dt");
 
 	co_return LimaUnittestResult{ true, OneLineMessage("{} parameters", keys.size()), false };
 }
@@ -956,7 +956,7 @@ TestRoutine TestMdrun(fs::path workDir) {
 	const Gro in = ReadGro(workDir / "metsol.gro");
 	const Gro out = ReadGro(workDir / "out.gro");
 	RequireSameAtoms(in, out, "out.gro");
-	// md_params.txt runs 20000 steps. The trajectory has a frame every trajectory_interval (default 1000) steps from step 0,
+	// md_params.txt runs 20000 steps. The trajectory has a frame every nstxout_compressed (default 1000) steps from step 0,
 	// which never logs step 20000, and then the final coordinates
 	constexpr int trajectoryInterval = 1000, nSteps = 20000;
 	constexpr int expectedFrames = nSteps / trajectoryInterval + 1;
@@ -994,17 +994,17 @@ TestRoutine TestMdrun(fs::path workDir) {
 
 	// An .xtc path gives a compressed xtc file, with the same frames as a .trr
 	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "-s", "md_params.txt",
-		"--set", "n_steps=2000", "--conf-out", "out_xtc.gro", "--trajectory", "traj.xtc" }, { .timeout = 300s }));
+		"--set", "nsteps=2000", "--conf-out", "out_xtc.gro", "--trajectory", "traj.xtc" }, { .timeout = 300s }));
 	const Trr xtc = ReadTrr(workDir / "traj.xtc");
 	ASSERT(xtc.nAtoms == trr.nAtoms && xtc.nFrames == 3 && xtc.lastStep == 2000,
 		Lima::Format("traj.xtc has {} atoms and {} frames up to step {}, expected {} atoms and 3 frames (0, 1000, 2000)",
 			xtc.nAtoms, xtc.nFrames, xtc.lastStep, trr.nAtoms));
 
-	// trajectory_interval must be a multiple of data_logging_interval (200), as its frames are logged ones
+	// nstxout_compressed must be a multiple of nstenergy (200), as its frames are logged ones
 	auto misaligned = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "-s", "md_params.txt",
-		"--set", "n_steps=1000", "trajectory_interval=300", "--conf-out", "out_bad.gro", "--trajectory", "bad.trr" }, { .timeout = 300s });
-	ASSERT(misaligned.exitCode == 1 && misaligned.output.find("multiple of data_logging_interval") != std::string::npos,
-		"A trajectory_interval that is not a multiple of data_logging_interval was not refused");
+		"--set", "nsteps=1000", "nstxout_compressed=300", "--conf-out", "out_bad.gro", "--trajectory", "bad.trr" }, { .timeout = 300s });
+	ASSERT(misaligned.exitCode == 1 && misaligned.output.find("multiple of nstenergy") != std::string::npos,
+		"A nstxout_compressed that is not a multiple of nstenergy was not refused");
 	ASSERT(fs::file_size(workDir / "traj.xtc") * 2 < (trajectoryBytes / trr.nFrames) * xtc.nFrames,
 		"traj.xtc is not compressed: it is more than half the size of the same frames as .trr");
 
@@ -1080,7 +1080,7 @@ TestRoutine TestDaemon(fs::path workDir) {
 		const fs::path dir = workDir / name;
 		fs::create_directories(dir);
 		CopyFixtures(dir, { "metsol.gro", "metsol.top", "Protein_chain_A.itp", "SOL.itp" });
-		std::ofstream(dir / "sim_params.txt") << "n_steps=" << nSteps << "\ndt=2\ndata_logging_interval=200\n";
+		std::ofstream(dir / "sim_params.txt") << "nsteps=" << nSteps << "\ndt=0.002\nnstenergy=200\n";
 		return dir;
 	};
 
@@ -1139,7 +1139,7 @@ TestRoutine TestWait(fs::path workDir) {
 	RunOptions quiet{ .timeout = 600s, .captureStdout = true, .echo = false };
 	for (const char* file : { "Protein_chain_A.itp", "SOL.itp", "metsol.gro", "metsol.top" })
 		fs::copy_file(config.fixtures / file, workDir / file, fs::copy_options::overwrite_existing);
-	std::ofstream(workDir / "sim_params.txt") << "n_steps=2000\ndt=2\ndata_logging_interval=200\n";
+	std::ofstream(workDir / "sim_params.txt") << "nsteps=2000\ndt=0.002\nnstenergy=200\n";
 
 	auto nothing = Run(workDir, { "wait" }, quiet);
 	RequireSuccess(nothing);
@@ -1162,15 +1162,15 @@ TestRoutine TestWait(fs::path workDir) {
 		ASSERT(entry.path().extension() != ".log", Lima::Format("A successful async job left its log {}", entry.path().string()));
 
 	// --set overrides the simparams file, and rejects unknown parameters
-	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "--conf-out", "set.gro" }, quiet));
-	ASSERT(ReadBytes(workDir / "set.gro") != ReadBytes(workDir / "reference.gro"), "--set n_steps=1000 did not change the run");
+	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "nsteps=1000", "--conf-out", "set.gro" }, quiet));
+	ASSERT(ReadBytes(workDir / "set.gro") != ReadBytes(workDir / "reference.gro"), "--set nsteps=1000 did not change the run");
 	// Values as makesimparams writes them (PBC, not pbc)
-	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000", "boundarycondition=PBC",
+	RequireSuccess(Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "nsteps=1000", "boundarycondition=PBC",
 		"--conf-out", "setcase.gro" }, quiet));
 	ASSERT(ReadBytes(workDir / "setcase.gro") == ReadBytes(workDir / "set.gro"), "--set boundarycondition=PBC changed the run");
 	// Logged data that can't fit in RAM is refused before the run, instead of allocating it all up front. The energies
 	// are kept in RAM (unlike the trajectory, which is written during the run)
-	auto tooLarge = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "n_steps=1000000000000",
+	auto tooLarge = Run(workDir, { "--no-daemon", "mdrun", "-c", "metsol.gro", "-t", "metsol.top", "--set", "nsteps=1000000000000",
 		"save_energy=true", "--conf-out", "huge.gro" }, quiet);
 	ASSERT(tooLarge.exitCode == 1 && tooLarge.output.find("GB of RAM") != std::string::npos,
 		Lima::Format("Energies too large for RAM were not refused with their size. Output:\n{}", Tail(tooLarge.output)));

@@ -59,12 +59,12 @@ struct TrajectoryStream {
 Simulation::~Simulation() = default;
 
 void Simulation::StartTrajectoryStream(const std::filesystem::path& path) {
-	const int loggingInterval = simParams.data_logging_interval;
-	const int interval = simParams.trajectory_interval;
+	const int loggingInterval = simParams.nstenergy;
+	const int interval = simParams.nstxout_compressed;
 	if (loggingInterval <= 0)
-		throw std::invalid_argument("A trajectory needs data_logging_interval > 0, as its frames come from the logged data");
+		throw std::invalid_argument("A trajectory needs nstenergy > 0, as its frames come from the logged data");
 	if (interval <= 0 || interval % loggingInterval != 0)
-		throw std::invalid_argument(Lima::Format("trajectory_interval ({}) must be a positive multiple of data_logging_interval ({})",
+		throw std::invalid_argument(Lima::Format("nstxout_compressed ({}) must be a positive multiple of nstenergy ({})",
 			interval, loggingInterval));
 
 	std::vector<int> atomOfSlot;
@@ -100,13 +100,13 @@ void Simulation::FinishTrajectoryStream() {
 
 void Simulation::PrepareDataBuffers() {
 	// Allocate buffers. We need to allocate for atleast 1 step, otherwise the bootstrapping mechanism will fail.
-	const auto n_steps = std::max(simParams.n_steps.value, uint64_t{ 1 });
+	const auto n_steps = std::max(simParams.nsteps.value, uint64_t{ 1 });
 	// Standard Data Buffers
 	{
 		// Permanent Outputs for energy & trajectory analysis
 		const int nPclusters = box->persistentClusters.size();
 		const int particlesUpperbound = nPclusters * PersistentCluster::maxParticles;
-		const int interval = simParams.data_logging_interval;
+		const int interval = simParams.nstenergy;
 		// As ParticleDataBuffer sizes itself: one entry per logged step, and at least one
 		const uint64_t nEntries = interval > 0 ? std::max(n_steps / interval + (n_steps % interval != 0), uint64_t{ 1 }) : 1;
 		const uint64_t bytesPerEntry = static_cast<uint64_t>(particlesUpperbound) * ((logged.trajectory ? sizeof(Float3) : 0)
@@ -118,7 +118,7 @@ void Simulation::PrepareDataBuffers() {
 			for (const auto& [on, name] : { std::pair{ logged.trajectory, "trajectory" }, { logged.energy, "energies" }, { logged.forces, "forces" } })
 				if (on) selected += (selected.empty() ? "" : ", ") + std::string{ name };
 			throw std::runtime_error(Lima::Format("Logging this run ({}) needs {:.1f} GB of RAM, {} frames of {:.1f} MB, but {:.1f} GB is available. "
-				"Raise data_logging_interval (now {}), run fewer steps, or leave out the outputs that need it (eg. --trajectory, save_energy)",
+				"Raise nstenergy (now {}), run fewer steps, or leave out the outputs that need it (eg. --trajectory, save_energy)",
 				selected, bytes / 1e9, nEntries, bytesPerEntry / 1e6, available / 1e9, interval));
 		}
 
@@ -131,7 +131,7 @@ void Simulation::PrepareDataBuffers() {
 		if (logged.trajectory)
 			traj_buffer = std::make_unique<ParticleDataBuffer<Float3>>(particlesUpperbound, n_steps, interval, nPclusters);
 
-		temperature_buffer.reserve(n_steps / simParams.steps_per_temperature_measurement + 1);
+		temperature_buffer.reserve(n_steps / simParams.nsttcouple + 1);
 	}
 
 	// Trainingdata buffers

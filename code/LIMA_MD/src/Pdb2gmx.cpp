@@ -231,7 +231,7 @@ void assembleResidues(PdbInput& result, std::vector<RawAtom>& records, const Rea
         }
         if (residue.name == "MSE") {
             residue.name = "MET";
-            if (auto selenium = residue.atoms.extract(std::string_view{ "SE" })) {
+            if (auto selenium = residue.atoms.extract(std::string{ "SE" })) {
                 selenium.key() = "SD";
                 selenium.mapped().name = "SD";
                 residue.atoms.insert(std::move(selenium));

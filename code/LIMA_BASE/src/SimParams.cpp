@@ -25,10 +25,10 @@ SimParams SimParams::BasicEMSimParams(float forceTolerance) {
     SimParams params{};
     params.em_variant = true;
     params.dt = 1.5f * FEMTO_TO_NANO;
-    params.em_force_tolerance = forceTolerance;
-    params.data_logging_interval = 50;
+    params.emtol = forceTolerance;
+    params.nstenergy = 50;
     params.enable_electrostatics = true;
-    params.n_steps = 20000;
+    params.nsteps = 20000;
     return params;
 }
 
@@ -73,6 +73,16 @@ void ParseValue(const std::string_view key, const std::string_view input, T& val
         else if (input == "h-bonds") value = ConstraintsSelect::HBonds;
         else throw std::runtime_error(Lima::Format("Invalid constraints: '{}', expected none or h-bonds", input));
     }
+    else if constexpr (std::same_as<T, TcouplSelect>) {
+        if (input == "no" || input == "none") value = TcouplSelect::No;
+        else if (input == "v-rescale") value = TcouplSelect::VRescale;
+        else throw std::runtime_error(Lima::Format("Unsupported tcoupl: '{}', LIMA has no or v-rescale", input));
+    }
+    else if constexpr (std::same_as<T, PcouplSelect>) {
+        if (input == "no" || input == "none") value = PcouplSelect::No;
+        else if (input == "berendsen") value = PcouplSelect::Berendsen;
+        else throw std::runtime_error(Lima::Format("Unsupported pcoupl: '{}', LIMA has no or berendsen (isotropic)", input));
+    }
     else if constexpr (std::same_as<T, ColoringMethod>) {
         static const std::unordered_map<std::string_view, ColoringMethod> values{
             { "atomname", ColoringMethod::Atomname },
@@ -107,6 +117,8 @@ std::string FormatValue(const bool value) { return value ? "true" : "false"; }
 std::string FormatValue(const BoundaryConditionSelect value) { return value == PBC ? "PBC" : "NoBC"; }
 
 std::string FormatValue(const ConstraintsSelect value) { return value == ConstraintsSelect::HBonds ? "h-bonds" : "none"; }
+std::string FormatValue(const TcouplSelect value) { return value == TcouplSelect::VRescale ? "v-rescale" : "no"; }
+std::string FormatValue(const PcouplSelect value) { return value == PcouplSelect::Berendsen ? "berendsen" : "no"; }
 
 std::string FormatValue(const ColoringMethod value) {
     switch (value) {
@@ -227,14 +239,14 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
         // GROMACS' -1 runs without end. LIMA sizes its output buffers by the step count, so it needs one
         if (found->second == "-1")
             std::cerr << Lima::Format("Warning: nsteps = -1 (no limit) is not supported, running the default {} steps. Set "
-                "n_steps, eg. with --set n_steps=...\n", params.n_steps.value);
+                "nsteps, eg. with --set nsteps=...\n", params.nsteps.value);
         else
-            ParseValue("nsteps", found->second, params.n_steps.value);
+            ParseValue("nsteps", found->second, params.nsteps.value);
     }
     if (const auto found = mdp.find("dt"); found != mdp.end())
         params.dt.value = ParseNumber<float>("dt", found->second) * PICO_TO_NANO;
-    parseIfPresent("emtol", params.em_force_tolerance.value);
-    parseIfPresent("nstlist", params.stepsPerNlistupdate.value);
+    parseIfPresent("emtol", params.emtol.value);
+    parseIfPresent("nstlist", params.nstlist.value);
     parseIfPresent("verlet-buffer-tolerance", params.verlet_buffer_tolerance.value);
     parseIfPresent("rlist", params.rlist.value);
     parseIfPresent("constraints", params.constraints.value);
@@ -259,7 +271,7 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
     for (const std::string_view key : { "nstxout", "nstxout-compressed" })
         if (const auto found = mdp.find(std::string{ key }); found != mdp.end())
             if (const int interval = ParseNumber<int>(key, found->second); interval > 0)
-                params.trajectory_interval.value = interval;	// nstxout-compressed wins, as it comes last
+                params.nstxout_compressed.value = interval;	// nstxout-compressed wins, as it comes last
     constexpr std::array outputKeys{ "nstvout", "nstenergy", "nstlog", "nstcomm" };
     std::optional<int> outputInterval;
     for (const std::string_view key : outputKeys) {
@@ -270,15 +282,10 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
             outputInterval = interval;
         }
     }
-    if (outputInterval) params.data_logging_interval.value = *outputInterval;
+    if (outputInterval) params.nstenergy.value = *outputInterval;
 
-    if (const auto found = mdp.find("tcoupl"); found != mdp.end()) {
-        const std::string tcoupl = Lowercase(found->second);
-        if (tcoupl != "no" && tcoupl != "none" && tcoupl != "v-rescale")
-            throw std::runtime_error("Unsupported tcoupl: " + found->second + ". LIMA has v-rescale");
-        params.apply_thermostat.value = tcoupl == "v-rescale";
-    }
-    parseIfPresent("nsttcouple", params.steps_per_temperature_measurement.value);
+    parseIfPresent("tcoupl", params.tcoupl.value);
+    parseIfPresent("nsttcouple", params.nsttcouple.value);
     // GROMACS gives these per coupling group. LIMA couples the whole system, so the groups must agree
     const auto parseSameForAllGroups = [&mdp](const std::string_view key, float& target) {
         const auto found = mdp.find(std::string{ key });
@@ -311,25 +318,20 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
                 target = seed;
         }
     };
-    parseSeed("ld-seed", params.thermostat_seed.value);
-    parseSeed("gen-seed", params.velocity_seed.value);
+    parseSeed("ld-seed", params.ld_seed.value);
+    parseSeed("gen-seed", params.gen_seed.value);
 
-    if (const auto found = mdp.find("pcoupl"); found != mdp.end()) {
-        const std::string pcoupl = Lowercase(found->second);
-        if (pcoupl != "no" && pcoupl != "none" && pcoupl != "berendsen")
-            throw std::runtime_error("Unsupported pcoupl: " + found->second + ". LIMA has isotropic Berendsen coupling");
-        params.apply_barostat.value = pcoupl == "berendsen";
-    }
+    parseIfPresent("pcoupl", params.pcoupl.value);
     if (const auto found = mdp.find("pcoupltype"); found != mdp.end() && Lowercase(found->second) != "isotropic")
         throw std::runtime_error("Unsupported pcoupltype: " + found->second + ". LIMA has isotropic pressure coupling");
-    parseIfPresent("nstpcouple", params.steps_per_pressure_measurement.value);
+    parseIfPresent("nstpcouple", params.nstpcouple.value);
     parseSameForAllGroups("tau-p", params.tau_p.value);
     parseSameForAllGroups("ref-p", params.ref_p.value);
     parseSameForAllGroups("compressibility", params.compressibility.value);
 
     // GROMACS couples every step with velocity Verlet, irrespective of nsttcouple.
-    if (velocityVerlet && params.apply_thermostat)
-        params.steps_per_temperature_measurement.value = 1;
+    if (velocityVerlet && params.tcoupl != TcouplSelect::No)
+        params.nsttcouple.value = 1;
 }
 
 } // namespace
@@ -346,16 +348,26 @@ SimParams::SimParams(const fs::path& path) {
 }
 
 void SimParams::Set(std::string_view key, std::string_view value) {
-    const std::string lowercaseKey = Lowercase(key);
+    // '-' and '_' are equal in keys, as in GROMACS' .mdp files, eg. nstxout-compressed
+    std::string normalizedKey = Lowercase(key);
+    std::ranges::replace(normalizedKey, '-', '_');
     // Values are compared lowercase, as DumpToFile writes eg. PBC and Atomname, and --set passes them on as typed
     const std::string lowercaseValue = Lowercase(value);
     bool known = false;
     ForEachParam(*this, [&](auto& param) {
-        if (known || Lowercase(param.name) != lowercaseKey) return;
+        if (known || Lowercase(param.name) != normalizedKey) return;
         known = true;
+        if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>) {
+            if (param.name == "dt") {
+                // [ps], as GROMACS. Via fs, so eg. 0.002 gives the same float as 2 fs did, when dt was in fs
+                const double picoseconds = ParseNumber<double>(param.name, lowercaseValue);
+                if (picoseconds > 0.1)
+                    throw std::runtime_error(Lima::Format("dt = {} ps is too large. dt is in ps, as in GROMACS: eg. 0.002 for 2 fs", value));
+                param.value = static_cast<float>(picoseconds * 1000.0) * FEMTO_TO_NANO;
+                return;
+            }
+        }
         ParseValue(param.name, lowercaseValue, param.value);
-        if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>)
-            if (param.name == "dt") param.value *= FEMTO_TO_NANO;
     });
     if (!known)
         throw std::runtime_error(Lima::Format("Unknown simulation parameter '{}={}'", key, value));
@@ -376,7 +388,9 @@ void SimParams::DumpToFile(const fs::path& filename) const {
         file << param.name << '=';
         if constexpr (std::same_as<typename std::remove_cvref_t<decltype(param)>::Type, float>) {
             if (param.name == "dt") {
-                file << FormatValue(static_cast<float>(param.value * NANO_TO_FEMTO));
+                // Via fs, which rounds to eg. 2 exactly, so the file reads 0.002 and not 0.0019999999
+                const float femtoseconds = static_cast<float>(param.value * NANO_TO_FEMTO);
+                file << FormatValue(static_cast<float>(femtoseconds / 1000.0));
             }
             else {
                 file << FormatValue(param.value);

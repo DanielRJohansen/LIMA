@@ -127,8 +127,8 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
     };
     ctx.out << Banner() << std::flush;
     if (!trajOut.empty())
-        ctx.out << Lima::Format("Trajectory: a frame every {} steps ({:.3f} ps) and the final one; set trajectory_interval to change\n",
-            ip.trajectory_interval.value, ip.trajectory_interval * ip.dt * NANO_TO_PICO) << std::flush;
+        ctx.out << Lima::Format("Trajectory: a frame every {} steps ({:.3f} ps) and the final one; set nstxout_compressed to change\n",
+            ip.nstxout_compressed.value, ip.nstxout_compressed * ip.dt * NANO_TO_PICO) << std::flush;
     auto result = env.Submit(std::move(job)).Get();
 
     const std::chrono::duration<double> enginetime = result.engineTime; // [s]
@@ -153,7 +153,7 @@ int Cli::RunMdrun(const Context& ctx, int argc, char** argv) {
         written.push_back(path);
     }
 
-    const double total_ns_simulated = static_cast<double>(ip.n_steps) * ip.dt;
+    const double total_ns_simulated = static_cast<double>(ip.nsteps) * ip.dt;
 	ctx.out << StringUtils::FormatPerformance(enginetime.count(), total_ns_simulated);
     ctx.out << "\nFiles written:\n";
     for (const fs::path& path : written)

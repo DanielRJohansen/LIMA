@@ -111,9 +111,9 @@ MolecularSystem SimulationResult::FinalSystem() {
 Trajectory SimulationResult::MakeTrajectory() const {
 	if (!simulation || !simulation->boxImage || !simulation->traj_buffer)
 		throw std::runtime_error("Cannot write a trajectory without a simulation result, BoxImage and trajectory buffer");
-	const int loggingInterval = simulation->simParams.data_logging_interval;
+	const int loggingInterval = simulation->simParams.nstenergy;
 	if (loggingInterval <= 0)
-		throw std::runtime_error("Cannot write a trajectory when data_logging_interval is 0");
+		throw std::runtime_error("Cannot write a trajectory when nstenergy is 0");
 
 	// One frame per logged step, with atoms in the order of the input coordinates
 	const int nFrames = static_cast<int>(LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation->getStep(), loggingInterval));
@@ -138,7 +138,7 @@ void SimulationResult::WriteTrajectoryAsUff(const fs::path& path) const {
 	UpgradeableFileFormat file(path);
 	file.WriteSection("numAtoms", std::vector{ static_cast<int>(simulation->boxImage->grofile.atoms.size()) });
 	file.WriteSection("numFrames", std::vector{
-		static_cast<int>(simulation->getStep() / simulation->simParams.data_logging_interval) });
+		static_cast<int>(simulation->getStep() / simulation->simParams.nstenergy) });
 	file.WriteSection("trajectory", simulation->traj_buffer->GetBuffer());
 }
 
@@ -283,7 +283,7 @@ size_t Environment::MaxPreparedSimulations() const {
 
 bool Environment::MustRunAlone(const PreparedSimulation& next) {
 	return next.job.mustRunAlone || !next.job.run /*|| next.job.mode == Full*/
-		|| next.simulation->simParams.stepwise || next.simulation->simParams.apply_barostat;
+		|| next.simulation->simParams.stepwise || next.simulation->simParams.pcoupl != PcouplSelect::No;
 }
 
 bool Environment::IsDrained() const {
@@ -421,7 +421,7 @@ void Environment::Preprocess(QueuedSimulation next, size_t worker) {
 			next.job.topfile->Get().printToFile(next.job.workDir / "topol.top");
 		if (simulation->simParams.initial_temperature > 0.f && !simulation->simParams.em_variant)
 			Programs::InitializeVelocities(*simulation, simulation->simParams.initial_temperature,
-				static_cast<uint32_t>(simulation->simParams.velocity_seed.value));
+				static_cast<uint32_t>(simulation->simParams.gen_seed.value));
 		if (next.job.configureSimulation) // // here sim->boximage->topology->moleculetypes[0].name is valid
 			next.job.configureSimulation(*simulation);
 		if (!next.job.name.empty())
@@ -714,7 +714,7 @@ std::chrono::duration<double> Environment::RunSimulation(BatchSession& batch, bo
 	std::vector<Simulation*> simPointers;
 	std::vector<RenderDataPipe*> renderDataPipes;
 	for (auto& session : batch.sessions) {
-		session.avgStepTimes.reserve((session.simulation->simParams.n_steps + 1) / STEPS_PER_UPDATE);
+		session.avgStepTimes.reserve((session.simulation->simParams.nsteps + 1) / STEPS_PER_UPDATE);
 		simPointers.push_back(session.simulation.get());
 		renderDataPipes.push_back(session.mode == Full ? session.renderDataPipe.get() : nullptr);
 	}
@@ -816,7 +816,7 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		const double avgSteptime = duration_ms / (double)std::max<int64_t>(step - lastStep, 1);
 
 		if (session.onTimeEstimate && lastStep >= STEPS_PER_UPDATE - 1 && !simulation->simParams.em_variant) {
-			const int64_t stepsLeft = std::max<int64_t>(simulation->simParams.n_steps - 1 - step, 0);
+			const int64_t stepsLeft = std::max<int64_t>(simulation->simParams.nsteps - 1 - step, 0);
 			session.onTimeEstimate(avgSteptime * 1e-3 * stepsLeft);
 			session.onTimeEstimate = nullptr;
 		}
@@ -831,8 +831,8 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		const double totalNsSimulated = nStepsSinceLast * simulation->simParams.dt; // [ns]
 		const double wall_time_sec = duration_ms * 1e-3;
 		const double ns_per_day = totalNsSimulated / (wall_time_sec / 86400.0);  // 86400 seconds in a day
-		const double completionFraction = (double)step / (double)simulation->simParams.n_steps;
-		const std::optional<double> expectedTimeToFinish = step > 0 && simulation->simParams.n_steps > 0 && simulationTimer.has_value()
+		const double completionFraction = (double)step / (double)simulation->simParams.nsteps;
+		const std::optional<double> expectedTimeToFinish = step > 0 && simulation->simParams.nsteps > 0 && simulationTimer.has_value()
 			? std::optional<double>{ simulationTimer->Elapsed().count() * (1. / completionFraction * (1.-completionFraction)) }
 			: std::nullopt;
 
@@ -855,8 +855,8 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		simStatus.maxForce = maxForce;
 		if (!session.initialEmMaxForce && std::isfinite(maxForce) && maxForce > 0.f)
 			session.initialEmMaxForce = maxForce;
-		if (session.initialEmMaxForce && simulation->simParams.em_force_tolerance > 0.f) {
-			const float forceTolerance = simulation->simParams.em_force_tolerance;
+		if (session.initialEmMaxForce && simulation->simParams.emtol > 0.f) {
+			const float forceTolerance = simulation->simParams.emtol;
 			if (*session.initialEmMaxForce <= forceTolerance)
 				simStatus.progress = 1.f;
 			else if (std::isfinite(maxForce) && maxForce > 0.f) {
@@ -867,8 +867,8 @@ void Environment::UpdateSimstatus(SimulationSession& session, Engine& engine, bo
 		}
 	}
 	else {
-		if (simulation->simParams.n_steps > 0)
-			simStatus.progress = std::clamp(static_cast<float>(simulation->getStep()) / simulation->simParams.n_steps, 0.f, 1.f);
+		if (simulation->simParams.nsteps > 0)
+			simStatus.progress = std::clamp(static_cast<float>(simulation->getStep()) / simulation->simParams.nsteps, 0.f, 1.f);
 		if (!std::isnan(engine.GetRunStatus(simulationId).current_temperature))
 			simStatus.temperature = engine.GetRunStatus(simulationId).current_temperature;
 	}

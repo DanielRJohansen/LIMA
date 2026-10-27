@@ -66,7 +66,7 @@ SimAnalysis::AnalyzedPackage SimAnalysis::analyzeEnergy(Simulation* simulation) 
 		return {};
 
 	const int64_t nEntries = LIMALOGSYSTEM::getMostRecentDataentryIndex(
-		simulation->getStep(), simulation->simParams.data_logging_interval);
+		simulation->getStep(), simulation->simParams.nstenergy);
 	if (nEntries < 2)
 		return {};
 
@@ -121,10 +121,10 @@ void SimAnalysis::AnalyzeEnergy(SimulationResult& result) {
 
 void SimAnalysis::WriteEnergySeries(const Simulation& simulation, const std::filesystem::path& outputPath) {
 	const SimParams& params = simulation.simParams;
-	if (params.data_logging_interval <= 0 || !simulation.potE_buffer || !simulation.vel_buffer)
-		throw std::invalid_argument("save_energy requires data logging, data_logging_interval > 0");
+	if (params.nstenergy <= 0 || !simulation.potE_buffer || !simulation.vel_buffer)
+		throw std::invalid_argument("save_energy requires data logging, nstenergy > 0");
 	const auto& metadata = simulation.box->persistentClustersMetadata;
-	const int64_t nEntries = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation.getStep(), params.data_logging_interval);
+	const int64_t nEntries = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation.getStep(), params.nstenergy);
 	const size_t valuesPerEntry = metadata.size() * PersistentCluster::maxParticles;
 	const auto& potentialEnergies = simulation.potE_buffer->data();	// [J/mol] per particle
 	const auto& speeds = simulation.vel_buffer->data();					// [m/s]
@@ -153,7 +153,7 @@ void SimAnalysis::WriteEnergySeries(const Simulation& simulation, const std::fil
 				kinetic += PhysicsUtils::calcKineticEnergy(speeds[index], metadata[clusterId].mass[particleId]);
 			}
 		}
-		const double timePs = entry * params.data_logging_interval * static_cast<double>(params.dt) * NANO_TO_PICO;
+		const double timePs = entry * params.nstenergy * static_cast<double>(params.dt) * NANO_TO_PICO;
 		const double temperature = PhysicsUtils::kineticEnergyToTemperature(kinetic, degreesOfFreedom);
 		file << Lima::Format("{:12.4f} {:16.4f} {:16.4f} {:16.4f} {:12.4f}\n",
 			timePs, potential / KILO, kinetic / KILO, (potential + kinetic) / KILO, temperature);
@@ -163,7 +163,7 @@ void SimAnalysis::WriteEnergySeries(const Simulation& simulation, const std::fil
 void SimAnalysis::DensityProfile(const Simulation& simulation, const std::filesystem::path& outputPath, bool show) {
 	if (!simulation.traj_buffer || !simulation.boxImage)
 		throw std::invalid_argument("Density profile requires trajectory data and atom metadata");
-	const int loggingInterval = simulation.simParams.data_logging_interval;
+	const int loggingInterval = simulation.simParams.nstenergy;
 	if (loggingInterval <= 0)
 		throw std::invalid_argument("Density profile requires trajectory logging");
 	const int64_t nFrames = LIMALOGSYSTEM::getMostRecentDataentryIndex(simulation.getStep(), loggingInterval);
@@ -274,7 +274,7 @@ SimAnalysis::SelfDiffusion SimAnalysis::SelfDiffusionCoefficient(const Simulatio
 	const std::function<bool(const GroRecord&)>& selection, double skipPs) {
 	if (!simulation.traj_buffer || !simulation.boxImage)
 		throw std::invalid_argument("Self-diffusion requires trajectory data and atom metadata");
-	const int loggingInterval = simulation.simParams.data_logging_interval;
+	const int loggingInterval = simulation.simParams.nstenergy;
 	if (loggingInterval <= 0)
 		throw std::invalid_argument("Self-diffusion requires trajectory logging");
 	const double framePs = loggingInterval * static_cast<double>(simulation.simParams.dt) * NANO_TO_PICO;

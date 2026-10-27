@@ -797,8 +797,8 @@ namespace TestUtils {
 		auto completed = co_await environment.Submit(std::move(job));
 		if (!completed.simulation)
 			co_return LimaUnittestResult::Fail("Environment returned no simulation", envmode == Full);
-		if (completed.simulation->getStep() != completed.simulation->simParams.n_steps) {
-			co_return LimaUnittestResult::Fail(Lima::Format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.n_steps),
+		if (completed.simulation->getStep() != completed.simulation->simParams.nsteps) {
+			co_return LimaUnittestResult::Fail(Lima::Format("Simulation did not finish {}/{}", completed.simulation->getStep(), completed.simulation->simParams.nsteps),
 				envmode == Full);
 		}
 		if (!completed.analysis)

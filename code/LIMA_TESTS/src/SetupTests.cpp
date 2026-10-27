@@ -8,16 +8,16 @@ TestRoutine TestBoxIsSavedCorrectlyBetweenSimulations(Environment& environment, 
 	SimulationJob first;
 	first.workDir = workDir;
 	first.simParams = SimParams{};
-	first.simParams->n_steps = 100;
+	first.simParams->nsteps = 100;
 	first.simParams->dt = 1.f * FEMTO_TO_NANO;
-	first.simParams->data_logging_interval = 1;
+	first.simParams->nstenergy = 1;
 	auto firstResult = co_await environment.Submit(std::move(first));
 
 	SimulationJob second;
 	second.workDir = workDir;
 	second.initialSimulation = std::move(firstResult.simulation);
 	second.simParams = SimParams{};
-	second.simParams->n_steps = 1;
+	second.simParams->nsteps = 1;
 	auto secondResult = co_await environment.Submit(std::move(second));
 	co_return LimaUnittestResult{ static_cast<bool>(secondResult.simulation), "Success", envmode == Full };
 

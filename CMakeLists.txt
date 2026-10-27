@@ -25,7 +25,7 @@ endif()
 set(GPU_TARGETS ${CMAKE_HIP_ARCHITECTURES})	# For ROCm's package configs, which otherwise probe for a GPU
 
 # The single source of the release version. distribution/release.bat publishes whatever is set here
-project(lima VERSION 1.4.0 LANGUAGES CXX ${LIMA_GPU_BACKEND} C)
+project(lima VERSION 1.5.0 LANGUAGES CXX ${LIMA_GPU_BACKEND} C)
 
 # CMake can't mix Clang and MSVC, so HIP builds compile all C/C++ with ROCm's clang (on the MSVC STL and ABI)
 if (LIMA_GPU_BACKEND STREQUAL "HIP" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" AND CMAKE_CXX_SIMULATE_VERSION VERSION_GREATER_EQUAL 19.50)

@@ -1,19 +1,18 @@
 """lima gromacscompare: LIMA vs GROMACS on the GROMACS heterogeneous-parallelization benchmark systems (Pall et al.,
 J. Chem. Phys. 153, 134110 (2020)), for force parity, structure and performance. Writes a report; nothing is pass/fail.
 
-Run as `lima gromacscompare [OPTION]...`, which runs this script with the same options; see --help. Needs Python 3.8+
+Run as `lima gromacscompare [--systems SET] [-o DIR]`, which runs this script. Needs Python 3.8+
 (standard library only) and GROMACS with CUDA: natively, or in WSL on Windows.
 
 Per system, in <output-dir>/<system>/:
 - forces/   step-0 forces of both engines from the same conf.gro/topol.top (single point, no constraints), compared as
             relative RMS error sqrt(sum |F_lima - F_gmx|^2 / sum |F_gmx|^2), overall and for the worst residue name
 - perf/     ns/day of both engines, alternating, on this machine
-- md/       a 1 ns LIMA run, and with --reference generate two 1 ns GROMACS runs differing only in the thermostat seed
-            (else the downloaded ones). For each trajectory gmx makes the protein whole and unwrapped, then the C-alpha
+- md/       a 0.2 ns LIMA run and two 0.2 ns GROMACS runs differing only in the thermostat seed. For each trajectory gmx makes the protein whole and unwrapped, then the C-alpha
             RMSD to the start and the per-atom C-alpha RMSF over the second half. LIMA's RMSF is compared to GROMACS' by
             Pearson correlation, next to the correlation between the two GROMACS runs, ie. how much runs differ by chance
 
-The data (inputs and the GROMACS 1 ns references) comes from https://lima-dynamics.com/benchdata/v1, made by
+The inputs come from https://lima-dynamics.com/benchdata/v1, made by
 LIMA_data/salad_gromacs_bench/bundle/make_bundle.py, whose README describes it."""
 import argparse
 import hashlib
@@ -42,9 +41,9 @@ SYSTEMS = {  # name: (tier, atoms, bytes, sha256), from make_bundle.py
 }
 # Steps per performance run, ~30-60 s each on an RTX 4090 (as LIMA_data/salad_gromacs_bench/bench.sh)
 PERF_STEPS = {"villin": 150000, "rnase_cubic": 120000, "adh_dodec": 30000, "aqp_ensemble": 25000, "ion_channel": 20000, "stmv": 6000}
-MD_STEPS = 500000           # 1 ns at 2 fs
-MD_FRAME_INTERVAL = 5000    # 10 ps
-SECOND_SEED = 271828        # ld-seed of the second GROMACS run
+MD_STEPS = 100000           # 0.2 ns at 2 fs
+MD_FRAME_INTERVAL = 1000    # 2 ps
+PERF_ROUNDS = 2
 DT_PS = 0.002
 
 
@@ -166,12 +165,12 @@ class Gromacs:
         return f"{self.path} (in WSL{' ' + self.wsl if self.wsl else ''})" if self.wsl is not None else self.path
 
 
-def find_gromacs(option, wsl_distro, scratch):
+def find_gromacs(option, scratch):
     """The GROMACS to use and its version line. Fails unless it is a CUDA build."""
     candidates = []
     if option:
         if option.startswith("wsl:"):
-            candidates.append(Gromacs(option[4:], wsl_distro or ""))
+            candidates.append(Gromacs(option[4:], ""))
         else:
             candidates.append(Gromacs(option, None))
     else:
@@ -179,12 +178,11 @@ def find_gromacs(option, wsl_distro, scratch):
             if shutil.which(name):
                 candidates.append(Gromacs(shutil.which(name), None))
         if os.name == "nt" and shutil.which("wsl.exe"):
-            distro = ["-d", wsl_distro] if wsl_distro else []
             for name in ("gmx", "gmx_mpi"):
-                found = subprocess.run(["wsl.exe"] + distro + ["-e", "bash", "-lc", f"command -v {name}"],
+                found = subprocess.run(["wsl.exe", "-e", "bash", "-lc", f"command -v {name}"],
                                        capture_output=True, text=True, errors="replace")
                 if found.returncode == 0 and found.stdout.strip():
-                    candidates.append(Gromacs(found.stdout.strip().splitlines()[-1], wsl_distro or ""))
+                    candidates.append(Gromacs(found.stdout.strip().splitlines()[-1], ""))
     if not candidates:
         raise Failure("GROMACS was not found. Install a GROMACS built with CUDA, or point to it with --gmx PATH "
                       "(--gmx wsl:/path/to/gmx for one in WSL, whose PATH is often not set up for non-interactive shells)")
@@ -291,7 +289,7 @@ def force_parity(system, data, work, lima, gmx):
             "worstResidueRelativeRmsError": math.sqrt(worst[1][0] / worst[1][1])}
 
 
-def performance(system, data, work, lima, gmx, rounds):
+def performance(system, data, work, lima, gmx):
     """ns/day of both engines, alternating per round so clock drift hits both alike. LIMA from the engine-time difference
     of a 1/5 and a full run, so setup and the first steps are excluded; GROMACS with -resethway."""
     work.mkdir(parents=True, exist_ok=True)
@@ -302,7 +300,7 @@ def performance(system, data, work, lima, gmx, rounds):
     gmx_grompp(gmx, work, "gmx.mdp", "gmx.tpr", work / "gmx_grompp.log")
     inputs = work.parent / "inputs"
     results = {"steps": steps, "lima": [], "gromacs": []}
-    for round_ in range(1, rounds + 1):
+    for round_ in range(1, PERF_ROUNDS + 1):
         short = lima_mdrun(lima, work, inputs, short_mdp, work / f"lima_short_{round_}.log")
         full = lima_mdrun(lima, work, inputs, full_mdp, work / f"lima_full_{round_}.log")
         results["lima"].append((steps - steps // 5) * DT_PS * 1e-3 / ((full - short) / 86400))
@@ -342,35 +340,28 @@ def pearson(a, b):
     return cov / math.sqrt(sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b))
 
 
-def structure(system, data, work, lima, gmx, generate):
+def structure(system, data, work, lima, gmx):
     work.mkdir(parents=True, exist_ok=True)
     inputs = work.parent / "inputs"
-    reference = data / "reference"
-    # Both seeds' .mdp as GROMACS ran them; the tpr of the first also gives the topology for analyzing LIMA's trajectory
-    shutil.copy(reference / "md_seed1" / "md.mdp", work / "gmx_seed1.mdp")
-    shutil.copy(reference / "md_seed2" / "md.mdp", work / "gmx_seed2.mdp")
-    gmx_grompp(gmx, work, "gmx_seed1.mdp", "gmx_seed1.tpr", work / "gmx_seed1_grompp.log")
-
+    # The .mdp of the dataset's two GROMACS runs (they differ only in ld-seed), shortened. The tpr of the first also gives
+    # the topology for analyzing LIMA's trajectory
     xvgs = {}
-    if generate:
-        gmx_grompp(gmx, work, "gmx_seed2.mdp", "gmx_seed2.tpr", work / "gmx_seed2_grompp.log")
-        for seed in (1, 2):
-            log(f"  GROMACS 1 ns, seed {seed}")
-            gmx.run(["mdrun", "-s", f"gmx_seed{seed}.tpr", "-deffnm", f"gmx_seed{seed}", "-quiet"] + gmx_mdrun_flags(gmx),
-                    work, work / f"gmx_seed{seed}_mdrun.log")
-            xvgs[f"gmx{seed}"] = analyze_trajectory(gmx, work, f"gmx_seed{seed}.tpr", f"gmx_seed{seed}.xtc", f"gmx_seed{seed}")
-    else:
-        for seed in (1, 2):
-            xvgs[f"gmx{seed}"] = (reference / f"md_seed{seed}" / "rmsd.xvg", reference / f"md_seed{seed}" / "rmsf.xvg")
+    for seed in (1, 2):
+        write_mdp(work / f"gmx_seed{seed}.mdp", data / "reference" / f"md_seed{seed}" / "md.mdp", nsteps=MD_STEPS,
+                  nstxout_compressed=MD_FRAME_INTERVAL)
+        gmx_grompp(gmx, work, f"gmx_seed{seed}.mdp", f"gmx_seed{seed}.tpr", work / f"gmx_seed{seed}_grompp.log")
+        log(f"  GROMACS {MD_STEPS * DT_PS * 1e-3:g} ns, seed {seed}")
+        gmx.run(["mdrun", "-s", f"gmx_seed{seed}.tpr", "-deffnm", f"gmx_seed{seed}", "-quiet"] + gmx_mdrun_flags(gmx),
+                work, work / f"gmx_seed{seed}_mdrun.log")
+        xvgs[f"gmx{seed}"] = analyze_trajectory(gmx, work, f"gmx_seed{seed}.tpr", f"gmx_seed{seed}.xtc", f"gmx_seed{seed}")
 
-    log("  LIMA 1 ns")
+    log(f"  LIMA {MD_STEPS * DT_PS * 1e-3:g} ns")
     mdp = write_mdp(work / "lima_md.mdp", data / "inputs" / "lima.mdp", nsteps=MD_STEPS)
     seconds = lima_mdrun(lima, work, inputs, mdp, work / "lima_md_mdrun.log", "--trajectory", "lima_md.xtc",
                          "--set", f"nstxout_compressed={MD_FRAME_INTERVAL}")
     xvgs["lima"] = analyze_trajectory(gmx, work, "gmx_seed1.tpr", "lima_md.xtc", "lima_md")
 
-    result = {"simulatedNs": MD_STEPS * DT_PS * 1e-3, "limaNsPerDay": MD_STEPS * DT_PS * 1e-3 / (seconds / 86400),
-              "gromacsReference": "generated on this machine" if generate else "downloaded (GROMACS 2024.2, RTX 4090)"}
+    result = {"simulatedNs": MD_STEPS * DT_PS * 1e-3, "limaNsPerDay": MD_STEPS * DT_PS * 1e-3 / (seconds / 86400)}
     rmsf = {}
     for engine, (rmsd_path, rmsf_path) in xvgs.items():
         rmsd = read_xvg(rmsd_path)
@@ -424,19 +415,19 @@ def write_report(out_dir, results, setup):
         lines.append("")
 
     if any("structure" in r for r in results.values()):
-        lines += ["## Structure (1 ns)", "",
+        lines += [f"## Structure ({MD_STEPS * DT_PS * 1e-3:g} ns)", "",
                   "Mean C-alpha RMSD to the start over the second half, and the Pearson correlation of the per-atom "
                   "C-alpha RMSF of LIMA vs GROMACS. Two GROMACS runs that differ only in the thermostat seed give the "
                   "spread to expect by chance: a LIMA-GROMACS correlation like the GROMACS-GROMACS one means LIMA differs "
                   "from GROMACS no more than GROMACS differs from itself.", "",
-                  "| System | C-alpha | RMSD LIMA [nm] | RMSD GROMACS 1 / 2 [nm] | RMSF r LIMA-GROMACS | RMSF r GROMACS-GROMACS | GROMACS runs |",
-                  "|---|---:|---:|---:|---:|---:|---|"]
+                  "| System | C-alpha | RMSD LIMA [nm] | RMSD GROMACS 1 / 2 [nm] | RMSF r LIMA-GROMACS | RMSF r GROMACS-GROMACS |",
+                  "|---|---:|---:|---:|---:|---:|"]
         for system, r in results.items():
             if "structure" in r:
                 s = r["structure"]
                 lines.append(f"| {system} | {s['calphaAtoms']} | {s['rmsdNm_lima']:.3f} | {s['rmsdNm_gmx1']:.3f} / "
                              f"{s['rmsdNm_gmx2']:.3f} | {s['rmsfCorrelationLimaGromacs']:.3f} | "
-                             f"{s['rmsfCorrelationGromacsGromacs']:.3f} | {s['gromacsReference']} |")
+                             f"{s['rmsfCorrelationGromacsGromacs']:.3f} |")
         lines.append("")
 
     failed = {system: r["error"] for system, r in results.items() if "error" in r}
@@ -472,12 +463,12 @@ def machine_info():
 
 # ------------------------------------------------ Main ------------------------------------------------ #
 
-def estimate_hours(systems, generate):
+def estimate_hours(systems):
     """Rough wall time on an RTX 4090, from the measured ns/day of each system."""
     lima_ns_per_day = {"villin": 2400, "rnase_cubic": 1600, "adh_dodec": 360, "aqp_ensemble": 245, "ion_channel": 230, "stmv": 51}
     gmx_ns_per_day = {"villin": 1100, "rnase_cubic": 920, "adh_dodec": 180, "aqp_ensemble": 96, "ion_channel": 130, "stmv": 33}
     ns = MD_STEPS * DT_PS * 1e-3
-    hours = sum(ns / lima_ns_per_day[s] * 24 + (2 * ns / gmx_ns_per_day[s] * 24 if generate else 0) for s in systems)
+    hours = sum(ns / lima_ns_per_day[s] * 24 + 2 * ns / gmx_ns_per_day[s] * 24 for s in systems)
     return hours + len(systems) * 0.05  # performance rounds, forces, analysis
 
 
@@ -487,21 +478,10 @@ def parse_args(argv):
     parser.add_argument("--systems", default="small",
                         help="small (villin, rnase_cubic), all (also adh_dodec, aqp_ensemble, ion_channel, stmv), or a "
                              "comma-separated list (default: small)")
-    parser.add_argument("--reference", choices=("prebuilt", "generate"), default="prebuilt",
-                        help="prebuilt: the downloaded 1 ns GROMACS runs; generate: run them on this machine "
-                             "(two 1 ns GROMACS runs per system; hours for --systems all). Forces and performance are "
-                             "always measured on this machine (default: prebuilt)")
-    parser.add_argument("--only", choices=("forces", "performance", "structure"), action="append",
-                        help="Run only this part; may be repeated (default: all three)")
-    parser.add_argument("--rounds", type=int, default=2, help="Performance rounds per engine (default: 2)")
-    parser.add_argument("--gmx", help="GROMACS executable, or wsl:/path/to/gmx for one in WSL (default: gmx on the PATH, "
-                                      "then in WSL on Windows)")
-    parser.add_argument("--wsl-distro", help="WSL distribution of GROMACS (default: WSL's default)")
-    parser.add_argument("--lima", help="lima executable (default: the lima that runs this script)")
-    parser.add_argument("--data-dir", type=Path, help=f"Where the downloaded data is kept (default: {default_data_dir()})")
     parser.add_argument("-o", "--output-dir", type=Path, default=Path("gromacscompare"),
                         help="Where the runs and report.md go (default: ./gromacscompare)")
-    parser.add_argument("-y", "--yes", action="store_true", help="Don't ask before a run of more than an hour")
+    parser.add_argument("--gmx", help=argparse.SUPPRESS)  # Only if gmx is not found on the PATH or in WSL
+    parser.add_argument("--lima", help=argparse.SUPPRESS)  # Passed by lima
     return parser.parse_args(argv)
 
 
@@ -518,31 +498,20 @@ def select_systems(selection):
 def main(argv):
     args = parse_args(argv)
     systems = select_systems(args.systems)
-    parts = args.only or ["forces", "performance", "structure"]
-    generate = args.reference == "generate"
     out_dir = Path(os.path.abspath(args.output_dir))
     out_dir.mkdir(parents=True, exist_ok=True)
-    data_dir = Path(os.path.abspath(args.data_dir or default_data_dir()))
+    data_dir = default_data_dir()
 
-    gmx, gmx_version = find_gromacs(args.gmx, args.wsl_distro, out_dir)
+    gmx, gmx_version = find_gromacs(args.gmx, out_dir)
     lima = find_lima(args.lima)
     log(f"GROMACS {gmx_version['version']} with CUDA: {gmx.describe()}")
     log(f"LIMA: {lima}")
-
-    hours = estimate_hours(systems, generate) if "structure" in parts else 0.05 * len(systems)
-    log(f"Systems: {', '.join(systems)}. Roughly {hours:.1f} h on an RTX 4090; slower GPUs take longer")
-    if hours > 1:
-        log("WARNING: this takes several hours." if hours > 2 else "WARNING: this takes over an hour.")
-        if not args.yes:
-            if not sys.stdin.isatty():
-                raise Failure("Pass --yes to start a run this long without a terminal to confirm in")
-            if input("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
-                return 1
+    log(f"Systems: {', '.join(systems)}. Roughly {estimate_hours(systems):.1f} h on an RTX 4090; slower GPUs take longer")
 
     lima_version = subprocess.run([lima, "--version"], capture_output=True, text=True).stdout.strip()
     gpu, cpu = machine_info()
     setup = {"date": time.strftime("%Y-%m-%d %H:%M"), "lima": f"{lima_version} ({lima})", "gromacs": gmx_version,
-             "gromacsPath": gmx.describe(), "gpu": gpu, "cpu": cpu, "reference": args.reference, "parts": parts}
+             "gromacsPath": gmx.describe(), "gpu": gpu, "cpu": cpu}
     results = {}
     for system in systems:
         log(f"\n== {system} ({SYSTEMS[system][1]:,} atoms)")
@@ -553,17 +522,14 @@ def main(argv):
             shutil.rmtree(work / "inputs", ignore_errors=True)
             # A copy, so both engines read the inputs by paths relative to their run directory, also from WSL
             shutil.copytree(data / "inputs", work / "inputs", ignore=shutil.ignore_patterns("*.bin"))
-            if "forces" in parts:
-                log("  forces")
-                r = results[system]["forces"] = force_parity(system, data, work / "forces", lima, gmx)
-                log(f"  force relative RMS error {r['relativeRmsError']:.2e}")
-            if "performance" in parts:
-                log("  performance")
-                results[system]["performance"] = performance(system, data, work / "perf", lima, gmx, args.rounds)
-            if "structure" in parts:
-                r = results[system]["structure"] = structure(system, data, work / "md", lima, gmx, generate)
-                log(f"  RMSF correlation LIMA-GROMACS {r['rmsfCorrelationLimaGromacs']:.3f}, "
-                    f"GROMACS-GROMACS {r['rmsfCorrelationGromacsGromacs']:.3f}")
+            log("  forces")
+            r = results[system]["forces"] = force_parity(system, data, work / "forces", lima, gmx)
+            log(f"  force relative RMS error {r['relativeRmsError']:.2e}")
+            log("  performance")
+            results[system]["performance"] = performance(system, data, work / "perf", lima, gmx)
+            r = results[system]["structure"] = structure(system, data, work / "md", lima, gmx)
+            log(f"  RMSF correlation LIMA-GROMACS {r['rmsfCorrelationLimaGromacs']:.3f}, "
+                f"GROMACS-GROMACS {r['rmsfCorrelationGromacsGromacs']:.3f}")
         except Failure as error:
             results[system]["error"] = str(error)
             log(f"  {system} not completed: {error}")

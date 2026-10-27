@@ -300,7 +300,7 @@ inline constexpr std::string_view GromacsCompareHelp = R"(Usage: lima gromacscom
 
 Compare LIMA with GROMACS on the GROMACS heterogeneous-parallelization benchmark
 systems (Pall et al., J. Chem. Phys. 2020): step-0 forces, performance, and the
-structure of 1 ns runs. Writes report.md; nothing is pass/fail. Downloads the
+structure of 0.2 ns runs. Writes report.md; nothing is pass/fail. Downloads the
 systems on first use. Needs Python 3.8+ and GROMACS built with CUDA (natively, or
 in WSL on Windows).
 
@@ -308,16 +308,7 @@ Options:
       --systems SET            small (villin, rnase_cubic), all (also adh_dodec,
                                aqp_ensemble, ion_channel, stmv), or a list, eg.
                                villin,stmv (default: small)
-      --reference MODE         prebuilt: the downloaded 1 ns GROMACS runs; generate:
-                               run them here, hours for --systems all (default: prebuilt)
-      --only PART              forces, performance or structure; may be repeated
-      --rounds N               Performance rounds per engine (default: 2)
-      --gmx PATH               GROMACS, or wsl:/path/to/gmx (default: gmx on the PATH,
-                               then in WSL)
-      --wsl-distro NAME        WSL distribution of GROMACS (default: WSL's default)
-      --data-dir DIR           Where the downloaded data is kept
   -o, --output-dir DIR         Runs and report (default: ./gromacscompare)
-  -y, --yes                    Don't ask before a run of more than an hour
   -h, --help                   Display this help and exit
 )";
 

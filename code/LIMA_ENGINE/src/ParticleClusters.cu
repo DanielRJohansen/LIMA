@@ -280,7 +280,9 @@ __global__ void ClusteringPretransferKernel(PClusterTransfermodule transferModul
 //	return (mask1 & 0xF) << 28 | (mask2 & 0xF) << 24 | (fractionAsInt & 0xFFFFFF);
 //}
 
-// Called with 32 threads
+// One block per cell. Any number of threads gives the same result; 128 sort the cell's particles fastest (per rebuild, ncu:
+// villin 43 -> 27 us, adh_dodec 83 -> 65 us, stmv 390 -> 313 us with 32 threads, 256 slower on the larger ones)
+constexpr int clusteringThreads = 128;
 __global__ void ClusteringKernel(const PClusterTransfermodule transferModule, const PersistentCluster* const pClusters, SuperclusterStagingControl scStagingControl, 
 	const PersistentClusterMeta* const persistentClusterMeta, Int3 boxSize, Float3 boxSizeFloat)
 {
@@ -743,7 +745,7 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 	
 
 	// This simply stages the SC's per block, need to compress after
-	ClusteringKernel <<<nBlocks, 32, 0, stream>>> (*batch->pclusterTransfermodule, batch->pClusterDevice.Get(), *batch->superclusterStagingControl, batch->pClusterMetaDevice.Get(), boxSize, boxSizeF);
+	ClusteringKernel <<<nBlocks, clusteringThreads, 0, stream>>> (*batch->pclusterTransfermodule, batch->pClusterDevice.Get(), *batch->superclusterStagingControl, batch->pClusterMetaDevice.Get(), boxSize, boxSizeF);
 	LIMA_UTILS::genericErrorCheckNoSync("Error after ClusteringKernel");
 	//DebugUtils::VerifyIdentical(batch->superclusterStagingControl->scData, nBlocks * SuperClustersControl::maxClustersPerBlock, "RunClustering_SCData", batch->step);
 

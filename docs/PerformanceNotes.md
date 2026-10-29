@@ -15,8 +15,8 @@ Result: villin -13.4%, adh_dodec -13.4%, stmv -4.9% (paired runs); `--stmv-const
 - **adh_dodec (0.43 ms/step):** NB ~180 us, the PME chain (~130 us alone) ends ~85 us after NB and is the critical path, then the
   integrate ~40 us. A rebuild costs ~680 us, mostly kernels (FindNeighbors 353 us, Emit 192 us).
 - **villin (0.050 ms/step):** a plain step is ~37 us: the serial PME chain (~11 latency-bound kernels of 1.5-4 us) and the integrate
-  (~7-8 us on 36 blocks); NB and bonded run alongside. A rebuild costs ~264 us of wall clock but only ~145 us of kernels: it is host
-  bound, around the clustering wait (see "Open").
+  (~7-8 us on 36 blocks); NB and bonded run alongside. A rebuild costs ~264 us of wall clock against ~145 us of kernels, but the
+  difference is not host idle on the critical path: removing the waits and the recapture gained nothing (see the fixed capacity below).
 - Rebuild cost was measured as T = plain + R / nstlist from runs at nstlist 20, 40 and 80 (temporary limaprofile override).
 
 ### Measuring
@@ -68,11 +68,12 @@ Result: villin -13.4%, adh_dodec -13.4%, stmv -4.9% (paired runs); `--stmv-const
 | Hybrid FFT with the Greens function loaded per mode | stmv +0.9% | Separable on-the-fly Greens tables fixed it (neutral) |
 | Double-buffered force accumulator (zero off the critical path) | not tried | ~1% stmv for even/odd step graphs |
 | Store half-step velocities instead of velocity + previous force | not tried | Saves 24 B/slot, but states could no longer give full-step velocities to the host paths |
+| Fixed supercluster capacity for small systems: nSuperclusters = cells x 16, superclusters past the count padded on the GPU, no clustering wait, step graph kept across rebuilds | villin +1.7%, rnase +2.5% (paired) | Bitwise identical and the graph was kept (21 captures in 2000 steps), and under nsys it looked faster (mean step 66 -> 57 us). But nsys inflates host API time: in real runs the host work around a rebuild is already hidden, so only the padding's cost showed: NB, Distribute and the search over 1.8x (rnase 2.2x) the superclusters, and fewer search chunks per supercluster |
 
 ### Open
-- **Device-driven rebuild for small systems** (est. ~10% villin): size buffers and grids from upper bounds (cells x 16 superclusters),
-  let kernels read the supercluster count from device memory, and drop the clustering wait and the step graph re-capture. Too much
-  memory for large systems (neighbor lists at 2x the superclusters), so a small-system path.
+- **Where villin's rebuild time beyond its kernels goes** (~120 us per rebuild by the nstlist fit) is unexplained: not host idle on
+  the critical path (see the fixed capacity above). Candidates: cold caches after the layout changes, or slower steps right after a
+  rebuild. Measure step times by position in the rebuild cycle without nsys (eg. GPU timestamps) before designing anything.
 - **cuFFT LTO callbacks** (ToDensity into the R2C load), see PME.cuh: one more pass less, at the cost of JIT linking.
 - **PME internals on stmv:** Interpolate ~125 us, Spread ~70 us (global tile-flush atomics; 2x2x2 chargeblocks per tile untried).
 - **FindNeighbors cell loop** runs with ~7 of 32 lanes active (40 hit cells per supercluster on adh); flattening (cell, candidate)

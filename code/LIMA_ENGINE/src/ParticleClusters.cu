@@ -792,6 +792,7 @@ void Engine::RunClustering(cudaStream_t stream, bool getPclusters) {
 		batch->pclusterParticleSlots.Expand(size_t(nPclusters) * PersistentCluster::maxParticles);
 		cudaMemsetAsync(batch->pclusterParticleSlots.Get(), 0xFF, sizeof(int) * nPclusters * PersistentCluster::maxParticles, stream);
 		readback.Wait(stream);
+		CheckDeferredNeighborOverflow();
 
 		const int* const values = readback.Host() + nIndices;
 		CapacityOverflow::ThrowIfSet(values + nIndices);

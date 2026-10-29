@@ -19,6 +19,8 @@
 namespace {
 	constexpr int maxNeighborsPerSc = TaskBuilderControlContents::maxTasksPerSc;
 	constexpr int neighborSearchWarpsPerBlock = 4;
+	// See MakeNbTasksMD
+	constexpr size_t deferredEntryCountMaxBytes = size_t(64) << 20;
 
 	// EM's lists include 4x4 blocks that are within this distance beyond the cutoff. MD's buffer is set from the verlet buffer
 	// tolerance, see EngineBatchData::listBuffer [nm]
@@ -763,7 +765,12 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 
 	cudaMemsetAsync(tb.entryCounts.Get() + n, 0, sizeof(int), stream);
 	CubWrappers::ExclusiveScan(tb.entryCounts.Get(), tb.entryCounts.Get() + n + 1, tb.entryStarts.Get(), batch->scanTempStorage, stream);
-	auto& readback = batch->rebuildReadback;
+	// A small system allocates its entries' upper bound, at most 4 per neighbor, rather than waiting for their count, so the host
+	// queues the next step while the GPU searches (villin -2.3%). Its neighbor overflow is checked at the next synchronization, which
+	// comes before the results are used, see CheckDeferredNeighborOverflow
+	const size_t maxEntries = size_t(n) * maxNeighborsPerSc * 4;
+	const bool deferCount = maxEntries * sizeof(QuarterEntry) <= deferredEntryCountMaxBytes;
+	auto& readback = deferCount ? batch->deferredNeighborReadback : batch->rebuildReadback;
 	readback.Reserve(2);
 	CubWrappers::GatherInts(tb.overflow.Get(), nullptr, 1, readback.Device(), stream);
 	CubWrappers::GatherInts(tb.entryStarts.Get() + n, nullptr, 1, readback.Device() + 1, stream);
@@ -774,10 +781,16 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 	// Clear both on rebuild, since supercluster slots change and particles without bonds have no writer.
 	batch->forceAccumulatorDevice.Expand(size_t(n) * SuperCluster::maxParticles * 8, 1.2);
 	cudaMemsetAsync(batch->forceAccumulatorDevice.Get(), 0, sizeof(unsigned long long) * n * SuperCluster::maxParticles * 8, stream);
-	readback.Wait(stream);
-	ThrowIfNeighborOverflow(readback.Host()[0]);
-	batch->nQuarterEntries = readback.Host()[1];
-	batch->quarterEntriesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
+	if (deferCount) {
+		batch->quarterEntriesDevice.Expand(maxEntries, 1.2);
+		batch->neighborOverflowUnchecked = true;
+	}
+	else {
+		readback.Wait(stream);
+		ThrowIfNeighborOverflow(readback.Host()[0]);
+		batch->nQuarterEntries = readback.Host()[1];
+		batch->quarterEntriesDevice.Expand(std::max(batch->nQuarterEntries, 1), 1.2);
+	}
 
 	// Warps per supercluster, see EmitQuarterEntriesSplitKernel. The entries don't depend on it. As FindNeighbors (T4 33.9k atoms: 122 -> 65 us)
 	constexpr int targetWarps = 8192;
@@ -791,6 +804,13 @@ void Engine::MakeNbTasksMD(cudaStream_t stream) {
 			tb.contents, nullptr);
 	LIMA_UTILS::genericErrorCheckNoSync("EmitQuarterEntriesKernel");
 	cudaStreamQuery(stream); // Submits the work queued after the sync at once, see RunClustering
+}
+
+void Engine::CheckDeferredNeighborOverflow() {
+	if (!batch->neighborOverflowUnchecked)
+		return;
+	batch->neighborOverflowUnchecked = false;
+	ThrowIfNeighborOverflow(batch->deferredNeighborReadback.Host()[0]);
 }
 
 // EM uses the same entries as MD, but stores its forces in SCResults rather than summing them with fixed point atomics, see

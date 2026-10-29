@@ -185,6 +185,8 @@ struct EngineBatchData {
 	CudaBuffer<IntegrationSimulationData> integrationSimulationDataDevice;
 	CudaBuffer<char> scanTempStorage;						// For the stream ordered CubWrappers::ExclusiveScan on cudaStreams[0]
 	MappedHostBuffer rebuildReadback;						// Counts the host needs during a nlist rebuild, read in as few round trips as possible
+	MappedHostBuffer deferredNeighborReadback;				// A small system's neighbor overflow, see MakeNbTasksMD
+	bool neighborOverflowUnchecked = false;
 
 	std::unique_ptr<SuperClustersControl> superClustersControl;
 	std::unique_ptr<PClusterTransfermodule> pclusterTransfermodule;

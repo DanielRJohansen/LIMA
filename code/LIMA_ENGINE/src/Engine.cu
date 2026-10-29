@@ -310,6 +310,7 @@ void Engine::UploadEnergyMinimizationPreconditioner() {
 void Engine::RebuildActiveBatch() {
 	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
+	CheckDeferredNeighborOverflow();
 	std::vector<Simulation*> simulations;
 	std::vector<bool> active;
 	for (auto& sim : batch->simulations) {
@@ -640,6 +641,7 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 	StoreIntegrationStates(cudaStreams[0]);
 	Synchronize();
 	// Results are only valid if no kernel dropped entries at a capacity limit
+	CheckDeferredNeighborOverflow();
 	if (batch->pclusterTransfermodule) batch->pclusterTransfermodule->overflow.Check();
 	if (batch->pmeController)
 		if (const CapacityOverflow* overflow = batch->pmeController->Overflow()) overflow->Check();

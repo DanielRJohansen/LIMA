@@ -64,6 +64,7 @@ constexpr uint8_t splitPclusters = 2;		// A pcluster of the supercluster is spli
 // The split FindNeighborsKernel's buffers, see TaskBuilderControl
 struct NeighborChunks {
 	int nChunks;
+	int groupSize;	// Cell offsets per group, at most 32
 	ScNeighbor* lists;
 	int* entryCounts;
 	int* groupCounts;
@@ -151,7 +152,8 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 // Small systems have too few superclusters to fill the GPU, so then nChunks warps share a supercluster: chunk c searches the groups
 // of groupSize cell offsets c, c + nChunks, .., listing their hits in its own list. The chunk to finish last merges the lists in group
 // order, which is the order of a single warp, so the lists and counts are identical. Groups of 8 balance the chunks better, as the hits
-// cluster in a few offsets around the own cell. A template parameter, so the single warp variant is unchanged by the split
+// cluster in a few offsets around the own cell, but a small box has fewer than 8 offsets per chunk, and then smaller groups. A template
+// parameter, so the single warp variant is unchanged by the split
 template <bool split>
 __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeighborsKernel(const SuperClustersControl scControl, const float4* const scSpheres, const uint8_t* const scExternalBonds, const int* const scCells,
 	const float4* const cellMin, const float4* const cellMax, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
@@ -168,7 +170,7 @@ __global__ void __launch_bounds__(32 * neighborSearchWarpsPerBlock, 8) FindNeigh
 	const int chunk = warpId - scId * chunks;
 	if (scId >= nSuperclusters)
 		return;
-	constexpr int groupSize = split ? 8 : 32;
+	const int groupSize = split ? chunkBuffers.groupSize : 32;
 
 	const int ownIndex = lane & 15;
 	const Float3 ownPos = scControl.scData[scId].Position(ownIndex);
@@ -694,10 +696,14 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 	tb.entryCounts.Expand(n + 1, 1.2);
 	tb.overflow.Expand(1);
 	// Warps per supercluster, see FindNeighborsKernel. The lists don't depend on it. Twice a large GPU's resident warps, as the slowest
-	// superclusters set the duration: at 4096 the 33.9k atom T4 (2270 superclusters) got 1 chunk and took 336 us, at 8192 167 us
-	constexpr int targetWarps = 8192, maxChunks = 8;
-	const int nChunks = std::clamp(targetWarps / std::max(n, 1), 1, maxChunks);
-	const int nGroups = (((rangeLo.x + rangeHi.x + 1) * (rangeLo.y + rangeHi.y + 1) * (rangeLo.z + rangeHi.z + 1)) + 7) / 8; // Of the split variant
+	// superclusters set the duration: at 4096 the 33.9k atom T4 (2270 superclusters) got 1 chunk and took 336 us, at 8192 167 us.
+	// At most 32, one per lane in the merge. Villin (5k atoms) has 36 cell offsets: groups of 8 used only 5 of its 8 chunks (69 us)
+	constexpr int targetWarps = 8192, maxChunks = 32;
+	const int nOffsets = (rangeLo.x + rangeHi.x + 1) * (rangeLo.y + rangeHi.y + 1) * (rangeLo.z + rangeHi.z + 1);
+	int nChunks = std::clamp(targetWarps / std::max(n, 1), 1, maxChunks);
+	const int groupSize = std::clamp(nOffsets / nChunks, 1, 8);	// Of the split variant
+	const int nGroups = (nOffsets + groupSize - 1) / groupSize;
+	nChunks = std::min(nChunks, nGroups);
 	if (nChunks > 1) {
 		tb.chunkNeighbors.Expand(size_t(n) * nChunks * maxNeighborsPerSc, 1.2);
 		tb.chunkEntryCounts.Expand(size_t(n) * nChunks, 1.2);
@@ -717,7 +723,7 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 		tb.contents.pclustersBondedToPcluster,
 		tb.neighbors.Get(), tb.nNeighbors.Get(), tb.entryCounts.Get(), tb.overflow.Get(),
 		n, boxSize, rangeLo, rangeHi, listRadius, allQuarters, boxSizeF, boxSizeF.Inv(),
-		NeighborChunks{ nChunks, tb.chunkNeighbors.Get(), tb.chunkEntryCounts.Get(), tb.groupCounts.Get(), tb.chunksDone.Get() });
+		NeighborChunks{ nChunks, groupSize, tb.chunkNeighbors.Get(), tb.chunkEntryCounts.Get(), tb.groupCounts.Get(), tb.chunksDone.Get() });
 	LIMA_UTILS::genericErrorCheckNoSync("FindNeighborsKernel");
 }
 

@@ -585,7 +585,7 @@ template<typename BoundaryCondition, bool logData>
 __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences, SuperCluster* const superClusters, ParticleIntegrationState* const states,
 	const SuperClusterMeta* const scMeta, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const CapacityOverflow overflow, const int64_t* const stepIndex,
-	const ThermostatImpulse* const thermostatImpulses)
+	const ThermostatImpulse* const thermostatImpulses, float* const kineticEnergies)
 {
 	const int scId = blockIdx.x * blockDim.y + threadIdx.y;
 	if (scId >= nSuperclusters)
@@ -643,6 +643,8 @@ __global__ void SuperclusterIntegrateKernel(const ForceAccumulator forceAcc, con
 	state.velocity = velocity * (impulse.step == *stepIndex ? impulse.scalar : simulation.thermostatScalar);
 	state.forcePrev = fe.force;
 	states[slot] = state;
+	if (kineticEnergies)
+		kineticEnergies[state.pclusterParticle] = PhysicsUtils::calcKineticEnergy(state.velocity.len(), state.mass);
 
 	if constexpr (logData)
 		log.Log(simulation, pcId, indexInPc, posNext, fe, state.velocity.len());
@@ -964,7 +966,7 @@ __global__ void __launch_bounds__(256, 3) SuperclusterIntegrateConstrainedKernel
 	const SuperClustersControl scControl, ParticleIntegrationState* const states, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints,
 	const int* const pclusterParticleSlots, const CapacityOverflow overflow, const int64_t* const stepIndex, long long* const virialPartials,
-	const ThermostatImpulse* const thermostatImpulses)
+	const ThermostatImpulse* const thermostatImpulses, float* const kineticEnergies)
 {
 	using namespace ConstrainedCell;
 	LIMA_SHARED_UNINIT(Float3, positions, [maxScs * n]);	// Before the step
@@ -1088,6 +1090,8 @@ __global__ void __launch_bounds__(256, 3) SuperclusterIntegrateConstrainedKernel
 	state.velocity = velocity * thermostatScalar;
 	state.forcePrev = fe.force + constraintForce;
 	states[slot] = state;
+	if (kineticEnergies)
+		kineticEnergies[state.pclusterParticle] = PhysicsUtils::calcKineticEnergy(state.velocity.len(), state.mass);
 
 	if constexpr (logData)
 		log.Log(*simulation, pcId, indexInPc, posNext, fe, state.velocity.len());

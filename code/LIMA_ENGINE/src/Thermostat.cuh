@@ -67,6 +67,10 @@ public:
 
 	float* KineticEnergyValues() { return intermediate; }
 
+	// Set once an MD integration kernel is queued that writes each particle's kinetic energy after its step to KineticEnergyValues,
+	// so the device thermostat's measurements need not compute them from the slots. A repacked batch gets a new Thermostat
+	bool integrationWritesValues = false;
+
 	~Thermostat() {
 		cudaFree(intermediate);
 	}
@@ -116,7 +120,8 @@ namespace _Thermostat {
 
 // The temperature measurement and v-rescale thermostat on the GPU, inside the captured step, so a coupling step needs no host roundtrip
 // and does not invalidate the step graph. A coupling step, the one after a measurement interval, starts with the kinetic energies after
-// the previous step (from the slots), their sum per simulation and VRescaleKernel, on a side stream overlapping the force kernels, which
+// the previous step (written by its integration, or from the slots after a batch is (re)packed), their sum per simulation and
+// VRescaleKernel, on a side stream overlapping the force kernels, which
 // do not touch the velocities. The factor goes to this step's integration as a ThermostatImpulse, and the temperature to a ring in
 // mapped host memory, which the host reads without waiting (Harvest). Each simulation's random stream is the one the host
 // thermostat would draw. Not with the barostat, whose pressure measurement reads the kinetic energy on the host anyway
@@ -164,11 +169,12 @@ public:
 
 	bool MeasuresAt(int64_t step) const { return step > firstStep && step % interval == 0; }
 
-	// Capturable. kineticEnergyValues is the batch's Thermostat buffer, one value per pcluster lane. See VRescaleKernel for step and
-	// onlySimulation
+	// Capturable. kineticEnergyValues is the batch's Thermostat buffer, one value per pcluster lane. If valuesCurrent, the previous
+	// step's integration wrote them (Thermostat::integrationWritesValues), else they are computed from the slots. See VRescaleKernel
+	// for step and onlySimulation
 	void Queue(const ParticleIntegrationState* states, int nSlots, const PersistentClusterMeta* metadata, float* kineticEnergyValues,
-		const int64_t* stepCounter, cudaStream_t stream, int64_t step = -1, int onlySimulation = -1) {
-		if (nSlots > 0)
+		bool valuesCurrent, const int64_t* stepCounter, cudaStream_t stream, int64_t step = -1, int onlySimulation = -1) {
+		if (nSlots > 0 && !valuesCurrent)
 			_Thermostat::ComputeKineticEnergyFromSlotsKernel<<<(nSlots + 127) / 128, 128, 0, stream>>>(states, nSlots, metadata, kineticEnergyValues);
 		for (size_t id = 0; id < pclusters.size(); id++)
 			if (pclusters[id].count > 0 && (onlySimulation == -1 || id == size_t(onlySimulation)))

@@ -649,7 +649,8 @@ void Engine::FinalizeSimulation(EngineSimulationData& sim) {
 		// The temperature after its last step is measured by the next step, which it does not run
 		if (sim.device.active && deviceThermostat->MeasuresAt(batch->step) && batch->nSuperclusters > 0) {
 			deviceThermostat->Queue(batch->integrationStates.Get(), batch->nSuperclusters * SuperCluster::maxParticles, batch->pClusterMetaDevice.Get(),
-				batch->thermostat->KineticEnergyValues(), stepCounterDevice, cudaStreams[0], batch->step, static_cast<int>(&sim - batch->simulations.data()));
+				batch->thermostat->KineticEnergyValues(), batch->thermostat->integrationWritesValues, stepCounterDevice, cudaStreams[0], batch->step,
+				static_cast<int>(&sim - batch->simulations.data()));
 			Synchronize();
 		}
 		HarvestTemperatures(sim);
@@ -1057,7 +1058,7 @@ void Engine::_deviceMaster(bool measureTemperature) {
 		// After the counter, on its stream, overlapping the force kernels. Integration joins it
 		if (measureTemperature && nScs > 0)
 			deviceThermostat->Queue(batch->integrationStates.Get(), nScs * SuperCluster::maxParticles, batch->pClusterMetaDevice.Get(),
-				batch->thermostat->KineticEnergyValues(), stepCounterDevice, cudaStreams[1]);
+				batch->thermostat->KineticEnergyValues(), batch->thermostat->integrationWritesValues, stepCounterDevice, cudaStreams[1]);
 	}
 	// MD: NB, PME and SNF add to forceAcc, which integration left zeroed. Bonded sums have one writer per group
 	// and are gathered by integration, so all force kernels can run concurrently.
@@ -1126,6 +1127,8 @@ void Engine::_deviceMaster(bool measureTemperature) {
 			const LiveEditBuffers liveEdit{ batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
 				batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
 				batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr };
+			// The device thermostat's next measurement reads them, see Thermostat::integrationWritesValues
+			float* const kineticEnergies = UsesDeviceThermostat() ? batch->thermostat->KineticEnergyValues() : nullptr;
 			if (batch->hasConstraints) {
 				// forcePrev includes the constraint force, so the kernel writes the measured force magnitudes itself
 				batch->forceMagnitudesInStates = false;
@@ -1133,7 +1136,7 @@ void Engine::_deviceMaster(bool measureTemperature) {
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), *batch->superClustersControl, batch->integrationStates.Get(),
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
 					liveEdit, log, batch->pclusterConstraintsDevice.Get(), batch->pclusterParticleSlots.Get(), batch->pclusterTransfermodule->overflow, stepCounterDevice,
-					computeVirial ? batch->constraintVirialPartials.Get() : nullptr, deviceThermostat->impulses.Get());
+					computeVirial ? batch->constraintVirialPartials.Get() : nullptr, deviceThermostat->impulses.Get(), kineticEnergies);
 			}
 			else {
 				// Without live edits, which may change the force after it is measured, forcePrev is exactly the measured force
@@ -1141,8 +1144,10 @@ void Engine::_deviceMaster(bool measureTemperature) {
 				SuperclusterIntegrateKernel<BoundaryCondition, logData><<<nBlocks, dim3(16, 4, 1), 0, cudaStreams[0]>>>(
 					forceAcc, primaryBondForces, extraBondForces, batch->slotExtraBondReferences.Get(), batch->superClustersControl->scData, batch->integrationStates.Get(), batch->superClustersControl->scMeta,
 					batch->integrationSimulationDataDevice.Get(), nScs, boxSize, batch->forcesMagnitudeSquareDevice.Get(),
-					liveEdit, log, batch->pclusterTransfermodule->overflow, stepCounterDevice, deviceThermostat->impulses.Get());
+					liveEdit, log, batch->pclusterTransfermodule->overflow, stepCounterDevice, deviceThermostat->impulses.Get(), kineticEnergies);
 			}
+			if (kineticEnergies)
+				batch->thermostat->integrationWritesValues = true;
 		}
 		// MD queues the next step without waiting, the host reads nothing from this one. EM reads emStatesHost in hostMaster
 		if constexpr (emvariant)

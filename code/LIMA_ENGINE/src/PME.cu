@@ -11,6 +11,7 @@
 #include "BoundaryCondition.cuh"
 #include "Filehandling.h"
 #include "platform/DeviceIntrinsics.cuh"
+#include "PmeFft.cuh"
 #include "Utilities.h"
 #include "LimitTesting.cuh"
 #include "Virial.cuh"
@@ -423,12 +424,21 @@ PME::Controller::Controller(const std::vector<EngineSimulationData>& simulations
 	nGridpointsReciprocalspace = gridpointsPerDim.z * gridpointsPerDim.y * (gridpointsPerDim.x / 2 + 1);
 	if (nGridpointsRealspace > INT_MAX || nGridpointsRealspace * simulations.size() > INT_MAX)
 		throw std::runtime_error("PME batch exceeds grid index range");
-	cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
-	cudaMalloc(&reciprocalVirialScalars, nGridpointsReciprocalspace * sizeof(float));
-	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
-		greensFunctionScalars, reciprocalVirialScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa,
-		gridScale.x * gridScale.y * gridScale.z);
-	LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel");
+	zPass = PmeFft::Factor(gridpointsPerDim.z, zAxis);
+	if (zPass) {
+		const std::vector<float2> twiddles = PmeFft::Twiddles(gridpointsPerDim.z);
+		cudaMalloc(&zTwiddles, twiddles.size() * sizeof(float2));
+		cudaMemcpy(zTwiddles, twiddles.data(), twiddles.size() * sizeof(float2), cudaMemcpyHostToDevice);
+		UploadGreensAxisTables();
+	}
+	else {
+		cudaMalloc(&greensFunctionScalars, nGridpointsReciprocalspace * sizeof(float));
+		cudaMalloc(&reciprocalVirialScalars, nGridpointsReciprocalspace * sizeof(float));
+		PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
+			greensFunctionScalars, reciprocalVirialScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa,
+			gridScale.x * gridScale.y * gridScale.z);
+		LIMA_UTILS::genericErrorCheck(stream, "PrecomputeGreensFunctionKernel");
+	}
 	SetActiveSimulations(simulations);
 }
 
@@ -458,10 +468,17 @@ void PME::Controller::SetActiveSimulations(const std::vector<EngineSimulationDat
 	if (batchCount == 0) return;
 	int dimensions[3]{gridpointsPerDim.z, gridpointsPerDim.y, gridpointsPerDim.x};
 	int complexDimensions[3]{gridpointsPerDim.z, gridpointsPerDim.y, gridpointsPerDim.x / 2 + 1};
-	CheckFft(cufftPlanMany(&planForward, 3, dimensions, dimensions, 1, static_cast<int>(nGridpointsRealspace),
-		complexDimensions, 1, nGridpointsReciprocalspace, CUFFT_R2C, batchCount));
-	CheckFft(cufftPlanMany(&planInverse, 3, dimensions, complexDimensions, 1, nGridpointsReciprocalspace,
-		dimensions, 1, static_cast<int>(nGridpointsRealspace), CUFFT_C2R, batchCount));
+	// With the z pass, each simulation's grid is nz planes of x and y
+	const int rank = zPass ? 2 : 3;
+	const int nTransforms = zPass ? gridpointsPerDim.z * batchCount : batchCount;
+	const int realDistance = zPass ? gridpointsPerDim.y * gridpointsPerDim.x : static_cast<int>(nGridpointsRealspace);
+	const int complexDistance = zPass ? gridpointsPerDim.y * (gridpointsPerDim.x / 2 + 1) : nGridpointsReciprocalspace;
+	int* const planeDimensions = dimensions + 3 - rank;
+	int* const planeComplexDimensions = complexDimensions + 3 - rank;
+	CheckFft(cufftPlanMany(&planForward, rank, planeDimensions, planeDimensions, 1, realDistance,
+		planeComplexDimensions, 1, complexDistance, CUFFT_R2C, nTransforms));
+	CheckFft(cufftPlanMany(&planInverse, rank, planeDimensions, planeComplexDimensions, 1, complexDistance,
+		planeDimensions, 1, realDistance, CUFFT_C2R, nTransforms));
 	CheckFft(cufftSetStream(planForward, stream));
 	CheckFft(cufftSetStream(planInverse, stream));
 	cudaMalloc(&realspaceGrid, nGridpointsRealspace * batchCount * sizeof(float));
@@ -480,6 +497,8 @@ PME::Controller::~Controller() {
 	cudaFree(fourierspaceGrid);
 	cudaFree(greensFunctionScalars);
 	cudaFree(reciprocalVirialScalars);
+	cudaFree(zTwiddles);
+	cudaFree(greensAxisTables);
 	if (chargeblockBuffers) chargeblockBuffers->Free();
 }
 
@@ -494,9 +513,12 @@ bool PME::Controller::RequiresRebuild(Float3 boxLength) const {
 void PME::Controller::UpdateBoxLength(Float3 boxLength) {
 	boxlenNm = boxLength;
 	gridScale = NodeIndex(blocksPerDim).toFloat3() / boxlenNm;
-	PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
-		greensFunctionScalars, reciprocalVirialScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa,
-		gridScale.x * gridScale.y * gridScale.z);
+	if (zPass)
+		UploadGreensAxisTables();
+	else
+		PrecomputeGreensFunctionKernel<<<(nGridpointsReciprocalspace + 63) / 64, 64, 0, stream>>>(
+			greensFunctionScalars, reciprocalVirialScalars, gridpointsPerDim, boxlenNm.x, boxlenNm.y, boxlenNm.z, ewaldKappa,
+			gridScale.x * gridScale.y * gridScale.z);
 }
 
 void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy,
@@ -509,13 +531,27 @@ void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta
 	FixedPointGridToDensityKernel<<<(nGridpoints + 255) / 256, 256, 0, stream>>>(fixedPointGrid, realspaceGrid, nGridpoints,
 		gridScale.x * gridScale.y * gridScale.z);
 	CheckFft(cufftExecR2C(planForward, realspaceGrid, fourierspaceGrid));
-	const int applyBlocks = VirialPartialCount();
-	if (virialPartials)
-		ApplyGreensFunctionKernel<true><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
-			reciprocalVirialScalars, gridpointsPerDim, batchCount, virialPartials);
-	else
-		ApplyGreensFunctionKernel<false><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
-			reciprocalVirialScalars, gridpointsPerDim, batchCount, nullptr);
+	if (zPass) {
+		using namespace PmeFft;
+		const int nx = gridpointsPerDim.x, width = PencilWidth(gridpointsPerDim.z);
+		// As PrecomputeGreensFunctionKernel: 4 pi / k^2 times the Coulomb constant and the axis factors, with the 1 / N normalization
+		const float greensScale = static_cast<float>(4.0 * PI * PhysicsUtilsDevice::modifiedCoulombConstant / double(nGridpointsRealspace));
+		const float virialFactor = 1.f / (invCellVolume * gridScale.x * gridScale.y * gridScale.z);
+		const float inverseTwoKappaSq = 1.f / (2.f * ewaldKappa * ewaldKappa);
+		const dim3 grid((nx / 2 + 1 + width - 1) / width, gridpointsPerDim.y, batchCount);
+		const auto kernel = virialPartials ? ZGreensKernel<true> : ZGreensKernel<false>;
+		kernel<<<grid, threads, SharedBytes(gridpointsPerDim.z), stream>>>(fourierspaceGrid, zAxis, zTwiddles, nx, gridpointsPerDim.y,
+			greensAxisTables, greensScale, virialFactor, inverseTwoKappaSq, virialPartials);
+	}
+	else {
+		const int applyBlocks = VirialPartialCount();
+		if (virialPartials)
+			ApplyGreensFunctionKernel<true><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
+				reciprocalVirialScalars, gridpointsPerDim, batchCount, virialPartials);
+		else
+			ApplyGreensFunctionKernel<false><<<applyBlocks, 64, 0, stream>>>(fourierspaceGrid, greensFunctionScalars,
+				reciprocalVirialScalars, gridpointsPerDim, batchCount, nullptr);
+	}
 	CheckFft(cufftExecC2R(planInverse, fourierspaceGrid, realspaceGrid)); // Normalization is folded into the greens function
 	if (forceAcc.fx == nullptr || forceAcc.potE != nullptr)
 		InterpolateForcesKernel<true><<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
@@ -524,6 +560,35 @@ void PME::Controller::CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta
 		InterpolateForcesKernel<false><<<nChargeblocks * batchCount, interpolateThreads, 0, stream>>>(*chargeblockBuffers, realspaceGrid, blocksPerDim, gridpointsPerDim,
 			scMeta, ewaldKappa, forceEnergy, forceAcc, gridScale);
 	LIMA_UTILS::genericErrorCheckNoSync("Batched PME");
+}
+
+int PME::Controller::VirialPartialCount() const {
+	if (zPass) {
+		const int width = PmeFft::PencilWidth(gridpointsPerDim.z);
+		return (gridpointsPerDim.x / 2 + 1 + width - 1) / width * gridpointsPerDim.y * batchCount;
+	}
+	return (nGridpointsReciprocalspace * batchCount + 63) / 64;
+}
+
+// Per x, y and z frequency index: k^2 [nm^-2], and exp(-k^2 / 4 kappa^2) divided by the squared B-spline modulus, as
+// PrecomputeGreensFunctionKernel's factors. x has the nx / 2 + 1 non-negative frequencies, y and z all, in cuFFT's order
+void PME::Controller::UploadGreensAxisTables() {
+	std::vector<float2> tables;
+	const auto AddAxis = [&](int n, int count, double length) {
+		for (int i = 0; i < count; i++) {
+			const int m = i <= n / 2 ? i : i - n;
+			const double k = 2.0 * PI * m / length;
+			const double modulus = (2.0 + std::cos(k * length / n)) / 3.0;
+			tables.push_back(float2{ static_cast<float>(k * k),
+				static_cast<float>(std::exp(-k * k / (4.0 * double(ewaldKappa) * ewaldKappa)) / (modulus * modulus)) });
+		}
+	};
+	AddAxis(gridpointsPerDim.x, gridpointsPerDim.x / 2 + 1, boxlenNm.x);
+	AddAxis(gridpointsPerDim.y, gridpointsPerDim.y, boxlenNm.y);
+	AddAxis(gridpointsPerDim.z, gridpointsPerDim.z, boxlenNm.z);
+	if (!greensAxisTables)
+		cudaMalloc(&greensAxisTables, tables.size() * sizeof(float2));
+	cudaMemcpy(greensAxisTables, tables.data(), tables.size() * sizeof(float2), cudaMemcpyHostToDevice);
 }
 
 void PME::Controller::PlotPotentialSlices() {

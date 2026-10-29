@@ -8,6 +8,7 @@
 namespace ChargeBlock { struct ChargeblockBuffers; }
 
 #include "platform/GpuFft.h"
+#include "PmeFft.h"
 #include <memory>
 
 namespace PME {
@@ -37,17 +38,24 @@ namespace PME {
 		float* realspaceGrid = nullptr;
 		int* fixedPointGrid = nullptr;		// The charges spread to the grid, in fixed point so their sums are deterministic, see SpreadChargesKernel
 		cufftComplex* fourierspaceGrid = nullptr;
-		float* greensFunctionScalars;
-		float* reciprocalVirialScalars;
+		float* greensFunctionScalars = nullptr;	// Without the z pass
+		float* reciprocalVirialScalars = nullptr;
 
 		// Chargeblocks 
 		std::unique_ptr<ChargeBlock::ChargeblockBuffers> chargeblockBuffers;
 
-		// The Greens multiply could be folded into the inverse FFT's load with a cuFFT LTO callback (cufftXtSetJITCallback),
-		// saving ApplyGreensFunctionKernel (~45 us/step on STMV). Not done: it JIT-links at plan creation, and complicates the
-		// static cuFFT linking on Linux
+		// With the z pass the plans transform the planes along x and y, else the whole grid. Without it, the Greens multiply could be
+		// folded into the inverse FFT's load with a cuFFT LTO callback (cufftXtSetJITCallback), saving ApplyGreensFunctionKernel.
+		// Not done: it JIT-links at plan creation, and complicates the static cuFFT linking on Linux
 		cufftHandle planForward = 0;
 		cufftHandle planInverse = 0;
+
+		// PmeFft's z pass, see PmeFft.cuh, for grids whose z axis it takes
+		bool zPass = false;
+		PmeFft::Axis zAxis{};
+		float2* zTwiddles = nullptr;
+		float2* greensAxisTables = nullptr;
+		void UploadGreensAxisTables();
 
 		cudaStream_t& stream;
 		// For system with a net charge, we apply to correction to each realspaceGridnode
@@ -63,7 +71,7 @@ namespace PME {
 		// MD adds the forces to forceAcc, EM stores them in forceEnergy (pcluster layout)
 		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc,
 			long long* virialPartials = nullptr);
-		int VirialPartialCount() const { return (nGridpointsReciprocalspace * batchCount + 63) / 64; }
+		int VirialPartialCount() const;
 		bool RequiresRebuild(Float3 boxLength) const;
 		void UpdateBoxLength(Float3 boxLength);
 

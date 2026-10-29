@@ -1,4 +1,8 @@
 #include "Tests.h"
+
+#include <array>
+#include <limits>
+
 static int ProfileT4(int batchSize, int steps) {
 	if (batchSize < 1 || steps < 1)
 		throw std::invalid_argument("Invalid T4 profiling arguments");
@@ -87,7 +91,73 @@ static int ProfileBatchScaling(int steps) {
 	return 0;
 }
 
+// Runs a system of the GROMACS benchmark set (LIMA_data/salad_gromacs_bench) with its own lima.mdp, changing only nsteps.
+// warmupSteps > 0 first runs an untimed simulation, so the GPU is back at full clocks. Returns the fastest run's time per step [ms]
+static double ProfileSalad(const std::string& name, int steps, int nRuns, int warmupSteps) {
+	if (steps < 1 || nRuns < 1)
+		throw std::invalid_argument("Invalid salad profiling arguments");
+	const std::filesystem::path dir = TestUtils::HeavyTestsDir() / "salad_gromacs_bench" / name;
+	if (!std::filesystem::exists(dir / "lima.mdp"))
+		throw std::invalid_argument(Lima::Format("Unknown salad system {} (no {})", name, (dir / "lima.mdp").string()));
+	const auto MakeJob = [&dir](int nSteps) {
+		SimulationJob job;
+		job.workDir = dir;
+		job.grofile.emplace(dir / "conf.gro");
+		job.topfile.emplace(dir / "topol.top");
+		job.simParams.emplace(dir / "lima.mdp");
+		job.mode = Headless;
+		job.mustRunAlone = true;
+		job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) { params.nsteps = nSteps; };
+		return job;
+	};
+
+	Environment& environment = Environment::Get();
+	if (warmupSteps > 0)
+		environment.Submit(MakeJob(warmupSteps)).Get();
+	double fastest = std::numeric_limits<double>::max();
+	// Await each run before submitting the next, so a run's preparation never overlaps the previous run's timed steps
+	for (int run = 0; run < nRuns; run++) {
+		const SimulationResult result = environment.Submit(MakeJob(steps)).Get();
+		if (!result.simulation || result.simulation->getStep() != steps)
+			throw std::runtime_error(Lima::Format("{} did not run fully", name));
+		const double msPerStep = std::chrono::duration<double, std::milli>(result.engineTime).count() / steps;
+		fastest = (std::min)(fastest, msPerStep);
+	}
+	return fastest;
+}
+
+// The performance suite: a small (villin, 5k atoms, launch-bound), a medium (adh_dodec, 191k) and a large (stmv, 1.07M,
+// throughput-bound) system, all with the same physics (PME, h-bond constraints, v-rescale, 2 fs). Step counts give
+// each run ~1.5 s. Prints the fastest of nRuns runs per system
+static int ProfileSuite(int nRuns) {
+	struct System { std::string name; int steps; };
+	const std::array<System, 3> systems{ { { "villin", 20000 }, { "adh_dodec", 3000 }, { "stmv", 500 } } };
+	std::cout << Lima::Format("{:>10} {:>10} {:>10}\n", "system", "ms/step", "ns/day");
+	for (const auto& system : systems) {
+		const double msPerStep = ProfileSalad(system.name, system.steps, nRuns, system.steps / 4);
+		const double dtPs = 0.002;	// lima.mdp of every salad system
+		std::cout << Lima::Format("{:>10} {:>10.4f} {:>10.1f}\n", system.name, msPerStep, dtPs * 86400.0 / msPerStep);
+	}
+	return 0;
+}
+
 int main(int argc, char** argv) {
+	if (argc > 1 && std::string_view(argv[1]) == "--suite") {
+		try {
+			if (argc > 3) throw std::invalid_argument("Usage: limaprofile --suite [runs=3]");
+			return ProfileSuite(argc > 2 ? std::stoi(argv[2]) : 3);
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+	}
+	// A single run without warmup, eg. for ncu
+	if (argc > 1 && std::string_view(argv[1]) == "--salad") {
+		try {
+			if (argc != 4) throw std::invalid_argument("Usage: limaprofile --salad villin|rnase_cubic|adh_dodec|stmv steps");
+			std::cout << Lima::Format("{:.4f} ms/step\n", ProfileSalad(argv[2], std::stoi(argv[3]), 1, 0));
+			return 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+	}
 	if (argc > 1 && std::string_view(argv[1]) == "--batch-scaling") {
 		try {
 			if (argc > 3) throw std::invalid_argument("Usage: limaprofile --batch-scaling [steps=2000]");

@@ -71,16 +71,20 @@ struct NeighborChunks {
 	int* done;
 };
 
-// gridDim = nGridnodes, blockDim = 32. Bounding sphere, cell, valid particles and external bonds of every supercluster, and the AABB of every cell
+// gridDim = nGridnodes, blockDim = (32, boundsWarpsPerBlock), warp w on the cell's superclusters w, w + boundsWarpsPerBlock, ...
+// Bounding sphere, cell, valid particles and external bonds of every supercluster, and the AABB of every cell
+constexpr int boundsWarpsPerBlock = 8;
 __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, const PclustersBondedToPcluster* const pclustersBondedToPcluster,
 	const PersistentClusterMeta* const pclusterMeta, float4* const scSpheres, int* const scCells, uint16_t* const scValidMasks, uint8_t* const scExternalBonds, float4* const cellMin, float4* const cellMax)
 {
 	static_assert(sizeof(PclustersBondedToPcluster) == 32 * sizeof(int), "One lane per value of a bonded set");
+	LIMA_SHARED_UNINIT(Float3, warpLo, [boundsWarpsPerBlock]);
+	LIMA_SHARED_UNINIT(Float3, warpHi, [boundsWarpsPerBlock]);
 	const int cell = blockIdx.x;
 	const int lane = threadIdx.x;
 	const int n = scControl.nSuperclustersInBlocks[cell];
 	Float3 lo{ FLT_MAX }, hi{ -FLT_MAX };
-	for (int k = 0; k < n; k++) {
+	for (int k = threadIdx.y; k < n; k += boundsWarpsPerBlock) {
 		const int scId = scControl.scIdsInBlocks[cell * SuperClustersControl::maxClustersPerBlock + k];
 		const int i = lane & 15;
 		const bool valid = scControl.scData[scId].Valid(i);
@@ -128,14 +132,28 @@ __global__ void SuperclusterBoundsKernel(const SuperClustersControl scControl, c
 			hi = Float3{ fmaxf(hi.x, p.x), fmaxf(hi.y, p.y), fmaxf(hi.z, p.z) };
 		}
 	}
-	for (int offset = 16; offset > 0; offset >>= 1) {
-		lo.x = fminf(lo.x, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.x, offset));
-		lo.y = fminf(lo.y, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.y, offset));
-		lo.z = fminf(lo.z, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.z, offset));
-		hi.x = fmaxf(hi.x, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.x, offset));
-		hi.y = fmaxf(hi.y, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.y, offset));
-		hi.z = fmaxf(hi.z, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.z, offset));
+	// Min and max are exact, so the AABB does not depend on the order
+	const auto ReduceWarp = [&]() {
+		for (int offset = 16; offset > 0; offset >>= 1) {
+			lo.x = fminf(lo.x, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.x, offset));
+			lo.y = fminf(lo.y, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.y, offset));
+			lo.z = fminf(lo.z, __shfl_xor_sync(LIMA_FULL_WARP_MASK, lo.z, offset));
+			hi.x = fmaxf(hi.x, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.x, offset));
+			hi.y = fmaxf(hi.y, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.y, offset));
+			hi.z = fmaxf(hi.z, __shfl_xor_sync(LIMA_FULL_WARP_MASK, hi.z, offset));
+		}
+	};
+	ReduceWarp();
+	if (lane == 0) {
+		warpLo[threadIdx.y] = lo;
+		warpHi[threadIdx.y] = hi;
 	}
+	__syncthreads();
+	if (threadIdx.y != 0)
+		return;
+	lo = lane < boundsWarpsPerBlock ? warpLo[lane] : Float3{ FLT_MAX };
+	hi = lane < boundsWarpsPerBlock ? warpHi[lane] : Float3{ -FLT_MAX };
+	ReduceWarp();
 	if (lane == 0) {
 		cellMin[cell] = float4{ lo.x, lo.y, lo.z, 0.f };
 		cellMax[cell] = float4{ hi.x, hi.y, hi.z, 0.f };
@@ -714,7 +732,7 @@ void Engine::FindSuperclusterNeighbors(cudaStream_t stream, float listRadius, bo
 			cudaMemsetAsync(tb.chunksDone.Get(), 0, sizeof(int) * static_cast<size_t>(double(n) * 1.2), stream); // The size Expand allocated
 	}
 
-	SuperclusterBoundsKernel<<<nCells, 32, 0, stream>>>(*batch->superClustersControl, tb.contents.pclustersBondedToPcluster, batch->pClusterMetaDevice.Get(), tb.scSpheres.Get(),
+	SuperclusterBoundsKernel<<<nCells, dim3(32, boundsWarpsPerBlock), 0, stream>>>(*batch->superClustersControl, tb.contents.pclustersBondedToPcluster, batch->pClusterMetaDevice.Get(), tb.scSpheres.Get(),
 		tb.scCells.Get(), tb.scValidMasks.Get(), tb.scExternalBonds.Get(), tb.cellMin.Get(), tb.cellMax.Get());
 	cudaMemsetAsync(tb.overflow.Get(), 0, sizeof(int), stream);
 	const auto kernel = nChunks > 1 ? FindNeighborsKernel<true> : FindNeighborsKernel<false>;

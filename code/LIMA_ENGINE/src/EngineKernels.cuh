@@ -662,9 +662,20 @@ namespace Constraints {
 			printf("Warning: %s did not converge in %d iterations, or a constraint degenerated. The system is likely unstable, eg. dt too large\n", what, iterations);
 	}
 
-	// The particles of a pcluster in its supercluster, -1 for the unused indices
+	// The particles of a pcluster in its supercluster, -1 for the unused indices.
+	// The solvers run on one thread per pcluster while the rest of the cell waits, so they avoid local memory: Slot selects rather
+	// than indexes, and the loops over a pcluster's constraints are unrolled to maxConstraints with guards, keeping their arrays in registers
 	struct Group {
 		int slots[PersistentCluster::maxParticles];
+
+		// slots[i] for a runtime i
+		__device__ int Slot(int i) const {
+			static_assert(PersistentCluster::maxParticles == 4);
+			return i == 0 ? slots[0] : i == 1 ? slots[1] : i == 2 ? slots[2] : slots[3];
+		}
+		// The slots of constraint c's two particles
+		__device__ int SlotA(const PclusterConstraints& constraints, int c) const { return Slot(constraints.particles[c] & 3); }
+		__device__ int SlotB(const PclusterConstraints& constraints, int c) const { return Slot(constraints.particles[c] >> 2); }
 	};
 
 	// Removes the velocity components along the constraints (RATTLE), at the constrained positions. The corrections are linear in
@@ -673,21 +684,27 @@ namespace Constraints {
 		Float3* const velocities, const float* const invMasses) {
 		constexpr int maxC = PclusterConstraints::maxConstraints;
 		static_assert(maxC == 3);
+		const int nC = constraints.nConstraints;
 		int a[maxC], b[maxC];
 		Float3 r[maxC];
-		for (int c = 0; c < constraints.nConstraints; c++) {
-			a[c] = group.slots[constraints.particles[c] & 3];
-			b[c] = group.slots[constraints.particles[c] >> 2];
-			r[c] = positions[a[c]] - positions[b[c]];
+#pragma unroll
+		for (int c = 0; c < maxC; c++) {
+			a[c] = group.SlotA(constraints, c);
+			b[c] = group.SlotB(constraints, c);
+			r[c] = c < nC ? positions[a[c]] - positions[b[c]] : Float3{};
 		}
 		// Row c: the change of the velocity along constraint c per unit multiplier of constraint k, which moves a[k] by +r[k]/m
 		// and b[k] by -r[k]/m. Unused rows, and those of constraints between two particles fixed by live edits, are identity
 		float m[maxC][maxC] = { { 1.f, 0.f, 0.f }, { 0.f, 1.f, 0.f }, { 0.f, 0.f, 1.f } };
 		float rhs[maxC] = {};
-		for (int c = 0; c < constraints.nConstraints; c++) {
-			if (invMasses[a[c]] + invMasses[b[c]] == 0.f)
+#pragma unroll
+		for (int c = 0; c < maxC; c++) {
+			if (c >= nC || invMasses[a[c]] + invMasses[b[c]] == 0.f)
 				continue;
-			for (int k = 0; k < constraints.nConstraints; k++) {
+#pragma unroll
+			for (int k = 0; k < maxC; k++) {
+				if (k >= nC)
+					continue;
 				const float side = (a[c] == a[k] ? invMasses[a[c]] : a[c] == b[k] ? -invMasses[a[c]] : 0.f)
 					- (b[c] == a[k] ? invMasses[b[c]] : b[c] == b[k] ? -invMasses[b[c]] : 0.f);
 				m[c][k] = side * r[c].dot(r[k]);
@@ -710,7 +727,10 @@ namespace Constraints {
 			multipliers[k] = (mk[0][0] * (mk[1][1] * mk[2][2] - mk[1][2] * mk[2][1]) - mk[0][1] * (mk[1][0] * mk[2][2] - mk[1][2] * mk[2][0])
 				+ mk[0][2] * (mk[1][0] * mk[2][1] - mk[1][1] * mk[2][0])) / det;
 		}
-		for (int k = 0; k < constraints.nConstraints; k++) {
+#pragma unroll
+		for (int k = 0; k < maxC; k++) {
+			if (k >= nC)
+				continue;
 			velocities[a[k]] += r[k] * (multipliers[k] * invMasses[a[k]]);
 			velocities[b[k]] -= r[k] * (multipliers[k] * invMasses[b[k]]);
 		}
@@ -726,6 +746,7 @@ namespace Constraints {
 	__device__ inline bool FindWater(const PclusterConstraints& constraints, const Group& group, const float* const invMasses, Water& water) {
 		if (constraints.nConstraints != 3)
 			return false;
+#pragma unroll
 		for (int hh = 0; hh < 3; hh++) {
 			const int c1 = (hh + 1) % 3, c2 = (hh + 2) % 3;
 			if (constraints.distance[c1] != constraints.distance[c2])
@@ -736,7 +757,7 @@ namespace Constraints {
 			const int o = (a1 == a2 || a1 == b2) ? a1 : (b1 == a2 || b1 == b2) ? b1 : -1;
 			if (o < 0 || o == h1 || o == h2 || (a1 == o ? b1 : a1) == (a2 == o ? b2 : a2))
 				continue;
-			water = { group.slots[o], group.slots[h1], group.slots[h2], constraints.distance[c1], constraints.distance[hh] };
+			water = { group.Slot(o), group.Slot(h1), group.Slot(h2), constraints.distance[c1], constraints.distance[hh] };
 			return invMasses[water.o] > 0.f && invMasses[water.h1] > 0.f && invMasses[water.h1] == invMasses[water.h2];
 		}
 		return false;
@@ -811,10 +832,21 @@ namespace Constraints {
 	// positions. Works on the steps rather than the positions, as those are small, so the solution is precise. Sequential
 	__device__ inline void ConstrainSteps(const PclusterConstraints& constraints, const Group& group, const Float3* const positions,
 		Float3* const steps, const float* const invMasses) {
+		constexpr int maxC = PclusterConstraints::maxConstraints;
+		const int nC = constraints.nConstraints;
+		int slotsA[maxC], slotsB[maxC];
+#pragma unroll
+		for (int c = 0; c < maxC; c++) {
+			slotsA[c] = group.SlotA(constraints, c);
+			slotsB[c] = group.SlotB(constraints, c);
+		}
 		for (int iteration = 0; iteration < maxIterations; iteration++) {
 			float maxError = 0.f;
-			for (int c = 0; c < constraints.nConstraints; c++) {
-				const int a = group.slots[constraints.particles[c] & 3], b = group.slots[constraints.particles[c] >> 2];
+#pragma unroll
+			for (int c = 0; c < maxC; c++) {
+				if (c >= nC)
+					break;
+				const int a = slotsA[c], b = slotsB[c];
 				const Float3 rOld = positions[a] - positions[b];
 				const Float3 rNew = rOld + steps[a] - steps[b];
 				const float dd = constraints.distance[c] * constraints.distance[c];
@@ -862,8 +894,9 @@ namespace ConstrainedCell {
 			const int local = pclusterParticleSlots[pcId * PersistentCluster::maxParticles + k] - cell.firstScId * n;
 			group.slots[k] = local >= 0 && local < cell.nScs * n ? local : -1;
 		}
-		for (int c = 0; c < constraints.nConstraints; c++)
-			if (group.slots[constraints.particles[c] & 3] < 0 || group.slots[constraints.particles[c] >> 2] < 0) {
+#pragma unroll
+		for (int c = 0; c < PclusterConstraints::maxConstraints; c++)
+			if (c < constraints.nConstraints && (group.SlotA(constraints, c) < 0 || group.SlotB(constraints, c) < 0)) {
 				printf("Constrained particles of pcluster %d are not in the same cell\n", pcId);
 				return false;
 			}
@@ -924,9 +957,10 @@ __global__ void ConstrainPositionsKernel(const SuperClustersControl scControl, c
 // orthogonal to the constraints, and SETTLE (water) or SHAKE puts the positions after the step back on them. The position correction is added to forcePrev as
 // the constraint force, so the next step's half kick includes it, while the stored velocity stays the constrained full-step
 // velocity. A constrained group never spans pclusters, and each pcluster's constraints are solved by the thread of its first
-// particle in a fixed order, so the result is deterministic. gridDim = nGridnodes, blockDim = (16, 16, 1), see ConstrainedCell
+// particle in a fixed order, so the result is deterministic. gridDim = nGridnodes, blockDim = (16, 16, 1), see ConstrainedCell.
+// __launch_bounds__: 3 blocks per SM (80 registers) hide the solver threads' latency best; 4 spill
 template<typename BoundaryCondition, bool logData, bool computeVirial>
-__global__ void SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences,
+__global__ void __launch_bounds__(256, 3) SuperclusterIntegrateConstrainedKernel(const ForceAccumulator forceAcc, const ForceAccumulator primaryBondForces, const ulonglong4* const extraBondForces, const int* const bondReferences,
 	const SuperClustersControl scControl, ParticleIntegrationState* const states, const IntegrationSimulationData* const simulationData, int nSuperclusters,
 	Float3 boxSize, float* const forcesMagnitudeSquared, const LiveEditBuffers liveEdit, const LogBuffers log, const PclusterConstraints* const pclusterConstraints,
 	const int* const pclusterParticleSlots, const CapacityOverflow overflow, const int64_t* const stepIndex, long long* const virialPartials,

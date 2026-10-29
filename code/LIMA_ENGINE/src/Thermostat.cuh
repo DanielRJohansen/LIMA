@@ -168,6 +168,7 @@ public:
 	}
 
 	bool MeasuresAt(int64_t step) const { return step > firstStep && step % interval == 0; }
+	int Interval() const { return interval; }
 
 	// Capturable. kineticEnergyValues is the batch's Thermostat buffer, one value per pcluster lane. If valuesCurrent, the previous
 	// step's integration wrote them (Thermostat::integrationWritesValues), else they are computed from the slots. See VRescaleKernel

@@ -1129,8 +1129,9 @@ void Engine::_deviceMaster(bool measureTemperature) {
 			const LiveEditBuffers liveEdit{ batch->fixedParticleMovementBuffer ? batch->fixedParticleMovementBuffer->Get() : nullptr,
 				batch->forceMaskBuffer ? batch->forceMaskBuffer->Get() : nullptr,
 				batch->fixedParticleRotationBuffer ? batch->fixedParticleRotationBuffer->Get() : nullptr };
-			// The device thermostat's next measurement reads them, see Thermostat::integrationWritesValues
-			float* const kineticEnergies = UsesDeviceThermostat() ? batch->thermostat->KineticEnergyValues() : nullptr;
+			// The device thermostat's next measurement reads them, see Thermostat::integrationWritesValues. Only when it measures every
+			// step, as with v-rescale and md-vv: a longer interval measures too rarely for the integration's writes to pay off
+			float* const kineticEnergies = UsesDeviceThermostat() && deviceThermostat->Interval() == 1 ? batch->thermostat->KineticEnergyValues() : nullptr;
 			if (batch->hasConstraints) {
 				// forcePrev includes the constraint force, so the kernel writes the measured force magnitudes itself
 				batch->forceMagnitudesInStates = false;

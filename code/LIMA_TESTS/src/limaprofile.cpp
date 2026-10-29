@@ -1,6 +1,7 @@
 #include "Tests.h"
 
 #include <array>
+#include <cstring>
 #include <limits>
 
 static int ProfileT4(int batchSize, int steps) {
@@ -91,9 +92,23 @@ static int ProfileBatchScaling(int steps) {
 	return 0;
 }
 
+// FNV-1a over the bits of a run's temperatures, one per thermostat coupling. Equal between two builds only if their dynamics are
+// bitwise identical, so a performance change that should not change the numerics can be checked on the benchmark systems
+static uint64_t TemperatureChecksum(const std::vector<float>& temperatures) {
+	uint64_t hash = 14695981039346656037ull;
+	for (const float temperature : temperatures) {
+		uint32_t bits = 0;
+		std::memcpy(&bits, &temperature, sizeof(bits));
+		for (int byte = 0; byte < 4; byte++)
+			hash = (hash ^ ((bits >> (8 * byte)) & 0xFF)) * 1099511628211ull;
+	}
+	return hash;
+}
+
 // Runs a system of the GROMACS benchmark set (LIMA_data/salad_gromacs_bench) with its own lima.mdp, changing only nsteps.
-// warmupSteps > 0 first runs an untimed simulation, so the GPU is back at full clocks. Returns the fastest run's time per step [ms]
-static double ProfileSalad(const std::string& name, int steps, int nRuns, int warmupSteps) {
+// warmupSteps > 0 first runs an untimed simulation, so the GPU is back at full clocks. Returns the fastest run's time per step [ms],
+// and the last run's TemperatureChecksum in checksum
+static double ProfileSalad(const std::string& name, int steps, int nRuns, int warmupSteps, uint64_t* checksum = nullptr) {
 	if (steps < 1 || nRuns < 1)
 		throw std::invalid_argument("Invalid salad profiling arguments");
 	const std::filesystem::path dir = TestUtils::HeavyTestsDir() / "salad_gromacs_bench" / name;
@@ -122,6 +137,8 @@ static double ProfileSalad(const std::string& name, int steps, int nRuns, int wa
 			throw std::runtime_error(Lima::Format("{} did not run fully", name));
 		const double msPerStep = std::chrono::duration<double, std::milli>(result.engineTime).count() / steps;
 		fastest = (std::min)(fastest, msPerStep);
+		if (checksum)
+			*checksum = TemperatureChecksum(result.simulation->temperature_buffer);
 	}
 	return fastest;
 }
@@ -149,11 +166,13 @@ int main(int argc, char** argv) {
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 	}
-	// A single run without warmup, eg. for ncu
+	// A single run without warmup, eg. for ncu. The checksum tells whether two builds' dynamics are bitwise identical
 	if (argc > 1 && std::string_view(argv[1]) == "--salad") {
 		try {
 			if (argc != 4) throw std::invalid_argument("Usage: limaprofile --salad villin|rnase_cubic|adh_dodec|stmv steps");
-			std::cout << Lima::Format("{:.4f} ms/step\n", ProfileSalad(argv[2], std::stoi(argv[3]), 1, 0));
+			uint64_t checksum = 0;
+			const double msPerStep = ProfileSalad(argv[2], std::stoi(argv[3]), 1, 0, &checksum);
+			std::cout << Lima::Format("{:.4f} ms/step, temperature checksum {:016x}\n", msPerStep, checksum);
 			return 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

@@ -71,9 +71,15 @@ Result: villin -13.4%, adh_dodec -13.4%, stmv -4.9% (paired runs); `--stmv-const
 | Fixed supercluster capacity for small systems: nSuperclusters = cells x 16, superclusters past the count padded on the GPU, no clustering wait, step graph kept across rebuilds | villin +1.7%, rnase +2.5% (paired) | Bitwise identical and the graph was kept (21 captures in 2000 steps), and under nsys it looked faster (mean step 66 -> 57 us). But nsys inflates host API time: in real runs the host work around a rebuild is already hidden, so only the padding's cost showed: NB, Distribute and the search over 1.8x (rnase 2.2x) the superclusters, and fewer search chunks per supercluster |
 
 ### Open
-- **Where villin's rebuild time beyond its kernels goes** (~120 us per rebuild by the nstlist fit) is unexplained: not host idle on
-  the critical path (see the fixed capacity above). Candidates: cold caches after the layout changes, or slower steps right after a
-  rebuild. Measure step times by position in the rebuild cycle without nsys (eg. GPU timestamps) before designing anything.
+- **villin's rebuild cycle, measured with GPU timestamps** (a `%globaltimer` stamp at each step's start and end in the step graph, and
+  between the rebuild phases; no nsys). Every step takes 29.7 us on the GPU, and the gap between replayed graphs is ~2 us. The cycle's
+  excess is GPU idle, not slower steps: in the rebuild step ~130 us of kernels and ~100 us of idle (37 us around the clustering wait,
+  the rest at launch boundaries), plus 13 us before the step preceding a rebuild and 34 us before the second step after it. Those two
+  sit at WDDM submission boundaries: a graph queued 700 us earlier still starts ~15 us late when it opens a new submission. Moving the
+  boundaries (no flush at the end of the replay loop before a rebuild, no flush of the captured launch, a flush after the first
+  replay) removes the gaps in the timeline, but the idle reappears inside the rebuild: wall clock neutral (+0.1%, 10 paired runs).
+  The fixed capacity removed the wait's idle (37 -> 8 us) but its search got 26 us slower (fewer chunks per supercluster). So the
+  idle is the cost of the rebuild's one host round trip; what is left to win is ~1-2% on villin, for a device-driven rebuild.
 - **cuFFT LTO callbacks** (ToDensity into the R2C load), see PME.cuh: one more pass less, at the cost of JIT linking.
 - **PME internals on stmv:** Interpolate ~125 us, Spread ~70 us (global tile-flush atomics; 2x2x2 chargeblocks per tile untried).
 - **FindNeighbors cell loop** runs with ~7 of 32 lanes active (40 hit cells per supercluster on adh); flattening (cell, candidate)

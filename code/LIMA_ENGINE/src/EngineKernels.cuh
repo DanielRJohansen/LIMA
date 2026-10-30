@@ -459,7 +459,8 @@ __global__ void __launch_bounds__(64, computePotE ? 12 : 16) NbNonlocalKernel(co
 					const float4 pqJ = jPosCharge[warpInBlock][group][jLocal];
 					const float2 seJ = jSigmaEpsilon[warpInBlock][group][jLocal];
 					const Float3 diff{ pqI.x - pqJ.x, pqI.y - pqJ.y, pqI.z - pqJ.z };
-					const bool masked = ((noInteractions >> k) & 1) | (diff.lenSquared() >= cutoffSq);
+					// A constant bit test and a logical or, so the exclusion is one predicate, which the cutoff compare combines with
+					const bool masked = (noInteractions & (1u << k)) != 0 || diff.lenSquared() >= cutoffSq;
 					ForceEnergy fe = LJ::ComputePairNB<computePotE>(diff, LJ::CalcSigma(seI.x, seJ.x), LJ::CalcEpsilon(seI.y, seJ.y), pqI.w * pqJ.w, masked, ewald);
 					if constexpr (computeVirial)
 					virialLocal -= diff.dot(fe.force);

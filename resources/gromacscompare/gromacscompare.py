@@ -20,6 +20,7 @@ LIMA_data/salad_gromacs_bench/bundle/make_bundle.py, whose README describes it."
 import argparse
 import hashlib
 import html
+import http.client
 import json
 import math
 import os
@@ -112,16 +113,28 @@ def fetch(system, data_dir):
     archive = root / f"{system}.tar.gz.part"
     url = f"{BASE_URL.rstrip('/')}/{system}.tar.gz"
     log(f"Downloading {url} ({size / 1e6:.1f} MB)")
-    try:
-        with urllib.request.urlopen(url, timeout=60) as response, open(archive, "wb") as out:
-            shutil.copyfileobj(response, out, 1 << 20)
-    except OSError as error:
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response, open(archive, "wb") as out:
+                shutil.copyfileobj(response, out, 1 << 20)
+            problem = None
+        except (OSError, http.client.HTTPException) as error:
+            problem = f"failed: {error}"
+        if problem is None:
+            received = archive.stat().st_size
+            if received != size:  # a dropped connection, retried
+                problem = f"was cut off at {received / 1e6:.1f} of {size / 1e6:.1f} MB"
+            elif sha256_of(archive) != sha256:  # full size but different content: not a network problem
+                archive.unlink()
+                raise Failure(f"{url} does not match the expected SHA-256: the dataset changed and this LIMA is "
+                              f"outdated")
+            else:
+                break
         archive.unlink(missing_ok=True)
-        raise Failure(f"Downloading {url} failed: {error}")
-    if archive.stat().st_size != size or sha256_of(archive) != sha256:
-        archive.unlink()
-        raise Failure(f"{url} does not match the expected size and SHA-256: the download is damaged, or the dataset "
-                      f"changed and this LIMA is outdated")
+        if attempt == attempts:
+            raise Failure(f"Downloading {url} {problem} ({attempts} attempts)")
+        log(f"  download {problem}, retrying ({attempt}/{attempts})")
 
     staging = root / f".extract-{system}"
     shutil.rmtree(staging, ignore_errors=True)
@@ -577,12 +590,14 @@ def main(argv):
     setup = {"date": time.strftime("%Y-%m-%d %H:%M"), "lima": f"{lima_version} ({lima})", "limaVersion": lima_version or "LIMA",
              "gromacs": gmx_version, "gromacsPath": gmx.describe(), "gromacsWsl": gmx.wsl is not None, "gpu": gpu, "cpu": cpu,
              "os": f"{platform.system()} {platform.release()}"}
+    # All downloads before the first simulation, so a network problem fails the run at once, not hours into it
+    data_dirs = {system: fetch(system, data_dir) for system in systems}
     results = {}
     for system in systems:
         log(f"\n== {system} ({SYSTEMS[system][1]:,} atoms)")
         results[system] = {}
         try:
-            data = fetch(system, data_dir)
+            data = data_dirs[system]
             work = out_dir / system
             shutil.rmtree(work / "inputs", ignore_errors=True)
             # A copy, so both engines read the inputs by paths relative to their run directory, also from WSL

@@ -110,6 +110,10 @@ struct SimParams {
     SimParam<float> fourier_spacing{ "fourierspacing", 0.f, SimParamSection::Physics,
         "[nm] Largest PME grid spacing. 0 is 0.125 * cutoff_nm, the accuracy of GROMACS' defaults (fourierspacing 0.12 "
         "at a 1 nm cutoff), as the Ewald splitting, and with it the grid needed, scales with the cutoff" };
+    SimParam<bool> mts{ "mts", false, SimParamSection::Physics,
+        "Multiple time stepping, as GROMACS' mts = yes with mts-level2-forces = longrange-nonbonded: the PME mesh forces are "
+        "computed every mts_level2_factor steps, with that factor as weight (impulse RESPA). nstenergy must be a multiple of the factor. MD only" };
+    SimParam<int> mts_level2_factor{ "mts_level2_factor", 2, SimParamSection::Physics, "[steps] Interval of the PME mesh forces with mts" };
     SimParam<std::set<SupernaturalForcesSelect>> snf_select{ "supernatural_forces", {}, SimParamSection::Physics };
     SimParam<ConstraintsSelect> constraints{ "constraints", ConstraintsSelect::None, SimParamSection::Physics,
         "none or h-bonds: h-bonds holds bonds to hydrogens at their equilibrium length and makes water rigid, as GROMACS' "
@@ -159,7 +163,7 @@ struct SimParams {
 
     auto Params() {
         return std::tie(nsteps, dt, em_variant, emtol, nstlist, verlet_buffer_tolerance, rlist,
-            bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, snf_select, constraints,
+            bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, mts, mts_level2_factor, snf_select, constraints,
             nsttcouple, tcoupl, ref_t, tau_t, ld_seed, initial_temperature, gen_seed,
             pcoupl, nstpcouple, ref_p, tau_p, compressibility,
             nstenergy, nstxout_compressed, save_energy, coloring_method, self_diffusion, density_profile, stepwise);
@@ -167,7 +171,7 @@ struct SimParams {
 
     auto Params() const {
         return std::tie(nsteps, dt, em_variant, emtol, nstlist, verlet_buffer_tolerance, rlist,
-            bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, snf_select, constraints,
+            bc_select, enable_electrostatics, cutoff_nm, fourier_spacing, mts, mts_level2_factor, snf_select, constraints,
             nsttcouple, tcoupl, ref_t, tau_t, ld_seed, initial_temperature, gen_seed,
             pcoupl, nstpcouple, ref_p, tau_p, compressibility,
             nstenergy, nstxout_compressed, save_energy, coloring_method, self_diffusion, density_profile, stepwise);

@@ -262,6 +262,19 @@ void ParseMdp(const Dictionary& mdp, SimParams& params) {
     }
     parseIfPresent("rcoulomb", params.cutoff_nm.value);
     parseIfPresent("fourierspacing", params.fourier_spacing.value);
+    // GROMACS' multiple time stepping, with the PME mesh as its only level-2 force
+    if (const auto found = mdp.find("mts"); found != mdp.end()) {
+        if (found->second == "yes") params.mts.value = true;
+        else if (found->second == "no") params.mts.value = false;
+        else throw std::runtime_error("Invalid value for 'mts': " + found->second);
+    }
+    if (params.mts) {
+        if (const auto found = mdp.find("mts-levels"); found != mdp.end() && found->second != "2")
+            throw std::runtime_error("Unsupported mts-levels: " + found->second + ", LIMA has 2");
+        if (const auto found = mdp.find("mts-level2-forces"); found != mdp.end() && found->second != "longrange-nonbonded")
+            throw std::runtime_error("Unsupported mts-level2-forces: " + found->second + ", LIMA has longrange-nonbonded");
+        parseIfPresent("mts-level2-factor", params.mts_level2_factor.value);
+    }
     // LIMA has one cutoff for LJ and Coulomb
     if (const auto found = mdp.find("rvdw"); found != mdp.end())
         if (ParseNumber<float>("rvdw", found->second) != params.cutoff_nm)

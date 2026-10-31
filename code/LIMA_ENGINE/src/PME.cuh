@@ -68,9 +68,9 @@ namespace PME {
 		void SetActiveSimulations(const std::vector<EngineSimulationData>& simulations);
 		~Controller();
 
-		// MD adds the forces to forceAcc, EM stores them in forceEnergy (pcluster layout)
+		// MD adds the forces to forceAcc, times forceWeight (see SimParams::mts; the energy is unweighted), EM stores them in forceEnergy (pcluster layout)
 		void CalcCharges(SuperCluster* scData, SuperClusterMeta* scMeta, int nSuperclusters, ForceEnergy* forceEnergy, ForceAccumulator forceAcc,
-			long long* virialPartials = nullptr);
+			long long* virialPartials = nullptr, float forceWeight = 1.f);
 		int VirialPartialCount() const;
 		bool RequiresRebuild(Float3 boxLength) const;
 		void UpdateBoxLength(Float3 boxLength);

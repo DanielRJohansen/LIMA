@@ -153,15 +153,15 @@ private:
 	// arguments and buffers need no tracking. Anything launched in a captured step must be capturable: no syncs, no allocations,
 	// and only on the forked streams. Ignored on HIP
 	static constexpr bool useStepGraphs = true;
-	// [logData][computeVirial][measureTemperature], the last for the DeviceThermostat's coupling steps
-	std::array<std::array<std::array<cudaGraphExec_t, 2>, 2>, 2> stepGraphs{};
+	// [logData][computeVirial][StepGraphVariant()]
+	std::array<std::array<std::array<cudaGraphExec_t, 4>, 2>, 2> stepGraphs{};
 	void BeginStepCapture();
-	void LaunchCapturedStep(bool logData, bool computeVirial, bool measureTemperature);
-	// Steps without logging or virial relaunch stepGraphs[0][0][measureTemperature] without capturing while it is valid: the host then queues a step in
+	void LaunchCapturedStep(bool logData, bool computeVirial, int variant);
+	// Steps without logging or virial relaunch stepGraphs[0][0][variant] without capturing while it is valid: the host then queues a step in
 	// a few us rather than the ~30 us of capturing and updating it, and stays ahead of the GPU on small systems. Its arguments change
 	// only on a clustering, a task build, an upload of IntegrationSimulationData or a changed live-edit buffer, which invalidate it.
 	// The step index the kernels read is advanced on the GPU, see stepCounterDevice. Not in Interactive mode, where params change freely
-	std::array<bool, 2> replayableStepGraph{};	// [measureTemperature]
+	std::array<bool, 4> replayableStepGraph{};	// [StepGraphVariant()]
 	void InvalidateStepGraph() { replayableStepGraph = {}; }
 	// The current step's index, advanced by the step's first kernel. Read by the integration kernels for error reports
 	int64_t* stepCounterDevice = nullptr;
@@ -182,6 +182,10 @@ private:
 	bool UsesDeviceThermostat() const;
 	// Whether the step batch->step starts with the DeviceThermostat's measurement and coupling
 	bool DeviceThermostatStep() const;
+	// With mts, the weight of this step's PME mesh forces: mts_level2_factor on every factor'th step, else 0. 1 without mts
+	float PmeForceWeight() const;
+	// The step's graph: bit 0 for the DeviceThermostat's coupling steps, bit 1 for mts steps without PME mesh forces
+	int StepGraphVariant() const;
 	// Must be called whenever the batch is packed
 	void UploadDeviceThermostatSimulations();
 	void HarvestTemperatures(EngineSimulationData& sim);

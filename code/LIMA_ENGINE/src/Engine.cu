@@ -46,6 +46,16 @@ Engine::Engine(const std::vector<Simulation*>& simulations, EngineRunMode mode,
 		throw std::invalid_argument("Pressure coupling is not supported during live editing");
 	if (!renderDataPipes.empty() && renderDataPipes.size() != simulations.size())
 		throw std::invalid_argument("Render data pipe count does not match simulation count");
+	for (const Simulation* simulation : simulations) {
+		const SimParams& params = simulation->simParams;
+		if (!params.mts || params.em_variant) continue;
+		if (params.mts_level2_factor < 2)
+			throw std::invalid_argument("mts_level2_factor must be at least 2");
+		// Energy steps report the PME mesh energy, computed only on mts steps
+		if (params.nstenergy % params.mts_level2_factor != 0)
+			throw std::invalid_argument("nstenergy (" + std::to_string(params.nstenergy.value) + ") must be a multiple of mts_level2_factor ("
+				+ std::to_string(params.mts_level2_factor.value) + ")");
+	}
 	EngineBatch::Pack(*batch, simulations);
 	for (auto& simulation : batch->simulations)
 		if (!simulation.simulation->temperature_buffer.empty())
@@ -174,17 +184,17 @@ void Engine::ForkStreamsFromMainStream() {
 // directly; it only needs to be correct
 #if defined(LIMA_HIP)
 void Engine::BeginStepCapture() {}
-void Engine::LaunchCapturedStep(bool, bool, bool) {}
+void Engine::LaunchCapturedStep(bool, bool, int) {}
 void Engine::LaunchStepGraph(cudaGraphExec_t, bool) {}
 #else
 // ThreadLocal, so the log drain thread's CUDA calls are not affected by the capture
 void Engine::BeginStepCapture() {
 	LIMA_UTILS::genericErrorCheck(cudaStreamBeginCapture(cudaStreams[0], cudaStreamCaptureModeThreadLocal));
 }
-void Engine::LaunchCapturedStep(bool logData, bool computeVirial, bool measureTemperature) {
+void Engine::LaunchCapturedStep(bool logData, bool computeVirial, int variant) {
 	cudaGraph_t graph = nullptr;
 	LIMA_UTILS::genericErrorCheck(cudaStreamEndCapture(cudaStreams[0], &graph));
-	cudaGraphExec_t& exec = stepGraphs[logData][computeVirial][measureTemperature];
+	cudaGraphExec_t& exec = stepGraphs[logData][computeVirial][variant];
 	if (exec) {
 		cudaGraphExecUpdateResultInfo updateInfo{};
 		if (cudaGraphExecUpdate(exec, graph, &updateInfo) != cudaSuccess) {
@@ -198,7 +208,7 @@ void Engine::LaunchCapturedStep(bool logData, bool computeVirial, bool measureTe
 	LaunchStepGraph(exec, true);
 	cudaGraphDestroy(graph);
 	if (!logData && !computeVirial && mode != EngineRunMode::Interactive)
-		replayableStepGraph[measureTemperature] = true;
+		replayableStepGraph[variant] = true;
 }
 void Engine::LaunchStepGraph(cudaGraphExec_t exec, bool captured) {
 	LIMA_UTILS::genericErrorCheck(cudaGraphLaunch(exec, cudaStreams[0]));
@@ -399,7 +409,7 @@ int Engine::StepUntilHostWork() {
 	int nSteps = 1;
 	if (nSteps < maxStepsPerCall && IsPlainReplayStep()) {
 		do {
-			LaunchStepGraph(stepGraphs[0][0][DeviceThermostatStep()], false);
+			LaunchStepGraph(stepGraphs[0][0][StepGraphVariant()], false);
 			AdvanceStepCounters();
 			for (auto& sim : batch->simulations)
 				if (sim.device.active) sim.runstatus.current_step = sim.step;
@@ -421,7 +431,7 @@ void Engine::AdvanceStepCounters() {
 }
 
 bool Engine::IsPlainReplayStep() const {
-	if (!replayableStepGraph[DeviceThermostatStep()] || mode != EngineRunMode::Simulation || IsFinished())
+	if (!replayableStepGraph[StepGraphVariant()] || mode != EngineRunMode::Simulation || IsFinished())
 		return false;
 	const auto& params = batch->params;
 	const int64_t step = batch->step;	// The step to run, the steps' host work below sees step + 1
@@ -685,6 +695,17 @@ bool Engine::UsesDeviceThermostat() const {
 
 bool Engine::DeviceThermostatStep() const {
 	return UsesDeviceThermostat() && deviceThermostat->MeasuresAt(batch->step);
+}
+
+float Engine::PmeForceWeight() const {
+	const SimParams& params = batch->params;
+	if (!params.mts || params.em_variant)
+		return 1.f;
+	return batch->step % params.mts_level2_factor == 0 ? static_cast<float>(params.mts_level2_factor.value) : 0.f;
+}
+
+int Engine::StepGraphVariant() const {
+	return (DeviceThermostatStep() ? 1 : 0) + (PmeForceWeight() == 0.f ? 2 : 0);
 }
 
 void Engine::UploadDeviceThermostatSimulations() {
@@ -1046,8 +1067,10 @@ void Engine::_deviceMaster(bool measureTemperature) {
 	}
 	// EM synchronizes within the step. SNFs are not checked for capturability
 	const bool captureStep = useStepGraphs && !emvariant && nScs > 0 && batch->params.snf_select.empty();
-	if (captureStep && !logData && !computeVirial && replayableStepGraph[measureTemperature]) {
-		LaunchStepGraph(stepGraphs[0][0][measureTemperature], false);
+	const float pmeForceWeight = PmeForceWeight();
+	const int graphVariant = (measureTemperature ? 1 : 0) + (pmeForceWeight == 0.f ? 2 : 0);
+	if (captureStep && !logData && !computeVirial && replayableStepGraph[graphVariant]) {
+		LaunchStepGraph(stepGraphs[0][0][graphVariant], false);
 		LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 		return;
 	}
@@ -1073,9 +1096,10 @@ void Engine::_deviceMaster(bool measureTemperature) {
 		forceAcc = ForceAccumulator{ base, base + n, base + 2 * n, logData ? base + 3 * n : nullptr };
 		primaryBondForces = ForceAccumulator{ base + 4 * n, base + 5 * n, base + 6 * n, logData ? base + 7 * n : nullptr };
 	}
-	if (ENABLE_ES_LR && batch->params.enable_electrostatics)
+	// With mts, a pressure step without PME mesh forces still computes the mesh, for its virial
+	if (ENABLE_ES_LR && batch->params.enable_electrostatics && (pmeForceWeight != 0.f || computeVirial))
 		batch->pmeController->CalcCharges(batch->superClustersControl->scData, batch->superClustersControl->scMeta,
-			nScs, batch->forceEnergyInterims->pme, forceAcc, computeVirial ? batch->pmeVirialPartials.Get() : nullptr);
+			nScs, batch->forceEnergyInterims->pme, forceAcc, computeVirial ? batch->pmeVirialPartials.Get() : nullptr, pmeForceWeight);
 	if (nScs > 0) {
 		const auto* scData = batch->superClustersControl->scData;
 		const Float3 boxSizeInv = boxSize.Inv();
@@ -1156,7 +1180,7 @@ void Engine::_deviceMaster(bool measureTemperature) {
 		if constexpr (emvariant)
 			cudaStreamSynchronize(cudaStreams[0]);
 		if (captureStep)
-			LaunchCapturedStep(logData, computeVirial, measureTemperature);
+			LaunchCapturedStep(logData, computeVirial, graphVariant);
 	}
 	LIMA_UTILS::genericErrorCheckNoSync("Error during batch timestep");
 }

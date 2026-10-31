@@ -1,6 +1,7 @@
 #include "Tests.h"
 
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 
@@ -108,13 +109,15 @@ static uint64_t TemperatureChecksum(const std::vector<float>& temperatures) {
 // Runs a system of the GROMACS benchmark set (LIMA_data/salad_gromacs_bench) with its own lima.mdp, changing only nsteps.
 // warmupSteps > 0 first runs an untimed simulation, so the GPU is back at full clocks. Returns the fastest run's time per step [ms],
 // and the last run's TemperatureChecksum in checksum
-static double ProfileSalad(const std::string& name, int steps, int nRuns, int warmupSteps, uint64_t* checksum = nullptr) {
+// energyPath: write the last run's energies there, as energy.xvg
+static double ProfileSalad(const std::string& name, int steps, int nRuns, int warmupSteps, uint64_t* checksum = nullptr,
+	const std::filesystem::path& energyPath = {}) {
 	if (steps < 1 || nRuns < 1)
 		throw std::invalid_argument("Invalid salad profiling arguments");
 	const std::filesystem::path dir = TestUtils::HeavyTestsDir() / "salad_gromacs_bench" / name;
 	if (!std::filesystem::exists(dir / "lima.mdp"))
 		throw std::invalid_argument(Lima::Format("Unknown salad system {} (no {})", name, (dir / "lima.mdp").string()));
-	const auto MakeJob = [&dir](int nSteps) {
+	const auto MakeJob = [&dir, &energyPath](int nSteps) {
 		SimulationJob job;
 		job.workDir = dir;
 		job.grofile.emplace(dir / "conf.gro");
@@ -122,7 +125,22 @@ static double ProfileSalad(const std::string& name, int steps, int nRuns, int wa
 		job.simParams.emplace(dir / "lima.mdp");
 		job.mode = Headless;
 		job.mustRunAlone = true;
-		job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) { params.nsteps = nSteps; };
+		if (!energyPath.empty())
+			job.postprocess = [&energyPath](SimulationResult& result) { SimAnalysis::WriteEnergySeries(*result.simulation, energyPath); };
+		job.preprocess = [nSteps](GroFile&, TopologyFile&, SimParams& params) {
+			params.nsteps = nSteps;
+			// Overrides of lima.mdp, as "key=value,key=value", eg. LIMA_PROFILE_SET=mts=true to profile the mts variant
+			if (const char* overrides = std::getenv("LIMA_PROFILE_SET")) {
+				std::string_view rest{ overrides };
+				while (!rest.empty()) {
+					const std::string_view item = rest.substr(0, rest.find(','));
+					rest = item.size() < rest.size() ? rest.substr(item.size() + 1) : std::string_view{};
+					const size_t equals = item.find('=');
+					if (equals == std::string_view::npos) throw std::invalid_argument("LIMA_PROFILE_SET expects key=value items");
+					params.Set(item.substr(0, equals), item.substr(equals + 1));
+				}
+			}
+		};
 		return job;
 	};
 
@@ -173,6 +191,16 @@ int main(int argc, char** argv) {
 			uint64_t checksum = 0;
 			const double msPerStep = ProfileSalad(argv[2], std::stoi(argv[3]), 1, 0, &checksum);
 			std::cout << Lima::Format("{:.4f} ms/step, temperature checksum {:016x}\n", msPerStep, checksum);
+			return 0;
+		}
+		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+	}
+	// As --salad, and writes the energies to an .xvg, eg. for the energy drift without thermostat (LIMA_PROFILE_SET=tcoupl=no)
+	if (argc > 1 && std::string_view(argv[1]) == "--energy") {
+		try {
+			if (argc != 5) throw std::invalid_argument("Usage: limaprofile --energy villin|rnase_cubic|adh_dodec|stmv steps out.xvg");
+			const double msPerStep = ProfileSalad(argv[2], std::stoi(argv[3]), 1, 0, nullptr, argv[4]);
+			std::cout << Lima::Format("{:.4f} ms/step\n", msPerStep);
 			return 0;
 		}
 		catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

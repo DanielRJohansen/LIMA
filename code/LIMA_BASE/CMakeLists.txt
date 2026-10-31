@@ -15,7 +15,6 @@ add_library(LIMA_BASE STATIC
     src/BoundaryConditionPublic.cpp
     src/MoleculeHull.cpp
     src/TimeIt.cpp
-    src/Geometry.cpp
     src/MoleculeUtils.cpp 
     src/Topologyfile.cpp
     src/PlotUtils.cpp
@@ -23,7 +22,7 @@ add_library(LIMA_BASE STATIC
 	 src/RenderDataPipe.cpp
     src/FilePreprocessor.cpp
     src/Format.cpp
- "include/DebugUtils.h" "include/CudaBuffer.h" "include/SmallString.h")
+ "include/CudaBuffer.h" "include/SmallString.h")
 
 target_include_directories(LIMA_BASE PRIVATE 
  #   /../dependencies/cereal

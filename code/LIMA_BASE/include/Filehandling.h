@@ -20,8 +20,6 @@
 namespace FileUtils {
 	namespace fs = std::filesystem;
 
-	static bool ignoreWord(const std::vector<std::string>& ignores, const std::string& word);
-
 	void removeWhitespace(std::string& str);
 
 	bool firstNonspaceCharIs(const std::string_view& str, char query);

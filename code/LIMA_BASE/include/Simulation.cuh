@@ -76,10 +76,6 @@ public:
 		return &buffer[n_particles_upperbound * entryindex];
 	}
 
-	const T* getBufferAtIndexConst(size_t entryindex) const {
-		return &buffer[n_particles_upperbound * entryindex];
-	}
-
 	const T* GetBufferAtStep(size_t step) const {
 		const size_t entryIndex = step / loggingInterval;
 		return &buffer[n_particles_upperbound * entryIndex];
@@ -105,8 +101,6 @@ public:
 		const size_t entryIndex = step / loggingInterval;
 		return GetDatapoint(pcid, pid, entryIndex);
 	}
-	size_t GetLoggingInterval() const { return loggingInterval; }
-	size_t EntriesPerStep() const { return n_particles_upperbound; }
 	const size_t n_particles_upperbound;
 
 private:
@@ -122,9 +116,6 @@ namespace LIMALOGSYSTEM {
 		return step / loggingInterval;
 	}
 
-	static constexpr int64_t getNIndicesBetweenSteps(int64_t from, int64_t to, int loggingInterval) {
-		return getMostRecentDataentryIndex(to, loggingInterval) - getMostRecentDataentryIndex(from, loggingInterval);
-	}
 }
 
 
@@ -195,8 +186,6 @@ public:
 
 	inline int64_t getStep() const { return step; }
 	
-	std::unique_ptr<MDFiles::TrrFile> ToTracjectoryFile() const;
-
 	
 	bool finished = false;
 	std::string name;

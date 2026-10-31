@@ -62,12 +62,6 @@ namespace PhysicsUtils {
 }
 
 namespace LJ {
-    constexpr float calcSigma(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-        return forcefield.particle_parameters[atomtype1].sigmaHalf + forcefield.particle_parameters[atomtype2].sigmaHalf;
-    }
-    constexpr float calcEpsilon(uint8_t atomtype1, uint8_t atomtype2, const ForceField_NB& forcefield) {
-        return forcefield.particle_parameters[atomtype1].epsilonSqrt * forcefield.particle_parameters[atomtype2].epsilonSqrt;
-    }
 
     constexpr float CalcSigma(float sigma1Half, float sigma2Half) {
         return sigma1Half + sigma2Half;

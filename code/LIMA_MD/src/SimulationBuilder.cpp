@@ -41,17 +41,6 @@ static void UseCenteredLipidCopies(Lipids::Selection& lipidselection) {
 	}
 }
 
-float constexpr fursthestDistanceToZAxis(const Lipids::Selection& lipidselection) {
-	float max_dist = 0;
-	for (const auto& lipid : lipidselection) {
-		for (const auto& atom : lipid.grofile->atoms) {
-			const float dist = sqrtf(atom.position.x * atom.position.x + atom.position.y * atom.position.y);
-			max_dist = std::max(max_dist, dist);
-		}
-	}
-	return max_dist;
-}
-
 float constexpr MinParticlePosInDimension(const Lipids::Selection& lipidselection, int dim) {
 	float minPos = FLT_MAX;
 	for (const auto& lipid : lipidselection) {

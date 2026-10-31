@@ -57,15 +57,6 @@ using DihedralBondFactory = BondFactory<4, DihedralBond::Parameters>;
 using ImproperDihedralBondFactory = BondFactory<4, ImproperDihedralBond::Parameters>;
 using CmapBondFactory = BondFactory<5, CmapBond::Parameters>;
 
-struct ParticleToCompoundMapping {
-	int compoundId = -1;
-	int localIdInCompound = -1;
-};
-struct ParticleToBridgeMapping {
-	int bridgeId = -1;
-	int localIdInBridge = -1;
-};
-
 struct ParticleToPclusterMapping {
 	int pcid;
 	int pid; // pc local
@@ -115,9 +106,6 @@ namespace LIMA_MOLECULEBUILD {
 
 		void VerifyBondsAreStable(const Float3& boxlen_nm, BoundaryConditionSelect bc_select, bool energyMinimizationMode) const;
 
-
-		//Temporary, untill how i know how to deal with bonds in tinymols
-		void RemoveBondsFromTinymol(const std::vector<ParticleToCompoundMapping>&);
 
 		std::vector<ParticleFactory> particles;
 		std::vector<SingleBondFactory> singlebonds;

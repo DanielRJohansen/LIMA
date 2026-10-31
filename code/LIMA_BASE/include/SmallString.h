@@ -32,10 +32,6 @@ public:
 		return data_[0] == '\0';
 	}
 
-	constexpr std::size_t Capacity() const {
-		return maxSize;
-	}
-
 	std::array<char, maxSize>& Data() {
 		return data_;
 	}

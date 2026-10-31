@@ -53,17 +53,7 @@ namespace LimaMoleculeGraph {
 			void addNeighbor(int neighborId, bool neighborIsHydrogen);
 
 			bool isHydrogen() const { return atomname[0] == 'H'; }
-			int getNNeighbors() const { return nNeighbors; }
-			int getNNonhydrogenNeighbors() const { return n_nonhydrogen_neighbors; }
 			const std::span<const int> getNeighbors() const { return std::span( neighborIds.data(), nNeighbors ); }
-
-			bool isConnected(int id) const {
-				for (const int neighborId : getNeighbors()) {
-					if (neighborId == id)
-						return true;
-				}
-				return false;
-			}
 
 			int atomid{ -1 };
 

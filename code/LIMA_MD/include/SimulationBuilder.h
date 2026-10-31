@@ -3,7 +3,6 @@
 #pragma once
 
 #include "MDFiles.h"
-#include "Geometry.cuh"
 #include "Lipids.h"
 #include "MembraneGeometry.h"
 

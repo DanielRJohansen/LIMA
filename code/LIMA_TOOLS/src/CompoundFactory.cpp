@@ -75,30 +75,6 @@
 
 
 
-Float3 calcCOM(const Float3* positions, int n_elems, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
-	Float3 com{};
-	const Float3& designatedCenterPosition = positions[0];
-	for (int i = 0; i < n_elems; i++) {
-		Float3 pos = positions[i];
-		BoundaryConditionPublic::applyHyperposNM(designatedCenterPosition, pos, boxlen_nm, bc);	// Hyperpos around particle 0, since we dont know key position yet 
-		com += pos;
-	}
-	return com / static_cast<float>(n_elems);
-}
-
-
-int indexOfParticleClosestToCom(const Float3* positions, int n_elems, const Float3& com, const Float3& boxlen_nm, BoundaryConditionSelect bc) {
-	int closest_particle_index = 0;
-	float closest_particle_distance = std::numeric_limits<float>::infinity();
-	for (int i = 0; i < n_elems; i++) {
-		const float dist = LIMAPOSITIONSYSTEM::calcHyperDistNM(positions[i], com, boxlen_nm, bc);
-		if (dist < closest_particle_distance) {
-			closest_particle_distance = dist;
-			closest_particle_index = i;
-		}
-	}
-	return closest_particle_index;
-}
 
 
 

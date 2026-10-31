@@ -74,19 +74,7 @@ namespace BoxGrid {
 			int nSequences = 0;
 		};
 
-		struct NearbyBlocksSequencesParticles {
-			struct Sequence {
-				int indexOfFirstParticleInSequence = -1;
-				int nParticlesInSequence = -1;
-			};
-			Sequence sequences[NearbyBlocksSequences::maxSequences];
-			int nSequences = 0;
-		};
 
-
-		__device__ inline const BlockRef* GetPtrToNearbyBlockids(int blockId, const BlockRef* const nearbyBlockIdsData) {
-			return &nearbyBlockIdsData[blockId * nNearbyBlocks];
-		}
 	}
 };
 

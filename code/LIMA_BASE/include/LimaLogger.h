@@ -42,7 +42,3 @@ private:
     void clearLine();
     bool clear_next = false;
 };
-
-static std::unique_ptr<LimaLogger> makeLimaloggerBareboned(const std::string& name) {
-    return std::make_unique<LimaLogger>(LimaLogger::LogMode::compact, EnvMode::Headless, name);
-}

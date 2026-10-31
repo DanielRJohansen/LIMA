@@ -28,7 +28,6 @@ struct Facet {
 		//Return the intersection point of a line passing two points and this plane
 		return p1 + (p2 - p1) * (-signedDistance(p1) / normal.dot(p2 - p1));
 	};
-	void invert() { normal *= -1.f; }
 
 	__device__ __host__ float signedDistance(Float3 point) const { return normal.dot(point) - D; }
 
@@ -67,14 +66,6 @@ public:
 	ConvexHull(const std::vector<Float3>& points);
 
 	void CullSmallTriangles();
-
-	Float3 CenterOfMass() const {
-		Float3 sum{};
-		for (const Float3& v : vertices) {
-			sum += v;
-		}
-		return sum / static_cast<float>(vertices.size() * 3);
-	}
 
 	//const std::vector<Facet>& GetFacets() const { return facets; }
 	const std::vector<Facet> GetSelfcontainedFacets() const { 
@@ -146,18 +137,6 @@ struct MoleculeHull {
 	float radius; // [nm] distance from center to furthest point
 
 	int nCollisions = 0;
-
-	// Temp SLOW function, only for dev
-	std::vector<Float3> GetFacetVertices(const Facet* facetsInCollection) const {
-		std::vector<Float3> vertices;
-		for (int i = 0; i < nFacets; i++) {
-			const Facet& f = facetsInCollection[indexOfFirstFacetInBuffer + i];
-			vertices.emplace_back(f.vertices[0]);
-			vertices.emplace_back(f.vertices[1]);
-			vertices.emplace_back(f.vertices[2]);
-		}
-		return vertices;
-	}
 
 	std::vector<Facet> GetFacets(const Facet* facetsInCollection) const {
 		std::vector<Facet> facets;

@@ -138,11 +138,6 @@ struct XDRFILE;	// xdrfile's file handle
 namespace MDFiles {
 	namespace fs = std::filesystem;
 
-	struct FilePair {
-		std::shared_ptr<GroFile> grofile;
-		std::shared_ptr<TopologyFile> topfile;
-	};
-
 	// Writes a GROMACS trajectory one frame at a time, chosen by the extension: .trr (exact) or .xtc (compressed to
 	// 0.001 nm, as GROMACS' default xtc-precision)
 	class TrajectoryWriter {
@@ -308,11 +303,6 @@ public:
 			throw std::runtime_error("System not initialized");
 		return m_system;
 	}
-	System& GetSystemMutable() {
-		if (!m_system.IsInit())
-			throw std::runtime_error("System not initialized");
-		return m_system;
-	}
 	bool HasSystem() const { return m_system.IsInit(); }
 	const std::unordered_set<std::string>& GetDefines() const { return defines; }
 	void SetSystem(const std::string& systemName) {
@@ -357,7 +347,6 @@ public:
 	void AppendMoleculetype(const std::shared_ptr<const Moleculetype> moltype, 
 		std::optional<ForcefieldInclude> forcefieldInclude=std::nullopt);
 	void AppendMolecule(const MoleculeEntry&);
-	void AppendMolecules(const std::vector<MoleculeEntry>&);
 //	void AppendSolvents(int count, const fs::path& solventFF);
 
 	// ----------------------- Meta data not kept in the file ----------------------- //

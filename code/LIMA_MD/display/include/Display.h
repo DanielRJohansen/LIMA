@@ -113,10 +113,6 @@ public:
 	std::atomic_bool gizmoEnabled = true;
 
 	static void TestDisplay();
-	static void RenderGrofile(const GroFile& grofile, bool showSolvents = true) {
-		Display display;
-		display.Submit(0, std::make_unique<Rendering::AtomRenderTask>(grofile, showSolvents), true);
-	}
 
 	std::optional<LiveEdit::Command> GetLiveEditCommand();
 
@@ -147,8 +143,6 @@ private:
 	void OnMouseMove(double xpos, double ypos);
 	void OnMouseButton(int button, int action, int mods);
 	void OnMouseScroll(double xoffset, double yoffset);
-	void OnMouseLeft();
-	void OnMouseLeftClick();
 	void HandleGizmo(int atomId);
 	void SelectMolecule(int atomId);
 	void SetSelection(RenderContext&, Rendering::MoleculeInfo selection);

@@ -24,9 +24,6 @@ using namespace PME;
 constexpr int GetGridIndexRealspace(const Int3& gridIndex, const Int3& gridDim) {
 	return BoxGrid::Get1dIndex(gridIndex, gridDim);
 }
-constexpr int GetGridIndexReciprocalspace(const Int3& gridIndex, int gridpointsPerDim, int nGridpointsHalfdim) {
-	return gridIndex.x + gridIndex.y * nGridpointsHalfdim + gridIndex.z * nGridpointsHalfdim * gridpointsPerDim;
-}
 constexpr NodeIndex Get3dIndexReciprocalspace(int index1d, const Int3& gridpointsPerDim, int nGridpointsHalfdim) {
 	int z = index1d / (nGridpointsHalfdim * gridpointsPerDim.y);
 	index1d -= z * nGridpointsHalfdim * gridpointsPerDim.y;

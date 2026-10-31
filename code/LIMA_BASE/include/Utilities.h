@@ -39,18 +39,6 @@ namespace StringUtils {
 namespace LAL {
 
     
-    bool constexpr isPowerOf2(int n) {
-        return (n > 0) && ((n & (n - 1)) == 0);
-    }
-
-
-    constexpr int powi(int base, int exp) {
-        int res = 1;
-        for (int i = 0; i < exp; i++) {
-			res *= base;
-		}
-        return res;
-    }
 
     constexpr void RotatePoint(Float3& point, const Float3& rotationCenter, const Float3& rotation) {
         point = point - rotationCenter;

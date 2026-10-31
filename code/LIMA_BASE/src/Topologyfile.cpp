@@ -90,28 +90,6 @@ constexpr std::string extractSectionName(std::string line) {
 }
 
 
-inline std::string GetCleanFilename(const fs::path& path) {
-	auto filename = path.stem().string();
-	const std::string prefix = "topol_";
-	return filename.starts_with(prefix) ? filename.substr(prefix.length()) : filename;
-}
-
-inline std::optional<fs::path> _SearchForFile(const fs::path& dir, const std::string& filename) {
-	const std::array<std::string, 2> extensions = { ".itp", ".top" };
-	const std::array<std::string, 2> prefixes = { std::string(""), "topol_" };
-
-	for (const auto& ext : extensions) {
-		for (const auto& prefix : prefixes) {
-			fs::path path = dir / (prefix + filename + ext);
-			if (fs::exists(path)) {
-				return path;
-			}
-		}
-	}
-
-	return std::nullopt;
-}
-
 
 
 /// <returns>True if we change section/stay on no section, in which case we should 'continue' to the next line. False otherwise</returns>

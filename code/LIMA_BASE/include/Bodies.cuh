@@ -243,16 +243,6 @@ struct BondGroups {
 	}
 };
 
-struct BondGroupsDevice {
-	const BondGroup* groups;
-	const BondGroup::ParticleRef* particles;
-	const SingleBond* singlebonds;
-	const PairBond* pairbonds;
-	const AngleUreyBradleyBond* anglebonds;
-	const DihedralBond* dihedralbonds;
-	const ImproperDihedralBond* improperdihedralbonds;
-};
-
 struct NBParams {
 	float sigmaHalf = -1;		// [nm]
 	float epsilonSqrt = -1;		// [J/mol/nm]
@@ -432,14 +422,6 @@ struct SuperCluster {
 	__host__ __device__ void SetPdata(const PData& pdata, int index) {
 		posCharge[index] = float4{ pdata.position.x, pdata.position.y, pdata.position.z, pdata.params.charge };
 		sigmaEpsilon[index] = float2{ pdata.params.sigmaHalf, pdata.params.epsilonSqrt };
-	}
-	__device__ void LoadPdata(PData& pdata, int index) const {
-		const float4 pq = posCharge[index];
-		const float2 se = sigmaEpsilon[index];
-		pdata.position = Float3(pq.x, pq.y, pq.z);
-		pdata.params.sigmaHalf = se.x;
-		pdata.params.epsilonSqrt = se.y;
-		pdata.params.charge = pq.w;
 	}
 	__host__ __device__ Float3 Position(int index) const {
 		return Float3(posCharge[index].x, posCharge[index].y, posCharge[index].z);

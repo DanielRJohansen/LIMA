@@ -17,13 +17,6 @@
 
 namespace EngineUtils {
 
-	template <typename BoundaryCondition>
-	__device__ int static getNewBlockId(const NodeIndex& transferDirection, const NodeIndex& origo, const Int3& boxSize) {
-		NodeIndex newNodeIndex = transferDirection + origo;
-		BoundaryCondition::applyBC(newNodeIndex, boxSize);
-		return BoxGrid::Get1dIndex(newNodeIndex, boxSize);
-	}
-
 	constexpr static Float3 IntegratePositionVVS(const Float3& pos, const Float3& vel, const Float3& force, const float mass, const float dt) {
 		if constexpr (!ENABLE_INTEGRATEPOSITION) {
 			return pos;
@@ -119,20 +112,6 @@ namespace EngineUtils {
 		forceBuffer[index] = force;
 	}
 
-
-	__device__ constexpr bool isOutsideCutoff(const float distSq, const float cutoffNmSquared) {
-		if constexpr (HARD_CUTOFF) {
-			return distSq > cutoffNmSquared;	// (CUTOFF_LM * CUTOFF_LM);
-		}
-		return false;
-	}
-
-    __device__ constexpr bool isOutsideCutoff_recip(const float distSqReciprocal, const float cutoffNmSquaredReciprocal) {
-        if constexpr (HARD_CUTOFF) {
-            return distSqReciprocal < cutoffNmSquaredReciprocal;
-        }
-        return false;
-    }
 
 };
 

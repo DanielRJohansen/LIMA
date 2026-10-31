@@ -45,17 +45,6 @@ namespace LAL {
 		dw[3] = 0.5f * f * f;
 	}
 
-	template<int order>
-	__device__ __forceinline__
-		float EvalPoly(const float x, const std::array<float, order>& coeffs)
-	{
-		static_assert(order > 0);
-		float acc = coeffs[order - 1];
-#pragma unroll
-		for (int i = order - 2; i >= 0; --i)
-			acc = acc * x + coeffs[i];
-		return acc;
-	}
 }
 
 
@@ -64,29 +53,9 @@ namespace PhysicsUtilsDevice {
 	using PhysicsUtils::modifiedCoulombConstant;
 
 
-// If we're gonna use this we need to deal with the license. But we dont need 0-4, so rather remake it for out purposes..
 	__forceinline__ __device__ float raw_ex2(float a)
 	{
 		return DeviceIntrinsics::Exp2Approx(a);
-	}
-	/* Approximate erfc(x) on [0, 4] with maximum absolute error of 1.15291e-7,
-	   maximum relative error of 3.36619e-4, and maximum ulp error of 5621.588.
-	*/
-	__forceinline__ __device__ float fasterfc(float a)
-	{
-		float t;
-		t = -1.64611265e-6f;   // -0x1.b9e000p-20
-		t = fmaf(t, a, 2.95254722e-5f);  //  0x1.ef5af0p-16
-		t = fmaf(t, a, -2.33422339e-4f);  // -0x1.e985aap-13
-		t = fmaf(t, a, 1.04246172e-3f);  //  0x1.11466cp-10
-		t = fmaf(t, a, -2.55015842e-3f);  // -0x1.4e411ep-9
-		t = fmaf(t, a, 3.19798535e-4f);  //  0x1.4f5544p-12
-		t = fmaf(t, a, 2.76054665e-2f);  //  0x1.c449b8p-6
-		t = fmaf(t, a, -1.48274124e-1f);  // -0x1.2faa58p-3
-		t = fmaf(t, a, -9.18447673e-1f);  // -0x1.d63ec6p-1
-		t = fmaf(t, a, -1.62790680e+0f);  // -0x1.a0be80p+0
-		t = t * a;
-		return raw_ex2(t);
 	}
 
 	// Ewald real space force scalar with x = kappa*dist: erfc(x) + 2x/sqrt(pi) * exp(-x^2) = exp(-x^2) * R(x), R(x) = erfcx(x) + 2x/sqrt(pi),

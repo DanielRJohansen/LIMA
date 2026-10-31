@@ -105,7 +105,4 @@ public:
         return out;
     }
 
-    GLuint GetID() const {
-        return bufferID;
-    }
 };

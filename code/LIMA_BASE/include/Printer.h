@@ -14,54 +14,6 @@ namespace LIMA_Print {
 	void printH1(std::string = "", bool ls = false, bool ts = true);
 	void printH2(std::string = "", bool ls = false, bool ts = true);
 
-	template<typename T>
-	void printMatlabVec(std::string name, const std::vector<T>& vec) {
-		std::cout << name << " = [";
-		for (const auto& elem : vec) { 
-			std::cout << elem << " "; 
-		}
-		std::cout << "];\n";
-	}
-	template<typename T>
-	void printPythonVec(const std::string& name, const std::vector<T>& vec) {
-		std::cout << name << " = [";
-		for (size_t i = 0; i < vec.size(); ++i) {
-			std::cout << vec[i];
-			if (i < vec.size() - 1) {
-				std::cout << ", ";
-			}
-		}
-		std::cout << "]\n";
-	}
-
-	static void plotEnergies(const std::span<float>& potE, const std::span<float>& kinE, const std::span<float>& totE) {
-		// Check if vectors have the same length
-		if (potE.size() != kinE.size() || kinE.size() != totE.size()) {
-			std::cerr << "Error: Vectors must have the same length." << std::endl;
-			return;
-		}
-
-		// Open the binary file for writing
-		std::ofstream outFile("C:\\Users\\Daniel\\git_repo\\LIMA\\dev\\energy_data.bin", std::ios::binary);
-		if (!outFile) {
-			std::cerr << "Error: Could not open file for writing." << std::endl;
-			return;
-		}
-
-		// Write data to the binary file
-		for (size_t i = 0; i < potE.size(); ++i) {
-			outFile.write(reinterpret_cast<const char*>(&potE[i]), sizeof(float));
-			outFile.write(reinterpret_cast<const char*>(&kinE[i]), sizeof(float));
-			outFile.write(reinterpret_cast<const char*>(&totE[i]), sizeof(float));
-		}
-
-		outFile.close();
-
-		// Call the Python script
-		std::string command = "python C:\\Users\\Daniel\\git_repo\\LIMA\\dev\\PyTools\\Energies.py";
-		std::system(command.c_str());
-	}
-
 
 
 }

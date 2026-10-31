@@ -57,11 +57,6 @@ struct DatabuffersDeviceController {
 			return false;
 		return step % (int64_t{nStepsInBuffer} * loggingInterval) == 0;
 	}
-	static int StepsReadyToTransfer(size_t step, int loggingInterval) {
-		if (loggingInterval == 0) return 0;
-		const int64_t stepsSinceTransfer = step % (int64_t{nStepsInBuffer} * loggingInterval);
-		return stepsSinceTransfer / loggingInterval;
-	}
 
 	__device__ static size_t GetLogIndexOfParticle(int pidInPclusters, int pcId, int64_t step,
 		int loggingInterval, const int totalParticleUpperbound) {

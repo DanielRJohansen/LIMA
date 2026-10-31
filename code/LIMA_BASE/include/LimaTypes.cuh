@@ -29,8 +29,6 @@ struct Int3 {
 	constexpr bool operator== (const Int3& a) const { return (x == a.x && y == a.y && z == a.z); }
 	constexpr bool operator!= (const Int3& a) const { return (x != a.x || y != a.y || z != a.z); }
 
-	__host__ __device__ int manhattanLen() const { return std::abs(x) + std::abs(y) + std::abs(z); }
-	__device__ int MaxAbsElement() const { return std::max(std::abs(x), std::max(std::abs(y), std::abs(z))); }
 	__device__ __host__ Int3 abs() const { return Int3{ std::abs(x), std::abs(y), std::abs(z) }; }
 	constexpr int InnerProduct() const { return x * y * z; }
 	constexpr int Min() const { return std::min(x, std::min(y, z)); }
@@ -75,10 +73,7 @@ struct Float3 {
 	constexpr bool operator < (const Float3 a) const { return x < a.x&& y < a.y&& z < a.z; }
 	constexpr bool operator > (const Float3 a) const { return x > a.x && y > a.y && z > a.z; }
 
-	constexpr float3 Tofloat3() const { return float3{ x, y, z }; }
 	constexpr float4 Tofloat4(float w=0) const { return float4{ x, y, z, w }; }
-	constexpr Int3 ToInt3() const { return Int3{ static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) }; }
-	__host__ static Float3 FromInt3(const Int3& a) { return Float3{ static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z) }; }
 
 
 	__host__ inline float operator[] (int index) const {
@@ -107,52 +102,26 @@ struct Float3 {
 		}
 	}
 
-	__host__ __device__ Float3 norm_d() const {
-		double l = len_d();
-		if (l)
-			return *this * (1. / l);
-		return Float3{};
-	}
 	__host__ __device__ Float3 norm() const {
 		const float l = len();
 		if (l)
 			return *this * (1.f / l);
 		return Float3{};
 	}
-	__device__ constexpr Float3 norm_fast() const {		// Unsafe, may divide by 0
-		return *this * (1.f / len());
-	}
 
 	__device__ bool isNan() const {
 		return isnan(x) || isnan(y) || isnan(z);
 	}
 	constexpr Float3 round() const { return Float3{ roundf(x), roundf(y), roundf(z) }; }
-	constexpr Float3 square() const { return Float3(x * x, y * y, z * z); }
     __host__ __device__ inline float len() const { return std::sqrt(x * x + y * y + z * z); }
-	__host__ __device__ inline double len_d() const { return sqrt((double)x * x + (double)y * y + (double)z * z); }
 	constexpr float lenSquared() const { return (x * x + y * y + z * z); }
-	constexpr Float3 zeroIfAbove(float a) { return Float3(x * (x < a), y * (y < a), z * (z < a)); }
-	constexpr Float3 zeroIfBelow(float a) { return Float3(x * (x > a), y * (y > a), z * (z > a)); }
-	constexpr Float3 sqrtElementwise() const { return Float3{ sqrtf(x), sqrtf(y), sqrtf(z) }; }
 	constexpr Float3 Inv() const { return Float3{ 1.f } / *this; }
 
-    constexpr Float3 Floor() const { return Float3(std::floor(x), std::floor(y), std::floor(z));}
-
-	__host__ __device__ inline static float getAngle(const Float3& v1, const Float3& v2) {
-		float val = (v1.dot(v2)) / (v1.len() * v2.len());	// If i make this float, we get values over 1, even with the statements below! :(
-		val = val > 1.f ? 1.f : val;
-		val = val < -1.f ? -1.f : val;
-		return acos(val);
-	}
 	__device__ static float getAngleOfNormVectors(const Float3& v1, const Float3& v2) {
 		float val = v1.dot(v2);
 		val = val > 1.f ? 1.f : val;
 		val = val < -1.f ? -1.f : val;
 		return acosf(val);
-	}
-
-	__host__ __device__ static float getAngle(Float3 a, Float3 middle, Float3 b) {
-		return getAngle(a - middle, b - middle);
 	}
 
 
@@ -181,12 +150,6 @@ struct Float3 {
 		else
 			printf("%c %c %.0f\t %.0f\t %.0f\n",nl, c, x, y, z);
 	}
-	__host__ void print(const std::string& str) const {
-		printf("%s %.6f %.6f %.6f\n", str.c_str(), x, y, z);
-	}
-	__host__ __device__ void print(int i) const {
-		printf("%d %.6f %.6f %.6f\n", i, x, y, z);
-	}
 
 	std::string toString() const {
 		//return std::format("{} {} {}", x, y, z);
@@ -202,35 +165,8 @@ struct Float3 {
 		*this = rodriguesRotatation(*this, Float3(0, 0, 1), pitch_yaw_roll.z);
 	}
 
-	constexpr Float3 RotateAroundOrigo(Float3 pitch_yaw_roll) const {	//pitch around x, yaw around z, tilt around y
-		// pitch and yaw is relative to global coordinates. 
-		Float3 point = *this;
-		point = rodriguesRotatation(point, Float3(1, 0, 0), pitch_yaw_roll.x);
-		point = rodriguesRotatation(point, Float3(0, 1, 0), pitch_yaw_roll.y);
-		point = rodriguesRotatation(point, Float3(0, 0, 1), pitch_yaw_roll.z);
-		return point;
-	}
-
 	constexpr static Float3 rodriguesRotatation(const Float3 v, const Float3 k, const float theta) {
 		return v * cos(theta) + k.cross(v) * sin(theta) + k * (k.dot(v)) * (1.f - cos(theta));
-	}
-
-	__device__ __host__ inline float LargestMagnitudeElement() const {
-		return fmaxf(
-			fmaxf(fabsf(x), fabsf(y)),
-			fabsf(z)
-		);
-	}
-
-	// Assumes *this is a point, and arguments are two points on a line
-	__host__ __device__ float distToLine(const Float3& p1, const Float3& p2) const {
-		return ((p2 - p1).cross(p1 - (*this))).len() / (p2 - p1).len();
-	}
-
-	// Concat to string operation
-	friend std::string& operator<<(std::string& str, const Float3& f) {
-		str = str + std::to_string(f.x) + " " + std::to_string(f.y) + " " + std::to_string(f.z);
-		return str;
 	}
 
 	static Float3 ElementwiseMin(const Float3& a, const Float3& b) {
@@ -301,23 +237,6 @@ struct NodeIndex : public Int3 {
 		return Float3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 	}
 
-	constexpr bool isZero() const { return (x == 0 && y == 0 && z == 0); }
-
-	__device__ __host__ int Magnitude() const { return std::abs(x) + std::abs(y) + std::abs(z); }
-
-	__device__ __host__ int largestMagnitudeElement() const {
-		const Int3 m = this->abs();
-		return std::max(
-			std::max(m.x, m.y),
-			m.z
-		);
-	}
-
-	constexpr bool isInBox(const Int3& gridDim) const {
-		if (x < 0 || y < 0 || z < 0 || x >= gridDim.x || y >= gridDim.y|| z >= gridDim.z)
-			return false;
-		return true;
-	}
 };
 
 
@@ -336,13 +255,11 @@ struct BoundingBox {
 		Float3 max = Float3{ std::numeric_limits<float>::lowest() }) 
 		: min(min), max(max) {}
 
-	constexpr BoundingBox(const std::vector<Float3>& points);
-	//BoundingBox(std::generator<Float3> generator); 
 	// Any range of Float3. Constrained without <ranges>, which is slow to compile
 	template <typename Range> requires requires(Range& range) { range.begin(); range.end(); }
 	BoundingBox(Range&& range) {
 		min = Float3{ std::numeric_limits<float>::max() };
-		max = Float3{ std::numeric_limits<float>::min() };
+		max = Float3{ std::numeric_limits<float>::lowest() };
 		for (const Float3& p : range) {
 			min.x = std::min(min.x, p.x);
 			min.y = std::min(min.y, p.y);
@@ -360,18 +277,8 @@ struct BoundingBox {
 	constexpr Float3 Dimensions() const {
 		return max - min;
 	}
-	constexpr bool intersects(BoundingBox b) const {
-		return
-			min.x <= b.max.x && max.x >= b.min.x &&
-			min.y <= b.max.y && max.y >= b.min.y &&
-			min.z <= b.max.z && max.z >= b.min.z;
-	}
 	constexpr bool pointIsInBox(Float3 point) const {
 		return (min < point) && (point < max);
-	}
-	constexpr void addPadding(float padding) {
-		min += Float3(-padding);
-		max += Float3(padding);
 	}
 };
 
@@ -386,33 +293,6 @@ std::vector<T> GenericCopyToHost(T* srcDevice, size_t nElements) {
 	std::vector<T> destHost(nElements);
 	cudaMemcpy(destHost.data(), srcDevice, nElements * sizeof(T), cudaMemcpyDeviceToHost);
 	return destHost;
-}
-
-template<typename T>
-T GenericCopyToHost(T* srcDevice) {
-	static_assert(std::is_trivially_copyable<T>::value, "GenericCopyToHost can only be used with trivially copyable types");
-	T destHost;
-	cudaMemcpy(&destHost, srcDevice, sizeof(T), cudaMemcpyDeviceToHost);
-	return destHost;
-}
-
-template<typename T>
-void genericCopyToDevice(const T& src, T** dest, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	size_t bytesize = n_elements * sizeof(T);
-
-	cudaMallocManaged(dest, bytesize);  // optim: THis shouldnt be managed
-	cudaMemcpy(*dest, &src, bytesize, cudaMemcpyHostToDevice);
-}
-
-template<typename T>
-T* GenericCopyToDevice(const T* src, int n_elements) {	// Currently uses MallocManaged, switch to unmanaged for safer operation
-	T* dest;
-	size_t bytesize = n_elements * sizeof(T);
-
-	cudaMallocManaged(&dest, bytesize);
-	cudaMemcpy(dest, src, bytesize, cudaMemcpyHostToDevice);
-
-	return dest;
 }
 
 template<typename T>
@@ -441,6 +321,5 @@ struct RenderAtom {
 		flags.x = highLight ? 1 : 0;
 	}
 
-	bool IsDisabled() const { return position.x == std::numeric_limits<float>::max() && position.y == std::numeric_limits<float>::max() && position.z == std::numeric_limits<float>::max(); }
 	__device__ __host__ static constexpr float4 Disabled() { return float4{ std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() }; }
 };

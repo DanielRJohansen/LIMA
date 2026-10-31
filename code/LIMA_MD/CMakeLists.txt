@@ -15,7 +15,6 @@ add_library(LIMA_MD STATIC
     src/Analyzer.cpp
     src/BoxBuilder.cpp
     src/Environment.cpp
-    src/Interface.cpp
     src/Programs.cpp
 	 src/Workflow.cpp
     src/Pdb2gmx.cpp

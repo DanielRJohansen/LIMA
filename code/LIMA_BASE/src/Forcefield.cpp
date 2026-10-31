@@ -36,10 +36,6 @@ public:
 		return atomTypes.at(query);
 	}
 
-	// Debug only
-	std::unordered_map<std::string, AtomType>& _getAll() {
-		return atomTypes;
-	}
 };
 
 

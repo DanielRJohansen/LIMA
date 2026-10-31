@@ -21,30 +21,6 @@ namespace LIMAPOSITIONSYSTEM {
 	// -------------------------------------------------------- LimaPosition Conversion -------------------------------------------------------- //
 
 
-	__device__ __host__ inline NodeIndex PositionToNodeIndexNM(const Float3& posNM) {
-		NodeIndex nodeindex{
-			static_cast<int>(round((posNM.x) / static_cast<float>(BoxGrid::blocksizeNM))),
-			static_cast<int>(round((posNM.y) / static_cast<float>(BoxGrid::blocksizeNM))),
-			static_cast<int>(round((posNM.z) / static_cast<float>(BoxGrid::blocksizeNM)))
-		};
-
-		return nodeindex;
-	}
-
-
-	// Returns absolute position of nodeindex [nm]
-	__device__ __host__ static Float3 nodeIndexToAbsolutePosition(const NodeIndex& node_index) {
-		const float nodelen_nm = static_cast<float>(BoxGrid::blocksizeNM);
-		return Float3{ 
-			static_cast<float>(node_index.x) * nodelen_nm,
-			static_cast<float>(node_index.y) * nodelen_nm,
-			static_cast<float>(node_index.z) * nodelen_nm
-		};
-	}
-
-	__device__ __host__ static Float3 GetAbsolutePositionNM(const NodeIndex& nodeindex, const Float3& relposNM) {
-		return nodeIndexToAbsolutePosition(nodeindex) + relposNM;
-	}
 
 
 	/// <summary>
@@ -111,25 +87,11 @@ namespace LIMAPOSITIONSYSTEM {
 
 
 	template <typename BoundaryCondition>
-	__host__ static float calcHyperDist(const NodeIndex& left, const NodeIndex& right) {
-		const NodeIndex right_hyper = getHyperNodeIndex<BoundaryCondition>(left, right);
-		const NodeIndex diff = right_hyper - left;
-		return nodeIndexToAbsolutePosition(diff).len();
-	}
-
-	template <typename BoundaryCondition>
 	__device__ __host__ static float calcHyperDistNM(const Float3& p1, const Float3& p2) {
 		Float3 temp = p2;	
 		BoundaryCondition::applyHyperposNM(p1, temp);
 		return (p1 - temp).len();
 	}
-
-    template <typename BoundaryCondition>
-    __device__ __host__ static float calcHyperDistSquaredNM(const Float3& p1, const Float3& p2) {
-        Float3 temp = p2;
-        BoundaryCondition::applyHyperposNM(p1, temp);
-        return (p1 - temp).lenSquared();
-    }
 
 	//__host__ static Float3 GetPosition(const CompoundcoordsCircularQueue_Host& coords, int64_t step, int compoundIndex, int particleIndex) {
 	//	return GetAbsolutePositionNM(coords.getCoordArray(step, compoundIndex).origo, coords.getCoordArray(step, compoundIndex).rel_positions[particleIndex]);

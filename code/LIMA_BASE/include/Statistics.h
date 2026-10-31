@@ -25,5 +25,4 @@ namespace Statistics {
 
     double Sumd(const float* const data, size_t size);
 
-	float ProbabilityDensityFunction(float x, float mean, float std_dev);
 }

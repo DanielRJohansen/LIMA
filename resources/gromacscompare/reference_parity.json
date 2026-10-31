@@ -1,0 +1,63 @@
+{
+  "about": "RMSD and RMSF of the reference runs, copied from LIMA_data/salad_gromacs_bench/parity/parity.json: 1 ns of LIMA 88249f24 and two 1 ns GROMACS 2024.2 runs (differing only in the thermostat seed) per system, on an RTX 4090. lima gromacscompare shows these unless run with --structure.",
+  "lima": "88249f24",
+  "gromacs": "2024.2",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "simulatedNs": 1,
+  "systems": {
+    "villin": {
+      "rmsdNm_lima": 0.21944514399999995,
+      "rmsdNm_gmx": 0.29194755098039216,
+      "rmsdNm_gmx2": 0.32112498039215687,
+      "rmsfCorrelation": 0.5785319616025544,
+      "rmsfCorrelationGmxReference": 0.40768125089452295,
+      "calphaAtoms": 36,
+      "simulatedPs": 990.0
+    },
+    "rnase_cubic": {
+      "rmsdNm_lima": 0.11352047400000002,
+      "rmsdNm_gmx": 0.13599483921568634,
+      "rmsdNm_gmx2": 0.1238143,
+      "rmsfCorrelation": 0.9256237236063863,
+      "rmsfCorrelationGmxReference": 0.88428417640078,
+      "calphaAtoms": 128,
+      "simulatedPs": 990.0
+    },
+    "adh_dodec": {
+      "rmsdNm_lima": 0.3326897320000001,
+      "rmsdNm_gmx": 0.2734416725490197,
+      "rmsdNm_gmx2": 0.4730414411764707,
+      "rmsfCorrelation": 0.647316508691708,
+      "rmsfCorrelationGmxReference": 0.3772912852257494,
+      "calphaAtoms": 2816,
+      "simulatedPs": 990.0
+    },
+    "aqp_ensemble": {
+      "rmsdNm_lima": 0.104247344,
+      "rmsdNm_gmx": 0.13187846078431367,
+      "rmsdNm_gmx2": 0.10722845490196078,
+      "rmsfCorrelation": 0.8158439880977167,
+      "rmsfCorrelationGmxReference": 0.7876706826652302,
+      "calphaAtoms": 1904,
+      "simulatedPs": 990.0
+    },
+    "ion_channel": {
+      "rmsdNm_lima": 0.21273268000000006,
+      "rmsdNm_gmx": 0.19317115882352942,
+      "rmsdNm_gmx2": 0.19342863725490198,
+      "rmsfCorrelation": 0.8011641878537835,
+      "rmsfCorrelationGmxReference": 0.8314225407521806,
+      "calphaAtoms": 3390,
+      "simulatedPs": 990.0
+    },
+    "stmv": {
+      "rmsdNm_lima": 0.10803695799999997,
+      "rmsdNm_gmx": 0.10543257647058825,
+      "rmsdNm_gmx2": 0.09894787450980394,
+      "rmsfCorrelation": 0.7305324892796792,
+      "rmsfCorrelationGmxReference": 0.7221523059146914,
+      "calphaAtoms": 8820,
+      "simulatedPs": 990.0
+    }
+  }
+}

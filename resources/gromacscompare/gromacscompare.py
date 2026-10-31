@@ -1,21 +1,25 @@
 """lima gromacscompare: LIMA vs GROMACS on the GROMACS heterogeneous-parallelization benchmark systems (Pall et al.,
-J. Chem. Phys. 153, 134110 (2020)), for force parity, structure and performance. Writes a report; nothing is pass/fail.
+J. Chem. Phys. 153, 134110 (2020)), for force parity, structure and performance. Writes report.html (report_page.py, the
+same page as LIMA's published benchmark report) and results.json; nothing is pass/fail.
 
-Run as `lima gromacscompare [--systems SET] [-o DIR]`, which runs this script. Needs Python 3.8+
+Run as `lima gromacscompare [--systems SET] [--structure] [-o DIR]`, which runs this script. Needs Python 3.8+
 (standard library only) and GROMACS with CUDA: natively, or in WSL on Windows.
 
 Per system, in <output-dir>/<system>/:
 - forces/   step-0 forces of both engines from the same conf.gro/topol.top (single point, no constraints), compared as
             relative RMS error sqrt(sum |F_lima - F_gmx|^2 / sum |F_gmx|^2), overall and for the worst residue name
 - perf/     ns/day of both engines, alternating, on this machine
-- md/       a 0.2 ns LIMA run and two 0.2 ns GROMACS runs differing only in the thermostat seed. For each trajectory gmx makes the protein whole and unwrapped, then the C-alpha
-            RMSD to the start and the per-atom C-alpha RMSF over the second half. LIMA's RMSF is compared to GROMACS' by
-            Pearson correlation, next to the correlation between the two GROMACS runs, ie. how much runs differ by chance
+- md/       only with --structure: a 0.2 ns LIMA run and two 0.2 ns GROMACS runs differing only in the thermostat seed.
+            For each trajectory gmx makes the protein whole and unwrapped, then the C-alpha RMSD to the start and the
+            per-atom C-alpha RMSF over the second half. LIMA's RMSF is compared to GROMACS' by Pearson correlation, next to
+            the correlation between the two GROMACS runs, ie. how much runs differ by chance. Without --structure the report
+            shows these numbers from the 1 ns reference runs (reference_parity.json), marked as such
 
 The inputs come from https://lima-dynamics.com/benchdata/v1, made by
 LIMA_data/salad_gromacs_bench/bundle/make_bundle.py, whose README describes it."""
 import argparse
 import hashlib
+import html
 import json
 import math
 import os
@@ -29,6 +33,9 @@ import time
 import urllib.request
 from pathlib import Path, PureWindowsPath
 
+import report_page
+
+HERE = Path(__file__).parent
 BASE_URL = os.environ.get("LIMA_BENCHDATA_URL", "https://lima-dynamics.com/benchdata/v1")
 DATASET = "v1"
 SYSTEMS = {  # name: (tier, atoms, bytes, sha256), from make_bundle.py
@@ -311,6 +318,9 @@ def performance(system, data, work, lima, gmx):
         if not match:
             raise Failure(f"No performance line in {work / f'gmx_{round_}.log'}")
         results["gromacs"].append(float(match.group(1)))
+        threads = re.search(r"^Using (\d+) OpenMP threads", text, re.MULTILINE)
+        if threads:
+            results["gromacsOpenmpThreads"] = int(threads.group(1))
         log(f"  round {round_}: LIMA {results['lima'][-1]:.1f}, GROMACS {results['gromacs'][-1]:.1f} ns/day")
     for engine in ("lima", "gromacs"):
         values = sorted(results[engine])
@@ -377,64 +387,107 @@ def structure(system, data, work, lima, gmx):
     return result
 
 
+def reference_structure(system):
+    """structure()'s numbers from the reference runs, for a report without --structure"""
+    reference = json.loads((HERE / "reference_parity.json").read_text())
+    r = reference["systems"][system]
+    return {"reference": f"LIMA {reference['lima']}, GROMACS {reference['gromacs']}, {reference['gpu']}",
+            "simulatedNs": reference["simulatedNs"], "calphaAtoms": r["calphaAtoms"], "rmsdNm_lima": r["rmsdNm_lima"],
+            "rmsdNm_gmx1": r["rmsdNm_gmx"], "rmsdNm_gmx2": r["rmsdNm_gmx2"], "rmsfCorrelationLimaGromacs": r["rmsfCorrelation"],
+            "rmsfCorrelationGromacsGromacs": r["rmsfCorrelationGmxReference"]}
+
+
 # ------------------------------------------------ Report ------------------------------------------------ #
+
+REPORT_CSS = ".bars .error { grid-column: 1 / -1; margin: 0; color: var(--soft); font-size: 12px; }"
+STRUCTURE_MARK = "†"
+
+
+def report_rows(results):
+    rows = []
+    for system, r in results.items():
+        row = {"system": system, "atoms": SYSTEMS[system][1]}
+        if "performance" in r:
+            row.update(lima=r["performance"]["limaMedian"], gromacs=r["performance"]["gromacsMedian"])
+        if "forces" in r:
+            row["forces"] = r["forces"]["relativeRmsError"]
+        if "structure" in r:
+            s = r["structure"]
+            row.update(rmsdLima=s["rmsdNm_lima"], rmsdGmx1=s["rmsdNm_gmx1"], rmsdGmx2=s["rmsdNm_gmx2"],
+                       rmsfR=s["rmsfCorrelationLimaGromacs"], rmsfRGmx=s["rmsfCorrelationGromacsGromacs"])
+            if "reference" in s:
+                row["structureMark"] = STRUCTURE_MARK
+        if "error" in r:
+            row["error"] = r["error"]
+        rows.append(row)
+    return rows
+
+
+def method_html(results, setup):
+    """The footer: this machine's setup, the physics, and what the parity numbers mean"""
+    threads = next((r["performance"]["gromacsOpenmpThreads"] for r in results.values()
+                    if "gromacsOpenmpThreads" in r.get("performance", {})), None)
+    gmx = setup["gromacs"]
+    structures = [r["structure"] for r in results.values() if "structure" in r]
+    measured = [s for s in structures if "reference" not in s]
+    md_ns = (measured or structures or [{"simulatedNs": MD_STEPS * DT_PS * 1e-3}])[0]["simulatedNs"]
+    reference = next((s["reference"] for s in structures if "reference" in s), None)
+    esc = html.escape
+    parts = [f"""
+    <div>
+      <h3>Setup</h3>
+      <p>{esc(setup['gpu'])}, {esc(setup['cpu'])}, {esc(setup['os'])}. {esc(setup['limaVersion'])}. GROMACS {esc(gmx['version'])} with CUDA{', under WSL' if setup['gromacsWsl'] else ''},
+        everything on the GPU (-nb -pme -bonded -update gpu){f', {threads} OpenMP threads' if threads else ''}.</p>
+      <p>Median of {PERF_ROUNDS} runs per engine, run alternately. Throughput from the steady state: GROMACS -resethway, LIMA a long minus a short run.</p>
+    </div>
+    <div>
+      <h3>Same physics</h3>
+      <p>2 fs steps, h-bond constraints, PME with each system's original cutoff (0.9-1.2 nm) and grid spacing, v-rescale thermostat.
+        LIMA integrates with velocity Verlet, GROMACS with leap-frog, its fastest path. GROMACS keeps the cutoff fixed (-notunepme).</p>
+      <p>Systems: Páll et al., J. Chem. Phys. 153, 134110 (2020), force fields as published. ADH, aquaporin and GluCl run as
+        2 copies, the exact rectangular cell of their triclinic box.</p>
+    </div>
+    <div>
+      <h3>Parity</h3>
+      <p><b>Forces</b>: the relative RMS difference of every atom's force, LIMA vs GROMACS, for the same structure and settings.
+        1×10<sup>−4</sup> means a typical force differs by 0.01%, ten times less than PME's own approximation of the exact Ewald sum (~10<sup>−3</sup>).</p>
+      <p><b>RMSD</b>: how far the protein's Cα atoms drift from the start, the mean over the second half of a {md_ns:g} ns run, next to two GROMACS
+        runs. <b>RMSF r</b>: how well LIMA and GROMACS agree on which residues move most (Pearson correlation of per-Cα fluctuations,
+        1 is identical), next to the agreement between the two GROMACS runs, which differ only in their thermostat seed.</p>"""]
+    if reference:
+        parts.append(f"""
+      <p><b>{STRUCTURE_MARK}</b> RMSD and RMSF r from the reference runs ({esc(reference)}), not measured on this machine.
+        <b>lima gromacscompare --structure</b> measures them.</p>""")
+    parts.append("""
+    </div>
+  """)
+    return "".join(parts)
+
 
 def write_report(out_dir, results, setup):
     (out_dir / "results.json").write_text(json.dumps({"setup": setup, "systems": results}, indent=2) + "\n")
-    lines = ["# LIMA vs GROMACS", "",
-             f"{setup['date']}. LIMA: {setup['lima']}. GROMACS {setup['gromacs']['version']} ({setup['gromacs']['precision']} "
-             f"precision, CUDA): {setup['gromacsPath']}. GPU: {setup['gpu']}. CPU: {setup['cpu']}.", "",
-             "Systems from Pall et al., J. Chem. Phys. 153, 134110 (2020), https://doi.org/10.5281/zenodo.3893789 (CC BY 4.0). "
-             "Both engines run the same conf.gro and topology with the same physics (see each system's inputs/lima.mdp and "
-             "gmx.mdp); GROMACS uses leap-frog, LIMA velocity Verlet.", ""]
+    rows = report_rows(results)
+    rows_html = [report_page.row(r, report_page.data_uri(HERE / "assets" / f"{r['system']}.webp", "image/webp")) for r in rows]
+    page = report_page.page("dark", "page", REPORT_CSS, (HERE / "assets" / "logo.svg").read_text(encoding="utf-8"),
+                            f"Benchmark report · {setup['date']}", report_page.headline(rows),
+                            "A one-to-one comparison on GROMACS' own benchmark systems, run on this machine.",
+                            report_page.stats(rows), report_page.table(rows_html), "", method_html(results, setup))
+    (out_dir / "report.html").write_text(page, encoding="utf-8")
 
-    if any("forces" in r for r in results.values()):
-        lines += ["## Forces", "",
-                  "Step-0 forces of the same structure, no constraints. Relative RMS error of LIMA's forces vs GROMACS', "
-                  "overall and for the worst residue name.", "",
-                  "| System | Atoms | Relative RMS error | Worst residue |", "|---|---:|---:|---|"]
-        for system, r in results.items():
-            if "forces" in r:
-                f = r["forces"]
-                lines.append(f"| {system} | {SYSTEMS[system][1]:,} | {f['relativeRmsError']:.2e} | "
-                             f"{f['worstResidue']} {f['worstResidueRelativeRmsError']:.2e} |")
-        lines.append("")
 
-    if any("performance" in r for r in results.values()):
-        lines += ["## Performance", "",
-                  "Median ns/day over the rounds on this machine, engines alternating. GROMACS: "
-                  f"`mdrun {' '.join(GMX_MDRUN_GPU)}` -resethway; LIMA: engine time of a full minus a 1/5 run.", "",
-                  "| System | Atoms | LIMA [ns/day] | GROMACS [ns/day] | LIMA/GROMACS | Runs (LIMA; GROMACS) |",
-                  "|---|---:|---:|---:|---:|---|"]
-        for system, r in results.items():
-            if "performance" in r:
-                p = r["performance"]
-                lines.append(f"| {system} | {SYSTEMS[system][1]:,} | {p['limaMedian']:.1f} | {p['gromacsMedian']:.1f} | "
-                             f"{p['limaMedian'] / p['gromacsMedian']:.2f}x | "
-                             f"{', '.join(f'{v:.0f}' for v in p['lima'])}; {', '.join(f'{v:.0f}' for v in p['gromacs'])} |")
-        lines.append("")
-
-    if any("structure" in r for r in results.values()):
-        lines += [f"## Structure ({MD_STEPS * DT_PS * 1e-3:g} ns)", "",
-                  "Mean C-alpha RMSD to the start over the second half, and the Pearson correlation of the per-atom "
-                  "C-alpha RMSF of LIMA vs GROMACS. Two GROMACS runs that differ only in the thermostat seed give the "
-                  "spread to expect by chance: a LIMA-GROMACS correlation like the GROMACS-GROMACS one means LIMA differs "
-                  "from GROMACS no more than GROMACS differs from itself.", "",
-                  "| System | C-alpha | RMSD LIMA [nm] | RMSD GROMACS 1 / 2 [nm] | RMSF r LIMA-GROMACS | RMSF r GROMACS-GROMACS |",
-                  "|---|---:|---:|---:|---:|---:|"]
-        for system, r in results.items():
-            if "structure" in r:
-                s = r["structure"]
-                lines.append(f"| {system} | {s['calphaAtoms']} | {s['rmsdNm_lima']:.3f} | {s['rmsdNm_gmx1']:.3f} / "
-                             f"{s['rmsdNm_gmx2']:.3f} | {s['rmsfCorrelationLimaGromacs']:.3f} | "
-                             f"{s['rmsfCorrelationGromacsGromacs']:.3f} |")
-        lines.append("")
-
-    failed = {system: r["error"] for system, r in results.items() if "error" in r}
-    if failed:
-        lines += ["## Not completed", ""] + [f"- {system}: {error.splitlines()[0]}" for system, error in failed.items()] + [""]
-    lines += ["Every number above comes from the logs and files in this directory; `results.json` holds them unrounded.", ""]
-    (out_dir / "report.md").write_text("\n".join(lines))
+def summary(results):
+    """The report's numbers as text, for the console (ASCII: a Windows console may not have the HTML's mark)"""
+    lines = [f"{'System':13s} {'LIMA':>9s} {'GROMACS':>9s} {'Speedup':>8s} {'Forces':>9s} {'RMSF r':>14s}",
+             f"{'':13s} {'[ns/day]':>9s} {'[ns/day]':>9s} {'':8s} {'':9s} {'LIMA (GMX)':>14s}"]
+    for row in report_rows(results):
+        if "error" in row:
+            lines.append(f"{row['system']:13s} not completed: {row['error'].splitlines()[0]}")
+            continue
+        lines.append(f"{row['system']:13s} {row['lima']:9.1f} {row['gromacs']:9.1f} {row['lima'] / row['gromacs']:7.2f}x "
+                     f"{row['forces']:9.2e} {row['rmsfR']:6.2f} ({row['rmsfRGmx']:.2f}){'*' if 'structureMark' in row else ''}")
+    if any("structureMark" in row for row in report_rows(results)):
+        lines.append(f"* from the 1 ns reference runs, not this machine; --structure measures it")
+    return "\n".join(lines)
 
 
 def machine_info():
@@ -463,13 +516,19 @@ def machine_info():
 
 # ------------------------------------------------ Main ------------------------------------------------ #
 
-def estimate_hours(systems):
+def estimate_minutes(systems, with_structure):
     """Rough wall time on an RTX 4090, from the measured ns/day of each system."""
     lima_ns_per_day = {"villin": 2400, "rnase_cubic": 1600, "adh_dodec": 360, "aqp_ensemble": 245, "ion_channel": 230, "stmv": 51}
     gmx_ns_per_day = {"villin": 1100, "rnase_cubic": 920, "adh_dodec": 180, "aqp_ensemble": 96, "ion_channel": 130, "stmv": 33}
-    ns = MD_STEPS * DT_PS * 1e-3
-    hours = sum(ns / lima_ns_per_day[s] * 24 + 2 * ns / gmx_ns_per_day[s] * 24 for s in systems)
-    return hours + len(systems) * 0.05  # performance rounds, forces, analysis
+    days = lambda ns, nsday: ns / nsday * 24 * 60
+    minutes = 0.0
+    for s in systems:
+        perf_ns = PERF_STEPS[s] * DT_PS * 1e-3
+        minutes += PERF_ROUNDS * (days(1.2 * perf_ns, lima_ns_per_day[s]) + days(perf_ns, gmx_ns_per_day[s])) + 0.5  # + forces, setup
+        if with_structure:
+            md_ns = MD_STEPS * DT_PS * 1e-3
+            minutes += days(md_ns, lima_ns_per_day[s]) + 2 * days(md_ns, gmx_ns_per_day[s]) + 1  # + analysis
+    return minutes
 
 
 def parse_args(argv):
@@ -478,8 +537,11 @@ def parse_args(argv):
     parser.add_argument("--systems", default="small",
                         help="small (villin, rnase_cubic), all (also adh_dodec, aqp_ensemble, ion_channel, stmv), or a "
                              "comma-separated list (default: small)")
+    parser.add_argument("--structure", action="store_true",
+                        help="Also run both engines for 0.2 ns and compare RMSD and RMSF (default: show those from the "
+                             "1 ns reference runs)")
     parser.add_argument("-o", "--output-dir", type=Path, default=Path("gromacscompare"),
-                        help="Where the runs and report.md go (default: ./gromacscompare)")
+                        help="Where the runs and report.html go (default: ./gromacscompare)")
     parser.add_argument("--gmx", help=argparse.SUPPRESS)  # Only if gmx is not found on the PATH or in WSL
     parser.add_argument("--lima", help=argparse.SUPPRESS)  # Passed by lima
     return parser.parse_args(argv)
@@ -506,12 +568,15 @@ def main(argv):
     lima = find_lima(args.lima)
     log(f"GROMACS {gmx_version['version']} with CUDA: {gmx.describe()}")
     log(f"LIMA: {lima}")
-    log(f"Systems: {', '.join(systems)}. Roughly {estimate_hours(systems):.1f} h on an RTX 4090; slower GPUs take longer")
+    minutes = estimate_minutes(systems, args.structure)
+    log(f"Systems: {', '.join(systems)}{', with structure runs' if args.structure else ''}. Roughly "
+        f"{f'{minutes / 60:.1f} h' if minutes > 90 else f'{minutes:.0f} min'} on an RTX 4090; slower GPUs take longer")
 
     lima_version = subprocess.run([lima, "--version"], capture_output=True, text=True).stdout.strip()
     gpu, cpu = machine_info()
-    setup = {"date": time.strftime("%Y-%m-%d %H:%M"), "lima": f"{lima_version} ({lima})", "gromacs": gmx_version,
-             "gromacsPath": gmx.describe(), "gpu": gpu, "cpu": cpu}
+    setup = {"date": time.strftime("%Y-%m-%d %H:%M"), "lima": f"{lima_version} ({lima})", "limaVersion": lima_version or "LIMA",
+             "gromacs": gmx_version, "gromacsPath": gmx.describe(), "gromacsWsl": gmx.wsl is not None, "gpu": gpu, "cpu": cpu,
+             "os": f"{platform.system()} {platform.release()}"}
     results = {}
     for system in systems:
         log(f"\n== {system} ({SYSTEMS[system][1]:,} atoms)")
@@ -527,16 +592,19 @@ def main(argv):
             log(f"  force relative RMS error {r['relativeRmsError']:.2e}")
             log("  performance")
             results[system]["performance"] = performance(system, data, work / "perf", lima, gmx)
-            r = results[system]["structure"] = structure(system, data, work / "md", lima, gmx)
-            log(f"  RMSF correlation LIMA-GROMACS {r['rmsfCorrelationLimaGromacs']:.3f}, "
-                f"GROMACS-GROMACS {r['rmsfCorrelationGromacsGromacs']:.3f}")
+            if args.structure:
+                r = results[system]["structure"] = structure(system, data, work / "md", lima, gmx)
+                log(f"  RMSF correlation LIMA-GROMACS {r['rmsfCorrelationLimaGromacs']:.3f}, "
+                    f"GROMACS-GROMACS {r['rmsfCorrelationGromacsGromacs']:.3f}")
+            else:
+                results[system]["structure"] = reference_structure(system)
         except Failure as error:
             results[system]["error"] = str(error)
             log(f"  {system} not completed: {error}")
         write_report(out_dir, results, setup)  # After every system, so an interrupted run keeps what it has
 
-    log(f"\nReport: {out_dir / 'report.md'}")
-    log((out_dir / "report.md").read_text())
+    log("\n" + summary(results))
+    log(f"\nReport: {out_dir / 'report.html'}")
     return 1 if any("error" in r for r in results.values()) else 0
 
 

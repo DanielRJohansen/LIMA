@@ -299,15 +299,18 @@ are reported as a warning.
 inline constexpr std::string_view GromacsCompareHelp = R"(Usage: lima gromacscompare [OPTION]...
 
 Compare LIMA with GROMACS on the GROMACS heterogeneous-parallelization benchmark
-systems (Pall et al., J. Chem. Phys. 2020): step-0 forces, performance, and the
-structure of 0.2 ns runs. Writes report.md; nothing is pass/fail. Downloads the
-systems on first use. Needs Python 3.8+ and GROMACS built with CUDA (natively, or
-in WSL on Windows).
+systems (Pall et al., J. Chem. Phys. 2020): step-0 forces and performance, and
+with --structure the structure of 0.2 ns runs. Writes report.html and
+results.json; nothing is pass/fail. Downloads the systems on first use. Needs
+Python 3.8+ and GROMACS built with CUDA (natively, or in WSL on Windows).
 
 Options:
       --systems SET            small (villin, rnase_cubic), all (also adh_dodec,
                                aqp_ensemble, ion_channel, stmv), or a list, eg.
                                villin,stmv (default: small)
+      --structure              Also run both engines for 0.2 ns and compare the
+                               C-alpha RMSD and RMSF. Without it, the report shows
+                               those of the 1 ns reference runs, marked as such
   -o, --output-dir DIR         Runs and report (default: ./gromacscompare)
   -h, --help                   Display this help and exit
 )";

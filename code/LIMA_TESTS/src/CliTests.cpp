@@ -1121,12 +1121,12 @@ TestRoutine TestDaemon(fs::path workDir) {
 	co_return LimaUnittestResult{ true, OneLineMessage("{} async identical, idle exit", nConcurrent), false };
 }
 
-// The comparison itself needs GROMACS with CUDA and hours; this checks that lima finds and runs the script, which rejects
-// bad input before looking for GROMACS or downloading anything
+// The comparison itself needs GROMACS with CUDA and minutes to hours; this checks that lima finds and runs the script (and
+// that it imports report_page and takes its options), which rejects bad input before looking for GROMACS or downloading anything
 TestRoutine TestGromacsCompare(fs::path workDir) {
 	Banner("lima gromacscompare");
 	RunOptions quiet{ .captureStdout = true, .echo = false };
-	const auto result = Run(workDir, { "gromacscompare", "--systems", "nosuchsystem" }, quiet);
+	const auto result = Run(workDir, { "gromacscompare", "--structure", "--systems", "nosuchsystem" }, quiet);
 	RequireExitCode(result, 1);
 	ASSERT(result.output.find("Unknown system") != std::string::npos,
 		Lima::Format("'{}' did not report the unknown system:\n{}", result.commandline, Tail(result.output)));
